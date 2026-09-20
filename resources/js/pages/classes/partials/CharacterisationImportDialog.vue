@@ -208,6 +208,18 @@ const pendingOriginalFilename = ref<string | null>(null);
 const structuralCellConfidence = reactive<Record<string, number | null>>({});
 const editedStructuralCells = reactive<Set<string>>(new Set());
 
+// F1: the last `extracted_table` actually POSTed to the preview endpoint —
+// in practice the §39 CORRECTED table once one has been submitted, since
+// applyStructuralCorrections() is the only writer. Read by buildPreviewBody()
+// in preference to `ocrExtractedTable`/`file`/`pastedHtml`/`pastedText`:
+// without this, acceptSuggestion() had no way to resubmit anything but the
+// original, uncorrected source, which silently threw away every structural
+// correction the teacher had just made (wrong row kinds fixed, columns
+// ignored, cells edited) the moment she accepted an ACNS suggestion. Cleared
+// alongside the rest of the preview state (clearPreviewState()) so a freshly
+// chosen file never inherits a correction that belonged to the one before it.
+const submittedExtractedTable = ref<ExtractedTablePayload | null>(null);
+
 // Mirrors BuildCharacterisationPreview::LOW_EXTRACTION_CONFIDENCE — the same
 // threshold the §38 structural step already uses, so the two steps never
 // disagree about what counts as "low".
@@ -256,6 +268,14 @@ function clearPreviewState(): void {
     clearStructuralState();
     pendingSourceKind.value = null;
     pendingOriginalFilename.value = null;
+    // F1: `submittedExtractedTable` deliberately NOT cleared here, for the
+    // same reason `corrections` isn't (see clearCorrections()'s own
+    // comment): postPreview() calls clearPreviewState() on every successful
+    // response, including the very one applyStructuralCorrections() just
+    // submitted the corrected table through — clearing it here would erase
+    // it before acceptSuggestion() ever got a chance to reuse it. It is
+    // cleared explicitly, alongside corrections, wherever a genuinely NEW
+    // source is being started (resetToInput(), backToInputStep()).
 }
 
 // §19: a correction belongs to the source it was accepted against — carrying
@@ -267,6 +287,13 @@ function clearPreviewState(): void {
 // a later resubmission.
 function clearCorrections(): void {
     Object.keys(corrections).forEach((key) => delete corrections[key]);
+}
+
+// F1: a submitted, corrected table belongs to the source it was corrected
+// from — same reasoning as clearCorrections() above, so it is always called
+// alongside it, never from clearPreviewState() itself.
+function clearSubmittedExtractedTable(): void {
+    submittedExtractedTable.value = null;
 }
 
 function resetToInput(): void {
@@ -283,6 +310,7 @@ function resetToInput(): void {
     tableChoices.value = null;
     clearPreviewState();
     clearCorrections();
+    clearSubmittedExtractedTable();
 }
 
 // Usada pelo "Escolher outro ficheiro" e pelo "Voltar" do seletor de tabelas
@@ -294,6 +322,7 @@ function backToInputStep(): void {
     tableChoices.value = null;
     clearPreviewState();
     clearCorrections();
+    clearSubmittedExtractedTable();
 }
 
 function onFileChange(event: Event): void {
@@ -535,6 +564,17 @@ function populateStructuralCellConfidence(rows: StructuralRow[]): void {
     });
 }
 
+// F4: `corrections` travels as ONE JSON string field, not as
+// `corrections[<token>]` form keys — a raw token can itself contain `[`,
+// `]` or `.`, which PHP's own form-key parser reads as array-nesting syntax
+// and silently truncates or misroutes the key. A JSON object has no such
+// collision: see parseCorrectionsPayload()'s own comment on the server side.
+function appendCorrections(body: FormData): void {
+    if (Object.keys(corrections).length > 0) {
+        body.append('corrections', JSON.stringify(corrections));
+    }
+}
+
 /**
  * Builds the same FormData shape `postPreview` always expects, from
  * whichever source is currently held — factored out of `loadPreview` so
@@ -543,6 +583,27 @@ function populateStructuralCellConfidence(rows: StructuralRow[]): void {
  */
 function buildPreviewBody(tableIndex: number | null): FormData {
     const body = new FormData();
+
+    // F1: once a corrected table has actually been submitted (§39), THAT is
+    // the source of truth for every later resubmission — never the original
+    // OCR table or raw file/HTML still sitting in `ocrExtractedTable`/`file`/
+    // `pastedHtml`, which are uncorrected and, for a .docx/pasted HTML, get
+    // RE-READ from scratch server-side (see ExtractedTableSource::CorrectedDocx's
+    // own docblock on why `corrected_docx`/`corrected_pasted_html` exist at
+    // all). Resubmitting the raw source here is exactly what threw away
+    // every structural correction the moment a suggestion was accepted.
+    if (submittedExtractedTable.value !== null) {
+        body.append('extracted_table', JSON.stringify(submittedExtractedTable.value));
+        body.append('source_kind', submittedExtractedTable.value.source_type);
+
+        if (pendingOriginalFilename.value !== null) {
+            body.append('original_filename', pendingOriginalFilename.value);
+        }
+
+        appendCorrections(body);
+
+        return body;
+    }
 
     if (ocrExtractedTable.value !== null) {
         // The image itself is never sent — only the table the OCR seam
@@ -562,11 +623,7 @@ function buildPreviewBody(tableIndex: number | null): FormData {
         body.append('pasted_text', pastedText.value);
     }
 
-    if (Object.keys(corrections).length > 0) {
-        Object.entries(corrections).forEach(([original, accepted]) => {
-            body.append(`corrections[${original}]`, accepted);
-        });
-    }
+    appendCorrections(body);
 
     return body;
 }
@@ -596,7 +653,15 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
  * fabricating a resolved measure of its own.
  */
 async function acceptSuggestion(rawToken: string, acceptedToken: string): Promise<void> {
-    corrections[rawToken] = acceptedToken;
+    // F4: trimmed — the server matches this key against the cell text with a
+    // `\b…\b`-bounded regex (BuildCharacterisationPreview::applyCorrections()),
+    // and a boundary can never sit next to a space INSIDE the pattern. An
+    // untrimmed token (a common OCR artefact) made that regex unmatchable,
+    // so clicking "Aceitar" reloaded the preview with nothing changed and no
+    // error — a dead end. Trimming here, once, keeps the key that reaches
+    // the server identical to what SuggestAcronymCorrection::suggest()
+    // itself matched on (it trims too).
+    corrections[rawToken.trim()] = acceptedToken;
 
     await postPreview(buildPreviewBody(null));
 }
@@ -706,6 +771,12 @@ function applyStructuralCorrections(): void {
         warnings: [],
         extraction_confidence: 1,
     };
+
+    // F1: this IS the corrected table `buildPreviewBody()` must prefer from
+    // now on — set BEFORE posting, never inside postPreview()'s response
+    // handling, since clearPreviewState() runs there and must not erase it
+    // (see clearPreviewState()'s own comment on why).
+    submittedExtractedTable.value = correctedTable;
 
     const body = new FormData();
     body.append('extracted_table', JSON.stringify(correctedTable));

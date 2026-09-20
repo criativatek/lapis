@@ -9,6 +9,9 @@ use App\Models\User;
 use App\Services\StudentEnrollmentService;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -248,5 +251,72 @@ class CharacterisationStructuralReviewTest extends TestCase
         ]);
 
         $response->assertUnprocessable()->assertJsonValidationErrors(['extracted_table']);
+    }
+
+    /**
+     * F2 (second adversarial review): a plain .xlsx upload used to skip the
+     * structural step outright — `show_structural_step` excluded 'xlsx' from
+     * its condition entirely, on the (wrong) theory that a spreadsheet has
+     * no OCR/parsing ambiguity. But an .xlsx CAN carry merged cells, and a
+     * left "spine" column merged down the sheet is exactly the shape that
+     * could fold a real student into the header (see
+     * NormaliseExtractedTable's own headerLevels() comment). Without the
+     * step, a teacher had no way back for a row silently swallowed that
+     * way. Now .xlsx shows the step whenever the source actually HAD a
+     * merged cell — the same `hadMergedCells` signal pasted HTML already
+     * uses.
+     */
+    #[Test]
+    public function an_xlsx_with_a_merged_cell_shows_the_structural_step(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'carac').'.xlsx';
+
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray([
+            ['Turma A', 'Aluno', 'RTP/PEI', 'Apoio'],
+            [null, 'Maria Santos', 'PEI', 'Terapia da fala'],
+            [null, 'João Pinto', 'RTP', '—'],
+        ]);
+        $sheet->mergeCells('A1:A3');
+        (new Xlsx($spreadsheet))->save($path);
+
+        $response = $this->actingAs($this->user)->post($this->previewUrl(), [
+            'file' => new UploadedFile($path, 'caracterizacao.xlsx', null, null, true),
+        ], ['Accept' => 'application/json']);
+
+        @unlink($path);
+
+        $response->assertOk()
+            ->assertJsonPath('show_structural_step', true)
+            ->assertJsonPath('structural.headers', ['Turma A', 'Aluno', 'RTP/PEI', 'Apoio']);
+    }
+
+    /**
+     * The counterpart: an ordinary .xlsx WITHOUT any merged cell never shows
+     * the step — forcing every plain spreadsheet through an extra click
+     * would be the "spreadsheet, not a minimum" this scope explicitly warns
+     * against.
+     */
+    #[Test]
+    public function a_plain_xlsx_without_merged_cells_never_shows_the_structural_step(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'carac').'.xlsx';
+
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray([
+            ['Nome', 'Medidas'],
+            ['Maria Santos', 'MU'],
+        ]);
+        (new Xlsx($spreadsheet))->save($path);
+
+        $response = $this->actingAs($this->user)->post($this->previewUrl(), [
+            'file' => new UploadedFile($path, 'caracterizacao.xlsx', null, null, true),
+        ], ['Accept' => 'application/json']);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('show_structural_step', false);
     }
 }

@@ -639,11 +639,96 @@ describe('CharacterisationImportDialog — §18/§19 extraction confidence and s
 
         const [, secondInit] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
         const secondBody = secondInit.body as FormData;
-        expect(secondBody.get('corrections[ACN5]')).toBe('ACNS');
+        // F4: `corrections` travels as ONE JSON field, not a
+        // `corrections[<token>]` form key — see appendCorrections()'s own
+        // comment on why a bracket/`.`-bearing token made the old shape
+        // unreliable.
+        expect(JSON.parse(secondBody.get('corrections') as string)).toEqual({ ACN5: 'ACNS' });
 
         // The server's fresh response (measure resolved, nothing unresolved)
         // is what ends up on screen.
         expect(wrapper.text()).not.toContain('Não reconhecido');
+    });
+
+    /**
+     * F1 (second adversarial review, SHIP-BLOCKING): accepting a suggestion
+     * used to resubmit `buildPreviewBody(null)`, which re-sent whichever
+     * ORIGINAL source was still held (`ocrExtractedTable`/`file`) — never
+     * the CORRECTED table §39's structural step had just produced. That
+     * threw away every structural correction the teacher made (row kinds,
+     * ignored columns, edited cells) the moment she clicked "Aceitar
+     * correção": the raw table came back untagged, `show_structural_step`
+     * became true again, and clearPreviewState() wiped her corrections with
+     * no warning. This test drives the FULL sequence — structural correction
+     * -> continue -> accept a suggestion — and asserts the THIRD request
+     * carries the corrected table (never the original OCR JSON) and the
+     * dialog stays on the preview step throughout.
+     */
+    it('accepting a suggestion after a structural correction resubmits the CORRECTED table, never the original, and never leaves the preview step', async () => {
+        extractTableFromImage.mockResolvedValue({
+            rows: [],
+            source_type: 'image_upload',
+            source_filename: 'tabela.png',
+            warnings: [],
+            extraction_confidence: 1,
+        });
+
+        const wrapper = mountDialog();
+        const input = wrapper.find('input[type="file"]');
+        const image = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        Object.defineProperty(input.element, 'files', { value: [image], configurable: true });
+        await input.trigger('change');
+        await flushPromises();
+
+        // Round 1: the raw OCR guess triggers §38's structural step.
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(structuralPreviewResponse()));
+        const previewButton = wrapper.findAll('button').find((b) => b.text().includes('Pré-visualizar'));
+        await previewButton?.trigger('click');
+        await flushPromises();
+
+        // Round 2: the teacher continues — the dialog resubmits the
+        // (uncorrected, in this test) structural table and lands on the
+        // per-student preview with an unresolved, suggestible token.
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+            jsonResponse(previewResponse([rowWithLowConfidenceUnresolved()])),
+        );
+        const continueButton = wrapper.findAll('button').find((b) => b.text().includes('Continuar'));
+        await continueButton?.trigger('click');
+        await flushPromises();
+
+        expect(wrapper.text()).not.toContain('tal como foi reconhecida');
+        const acceptButton = wrapper.findAll('button').find((b) => b.text().includes('Aceitar correção'));
+        expect(acceptButton).toBeTruthy();
+
+        // Round 3: accepting the suggestion. The bug resent the ORIGINAL OCR
+        // table (untagged rows) instead of the corrected one — here they
+        // differ only in `source_type`/shape enough to prove which one was
+        // actually sent: the corrected table close over the structural
+        // step's row kinds ('header'/'group'/'data'), which the raw
+        // extractTableFromImage() output (empty `rows: []`) never carries.
+        const resolvedRow = previewRow(1, 'Aluno F1');
+        (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(previewResponse([resolvedRow])));
+
+        await acceptButton?.trigger('click');
+        await flushPromises();
+
+        expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
+
+        const [, thirdInit] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[2];
+        const thirdBody = thirdInit.body as FormData;
+        const sentTable = JSON.parse(thirdBody.get('extracted_table') as string);
+
+        // The CORRECTED table — the one §39 built from the structural grid
+        // — never the raw OCR extraction (which had 0 rows in this test).
+        expect(sentTable.rows).toHaveLength(3);
+        expect(sentTable.rows.map((row: { kind: string }) => row.kind)).toEqual(['header', 'group', 'data']);
+        expect(JSON.parse(thirdBody.get('corrections') as string)).toEqual({ ACN5: 'ACNS' });
+
+        // Never thrown back to the structural step — accepting a suggestion
+        // must never change the step or discard corrections.
+        expect(wrapper.text()).not.toContain('tal como foi reconhecida');
+        expect(wrapper.text()).toContain('Aluno F1');
     });
 });
 

@@ -141,8 +141,17 @@ class CharacterisationImportController extends Controller
             // appeared in the source => the token the teacher accepted in its
             // place. Never a shortcut around LegalCodeResolver: see
             // BuildCharacterisationPreview::applyCorrections()'s own comment.
-            'corrections' => ['nullable', 'array', 'max:50'],
-            'corrections.*' => ['nullable', 'string', 'max:64'],
+            //
+            // F4: a JSON STRING, not a `corrections[key]=value` form field —
+            // the same reason `extracted_table` is one. A raw token can
+            // itself contain `[`, `]` or `.`, which PHP's own form-key
+            // parser (`parse_str`) treats as array-nesting syntax: a token
+            // like "MU[1]" silently became a DIFFERENT, shorter key once it
+            // crossed the wire, and the correction landed on the wrong
+            // token — or on none at all. A JSON object has no such
+            // collision: whatever the token is, it round-trips as a plain
+            // string key. Decoded and validated in parseCorrectionsPayload().
+            'corrections' => ['nullable', 'string', 'max:8000'],
         ]);
 
         $pastedHtml = $data['pasted_html'] ?? null;
@@ -210,7 +219,11 @@ class CharacterisationImportController extends Controller
             ]);
         }
 
-        $preview = $this->builder->build($class, $grid, $data['corrections'] ?? []);
+        $corrections = blank($data['corrections'] ?? null)
+            ? []
+            : $this->parseCorrectionsPayload((string) $data['corrections']);
+
+        $preview = $this->builder->build($class, $grid, $corrections);
 
         return response()->json([
             'preview' => $preview->toArray(),
@@ -224,13 +237,25 @@ class CharacterisationImportController extends Controller
             // Group/Legend rows included — for "Rever tabela reconhecida".
             // `show_structural_step` is the ONE trigger rule, decided here so
             // the dialog never has to re-derive it: .docx and image/OCR
-            // sources always show it; a plain CSV/XLSX/text paste never does
-            // (no merge information exists to review); pasted HTML shows it
-            // only when the pasted markup actually had a merged cell — most
-            // Excel/Google Sheets pastes have none, and forcing every one of
-            // them through an extra step to review nothing would be the
-            // "spreadsheet, not a minimum" this scope explicitly warns
-            // against (§39's own framing).
+            // sources always show it; a plain CSV/text paste never does (no
+            // merge information exists to review); pasted HTML AND .xlsx
+            // show it only when the source actually had a merged cell — most
+            // Excel/Google Sheets pastes and plain spreadsheets have none,
+            // and forcing every one of them through an extra step to review
+            // nothing would be the "spreadsheet, not a minimum" this scope
+            // explicitly warns against (§39's own framing).
+            //
+            // F2: .xlsx used to be excluded outright, on the theory that a
+            // spreadsheet needs no review because it has no OCR/parsing
+            // uncertainty. That missed that .xlsx can carry merged cells too
+            // — a left "spine" column merged down the sheet, or a subdivided
+            // header — and a merge is exactly the shape that can fold a real
+            // student row into the header (see
+            // NormaliseExtractedTable::headerLevels()'s own comment on the
+            // spine case). An .xlsx that HAD merged cells is exactly as
+            // ambiguous as pasted HTML that did, so it is keyed on the same
+            // `hadMergedCells` signal rather than a blanket source-kind
+            // exclusion.
             'structural' => [
                 'headers' => $this->reader->lastStructuralHeaders(),
                 'rows' => $this->reader->lastStructuralRows(),
@@ -242,7 +267,7 @@ class CharacterisationImportController extends Controller
             // review.
             'show_structural_step' => ! $this->reader->lastWasPreClassified()
                 && (in_array($sourceKind, ['docx', 'pasted_image', 'image_upload'], true)
-                    || ($sourceKind === 'pasted_html' && $this->reader->lastHadMergedCells())),
+                    || (in_array($sourceKind, ['pasted_html', 'xlsx'], true) && $this->reader->lastHadMergedCells())),
             'sections' => array_map(
                 fn (CharacterisationSection $section) => [
                     'key' => $section->value,
@@ -300,6 +325,73 @@ class CharacterisationImportController extends Controller
         }
 
         return $tables[$tableIndex];
+    }
+
+    /**
+     * F4: decodes and validates the JSON `corrections` field — raw token (as
+     * it appeared in the source) => the token the teacher accepted in its
+     * place. Trims every key here, once, so a token that arrived with
+     * incidental whitespace (an OCR artefact, most often) still matches the
+     * cell text it came from: BuildCharacterisationPreview::applyCorrections()
+     * builds a `\b…\b`-bounded regex out of each key, and a leading/trailing
+     * space inside that pattern can never sit next to a word boundary,
+     * making the whole correction a silent no-op. An empty key or an empty
+     * accepted value is refused outright rather than silently ignored (an
+     * empty accepted value used to delete the token from the cell instead of
+     * replacing it — see the same method's own comment).
+     *
+     * @return array<string, string>
+     */
+    private function parseCorrectionsPayload(string $json): array
+    {
+        try {
+            $decoded = json_decode($json, associative: true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw ValidationException::withMessages([
+                'corrections' => __('Não foi possível ler as correções aceites.'),
+            ]);
+        }
+
+        if (! is_array($decoded)) {
+            throw ValidationException::withMessages([
+                'corrections' => __('Não foi possível ler as correções aceites.'),
+            ]);
+        }
+
+        if (count($decoded) > 50) {
+            throw ValidationException::withMessages([
+                'corrections' => __('Demasiadas correções aceites de uma vez.'),
+            ]);
+        }
+
+        $corrections = [];
+
+        foreach ($decoded as $original => $accepted) {
+            if (! is_string($original) || ! is_string($accepted)) {
+                throw ValidationException::withMessages([
+                    'corrections' => __('Não foi possível ler as correções aceites.'),
+                ]);
+            }
+
+            $original = trim($original);
+            $accepted = trim($accepted);
+
+            if ($original === '' || $accepted === '') {
+                throw ValidationException::withMessages([
+                    'corrections' => __('Uma correção aceite não pode ficar em branco.'),
+                ]);
+            }
+
+            if (mb_strlen($original) > 64 || mb_strlen($accepted) > 64) {
+                throw ValidationException::withMessages([
+                    'corrections' => __('Uma correção aceite é demasiado longa.'),
+                ]);
+            }
+
+            $corrections[$original] = $accepted;
+        }
+
+        return $corrections;
     }
 
     /**
@@ -392,7 +484,23 @@ class CharacterisationImportController extends Controller
                     ]);
                 }
 
-                $confidence = $rawCell['confidence'] ?? null;
+                // F5: a cell's extraction confidence is a claim about how
+                // uncertain a RECOGNITION step was — never meaningful for
+                // ::CorrectedDocx/::CorrectedPastedHtml, whose text was read
+                // EXACTLY out of the original file by this server's own
+                // extractors (§18: "a cell read exactly has no reading
+                // confidence to report"). Trusting whatever the client sent
+                // for those two source types would let a hostile or merely
+                // buggy client fabricate a LOW confidence for a token the
+                // school's own document genuinely wrote, which is the one
+                // thing suggestionsFor() is gated on: it would offer — and
+                // let a teacher silently accept — an "ACN5 → ACNS"-style
+                // rewrite of text nobody misread. Only the two genuine OCR
+                // source types (`pasted_image`/`image_upload`) ever get to
+                // keep a client-supplied confidence at all.
+                $confidence = in_array($sourceType, [ExtractedTableSource::PastedImage, ExtractedTableSource::ImageUpload], true)
+                    ? ($rawCell['confidence'] ?? null)
+                    : null;
 
                 $cells[] = new ExtractedCell(
                     text: $text,

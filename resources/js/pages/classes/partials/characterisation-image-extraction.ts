@@ -21,7 +21,7 @@
  * Only the RECOGNISED TEXT (already structured into an ExtractedTable) is
  * ever sent onward, by the dialog, to the existing preview endpoint — the
  * same JSON a pasted-HTML or .docx table would produce. See
- * characterisation-image-extraction.privacy.test.ts, which asserts no
+ * characterisation-image-extraction.test.ts, which asserts no
  * network call carries image bytes during this flow.
  * ============================================================================
  */

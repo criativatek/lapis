@@ -577,4 +577,90 @@ class NormaliseExtractedTableTest extends TestCase
         $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
         $this->assertNotEmpty($result->warnings);
     }
+
+    /**
+     * F2 (second adversarial review): a left "spine" column — an ordinary
+     * school-sheet shape, e.g. a class name merged A1:A9 down the whole
+     * table — must NEVER be read as a second header level. headerLevels()
+     * used to accept a rowspan reaching into the row below the primary
+     * header from ANY earlier row, including the spine's own rowspan, which
+     * has nothing to do with subdividing a header column. That folded the
+     * FIRST REAL STUDENT into the header captions, silently — her name
+     * never reached the preview, and no warning was ever emitted. Requiring
+     * the row's own columns to be a subset of columns the primary header
+     * row itself merged with COLSPAN (never rowspan) rules this out: a
+     * plain vertical spine never has colspan>1 in the header row.
+     */
+    public function test_a_left_spine_column_does_not_swallow_the_first_student_as_a_header_level(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                // rowspan: 3 covers exactly this table's three rows — the
+                // real-world shape (A1:A9 for a 9-row sheet) always spans
+                // the WHOLE table, not just the row below the header.
+                new ExtractedCell('Turma A', 1, 1, rowspan: 3),
+                new ExtractedCell('Aluno', 1, 2),
+                new ExtractedCell('RTP/PEI', 1, 3),
+                new ExtractedCell('Apoio', 1, 4),
+            ]),
+            // Row 2 owns only columns 2..4 — column 1 is covered purely by
+            // the spine's rowspan from row 1, exactly the shape that used to
+            // be mistaken for a header continuation.
+            new ExtractedRow(2, [
+                new ExtractedCell('Ana Silva', 2, 2),
+                new ExtractedCell('PEI', 2, 3),
+                new ExtractedCell('Terapia da fala', 2, 4),
+            ]),
+            new ExtractedRow(3, [
+                new ExtractedCell('Bruno Costa', 3, 2),
+                new ExtractedCell('RTP', 3, 3),
+                new ExtractedCell('—', 3, 4),
+            ]),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::Xlsx);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(2, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 1));
+        $this->assertSame('Bruno Costa', $result->grid->cell($result->grid->rows[1], 1));
+
+        $kinds = array_column($result->structuralRows, 'kind', 'number');
+        $this->assertSame('header', $kinds[1]);
+        $this->assertSame('data', $kinds[2]);
+        $this->assertSame('data', $kinds[3]);
+    }
+
+    /**
+     * F3 (second adversarial review): explicitRowKinds() used to treat ANY
+     * recognised kind on ANY row as proof the whole table was already
+     * classified, and defaulted every untagged row to Data with no header
+     * detection at all — a payload tagging only row 3 turned the actual
+     * header row (row 1) into a "student" named «Nome». All-or-nothing is
+     * enforced instead: a partial tagging is refused outright.
+     */
+    public function test_a_partially_tagged_table_is_refused_rather_than_reclassified(): void
+    {
+        $rows = [
+            new ExtractedRow(1, [
+                new ExtractedCell('Nome', 1, 1),
+                new ExtractedCell('Medidas', 1, 2),
+            ]),
+            new ExtractedRow(2, [
+                new ExtractedCell('MU - Medidas Universais', 2, 1),
+                new ExtractedCell('', 2, 2),
+            ]),
+            new ExtractedRow(3, [
+                new ExtractedCell('Ana Silva', 3, 1),
+                new ExtractedCell('MU', 3, 2),
+            ], ExtractedRowKind::Data),
+        ];
+
+        $table = new ExtractedTable($rows, ExtractedTableSource::PastedTsv);
+
+        $this->expectException(UnreadableSpreadsheet::class);
+
+        (new NormaliseExtractedTable)->normalise($table);
+    }
 }
