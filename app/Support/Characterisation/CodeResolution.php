@@ -2,6 +2,7 @@
 
 namespace App\Support\Characterisation;
 
+use App\Models\CatalogueFamily;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 
@@ -26,7 +27,42 @@ readonly class CodeResolution
         public array $unresolvedAnnotations = [],
         public AcronymScope $scope = AcronymScope::Institutional,
         public ?string $note = null,
+        /**
+         * What kind of thing this is, when that much is known. A resolution can
+         * be confident about the family and still have nowhere to store it.
+         */
+        public ?CatalogueFamily $family = null,
     ) {}
+
+    /**
+     * A token recognised as a support or resource — a Centro de Recursos para a
+     * Inclusão, a specialised technician — for which the catalogue has no item
+     * and therefore no structured destination.
+     *
+     * It is NOT storable, and that is the whole point: «uma necessidade do
+     * aluno» and «um apoio mobilizado para ele» are different facts, and
+     * writing the second into the first because the first has a column would be
+     * the application asserting something nobody said. It reaches the preview,
+     * named and classified, and goes no further without a person.
+     */
+    public static function resource(
+        string $rawToken,
+        ?string $expansion = null,
+        AcronymScope $scope = AcronymScope::National,
+    ): self {
+        return new self(
+            rawToken: $rawToken,
+            confidence: CodeConfidence::Recognised,
+            scope: $scope,
+            note: $expansion === null
+                ? (string) __('Apoio ou recurso. Não há destino estruturado para o guardar.')
+                : (string) __(':token — :expansion. Apoio ou recurso: não há destino estruturado para o guardar.', [
+                    'token' => $rawToken,
+                    'expansion' => $expansion,
+                ]),
+            family: CatalogueFamily::SupportResource,
+        );
+    }
 
     /**
      * The level is PASSED IN, never derived from the code here.
@@ -88,10 +124,20 @@ readonly class CodeResolution
         );
     }
 
-    /** Only a recognised resolution may ever become a stored measure. */
+    /**
+     * Only a recognised resolution WITH A CODE may ever become a stored
+     * measure. A resource is recognised and has no code, so it is never
+     * storable — there is nothing in the schema that could honestly hold it.
+     */
     public function isStorable(): bool
     {
         return $this->confidence === CodeConfidence::Recognised && $this->code !== null;
+    }
+
+    /** Recognised as a support or resource, with nowhere structured to go. */
+    public function isResource(): bool
+    {
+        return $this->family === CatalogueFamily::SupportResource;
     }
 
     /**
@@ -111,6 +157,11 @@ readonly class CodeResolution
             'scope' => $this->scope->value,
             'note' => $this->note,
             'storable' => $this->isStorable(),
+            'family' => $this->family?->value,
+            'family_label' => $this->family?->label(),
+            // Said plainly, because the preview has to. A resource is
+            // understood and still has nowhere to be kept.
+            'has_structured_destination' => $this->isStorable(),
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Support\Characterisation;
 
+use App\Models\CatalogueFamily;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 
@@ -21,6 +22,14 @@ readonly class AcronymEntry
         public AcronymScope $scope,
         public ?SupportMeasureLevel $level = null,
         public ?SupportMeasureCode $code = null,
+        /**
+         * Which family this token belongs to, when that much is confirmed —
+         * a legal measure, a resource, an instrument. Null means the kind of
+         * thing it is has not been established either, which is a different
+         * and weaker statement than knowing it is a resource with nowhere
+         * structured to go.
+         */
+        public ?CatalogueFamily $family = null,
     ) {}
 
     /**

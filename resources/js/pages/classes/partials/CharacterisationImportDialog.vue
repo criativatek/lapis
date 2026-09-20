@@ -38,6 +38,9 @@ type Resolution = {
     scope: string;
     note: string | null;
     storable: boolean;
+    family: string | null;
+    family_label: string | null;
+    has_structured_destination: boolean;
 };
 
 type RowMatch = {
@@ -57,6 +60,7 @@ type PreviewRow = {
     match: RowMatch;
     sections: Record<string, string>;
     measures: Resolution[];
+    resources: Resolution[];
     unresolved: Resolution[];
 };
 
@@ -395,6 +399,23 @@ function closeDialog(): void {
                                     {{ [measure.level_label, measure.code_label].filter(Boolean).join(' · ') }}
                                     <span class="text-muted-foreground italic">
                                         — o ficheiro indicava: {{ measure.raw_token }}
+                                    </span>
+                                </p>
+                            </div>
+
+                            <!-- Destino (C): entendido, e sem sítio onde ficar.
+                                 Um CRI não é uma necessidade do aluno, e
+                                 escrevê-lo em «Necessidades» porque essa coluna
+                                 existe seria afirmar uma coisa que ninguém
+                                 disse. Fica à vista, com nome, e não se grava. -->
+                            <div v-if="state.row.resources.length > 0" class="mt-3 space-y-1">
+                                <p class="text-xs font-medium text-muted-foreground">
+                                    Apoios e recursos — sem destino estruturado, não será gravado
+                                </p>
+                                <p v-for="resource in state.row.resources" :key="resource.raw_token" class="text-xs">
+                                    {{ resource.raw_token }}
+                                    <span class="text-muted-foreground italic">
+                                        — {{ resource.note ?? resource.family_label }}
                                     </span>
                                 </p>
                             </div>

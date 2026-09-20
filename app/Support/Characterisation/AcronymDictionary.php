@@ -2,6 +2,7 @@
 
 namespace App\Support\Characterisation;
 
+use App\Models\CatalogueFamily;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 
@@ -29,10 +30,18 @@ use App\Models\SupportMeasureLevel;
  * the catalogue has a case for it — and PIT stays unconfirmed all the same,
  * because a column reading «PIT» is far more often the document a school keeps
  * than a statement that the measure applies to that child. The same holds for
- * RTP and PEI (instruments), for CRI (a resource — the catalogue has no
- * `resource_support` item at all today) and for PLNM (a curricular pathway, not
- * a measure). What decides a destination is the column's context and the
- * framework, never the fact that a string resembles a catalogue entry.
+ * RTP and PEI (instruments) and for PLNM (a curricular pathway). What decides a
+ * destination is the column's context and the framework, never the fact that a
+ * string resembles a catalogue entry.
+ *
+ * KNOWING THE FAMILY IS NOT THE SAME AS HAVING SOMEWHERE TO PUT IT. CRI is a
+ * resource, and is recorded as one — `CatalogueFamily::SupportResource` — even
+ * though the catalogue has no `resource_support` item and therefore no
+ * structured destination. That is precisely why the family is worth recording:
+ * the preview can say «apoio/recurso, sem destino estruturado» instead of
+ * filing a Centro de Recursos para a Inclusão under a child's «necessidades»,
+ * and a future resources entity can reuse the classification without
+ * reinterpreting anybody's prose.
  *
  * Adding an expansion here is a decision, not a typo fix. It needs the same
  * justification as adding a SupportMeasureCode case.
@@ -116,6 +125,19 @@ class AcronymDictionary
             // Not a measure — a column of the school export. Confirmed because
             // the real file carried it (2026-07-28 roster-import design).
             new AcronymEntry('PLNM', 'Português Língua Não Materna', AcronymScope::National),
+
+            // A RESOURCE, AND SAID TO BE ONE. Knowing that CRI is a support
+            // rather than a measure is worth recording even though nothing can
+            // store it yet: the catalogue has no `resource_support` item, so
+            // there is no structured destination, and the honest answer in the
+            // preview is «apoio/recurso, sem destino estruturado» rather than
+            // quietly filing it under the child's needs.
+            new AcronymEntry(
+                'CRI',
+                'Centro de Recursos para a Inclusão',
+                AcronymScope::National,
+                family: CatalogueFamily::SupportResource,
+            ),
         ];
     }
 
@@ -129,7 +151,7 @@ class AcronymDictionary
      */
     private function knownButUnconfirmed(): array
     {
-        return ['RTP', 'PEI', 'PIT', 'CRI', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'];
+        return ['RTP', 'PEI', 'PIT', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'];
     }
 
     private function normalise(string $token): string

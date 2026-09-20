@@ -271,13 +271,29 @@ Uma coluna não vai toda para um campo. Cada célula é classificada:
 |---|---|---|
 | **(A) Caracterização** | secção de `enrollment_characterisations` escolhida pelo papel da coluna | texto descritivo |
 | **(B) Medidas** | `enrollment_characterisation_source_measures` — par (nível, código) **tipado**, com `raw_token` e `unresolved_annotation` | só o que o resolvedor reconheceu |
-| **(C) Apoios/recursos** | secção `needs`/`summary`, como texto atribuído | o modelo atual não tem entidade de «recurso»; não se inventa uma |
+| **(C) Apoios/recursos** | **lado nenhum** — classificados como `CatalogueFamily::SupportResource` e mostrados na pré-visualização | não há entidade de «recurso» no modelo, e não se inventa uma **nem se degrada o recurso para necessidade** |
 | **(D) Não reconhecido** | **lado nenhum** — fica na pré-visualização | decisão humana; se for ignorado, desaparece |
 
 (B) guarda tipado em vez de texto porque é o que torna a informação reutilizável
 por um futuro instrumento legal (§7) sem a reinterpretar. Guarda sempre o
 `raw_token` ao lado, para que se veja o que o ficheiro dizia mesmo quando a
 interpretação mudar.
+
+**(C) não é (A) por conveniência.** Uma coluna «Apoios» classificava como
+«Necessidades», e isso escrevia um Centro de Recursos para a Inclusão dentro da
+necessidade de uma criança — uma afirmação que ninguém fez, produzida pela
+coluna que por acaso existia. «Um apoio mobilizado» e «uma necessidade do
+aluno» são factos diferentes. Uma coluna de apoios passa a ter papel próprio
+(`ColumnRole::Resources`) e **nenhuma secção**: o que lá vem é classificado
+como `CatalogueFamily::SupportResource`, mostrado na pré-visualização com o
+token original e a nota de que não há destino estruturado, e não é gravado.
+
+Saber **que tipo de coisa** algo é não é o mesmo que ter **onde o pôr**, e é
+por isso que a família vale a pena ser registada mesmo sem destino: quando
+existir uma entidade de apoios/recursos, poderá reutilizar esta classificação
+sem reinterpretar texto histórico. Se o professor quiser mesmo guardar aquilo
+como caracterização, escreve-o na secção que escolher — é uma decisão dele,
+explícita, e não uma inferência da importação.
 
 **Nenhuma `Intervention` é criada pela importação.** Uma intervenção é uma ação
 do professor, com datas, objetivo e revisões; deduzi-la de uma célula seria

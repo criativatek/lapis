@@ -60,8 +60,16 @@ importar das folhas que as escolas já têm — a ler o catálogo legal que a
     subsequência de palavras. Quatro estados — segura, possível, ambígua, não
     encontrada — e só a segura chega pré-selecionada. Nenhuma linha se associa
     a um aluno sem alguém o apontar, e **nunca se cria um aluno**.
-  - **Destinos separados**: caracterização, medidas reconhecidas, apoios, e o
-    que não foi reconhecido — que fica na pré-visualização e não se grava.
+  - **Destinos separados**: caracterização, medidas reconhecidas, apoios e
+    recursos, e o que não foi reconhecido. Os dois últimos ficam na
+    pré-visualização e não se gravam.
+  - **Um apoio não é uma necessidade.** Uma coluna «Apoios» tem papel próprio e
+    **nenhuma secção**: um Centro de Recursos para a Inclusão é classificado
+    como apoio/recurso, mostrado com o token original e com a nota de que não
+    há destino estruturado, e **não** é escrito na «Necessidades» da criança só
+    porque essa coluna existe. Saber que tipo de coisa algo é não é o mesmo que
+    ter onde o pôr — a classificação fica registada para uma futura entidade de
+    apoios poder reutilizá-la sem reinterpretar texto histórico.
   - **Proveniência mínima** por importação confirmada: origem, data e quem
     confirmou. Não guarda o documento nem as linhas rejeitadas.
 

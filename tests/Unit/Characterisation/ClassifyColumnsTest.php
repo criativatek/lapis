@@ -127,11 +127,30 @@ class ClassifyColumnsTest extends TestCase
         );
     }
 
-    /** A column that says «apoio» without «medida» is still a needs column. */
-    public function test_a_support_column_that_names_no_measure_stays_a_needs_column(): void
+    /**
+     * A column that says «apoio» without «medida» is a RESOURCES column, and
+     * has no characterisation section at all.
+     *
+     * It used to be Needs, which meant a Centro de Recursos para a Inclusão was
+     * written verbatim into a child's «Necessidades». «Um apoio mobilizado» and
+     * «uma necessidade do aluno» are different facts, and the column that
+     * happened to exist is not a reason to assert the second from the first.
+     */
+    public function test_a_support_column_is_a_resources_column_with_no_section(): void
     {
-        $this->assertSame([ColumnRole::Needs], $this->roles(['Apoios']));
-        $this->assertSame([ColumnRole::Needs], $this->roles(['Recursos específicos de apoio']));
+        foreach (['Apoios', 'Recursos específicos de apoio', 'Apoios e recursos mobilizados'] as $header) {
+            $columns = $this->classify([$header]);
+
+            $this->assertSame(ColumnRole::Resources, $columns[0]->role, $header);
+            $this->assertNull($columns[0]->role->section(), $header);
+        }
+    }
+
+    /** «Necessidades» and «Dificuldades» remain the needs column. */
+    public function test_the_needs_column_still_names_needs(): void
+    {
+        $this->assertSame([ColumnRole::Needs], $this->roles(['Necessidades']));
+        $this->assertSame([ColumnRole::Needs], $this->roles(['Dificuldades reveladas']));
     }
 
     public function test_a_measures_column_has_no_characterisation_section(): void

@@ -2,6 +2,7 @@
 
 namespace App\Support\Characterisation;
 
+use App\Models\CatalogueFamily;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 use App\Support\Interventions\InterventionLegalFramework;
@@ -417,6 +418,20 @@ class DecreeLaw54CodeResolver implements LegalCodeResolver
             $entry = $this->dictionary->find($token);
 
             if ($entry !== null && ($entry->code !== null || $entry->level !== null)) {
+                continue;
+            }
+
+            // Recognised as a support or resource. It is understood and it is
+            // still not storable: the catalogue has no `resource_support` item,
+            // so there is no honest destination, and the preview says so
+            // instead of the import filing it under the child's «necessidades».
+            if ($entry?->family === CatalogueFamily::SupportResource) {
+                $resolutions[] = CodeResolution::resource(
+                    rawToken: $entry->token,
+                    expansion: $entry->expansion,
+                    scope: $entry->scope,
+                );
+
                 continue;
             }
 

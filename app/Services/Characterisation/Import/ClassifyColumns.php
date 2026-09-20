@@ -42,7 +42,11 @@ class ClassifyColumns
         ColumnRole::Strengths->value => ['potencialidade', 'pontos fortes', 'forcas'],
         ColumnRole::Interests->value => ['interesse', 'gostos'],
         ColumnRole::Barriers->value => ['barreira', 'obstaculo', 'constrangimento'],
-        ColumnRole::Needs->value => ['necessidade', 'apoio', 'recurso', 'dificuldade'],
+        // Before Needs, and separate from it: «apoios mobilizados» is not
+        // «necessidades do aluno». Tested after Measures, so «medidas de apoio»
+        // still reaches the resolver as measures.
+        ColumnRole::Resources->value => ['apoio', 'recurso', 'tecnico especializado', 'equipa'],
+        ColumnRole::Needs->value => ['necessidade', 'dificuldade'],
         ColumnRole::Participation->value => ['participacao', 'envolvimento', 'comportamento'],
         ColumnRole::Characterisation->value => ['caracterizacao', 'observacoes', 'observacao', 'notas', 'nota', 'descricao', 'perfil'],
     ];

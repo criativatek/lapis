@@ -3,7 +3,6 @@
 namespace App\Services\Characterisation\Import;
 
 use App\Models\SchoolClass;
-use App\Support\Characterisation\CodeConfidence;
 use App\Support\Characterisation\CodeResolution;
 use App\Support\Characterisation\LegalCodeResolver;
 
@@ -47,14 +46,17 @@ class BuildCharacterisationPreview
                 continue;
             }
 
+            $resolved = $this->resolutionsFor($grid, $row, $columns);
+
             $previewRow = new PreviewRow(
                 rowNumber: $index + 1,
                 rawName: trim($name),
                 rawProcessNumber: $processNumber,
                 match: $match($name, $processNumber),
                 sections: $this->sectionsFor($grid, $row, $columns),
-                measures: $this->measuresFor($grid, $row, $columns, storable: true),
-                unresolved: $this->measuresFor($grid, $row, $columns, storable: false),
+                measures: $resolved['measures'],
+                resources: $resolved['resources'],
+                unresolved: $resolved['unresolved'],
             );
 
             if ($previewRow->hasContent()) {
@@ -99,16 +101,27 @@ class BuildCharacterisationPreview
     }
 
     /**
+     * Reads every column that can carry a code, and sorts what comes back into
+     * the three destinations that are not free text.
+     *
+     * Resource columns are read too, and deliberately NOT mapped to a section.
+     * «Apoios» used to classify as «Necessidades», which meant a Centro de
+     * Recursos para a Inclusão was written into a child's needs — an assertion
+     * nobody made, produced by the column that happened to exist. A resource
+     * now reaches (C), is named, and is stored by nobody.
+     *
      * @param  list<ClassifiedColumn>  $columns
      * @param  list<string>  $row
-     * @return list<CodeResolution>
+     * @return array{measures: list<CodeResolution>, resources: list<CodeResolution>, unresolved: list<CodeResolution>}
      */
-    private function measuresFor(TableGrid $grid, array $row, array $columns, bool $storable): array
+    private function resolutionsFor(TableGrid $grid, array $row, array $columns): array
     {
-        $resolutions = [];
+        $measures = [];
+        $resources = [];
+        $unresolved = [];
 
         foreach ($columns as $column) {
-            if ($column->role !== ColumnRole::Measures) {
+            if ($column->role !== ColumnRole::Measures && $column->role !== ColumnRole::Resources) {
                 continue;
             }
 
@@ -119,16 +132,24 @@ class BuildCharacterisationPreview
             }
 
             foreach ($this->resolver->resolveCell($value, $column->level) as $resolution) {
-                // Recognised goes to (B) and may be stored. Ambiguous and
-                // unrecognised go to (D) and are stored by nobody — they exist
-                // in the preview so a person can decide, and vanish if ignored.
-                if ($resolution->isStorable() === $storable) {
-                    $resolutions[] = $resolution;
-                }
+                match (true) {
+                    // (B) a named measure, and the only one of the three that
+                    // anything will write.
+                    $resolution->isStorable() => $measures[] = $resolution,
+                    // (C) understood, and with nowhere structured to go.
+                    $resolution->isResource() => $resources[] = $resolution,
+                    // (D) not understood. Exists in the preview so a person can
+                    // decide, and vanishes if ignored.
+                    default => $unresolved[] = $resolution,
+                };
             }
         }
 
-        return $this->deduplicate($resolutions);
+        return [
+            'measures' => $this->deduplicate($measures),
+            'resources' => $this->deduplicate($resources),
+            'unresolved' => $this->deduplicate($unresolved),
+        ];
     }
 
     /**
@@ -142,8 +163,12 @@ class BuildCharacterisationPreview
         $seen = [];
 
         foreach ($resolutions as $resolution) {
-            $key = $resolution->confidence === CodeConfidence::Recognised
-                ? 'code:'.$resolution->code?->value
+            // Keyed on the code when there is one, and on the source text
+            // otherwise. Keying on the code alone would give every resource the
+            // same empty key — a row naming a CRI and a technician would keep
+            // only the first, and the loss would look like a parsing failure.
+            $key = $resolution->code !== null
+                ? 'code:'.$resolution->code->value
                 : 'raw:'.mb_strtolower($resolution->rawToken);
 
             $seen[$key] ??= $resolution;

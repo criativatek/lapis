@@ -279,6 +279,97 @@ class CharacterisationImportTest extends TestCase
             ->assertJsonPath('preview.rows.0.measures.0.level', 'selective');
     }
 
+    // ------------------------------------------------ 3b. apoios e recursos
+
+    /**
+     * A COLUNA «APOIOS» NÃO É A COLUNA «NECESSIDADES». Antes, um cabeçalho com
+     * «apoio» classificava como Necessidades e o conteúdo da célula — um CRI —
+     * era escrito tal e qual na necessidade do aluno. Um Centro de Recursos
+     * para a Inclusão é um apoio mobilizado, não uma necessidade da criança, e
+     * a coluna que por acaso existe não é razão para afirmar o contrário.
+     */
+    #[Test]
+    public function a_resources_column_is_not_written_into_the_needs_section(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $response = $this->preview("Nome\tApoios e recursos\nAna Silva\tCRI\n");
+
+        $response->assertOk()
+            ->assertJsonPath('preview.rows.0.sections', [])
+            ->assertJsonPath('preview.rows.0.measures', []);
+
+        $this->assertSame('resource_support', $response->json('preview.rows.0.resources.0.family'));
+        $this->assertFalse($response->json('preview.rows.0.resources.0.has_structured_destination'));
+    }
+
+    #[Test]
+    public function a_recognised_resource_is_shown_with_its_kind_and_its_source_text(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $response = $this->preview("Nome\tApoios\nAna Silva\tCRI\n");
+
+        $response->assertOk()
+            ->assertJsonPath('preview.rows.0.resources.0.raw_token', 'CRI')
+            ->assertJsonPath('preview.rows.0.resources.0.family_label', 'Apoio ou recurso')
+            ->assertJsonPath('preview.rows.0.resources.0.code', null);
+
+        $this->assertStringContainsString(
+            'Centro de Recursos para a Inclusão',
+            (string) $response->json('preview.rows.0.resources.0.note'),
+        );
+    }
+
+    /**
+     * Confirming an import that carried a resource writes the resource
+     * NOWHERE — not into needs, not into barriers, not as a measure. There is
+     * no honest destination, so there is no write.
+     */
+    #[Test]
+    public function confirming_an_import_with_a_resource_stores_the_resource_nowhere(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        // What the preview would hand back for a resources column: no sections,
+        // no measure codes.
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'sections' => [],
+            'measure_codes' => [],
+        ]])->assertRedirect();
+
+        $this->assertSame(0, EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count());
+        $this->assertSame(0, EnrollmentCharacterisation::withoutGlobalScope('organization')->count());
+    }
+
+    /** A resource token can never be smuggled in as a measure code. */
+    #[Test]
+    public function a_resource_cannot_be_written_as_a_measure(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => ['CRI'],
+            'raw_tokens' => ['CRI' => 'CRI'],
+        ]])->assertRedirect();
+
+        $this->assertSame(0, EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count());
+    }
+
+    /** A measures column keeps reaching the resolver, resources column or not. */
+    #[Test]
+    public function a_resources_column_does_not_disturb_the_measures_column(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $this->preview("Nome\tApoios\tMedidas\nAna Silva\tCRI\tMS b) + ACNS\n")
+            ->assertOk()
+            ->assertJsonPath('preview.rows.0.measures.0.code', 'non_significant_curricular_adaptation')
+            ->assertJsonPath('preview.rows.0.resources.0.raw_token', 'CRI');
+    }
+
     // ------------------------------------------------ 4. destinos separados
 
     #[Test]

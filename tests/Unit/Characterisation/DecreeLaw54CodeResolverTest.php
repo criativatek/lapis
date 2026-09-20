@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Characterisation;
 
+use App\Models\CatalogueFamily;
 use App\Models\Organization;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
@@ -197,10 +198,74 @@ class DecreeLaw54CodeResolverTest extends TestCase
         $this->assertFalse($resolutions[0]->isStorable());
     }
 
-    /** Instruments and resources, not measures — whatever the catalogue holds. */
-    public function test_instruments_and_resources_never_become_measures_by_acronym(): void
+    /**
+     * CRI is understood — it is a Centro de Recursos para a Inclusão, a
+     * resource — and it is still not storable, because the catalogue has no
+     * `resource_support` item and therefore no honest column. Knowing what
+     * kind of thing something is and having somewhere to put it are different
+     * questions, and this is the case where they come apart.
+     */
+    public function test_cri_is_recognised_as_a_resource_and_is_not_storable(): void
     {
-        foreach (['RTP', 'PEI', 'CRI', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'] as $token) {
+        $resolutions = $this->resolver()->resolveCell('CRI');
+
+        $this->assertCount(1, $resolutions);
+        $this->assertSame(CatalogueFamily::SupportResource, $resolutions[0]->family);
+        $this->assertTrue($resolutions[0]->isResource());
+        $this->assertNull($resolutions[0]->code);
+        $this->assertNull($resolutions[0]->level);
+        $this->assertFalse($resolutions[0]->isStorable());
+        $this->assertStringContainsString('Centro de Recursos para a Inclusão', (string) $resolutions[0]->note);
+    }
+
+    /** A resource is never a legal measure, however the cell is written. */
+    public function test_a_resource_never_becomes_a_legal_measure(): void
+    {
+        foreach (['CRI', 'MU + CRI', 'CRI b)'] as $cell) {
+            foreach ($this->resolver()->resolveCell($cell) as $resolution) {
+                if ($resolution->isResource()) {
+                    $this->assertNull($resolution->code, $cell);
+                    $this->assertFalse($resolution->isStorable(), $cell);
+                }
+            }
+        }
+    }
+
+    /** A resource beside a measure does not contaminate either of them. */
+    public function test_a_resource_and_a_measure_in_one_cell_stay_apart(): void
+    {
+        $resolutions = $this->resolver()->resolveCell('CRI; ACNS');
+
+        $this->assertCount(2, $resolutions);
+
+        $resources = array_values(array_filter($resolutions, fn ($r) => $r->isResource()));
+        $measures = array_values(array_filter($resolutions, fn ($r) => $r->isStorable()));
+
+        $this->assertCount(1, $resources);
+        $this->assertCount(1, $measures);
+        $this->assertSame(SupportMeasureCode::NonSignificantCurricularAdaptation, $measures[0]->code);
+    }
+
+    /**
+     * The other siglas that MIGHT be resources or structures stay unconfirmed.
+     * Classifying them would be inventing the classification, which is the same
+     * failure as inventing an expansion.
+     */
+    public function test_unconfirmed_siglas_are_not_classified_as_resources(): void
+    {
+        foreach (['SPO', 'DEE', 'CAA', 'GAAF', 'ATE'] as $token) {
+            $resolutions = $this->resolver()->resolveCell($token);
+
+            $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence, $token);
+            $this->assertNull($resolutions[0]->family, $token);
+            $this->assertFalse($resolutions[0]->isResource(), $token);
+        }
+    }
+
+    /** Instruments, not measures — whatever the catalogue holds. */
+    public function test_instruments_never_become_measures_by_acronym(): void
+    {
+        foreach (['RTP', 'PEI', 'PEL', 'SPO', 'DEE', 'ATE', 'CAA', 'GAAF'] as $token) {
             $resolutions = $this->resolver()->resolveCell($token);
 
             $this->assertSame(CodeConfidence::Unrecognised, $resolutions[0]->confidence, $token);

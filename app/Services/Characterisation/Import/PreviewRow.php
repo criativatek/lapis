@@ -17,6 +17,10 @@ readonly class PreviewRow
     /**
      * @param  array<string, string>  $sections  Destination A, keyed by CharacterisationSection value.
      * @param  list<CodeResolution>  $measures  Destination B — recognised, storable.
+     * @param  list<CodeResolution>  $resources  Destination C — understood as supports or
+     *                                           resources, and stored by nobody: the catalogue has
+     *                                           no item for them, so there is no honest column.
+     *                                           Shown, named, and left alone.
      * @param  list<CodeResolution>  $unresolved  Destination D — nothing is stored from these.
      */
     public function __construct(
@@ -26,6 +30,7 @@ readonly class PreviewRow
         public RowMatch $match,
         public array $sections = [],
         public array $measures = [],
+        public array $resources = [],
         public array $unresolved = [],
     ) {}
 
@@ -35,7 +40,7 @@ readonly class PreviewRow
      */
     public function hasContent(): bool
     {
-        return $this->sections !== [] || $this->measures !== [] || $this->unresolved !== [];
+        return $this->sections !== [] || $this->measures !== [] || $this->resources !== [] || $this->unresolved !== [];
     }
 
     /**
@@ -50,6 +55,7 @@ readonly class PreviewRow
             'match' => $this->match->toArray(),
             'sections' => $this->sections,
             'measures' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->measures),
+            'resources' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->resources),
             'unresolved' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->unresolved),
         ];
     }

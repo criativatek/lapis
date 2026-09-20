@@ -19,6 +19,7 @@ enum ColumnRole: string
     case SchoolNumber = 'school_number';
     case ClassNumber = 'class_number';
     case Measures = 'measures';
+    case Resources = 'resources';
     case Characterisation = 'characterisation';
     case Strengths = 'strengths';
     case Interests = 'interests';
@@ -34,6 +35,7 @@ enum ColumnRole: string
             self::SchoolNumber => __('N.º de processo'),
             self::ClassNumber => __('N.º'),
             self::Measures => __('Medidas'),
+            self::Resources => __('Apoios e recursos'),
             self::Characterisation => __('Caracterização'),
             self::Strengths => __('Potencialidades'),
             self::Interests => __('Interesses'),
@@ -44,7 +46,16 @@ enum ColumnRole: string
         };
     }
 
-    /** Which characterisation section this column's text belongs in, if any. */
+    /**
+     * Which characterisation section this column's text belongs in, if any.
+     *
+     * Resources deliberately map to NOTHING. «Uma necessidade do aluno» and «um
+     * apoio mobilizado para ele» are different facts, and writing the second
+     * into the first would be the application asserting that a Centro de
+     * Recursos para a Inclusão IS a child's need. That there is no structured
+     * home for a resource yet is a reason to say so in the preview, not a
+     * licence to degrade it into the nearest column that happens to exist.
+     */
     public function section(): ?CharacterisationSection
     {
         return match ($this) {
