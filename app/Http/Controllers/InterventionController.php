@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Interventions\CreateIntervention;
 use App\Http\Requests\StoreInterventionRequest;
 use App\Http\Requests\UpdateInterventionRequest;
 use App\Models\AcademicPeriod;
@@ -59,6 +60,7 @@ class InterventionController extends Controller
         protected LegalFrameworkResolver $frameworks,
         protected ReportLibraryProvider $library,
         protected AuditLog $audit,
+        protected CreateIntervention $creator,
     ) {}
 
     /**
@@ -459,39 +461,47 @@ class InterventionController extends Controller
 
             foreach ($types as $type) {
                 $framing = $this->resolveLegalFraming($framework, $type, $validated);
-                $intervention = Intervention::create([
-                    'created_batch_ulid' => $batchUlid,
-                    'class_id' => $class->id,
-                    ...$reasoning,
-                    'review_on' => $validated['review_on'] ?? null,
-                    'purpose' => $this->resolvePurpose($validated),
-                    'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
-                    'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
-                    'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
-                        ? $participantIds[0]
-                        : null,
-                    'domain_id' => $validated['domain_relation'] === InterventionDomainRelation::Specific->value
-                        ? $validated['domain_id']
-                        : null,
-                    'target_type' => $validated['target_type'],
-                    'intervention_type' => $type,
-                    'domain_relation' => $validated['domain_relation'],
-                    'title' => $reasoning['strategy_label'] ?? $type->label(),
-                    // The designation stamped at write time. `title` cannot
-                    // serve as this snapshot: it holds the strategy's label
-                    // whenever the teacher picked one from the library.
-                    'intervention_type_label' => $type->label(),
-                    'description' => $validated['description'] ?? null,
-                    'description_source' => InterventionDescriptionSource::Manual,
-                    'status' => InterventionStatus::New,
-                    'started_on' => $validated['started_on'],
-                    'available_for_reports' => $validated['available_for_reports'] ?? true,
-                    'include_in_report' => $validated['available_for_reports'] ?? true,
-                    ...$framing,
-                    'created_by' => $this->user()->getKey(),
-                ]);
 
-                $intervention->participants()->sync($participantIds);
+                $intervention = $this->creator->create(
+                    class: $class,
+                    attributes: [
+                        'created_batch_ulid' => $batchUlid,
+                        ...$reasoning,
+                        'review_on' => $validated['review_on'] ?? null,
+                        'purpose' => $this->resolvePurpose($validated),
+                        'frequency' => $this->resolveFreeText($validated['frequency'] ?? null),
+                        'tracking_indicator' => $this->resolveFreeText($validated['tracking_indicator'] ?? null),
+                        'enrollment_id' => $validated['target_type'] === InterventionTargetType::Student->value
+                            ? $participantIds[0]
+                            : null,
+                        'domain_id' => $validated['domain_relation'] === InterventionDomainRelation::Specific->value
+                            ? $validated['domain_id']
+                            : null,
+                        'target_type' => $validated['target_type'],
+                        'intervention_type' => $type,
+                        'domain_relation' => $validated['domain_relation'],
+                        'title' => $reasoning['strategy_label'] ?? $type->label(),
+                        // The designation stamped at write time. `title` cannot
+                        // serve as this snapshot: it holds the strategy's label
+                        // whenever the teacher picked one from the library.
+                        'intervention_type_label' => $type->label(),
+                        'description' => $validated['description'] ?? null,
+                        'description_source' => InterventionDescriptionSource::Manual,
+                        'status' => InterventionStatus::New,
+                        'started_on' => $validated['started_on'],
+                        'available_for_reports' => $validated['available_for_reports'] ?? true,
+                        'include_in_report' => $validated['available_for_reports'] ?? true,
+                        ...$framing,
+                    ],
+                    // The pairs to write are decided by syncSupportMeasures()
+                    // below, which also has to handle an EDIT's existing rows —
+                    // so, for creation too, it stays the one place that decides
+                    // them, and this call writes none of its own.
+                    supportMeasures: [],
+                    participantIds: $participantIds,
+                    createdBy: $this->user(),
+                );
+
                 $this->syncSupportMeasures($intervention, $validated, $framing);
                 $created[] = $intervention;
             }

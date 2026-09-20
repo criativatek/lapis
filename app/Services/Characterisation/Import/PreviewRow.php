@@ -16,7 +16,16 @@ readonly class PreviewRow
 {
     /**
      * @param  array<string, string>  $sections  Destination A, keyed by CharacterisationSection value.
+     * @param  array<string, SectionMergeResult>  $sectionMerges  What confirming this row would do to
+     *                                                            each section already recorded for the matched student —
+     *                                                            «já registado» versus «a acrescentar» — keyed the same
+     *                                                            way as `sections`. Empty when the row matched nobody, since
+     *                                                            there is then nothing recorded to merge against.
      * @param  list<CodeResolution>  $measures  Destination B — recognised, storable.
+     * @param  list<string>  $alreadyActiveMeasureCodes  The subset of `$measures`' codes that already
+     *                                                   have an active Intervention for the matched student:
+     *                                                   confirming the row will NOT create a second one for
+     *                                                   these (§30). Empty when the row matched nobody.
      * @param  list<CodeResolution>  $resources  Destination C — understood as supports or
      *                                           resources, and stored by nobody: the catalogue has
      *                                           no item for them, so there is no honest column.
@@ -29,7 +38,9 @@ readonly class PreviewRow
         public ?string $rawProcessNumber,
         public RowMatch $match,
         public array $sections = [],
+        public array $sectionMerges = [],
         public array $measures = [],
+        public array $alreadyActiveMeasureCodes = [],
         public array $resources = [],
         public array $unresolved = [],
     ) {}
@@ -54,7 +65,21 @@ readonly class PreviewRow
             'raw_process_number' => $this->rawProcessNumber,
             'match' => $this->match->toArray(),
             'sections' => $this->sections,
-            'measures' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->measures),
+            'section_merges' => array_map(
+                fn (SectionMergeResult $r) => $r->toArray(),
+                $this->sectionMerges,
+            ),
+            'measures' => array_map(
+                fn (CodeResolution $r) => [
+                    ...$r->toArray(),
+                    // «Já registada — não será duplicada» (§29, §30): the
+                    // client never decides this — it only ever reads what the
+                    // server already checked, exactly as the write path itself
+                    // will check it again when the import is confirmed.
+                    'already_active' => $r->code !== null && in_array($r->code->value, $this->alreadyActiveMeasureCodes, true),
+                ],
+                $this->measures
+            ),
             'resources' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->resources),
             'unresolved' => array_map(fn (CodeResolution $r) => $r->toArray(), $this->unresolved),
         ];
