@@ -406,6 +406,35 @@ describe('Estratégias e Medidas — modo simples e detalhado', () => {
         expect(toggle?.attributes('disabled')).toBeDefined();
     });
 
+    /**
+     * O SERVIDOR EXIGE DESCRIÇÃO SE QUALQUER UMA DAS MEDIDAS DO LOTE A
+     * EXIGIR. Olhar só para a primeira deixava «Outro» escolhido em segundo
+     * lugar a exigir um campo que estava fechado — o professor só descobria
+     * ao submeter.
+     */
+    it('will not hide a description required by a measure that is not the first', async () => {
+        const wrapper = render();
+        const form = mainForm();
+        form.intervention_types = ['tutorial_support', 'other'];
+        await wrapper.vm.$nextTick();
+
+        const toggle = wrapper.findAll('button').find((button) => button.text().includes('Acompanhamento detalhado'));
+
+        expect(toggle?.attributes('aria-expanded')).toBe('true');
+        expect(toggle?.attributes('disabled')).toBeDefined();
+        // E o campo diz que é obrigatório, com asterisco e com `required`.
+        expect(wrapper.find('textarea[required]').exists()).toBe(true);
+    });
+
+    it('leaves the description optional when no chosen measure requires it', async () => {
+        const wrapper = render();
+        const form = mainForm();
+        form.intervention_types = ['tutorial_support', 'pedagogical_differentiation'];
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.findAll('button').find((button) => button.text().includes('Acompanhamento detalhado'))?.attributes('aria-expanded')).toBe('false');
+    });
+
     it('will not hide a field the teacher has already filled in', async () => {
         const wrapper = render();
         const form = mainForm();
@@ -447,6 +476,24 @@ describe('Estratégias e Medidas — modo simples e detalhado', () => {
         await wrapper.vm.$nextTick();
 
         expect(wrapper.findAll('button').find((button) => button.text().includes('Acompanhamento detalhado'))?.attributes('aria-expanded')).toBe('true');
+    });
+});
+
+describe('Estratégias e Medidas — destinatário', () => {
+    /**
+     * Antes eram três botões e o escolhido distinguia-se só por um fundo
+     * mais escuro: nada o dizia a um leitor de ecrã (§16).
+     */
+    it('is a radio group, so the chosen one is stated and not merely shaded', async () => {
+        const wrapper = render();
+        const radios = wrapper.findAll('input[type="radio"][name="target-type"]');
+
+        expect(radios).toHaveLength(3);
+        expect((radios[0].element as HTMLInputElement).checked).toBe(true);
+
+        await radios[2].trigger('change');
+
+        expect(mainForm().target_type).toBe('class');
     });
 });
 

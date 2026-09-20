@@ -419,13 +419,20 @@ export function summarise(
     let nextReviewOn: string | null = null;
 
     for (const intervention of interventions) {
-        if (!intervention.is_closed) {
-            activeCount += 1;
-        }
-
         if (intervention.needs_review) {
             pendingReviewCount += 1;
         }
+
+        // TUDO O QUE SE SEGUE É SOBRE O QUE ESTÁ EM CURSO. Uma intervenção
+        // concluída ou suspensa não mobiliza mais nada e não tem próxima
+        // revisão: contá-la nos níveis diria que a turma tem medidas ativas
+        // que já não tem, e a data de revisão de um registo encerrado não é
+        // a próxima coisa que alguém vai fazer.
+        if (intervention.is_closed) {
+            continue;
+        }
+
+        activeCount += 1;
 
         if (intervention.review_on !== null && intervention.review_on >= today) {
             if (nextReviewOn === null || intervention.review_on < nextReviewOn) {

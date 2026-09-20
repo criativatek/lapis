@@ -398,6 +398,44 @@ describe('summarise', () => {
     });
 
     /**
+     * O resumo fala do que está MOBILIZADO. Uma intervenção concluída já não
+     * mobiliza nada — contá-la nos níveis diria que a turma tem medidas
+     * ativas que já não tem.
+     */
+    it('leaves a closed intervention out of the levels it once mobilised', () => {
+        const summary = summarise(
+            [
+                intervention({ support_measures: [{ level: 'universal', level_label: 'Medida universal' }] }),
+                intervention({ is_closed: true, support_measures: [{ level: 'selective', level_label: 'Medida seletiva' }] }),
+            ],
+            today,
+        );
+
+        expect(summary.levels).toEqual([expect.objectContaining({ level: 'universal', count: 1 })]);
+    });
+
+    it('never offers the review date of a closed intervention as the next one', () => {
+        const summary = summarise(
+            [
+                intervention({ is_closed: true, review_on: '2026-09-25' }),
+                intervention({ review_on: '2026-10-30' }),
+            ],
+            today,
+        );
+
+        expect(summary.nextReviewOn).toBe('2026-10-30');
+    });
+
+    /**
+     * «Pendente» é o que o servidor marcou, e uma intervenção fechada cuja
+     * data passou continua a ser um facto que o professor pode querer ver —
+     * por isso esta contagem, e só esta, não exclui as fechadas.
+     */
+    it('still counts a pending review the server flagged on a closed intervention', () => {
+        expect(summarise([intervention({ is_closed: true, needs_review: true })], today).pendingReviewCount).toBe(1);
+    });
+
+    /**
      * Conta o que está MOBILIZADO, não quantas linhas existem: duas medidas
      * seletivas na mesma intervenção continuam a ser uma intervenção.
      */

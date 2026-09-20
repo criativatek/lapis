@@ -80,7 +80,7 @@ const cards = computed(() =>
                 <button
                     v-if="removable"
                     type="button"
-                    class="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     :aria-label="`Remover ${card.label}`"
                     @click="emit('remove', card.value)"
                 >

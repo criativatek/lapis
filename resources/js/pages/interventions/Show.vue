@@ -298,6 +298,24 @@ function chooseStrategy(entry: LibraryEntry): void {
 
 const editingUlid = ref<string | null>(null);
 const selectedType = computed(() => props.types.find((type) => type.value === (editingUlid.value ? form.intervention_type : form.intervention_types[0])) ?? null);
+
+/**
+ * TODAS as medidas que este formulário vai gravar — não só a primeira.
+ *
+ * `selectedType` responde pelo enquadramento legal, que só faz sentido
+ * quando há uma medida só. A descrição obrigatória é outra coisa: o
+ * servidor exige-a se QUALQUER uma das medidas do lote a exigir, e um
+ * «Outro» escolhido em segundo lugar exige-a tal como em primeiro.
+ */
+const selectedTypes = computed<InterventionType[]>(() => {
+    const values = editingUlid.value ? (form.intervention_type ? [form.intervention_type] : []) : form.intervention_types;
+
+    return values
+        .map((value) => props.types.find((type) => type.value === value))
+        .filter((type): type is InterventionType => type !== undefined);
+});
+
+const requiresDescription = computed(() => selectedTypes.value.some((type) => type.requires_description));
 const selectedMapping = computed(() => selectedType.value?.legal_mapping ?? null);
 /**
  * THE LEVEL IS DERIVED, NEVER CHOSEN.
@@ -690,7 +708,7 @@ const detailedOpen = ref(false);
 /** Nenhuma informação obrigatória ou já escrita fica atrás de um triângulo. */
 const detailedMustStayOpen = computed(
     () =>
-        selectedType.value?.requires_description === true
+        requiresDescription.value
         || form.purpose !== null
         || form.frequency.trim() !== ''
         || form.tracking_indicator.trim() !== ''
@@ -862,21 +880,35 @@ function clearFilters(): void {
         </p>
 
         <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
-            <label class="block text-sm">
-                <span class="mb-1 block text-xs text-muted-foreground">Destinatário</span>
-                <span class="flex gap-1">
-                    <button
+            <!-- ESCOLHER UM DE TRÊS É UM GRUPO DE RÁDIOS, não três botões.
+                 Como botões, o escolhido distinguia-se apenas por um fundo
+                 mais escuro: nada o dizia a um leitor de ecrã e nada o dizia
+                 a quem não separa as duas cores. Com rádios reais (escondidos
+                 à vista, presentes para o resto) o estado é semântico, as
+                 setas do teclado funcionam, e o ✓ di-lo sem depender da
+                 cor (§16). -->
+            <fieldset>
+                <legend class="mb-1 block text-xs text-muted-foreground">Destinatário</legend>
+                <div class="flex flex-wrap gap-1">
+                    <label
                         v-for="targetType in targetTypes"
                         :key="targetType.value"
-                        type="button"
-                        class="min-h-9 rounded-md px-3 py-1 text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                        :class="form.target_type === targetType.value ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/40'"
-                        @click="form.target_type = targetType.value as TargetType"
+                        class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-xs has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+                        :class="form.target_type === targetType.value ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-muted/40'"
                     >
+                        <input
+                            type="radio"
+                            name="target-type"
+                            class="sr-only"
+                            :value="targetType.value"
+                            :checked="form.target_type === targetType.value"
+                            @change="form.target_type = targetType.value as TargetType"
+                        />
+                        <span v-if="form.target_type === targetType.value" aria-hidden="true">✓</span>
                         {{ targetType.label }}
-                    </button>
-                </span>
-            </label>
+                    </label>
+                </div>
+            </fieldset>
 
             <label v-if="form.target_type === 'student'" class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">Aluno</span>
@@ -1183,7 +1215,7 @@ function clearFilters(): void {
 
             <label class="block text-sm">
                 <span class="mb-1 block text-xs text-muted-foreground">
-                    Descrição <span v-if="selectedType?.requires_description" class="text-red-600">*</span><span v-else> (opcional)</span>
+                    Descrição <span v-if="requiresDescription" class="text-red-600">*</span><span v-else> (opcional)</span>
                 </span>
                 <textarea
                     v-model="form.description"
@@ -1191,7 +1223,7 @@ function clearFilters(): void {
                     maxlength="5000"
                     class="w-full rounded-md border border-border bg-background px-3 py-2"
                     placeholder="Descreva brevemente a intervenção realizada."
-                    :required="selectedType?.requires_description"
+                    :required="requiresDescription"
                 ></textarea>
                 <p v-if="form.errors.description" class="mt-1 text-xs text-red-600">{{ form.errors.description }}</p>
             </label>
@@ -1469,8 +1501,8 @@ function clearFilters(): void {
                         <p v-if="intervention.description" class="mt-1 text-sm text-muted-foreground">{{ intervention.description }}</p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <button type="button" class="flex min-h-9 min-w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Editar" :aria-label="`Editar intervenção de ${intervention.target_label}`" @click="edit(intervention)"><Pencil class="size-4" aria-hidden="true" /></button>
-                        <button type="button" class="flex min-h-9 min-w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Remover" :aria-label="`Remover intervenção de ${intervention.target_label}`" @click="remove(intervention)"><Trash2 class="size-4" aria-hidden="true" /></button>
+                        <button type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Editar" :aria-label="`Editar intervenção de ${intervention.target_label}`" @click="edit(intervention)"><Pencil class="size-4" aria-hidden="true" /></button>
+                        <button type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Remover" :aria-label="`Remover intervenção de ${intervention.target_label}`" @click="remove(intervention)"><Trash2 class="size-4" aria-hidden="true" /></button>
                         <button v-if="intervention.created_batch_ulid" type="button" class="min-h-9 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="removeBatch(intervention)">Remover lote</button>
                     </div>
                 </div>
