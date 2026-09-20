@@ -80,6 +80,7 @@ export default defineConfigWithVueTs(
             'bootstrap/ssr',
             'tailwind.config.js',
             'vite.config.ts',
+            'resources/build/**',
             'vitest.config.ts',
             'vitest.setup.ts',
             'resources/js/actions/**',

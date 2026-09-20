@@ -2,15 +2,13 @@
 
 namespace App\Services\Characterisation\Import;
 
-use App\Domain\Import\Tabular\TabularCell;
-use App\Domain\Import\Tabular\TabularSheet;
 use App\Services\Characterisation\Import\Extraction\DocxTableExtractor;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
 use App\Services\Characterisation\Import\Extraction\HtmlTableExtractor;
 use App\Services\Characterisation\Import\Extraction\NormaliseExtractedTable;
-use App\Services\Import\Tabular\CsvTabularReader;
+use App\Services\Characterisation\Import\Extraction\SpreadsheetTableExtractor;
+use App\Services\Characterisation\Import\Extraction\TsvTableExtractor;
 use App\Services\Import\Tabular\UnreadableSpreadsheet;
-use App\Services\Import\Tabular\XlsxTabularReader;
 use Illuminate\Http\UploadedFile;
 
 /**
@@ -24,12 +22,27 @@ use Illuminate\Http\UploadedFile;
  * and calling fromExtractedTable(), exactly like every source above already
  * does.
  *
- * FILES ARE READ BY THE READERS THAT ALREADY EXIST. CsvTabularReader and
- * XlsxTabularReader were written for the correction-grid importer and they
- * already refuse zip bombs (SpreadsheetZipSafety), verify the encoding instead
- * of guessing it, measure the delimiter rather than assuming a comma, and
- * decline to trust a formula's cached value. Calling PhpSpreadsheet directly
- * from here would mean a second, weaker door into the same building.
+ * FILES ARE READ BY THE READERS THAT ALREADY EXIST. SpreadsheetTableExtractor
+ * wraps CsvTabularReader/XlsxTabularReader, written for the correction-grid
+ * importer, which already refuse zip bombs (SpreadsheetZipSafety), verify the
+ * encoding instead of guessing it, measure the delimiter rather than assuming
+ * a comma, and decline to trust a formula's cached value. Calling
+ * PhpSpreadsheet directly from here would mean a second, weaker door into the
+ * same building.
+ *
+ * EVERY SOURCE GOES THROUGH AN EXTRACTOR, THEN THROUGH
+ * NormaliseExtractedTable, ALWAYS. That used to be true only of the pasted-
+ * HTML and .docx paths — fromPastedText() and fromUploadedFile() had their
+ * own, older private toGrid() that never touched an extractor or the
+ * normaliser at all, which meant a plain CSV/XLSX upload or a plain-text
+ * paste got NO merge expansion, group-row detection, legend detection,
+ * multi-level header joining, or warnings, while the exact same table pasted
+ * as HTML got all of it. A teacher choosing "colar como texto" over "colar
+ * como HTML" — or simply uploading the file instead of copy/pasting it —
+ * should never change whether a caption row survives into the class's
+ * characterisation. Every entry point below now dispatches to the matching
+ * TableExtractor and lands on fromExtractedTable(), which is the one place
+ * NormaliseExtractedTable is ever called from.
  *
  * Nothing in this class writes to disk. The uploaded file is read inside the
  * request that carried it and then forgotten: no staging folder to prune, and
@@ -38,96 +51,72 @@ use Illuminate\Http\UploadedFile;
  */
 class ReadCharacterisationTable
 {
-    /**
-     * Rows beyond this are refused rather than truncated. A 5000-row paste into
-     * a class of thirty is a mistake, and silently reading the first few hundred
-     * would hide it behind a preview that looks fine.
-     */
-    private const MAX_ROWS = 500;
-
-    private const MAX_COLUMNS = 40;
-
     public function __construct(
-        private readonly CsvTabularReader $csv = new CsvTabularReader,
-        private readonly XlsxTabularReader $xlsx = new XlsxTabularReader,
+        private readonly TsvTableExtractor $tsv = new TsvTableExtractor,
+        private readonly SpreadsheetTableExtractor $spreadsheet = new SpreadsheetTableExtractor,
         private readonly HtmlTableExtractor $html = new HtmlTableExtractor,
         private readonly DocxTableExtractor $docx = new DocxTableExtractor,
         private readonly NormaliseExtractedTable $normaliser = new NormaliseExtractedTable,
     ) {}
 
     /**
-     * Pasted text is parsed here rather than handed to CsvTabularReader,
-     * because the two questions that reader exists to answer safely — what
-     * encoding is this, and is this file a zip bomb — cannot arise. The text
-     * arrived as a validated UTF-8 string in a request body, so writing it to a
-     * temporary file just to read it back would add a file to delete and answer
-     * nothing.
+     * The warnings from the most recent normalise() call — see
+     * NormalisedTable's own docblock for why they arrive bundled with the
+     * grid from that one call rather than read back separately afterwards.
+     * Kept here, on THIS class (built fresh per import — see the class
+     * docblock), rather than reintroducing the same statefulness on the
+     * normaliser itself.
+     *
+     * @var list<string>
+     */
+    private array $lastWarnings = [];
+
+    /**
+     * Pasted plain text — TSV, comma- or semicolon-separated, whatever
+     * SniffDelimiter measures it to be — routed through TsvTableExtractor
+     * rather than parsed here directly, so a caption row or a multi-level
+     * header pasted as plain text is classified exactly the same way the
+     * same table would be if it had arrived as pasted HTML instead.
      */
     public function fromPastedText(string $text): TableGrid
     {
-        $lines = preg_split('/\r\n|\r|\n/u', trim($text)) ?: [];
-        $lines = array_values(array_filter($lines, fn (string $line) => trim($line) !== ''));
-
-        if ($lines === []) {
+        if (trim($text) === '') {
             throw new UnreadableSpreadsheet(__('Não foi possível ler nenhuma linha do texto colado. Copie a tabela incluindo a linha dos títulos.'));
         }
 
-        $delimiter = (new SniffDelimiter)->sniff($lines);
+        $tables = $this->tsv->extract($text);
 
-        $matrix = array_map(
-            // str_getcsv yields null for an unquoted empty trailing field, and
-            // trim() would refuse it — an empty cell is '' here, not absent.
-            fn (string $line) => array_map(
-                fn (?string $cell) => trim((string) $cell),
-                str_getcsv($line, $delimiter, '"', '\\'),
-            ),
-            $lines,
-        );
-
-        return $this->toGrid($matrix);
-    }
-
-    public function fromUploadedFile(UploadedFile $file): TableGrid
-    {
-        $path = $file->getRealPath();
-        $name = $file->getClientOriginalName();
-
-        $reader = match (true) {
-            $this->xlsx->supports($path, $name) => $this->xlsx,
-            $this->csv->supports($path, $name) => $this->csv,
-            default => throw new UnreadableSpreadsheet(
-                __('Só é possível importar ficheiros CSV ou Excel (.xlsx). Guarde a folha num destes formatos e tente de novo.'),
-            ),
-        };
-
-        $sheet = $reader->read($path)->onlyOccupiedSheet();
-
-        if ($sheet === null) {
-            throw new UnreadableSpreadsheet(__('O ficheiro tem mais do que uma folha e nenhuma delas é claramente a tabela. Guarde só a folha que quer importar.'));
+        if ($tables === []) {
+            throw new UnreadableSpreadsheet(__('Não foi possível ler nenhuma linha do texto colado. Copie a tabela incluindo a linha dos títulos.'));
         }
 
-        return $this->toGrid($this->matrixFrom($sheet));
+        return $this->fromExtractedTable($tables[0]);
     }
 
     /**
-     * @return list<list<string>>
+     * A CSV or XLSX upload, routed through SpreadsheetTableExtractor — which
+     * itself wraps CsvTabularReader/XlsxTabularReader (see the class
+     * docblock) — and then through the same fromExtractedTable() pipeline
+     * every other source uses. CSV carries no merge information, so
+     * NormaliseExtractedTable's structural group-row test never fires for
+     * it; the content-based fallback still does, exactly as it already does
+     * for a plain-text paste.
      */
-    private function matrixFrom(TabularSheet $sheet): array
+    public function fromUploadedFile(UploadedFile $file): TableGrid
     {
-        $matrix = [];
-
-        foreach ($sheet->occupiedRows() as $rowNumber) {
-            $matrix[] = array_map(
-                // A formula's text is kept as text. This importer never reads a
-                // cell as a number, so an unevaluated formula is simply a string
-                // nobody recognises — which is the preview's job to show, not
-                // this reader's to resolve.
-                fn (TabularCell $cell) => trim((string) ($cell->text ?? '')),
-                array_slice($sheet->row($rowNumber), 0, self::MAX_COLUMNS),
+        if (! $this->spreadsheet->supports($file)) {
+            throw new UnreadableSpreadsheet(
+                __('Só é possível importar ficheiros CSV ou Excel (.xlsx). Guarde a folha num destes formatos e tente de novo.'),
             );
         }
 
-        return $matrix;
+        $tables = $this->spreadsheet->extract($file);
+
+        if ($tables === []) {
+            throw new UnreadableSpreadsheet(__('A tabela não tem linhas com conteúdo.'));
+        }
+
+        return $this->fromExtractedTable($tables[0]);
     }
 
     /**
@@ -164,21 +153,24 @@ class ReadCharacterisationTable
      */
     public function fromExtractedTable(ExtractedTable $table): TableGrid
     {
-        return $this->normaliser->normalise($table);
+        $normalised = $this->normaliser->normalise($table);
+        $this->lastWarnings = $normalised->warnings;
+
+        return $normalised->grid;
     }
 
     /**
      * Whatever NormaliseExtractedTable had to leave out of the most recent
-     * fromExtractedTable()/fromPastedHtml() call — a caption or legend row
-     * dropped, say. Empty for fromPastedText()/fromUploadedFile(), which
-     * never go through the normaliser: there is nothing to report because
-     * there is no ExtractedTable classification happening on those paths.
+     * call to any `from*()` method — a caption or legend row dropped, say.
+     * Every source now goes through fromExtractedTable(), so this is
+     * populated for pasted text and an uploaded CSV/XLSX exactly as it
+     * already was for pasted HTML and a .docx.
      *
      * @return list<string>
      */
     public function lastWarnings(): array
     {
-        return $this->normaliser->warnings();
+        return $this->lastWarnings;
     }
 
     /**
@@ -192,39 +184,5 @@ class ReadCharacterisationTable
     public function tablesFromUploadedFile(UploadedFile $file): array
     {
         return $this->docx->extract($file);
-    }
-
-    /**
-     * @param  list<list<string>>  $matrix
-     */
-    private function toGrid(array $matrix): TableGrid
-    {
-        $matrix = array_values(array_filter(
-            $matrix,
-            fn (array $row): bool => trim(implode('', $row)) !== '',
-        ));
-
-        if ($matrix === []) {
-            throw new UnreadableSpreadsheet(__('A tabela não tem linhas com conteúdo.'));
-        }
-
-        $headerIndex = (new FindHeaderRow)->find($matrix);
-        $headers = array_map('strval', $matrix[$headerIndex]);
-        $rows = array_slice($matrix, $headerIndex + 1);
-
-        if (count($headers) > self::MAX_COLUMNS) {
-            throw new UnreadableSpreadsheet(__('A tabela tem colunas a mais para ser lida com segurança.'));
-        }
-
-        if (count($rows) > self::MAX_ROWS) {
-            throw new UnreadableSpreadsheet(__('A tabela tem :count linhas — mais do que esta importação aceita de uma vez. Importe uma turma de cada vez.', [
-                'count' => count($rows),
-            ]));
-        }
-
-        return new TableGrid($headers, array_map(
-            fn (array $row) => array_map('strval', array_slice($row, 0, count($headers))),
-            $rows,
-        ));
     }
 }

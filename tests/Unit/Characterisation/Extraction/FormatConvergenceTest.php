@@ -2,23 +2,37 @@
 
 namespace Tests\Unit\Characterisation\Extraction;
 
-use App\Services\Characterisation\Import\Extraction\DocxTableExtractor;
-use App\Services\Characterisation\Import\Extraction\HtmlTableExtractor;
-use App\Services\Characterisation\Import\Extraction\NormaliseExtractedTable;
-use App\Services\Characterisation\Import\Extraction\SpreadsheetTableExtractor;
-use App\Services\Characterisation\Import\Extraction\TsvTableExtractor;
+use App\Services\Characterisation\Import\ReadCharacterisationTable;
 use App\Services\Characterisation\Import\TableGrid;
 use Illuminate\Http\UploadedFile;
 use Tests\Fixtures\Characterisation\CharacterisationFixture;
 use Tests\TestCase;
 
 /**
- * ONE dataset (CharacterisationFixture), fed through every extraction path
- * the import feature accepts, proving they all converge on an equivalent
- * TableGrid — same students, same order, group captions and the legend
- * dropped everywhere, the quiet "name only" student kept everywhere, a
- * multiline observation surviving as one cell with an embedded newline
- * everywhere it can be carried at all.
+ * ONE dataset (CharacterisationFixture), fed through every entry point
+ * ReadCharacterisationTable exposes — the SAME public API
+ * CharacterisationImportController actually calls — proving they all
+ * converge on an equivalent TableGrid — same students, same order, group
+ * captions and the legend dropped everywhere, the quiet "name only" student
+ * kept everywhere, a multiline observation surviving as one cell with an
+ * embedded newline everywhere it can be carried at all.
+ *
+ * THIS USED TO CALL THE EXTRACTOR CLASSES DIRECTLY (HtmlTableExtractor,
+ * SpreadsheetTableExtractor, …) plus a raw NormaliseExtractedTable, which is
+ * exactly the shape ReadCharacterisationTable::fromPastedText()/
+ * fromUploadedFile() had BEFORE this fix — a private toGrid() that never
+ * touched an extractor or the normaliser at all. A test built the same way
+ * would have passed even while production's CSV/plain-text paths silently
+ * skipped every warning and drop this class exists to produce, because the
+ * test was never exercising them. Going through ReadCharacterisationTable's
+ * own methods — fromPastedText(), fromUploadedFile(), fromPastedHtml() — is
+ * what makes this test actually prove the wiring the controller depends on,
+ * not just the extractors in isolation.
+ *
+ * WARNINGS ARE ASSERTED FOR EVERY FORMAT TOO — see the loop below — because
+ * the whole point of routing every source through the same pipeline is that
+ * a caption or legend row produces the SAME warning whether it arrived as a
+ * CSV upload, a plain-text paste, or Word clipboard HTML.
  *
  * Image fixtures are OUT OF SCOPE (OCR is a later slice) — see the note atop
  * CharacterisationFixture for the documented seam it would slot into.
@@ -27,17 +41,35 @@ class FormatConvergenceTest extends TestCase
 {
     public function test_all_formats_converge(): void
     {
-        $normaliser = new NormaliseExtractedTable;
+        $reader = new ReadCharacterisationTable;
 
-        $grids = [
-            'TSV' => $this->gridFromTsv($normaliser),
-            'CSV' => $this->gridFromCsv($normaliser),
-            'Word clipboard HTML' => $this->gridFromHtml($normaliser, CharacterisationFixture::toWordClipboardHtml()),
-            'Excel clipboard HTML' => $this->gridFromHtml($normaliser, CharacterisationFixture::toExcelClipboardHtml()),
-            'Google Sheets clipboard HTML' => $this->gridFromHtml($normaliser, CharacterisationFixture::toGoogleSheetsClipboardHtml()),
-            'docx' => $this->gridFromDocx($normaliser),
-            'xlsx' => $this->gridFromXlsx($normaliser),
-        ];
+        // lastWarnings() reflects only the MOST RECENT call, so each
+        // format's warnings are captured right after the grid that produced
+        // them — not read back afterwards, once a later format may already
+        // have overwritten them.
+        $grids = [];
+        $warningsByFormat = [];
+
+        $capture = function (string $label, TableGrid $grid) use ($reader, &$grids, &$warningsByFormat): void {
+            $grids[$label] = $grid;
+            $warningsByFormat[$label] = $reader->lastWarnings();
+        };
+
+        $capture('TSV', $this->gridFromTsv($reader));
+        $capture('CSV', $this->gridFromCsv($reader));
+        $capture('Word clipboard HTML', $this->gridFromHtml($reader, CharacterisationFixture::toWordClipboardHtml()));
+        $capture('Excel clipboard HTML', $this->gridFromHtml($reader, CharacterisationFixture::toExcelClipboardHtml()));
+        $capture('Google Sheets clipboard HTML', $this->gridFromHtml($reader, CharacterisationFixture::toGoogleSheetsClipboardHtml()));
+        $capture('docx', $this->gridFromDocx($reader));
+        $capture('xlsx', $this->gridFromXlsx($reader));
+
+        // Every format dropped a group caption and a legend row — the
+        // dataset has both — so every format must have produced a warning
+        // about it, through the exact same ReadCharacterisationTable that
+        // just produced the grid.
+        foreach ($warningsByFormat as $label => $warnings) {
+            $this->assertNotEmpty($warnings, "{$label}: expected a warning about dropped rows.");
+        }
 
         $expectedNames = CharacterisationFixture::studentNames();
         $expectedCount = count($expectedNames);
@@ -123,70 +155,74 @@ class FormatConvergenceTest extends TestCase
         }
     }
 
-    private function gridFromTsv(NormaliseExtractedTable $normaliser): TableGrid
+    /**
+     * ReadCharacterisationTable::fromPastedText() — the plain-text paste
+     * entry point the controller calls when no HTML fragment is on the
+     * clipboard.
+     */
+    private function gridFromTsv(ReadCharacterisationTable $reader): TableGrid
     {
-        $extractor = new TsvTableExtractor;
-        $tables = $extractor->extract(CharacterisationFixture::toTsv());
-        $this->assertCount(1, $tables);
-
-        return $normaliser->normalise($tables[0]);
+        return $reader->fromPastedText(CharacterisationFixture::toTsv());
     }
 
-    private function gridFromCsv(NormaliseExtractedTable $normaliser): TableGrid
+    /**
+     * ReadCharacterisationTable::fromUploadedFile() — the SAME method the
+     * controller calls for a CSV/XLSX upload, whichever extension it is.
+     */
+    private function gridFromCsv(ReadCharacterisationTable $reader): TableGrid
     {
         $path = tempnam(sys_get_temp_dir(), 'characterisation').'.csv';
         file_put_contents($path, "\xEF\xBB\xBF".CharacterisationFixture::toCsv());
 
         try {
-            $extractor = new SpreadsheetTableExtractor;
             $upload = new UploadedFile($path, 'caracterizacao.csv', null, null, true);
-            $tables = $extractor->extract($upload);
-            $this->assertCount(1, $tables);
 
-            return $normaliser->normalise($tables[0]);
+            return $reader->fromUploadedFile($upload);
         } finally {
             @unlink($path);
         }
     }
 
-    private function gridFromHtml(NormaliseExtractedTable $normaliser, string $html): TableGrid
+    /**
+     * ReadCharacterisationTable::fromPastedHtml() — the controller's entry
+     * point for a `pasted_html` request field.
+     */
+    private function gridFromHtml(ReadCharacterisationTable $reader, string $html): TableGrid
     {
-        $extractor = new HtmlTableExtractor;
-        $tables = $extractor->extract($html);
-        $this->assertCount(1, $tables);
-
-        return $normaliser->normalise($tables[0]);
+        return $reader->fromPastedHtml($html);
     }
 
-    private function gridFromDocx(NormaliseExtractedTable $normaliser): TableGrid
+    /**
+     * .docx goes through tablesFromUploadedFile() + fromExtractedTable(),
+     * exactly like CharacterisationImportController::resolveDocxTable() does
+     * for the single-table case (this fixture always produces exactly one
+     * table).
+     */
+    private function gridFromDocx(ReadCharacterisationTable $reader): TableGrid
     {
         $path = tempnam(sys_get_temp_dir(), 'characterisation').'.docx';
         CharacterisationFixture::writeDocx($path);
 
         try {
-            $extractor = new DocxTableExtractor;
             $upload = new UploadedFile($path, 'caracterizacao.docx', null, null, true);
-            $tables = $extractor->extract($upload);
+            $tables = $reader->tablesFromUploadedFile($upload);
             $this->assertNotEmpty($tables);
 
-            return $normaliser->normalise($tables[0]);
+            return $reader->fromExtractedTable($tables[0]);
         } finally {
             @unlink($path);
         }
     }
 
-    private function gridFromXlsx(NormaliseExtractedTable $normaliser): TableGrid
+    private function gridFromXlsx(ReadCharacterisationTable $reader): TableGrid
     {
         $path = tempnam(sys_get_temp_dir(), 'characterisation').'.xlsx';
         CharacterisationFixture::writeXlsx($path);
 
         try {
-            $extractor = new SpreadsheetTableExtractor;
             $upload = new UploadedFile($path, 'caracterizacao.xlsx', null, null, true);
-            $tables = $extractor->extract($upload);
-            $this->assertCount(1, $tables);
 
-            return $normaliser->normalise($tables[0]);
+            return $reader->fromUploadedFile($upload);
         } finally {
             @unlink($path);
         }

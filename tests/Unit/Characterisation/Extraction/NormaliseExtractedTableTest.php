@@ -42,16 +42,16 @@ class NormaliseExtractedTableTest extends TestCase
             ['Bruno Costa', 'Falta muito'],
         ]);
 
-        $normaliser = new NormaliseExtractedTable;
-        $grid = $normaliser->normalise($table);
+        $result = (new NormaliseExtractedTable)->normalise($table);
+        $grid = $result->grid;
 
         $this->assertSame(['Nome', 'Observações'], $grid->headers);
         $this->assertCount(2, $grid->rows);
         $this->assertSame('Ana Silva', $grid->cell($grid->rows[0], 0));
         $this->assertSame('Bruno Costa', $grid->cell($grid->rows[1], 0));
 
-        $this->assertNotEmpty($normaliser->warnings());
-        $this->assertStringContainsString('2', $normaliser->warnings()[0]);
+        $this->assertNotEmpty($result->warnings);
+        $this->assertStringContainsString('2', $result->warnings[0]);
     }
 
     public function test_a_trailing_legend_is_dropped_and_counted(): void
@@ -62,12 +62,65 @@ class NormaliseExtractedTableTest extends TestCase
             ['MU - Medidas Universais', ''],
         ]);
 
-        $normaliser = new NormaliseExtractedTable;
-        $grid = $normaliser->normalise($table);
+        $result = (new NormaliseExtractedTable)->normalise($table);
 
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertNotEmpty($result->warnings);
+    }
+
+    public function test_a_real_student_row_with_a_free_text_hyphen_is_not_dropped_as_a_legend(): void
+    {
+        // "Apoio tutorial - 2x por semana" contains " - " just like a real
+        // legend does, but it names no acronym and it is the last row of a
+        // real class — dropping it would silently lose a student.
+        $table = $this->tableFrom([
+            ['Nome', 'Observações'],
+            ['Ana Silva', 'Participa'],
+            ['Bruno Costa', 'Apoio tutorial - 2x por semana'],
+        ]);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(2, $result->grid->rows);
+        $this->assertSame('Bruno Costa', $result->grid->cell($result->grid->rows[1], 0));
+        $this->assertSame([], $result->warnings);
+    }
+
+    public function test_an_actual_legend_row_is_still_dropped(): void
+    {
+        $table = $this->tableFrom([
+            ['Nome', 'Medidas'],
+            ['Ana Silva', 'AAA'],
+            ['AAA - Apoio ao Aluno', ''],
+        ]);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertNotEmpty($result->warnings);
+    }
+
+    /**
+     * F13 (investigation): a school-letterhead row directly above the real
+     * header — two short, capitalised cells, exactly the shape
+     * looksLikeHeaderLevel() otherwise accepts as a joinable header level —
+     * must NOT be folded into the header text. If this fails, the letterhead
+     * leaks into every column's label («Escola Básica de Miraflores Nome»).
+     */
+    public function test_a_letterhead_row_above_the_header_is_not_joined_into_it(): void
+    {
+        $table = $this->tableFrom([
+            ['Escola Básica de Miraflores', '2026/2027'],
+            ['Nome', 'Medidas'],
+            ['Ana Silva', 'MU'],
+        ]);
+
+        $grid = (new NormaliseExtractedTable)->normalise($table)->grid;
+
+        $this->assertSame(['Nome', 'Medidas'], $grid->headers);
         $this->assertCount(1, $grid->rows);
-        $this->assertSame('Ana Silva', $grid->cell($grid->rows[0], 0));
-        $this->assertNotEmpty($normaliser->warnings());
     }
 
     public function test_multi_level_headers_join_top_to_bottom(): void
@@ -78,7 +131,7 @@ class NormaliseExtractedTableTest extends TestCase
             ['Ana Silva', 'ACNS', ''],
         ]);
 
-        $grid = (new NormaliseExtractedTable)->normalise($table);
+        $grid = (new NormaliseExtractedTable)->normalise($table)->grid;
 
         $this->assertSame(['Nome', 'Apoio Ing.', 'Apoio Mat.'], $grid->headers);
         $this->assertCount(1, $grid->rows);
@@ -106,7 +159,7 @@ class NormaliseExtractedTableTest extends TestCase
 
         $table = new ExtractedTable($rows, ExtractedTableSource::Docx);
 
-        $grid = (new NormaliseExtractedTable)->normalise($table);
+        $grid = (new NormaliseExtractedTable)->normalise($table)->grid;
 
         $this->assertSame(['Nome', 'Observações'], $grid->headers);
         $this->assertCount(2, $grid->rows);
@@ -135,7 +188,7 @@ class NormaliseExtractedTableTest extends TestCase
             ['Bruno Costa', 'MU', 'Participa'],
         ]);
 
-        $grid = (new NormaliseExtractedTable)->normalise($table);
+        $grid = (new NormaliseExtractedTable)->normalise($table)->grid;
 
         $this->assertCount(2, $grid->rows);
         $this->assertSame('Ana Silva', $grid->cell($grid->rows[0], 0));
@@ -170,12 +223,11 @@ class NormaliseExtractedTableTest extends TestCase
 
         $table = new ExtractedTable($rows, ExtractedTableSource::Docx);
 
-        $normaliser = new NormaliseExtractedTable;
-        $grid = $normaliser->normalise($table);
+        $result = (new NormaliseExtractedTable)->normalise($table);
 
-        $this->assertCount(1, $grid->rows);
-        $this->assertSame('Ana Silva', $grid->cell($grid->rows[0], 0));
-        $this->assertNotEmpty($normaliser->warnings());
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertNotEmpty($result->warnings);
     }
 
     /**
@@ -192,12 +244,11 @@ class NormaliseExtractedTableTest extends TestCase
             ['Ana Silva', 'MU', 'Participa'],
         ]);
 
-        $normaliser = new NormaliseExtractedTable;
-        $grid = $normaliser->normalise($table);
+        $result = (new NormaliseExtractedTable)->normalise($table);
 
-        $this->assertCount(1, $grid->rows);
-        $this->assertSame('Ana Silva', $grid->cell($grid->rows[0], 0));
-        $this->assertNotEmpty($normaliser->warnings());
+        $this->assertCount(1, $result->grid->rows);
+        $this->assertSame('Ana Silva', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertNotEmpty($result->warnings);
     }
 
     /**
@@ -214,10 +265,97 @@ class NormaliseExtractedTableTest extends TestCase
             ['Ana Silva', 'MU', 'Participa'],
         ]);
 
-        $grid = (new NormaliseExtractedTable)->normalise($table);
+        $grid = (new NormaliseExtractedTable)->normalise($table)->grid;
 
         $this->assertCount(2, $grid->rows);
         $this->assertSame('Alunos Ferreira', $grid->cell($grid->rows[0], 0));
         $this->assertSame('Ana Silva', $grid->cell($grid->rows[1], 0));
+    }
+
+    /**
+     * F12: warnings() used to be instance state, set during normalise() and
+     * read back afterwards — safe only while nothing ever reused the same
+     * instance for two imports. This proves the SAME instance, called twice
+     * with different tables (one with a warning-producing group row, one
+     * with none), never lets the first call's warnings bleed into the
+     * second's result, or vice versa — because each call's warnings now
+     * travel WITH that call's grid, on the object normalise() returns,
+     * rather than being read back from the normaliser afterwards.
+     */
+    public function test_warnings_do_not_leak_between_calls_on_the_same_instance(): void
+    {
+        $withGroupRow = $this->tableFrom([
+            ['Nome', 'Observações'],
+            ['Alunos com RTP', ''],
+            ['Ana Silva', 'Participa'],
+        ]);
+
+        $withoutAnyDroppedRow = $this->tableFrom([
+            ['Nome', 'Observações'],
+            ['Bruno Costa', 'Falta pouco'],
+        ]);
+
+        $normaliser = new NormaliseExtractedTable;
+
+        $first = $normaliser->normalise($withGroupRow);
+        $this->assertNotEmpty($first->warnings);
+
+        $second = $normaliser->normalise($withoutAnyDroppedRow);
+        $this->assertSame([], $second->warnings);
+
+        // Interleaved the other way round too: calling normalise() again
+        // for the group-row table must still produce its own warning, not
+        // an empty list inherited from the call that ran in between.
+        $third = $normaliser->normalise($withGroupRow);
+        $this->assertNotEmpty($third->warnings);
+        $this->assertSame($first->warnings, $third->warnings);
+    }
+
+    /**
+     * F7: when nothing in the first 15 rows scores as a confident header,
+     * this used to declare row 0 the header anyway and slice it off — which,
+     * on a table that genuinely has no header row (or whose header this
+     * scorer cannot recognise), silently discarded the first real student.
+     * Every row must survive instead, with a warning telling the teacher to
+     * check the columns, rather than a guess eating a child's row.
+     */
+    public function test_a_table_with_no_recognisable_header_keeps_every_row(): void
+    {
+        // No cell here reads as a student-name-shaped column — every row is
+        // a pair of short, generic tokens, so ClassifyColumns never scores
+        // any of them as identifying a student, and FindHeaderRow finds
+        // nothing to call a header within the first 15 rows.
+        $table = $this->tableFrom([
+            ['abc', '123'],
+            ['def', '456'],
+            ['ghi', '789'],
+        ]);
+
+        $result = (new NormaliseExtractedTable)->normalise($table);
+
+        $this->assertCount(3, $result->grid->rows);
+        $this->assertSame('abc', $result->grid->cell($result->grid->rows[0], 0));
+        $this->assertSame('def', $result->grid->cell($result->grid->rows[1], 0));
+        $this->assertSame('ghi', $result->grid->cell($result->grid->rows[2], 0));
+        $this->assertNotEmpty($result->warnings);
+    }
+
+    /**
+     * F15: a fabricated table whose only cell sits at a sparse, very high
+     * row number must be refused promptly — not turned into an
+     * array_fill() allocation sized to that row number. 60000 is bounded
+     * enough to run fast in a test while still being far past MAX_ROWS
+     * (500), which is what should trigger the refusal.
+     */
+    public function test_a_sparse_high_row_number_is_refused_rather_than_allocated(): void
+    {
+        $table = new ExtractedTable([
+            new ExtractedRow(1, [new ExtractedCell('Nome', 1, 1)]),
+            new ExtractedRow(2, [new ExtractedCell('Ana Silva', 60000, 1)]),
+        ], ExtractedTableSource::PastedTsv);
+
+        $this->expectException(UnreadableSpreadsheet::class);
+
+        (new NormaliseExtractedTable)->normalise($table);
     }
 }

@@ -23,7 +23,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { extractTableFromImage } from './characterisation-image-extraction';
+import type { ExtractedTablePayload } from './characterisation-extracted-table';
+import { extractTableFromImage, ImageDecodeError  } from './characterisation-image-extraction';
+import type {OcrProgress} from './characterisation-image-extraction';
 import { resolvePastePayload } from './characterisation-paste-priority';
 
 type StudentOption = { ulid: string; name: string; class_number: number | null };
@@ -108,10 +110,18 @@ const file = ref<File | null>(null);
 const loading = ref(false);
 const submitting = ref(false);
 const loadError = ref<string | null>(null);
-// Imagem detetada no clipboard, mas sem destino estruturado ainda (§ item 6):
-// a extração de imagem é uma fatia futura, e isto existe só para dizer isso
-// com clareza em vez de falhar em silêncio.
-const imageDetected = ref<{ file: File | Blob; error: string } | null>(null);
+// Imagem detetada no clipboard/ficheiro. Reconhecida por OCR inteiramente no
+// browser (characterisation-image-extraction.ts) — nunca enviada ao
+// servidor. `error` fica preenchido só quando a leitura falha (imagem
+// inválida, demasiado grande, ou o reconhecimento em si).
+const imageDetected = ref<{ file: File | Blob; error: string | null } | null>(null);
+const ocrProgress = ref<OcrProgress | null>(null);
+const ocrExtractedTable = ref<ExtractedTablePayload | null>(null);
+let ocrAbortController: AbortController | null = null;
+
+function cancelOcr(): void {
+    ocrAbortController?.abort();
+}
 
 const previewData = ref<PreviewResponse | null>(null);
 const rowStates = reactive<Record<number, RowState>>({});
@@ -135,14 +145,31 @@ function resetToInput(): void {
     loadError.value = null;
     previewData.value = null;
     imageDetected.value = null;
+    ocrProgress.value = null;
+    ocrExtractedTable.value = null;
+    ocrAbortController?.abort();
+    ocrAbortController = null;
     tableChoices.value = null;
     Object.keys(rowStates).forEach((key) => delete rowStates[Number(key)]);
 }
 
 function onFileChange(event: Event): void {
-    file.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+    const chosen = (event.target as HTMLInputElement).files?.[0] ?? null;
     pastedHtml.value = '';
     imageDetected.value = null;
+
+    // An image never goes to the server as `file` (the server-side upload
+    // path only ever accepts docx/csv/xlsx — see CharacterisationImportController)
+    // — it is recognised here, in-browser, and only the recognised table is
+    // sent on. See the PRIVACY block in characterisation-image-extraction.ts.
+    if (chosen !== null && chosen.type.startsWith('image/')) {
+        file.value = null;
+        handleImage(chosen, 'image_upload');
+
+        return;
+    }
+
+    file.value = chosen;
 }
 
 // A prioridade da cola está isolada em characterisation-paste-priority.ts
@@ -181,17 +208,45 @@ function onPaste(event: ClipboardEvent): void {
     if (payload.kind === 'image') {
         pastedText.value = '';
         pastedHtml.value = '';
-        handleImage(payload.file);
+        handleImage(payload.file, 'pasted_image');
     }
 }
 
-function handleImage(imageFile: File | Blob): void {
-    extractTableFromImage(imageFile).catch(() => {
-        imageDetected.value = {
-            file: imageFile,
-            error: 'A importação a partir de imagens ainda não está disponível. Cole a tabela em texto ou escolha um ficheiro.',
-        };
-    });
+function handleImage(imageFile: File | Blob, sourceKind: 'pasted_image' | 'image_upload'): void {
+    imageDetected.value = { file: imageFile, error: null };
+    ocrExtractedTable.value = null;
+    ocrProgress.value = { status: 'a preparar', progress: 0 };
+    ocrAbortController = new AbortController();
+
+    extractTableFromImage(imageFile, {
+        sourceKind,
+        sourceFilename: imageFile instanceof File ? imageFile.name : null,
+        signal: ocrAbortController.signal,
+        onProgress: (progress) => {
+            ocrProgress.value = progress;
+        },
+    })
+        .then((table) => {
+            ocrExtractedTable.value = table;
+            ocrProgress.value = null;
+        })
+        .catch((error: unknown) => {
+            ocrProgress.value = null;
+
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                imageDetected.value = null;
+
+                return;
+            }
+
+            imageDetected.value = {
+                file: imageFile,
+                error:
+                    error instanceof ImageDecodeError
+                        ? error.message
+                        : 'Não foi possível reconhecer texto nesta imagem. Cole a tabela em texto ou escolha um ficheiro.',
+            };
+        });
 }
 
 function csrfToken(): string {
@@ -199,7 +254,12 @@ function csrfToken(): string {
 }
 
 async function loadPreview(tableIndex: number | null = null): Promise<void> {
-    if (pastedText.value.trim() === '' && pastedHtml.value.trim() === '' && file.value === null) {
+    if (
+        pastedText.value.trim() === '' &&
+        pastedHtml.value.trim() === '' &&
+        file.value === null &&
+        ocrExtractedTable.value === null
+    ) {
         loadError.value = 'Cole a tabela ou escolha um ficheiro.';
 
         return;
@@ -210,7 +270,13 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
 
     const body = new FormData();
 
-    if (file.value !== null) {
+    if (ocrExtractedTable.value !== null) {
+        // The image itself is never sent — only the table the OCR seam
+        // already recognised, in-browser (§ privacy). `source_kind` doubles
+        // here as what the server expects in `extracted_table.source_type`.
+        body.append('extracted_table', JSON.stringify(ocrExtractedTable.value));
+        body.append('source_kind', ocrExtractedTable.value.source_type);
+    } else if (file.value !== null) {
         body.append('file', file.value);
 
         if (tableIndex !== null) {
@@ -240,6 +306,7 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
                 (payload?.errors?.file?.[0] as string | undefined) ??
                 (payload?.errors?.pasted_html?.[0] as string | undefined) ??
                 (payload?.errors?.pasted_text?.[0] as string | undefined) ??
+                (payload?.errors?.extracted_table?.[0] as string | undefined) ??
                 (payload?.message as string | undefined) ??
                 'Não foi possível ler o ficheiro.';
 
@@ -400,9 +467,21 @@ function closeDialog(): void {
                             Tabela reconhecida na cola — pronta a pré-visualizar.
                         </p>
                     </div>
-                    <div v-if="imageDetected" class="flex items-start gap-2 rounded-md border p-2 text-sm">
+                    <div v-if="ocrProgress" class="flex items-center gap-2 rounded-md border p-2 text-sm">
+                        <Loader2 class="size-4 shrink-0 animate-spin" />
+                        <p class="flex-1">A reconhecer texto na imagem… ({{ Math.round(ocrProgress.progress * 100) }}%)</p>
+                        <Button type="button" variant="outline" size="sm" @click="cancelOcr">Cancelar</Button>
+                    </div>
+                    <div v-else-if="ocrExtractedTable" class="flex items-start gap-2 rounded-md border p-2 text-sm">
                         <ImageOff class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                        <p>Imagem detetada. {{ imageDetected.error }}</p>
+                        <p>
+                            Tabela reconhecida na imagem ({{ ocrExtractedTable.rows.length }} linhas) — pronta a
+                            pré-visualizar.
+                        </p>
+                    </div>
+                    <div v-else-if="imageDetected" class="flex items-start gap-2 rounded-md border p-2 text-sm">
+                        <ImageOff class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <p>{{ imageDetected.error ?? 'Imagem detetada.' }}</p>
                     </div>
                     <div class="grid gap-2">
                         <Label for="characterisation-file">Ou escolha um ficheiro</Label>
@@ -420,7 +499,7 @@ function closeDialog(): void {
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" @click="closeDialog">Cancelar</Button>
-                    <Button type="button" :disabled="loading" @click="() => loadPreview()">
+                    <Button type="button" :disabled="loading || ocrProgress !== null" @click="() => loadPreview()">
                         <Loader2 v-if="loading" class="size-4 animate-spin" />
                         <FileUp v-else class="size-4" />
                         Pré-visualizar

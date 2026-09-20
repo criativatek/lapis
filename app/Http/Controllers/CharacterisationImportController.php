@@ -7,7 +7,10 @@ use App\Models\SchoolClass;
 use App\Services\Audit\AuditLog;
 use App\Services\Characterisation\Import\BuildCharacterisationPreview;
 use App\Services\Characterisation\Import\Extraction\DocxTableExtractor;
+use App\Services\Characterisation\Import\Extraction\ExtractedCell;
+use App\Services\Characterisation\Import\Extraction\ExtractedRow;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
+use App\Services\Characterisation\Import\Extraction\ExtractedTableSource;
 use App\Services\Characterisation\Import\ReadCharacterisationTable;
 use App\Services\Import\Tabular\UnreadableSpreadsheet;
 use App\Support\Characterisation\CharacterisationSection;
@@ -41,6 +44,19 @@ class CharacterisationImportController extends Controller
     private const MAX_DOCX_UPLOAD_KILOBYTES = 8 * 1024;
 
     private const MAX_SPREADSHEET_UPLOAD_KILOBYTES = 5120;
+
+    /**
+     * Mirrors NormaliseExtractedTable::MAX_ROWS/MAX_COLUMNS/MAX_CELLS. The
+     * `extracted_table` payload is CLIENT JSON built by an OCR run this
+     * server never saw — hostile input by default — so it is bounded here,
+     * at the validator, before a single ExtractedCell object is built from
+     * it, exactly as strictly as the extractors that read a file already are.
+     */
+    private const MAX_EXTRACTED_TABLE_ROWS = 500;
+
+    private const MAX_EXTRACTED_TABLE_COLUMNS = 40;
+
+    private const MAX_EXTRACTED_CELL_TEXT_LENGTH = 2000;
 
     public function __construct(
         private readonly ReadCharacterisationTable $reader,
@@ -106,22 +122,37 @@ class CharacterisationImportController extends Controller
             // ausente na primeira chamada, presente depois de o professor
             // escolher no seletor.
             'table_index' => ['nullable', 'integer', 'min:0'],
+            // Produzido inteiramente no browser por OCR (nunca a imagem em
+            // si — ver a nota de privacidade em
+            // characterisation-image-extraction.ts). JSON, não um array
+            // aninhado no corpo do pedido, porque chega como um campo de
+            // FormData ao lado de um possível ficheiro — descodificado
+            // manualmente a seguir, e cada limite aqui espelha
+            // NormaliseExtractedTable::MAX_ROWS/MAX_COLUMNS/MAX_CELLS.
+            'extracted_table' => ['nullable', 'string', 'max:2000000'],
         ]);
 
         $pastedHtml = $data['pasted_html'] ?? null;
         $pastedText = $data['pasted_text'] ?? null;
         $hasFile = $request->hasFile('file');
+        $extractedTableJson = $data['extracted_table'] ?? null;
 
-        if (blank($pastedText) && blank($pastedHtml) && ! $hasFile) {
+        if (blank($pastedText) && blank($pastedHtml) && ! $hasFile && blank($extractedTableJson)) {
             throw ValidationException::withMessages([
                 'pasted_text' => __('Cole a tabela ou escolha um ficheiro.'),
             ]);
         }
 
-        $errorField = $hasFile ? 'file' : ($pastedHtml !== null && $pastedHtml !== '' ? 'pasted_html' : 'pasted_text');
+        $errorField = $hasFile
+            ? 'file'
+            : ($extractedTableJson !== null && $extractedTableJson !== '' ? 'extracted_table' : ($pastedHtml !== null && $pastedHtml !== '' ? 'pasted_html' : 'pasted_text'));
 
         try {
-            if ($hasFile) {
+            if (! blank($extractedTableJson)) {
+                $extracted = $this->parseExtractedTablePayload((string) $extractedTableJson);
+                $grid = $this->reader->fromExtractedTable($extracted);
+                $sourceKind = $extracted->sourceType->value;
+            } elseif ($hasFile) {
                 $file = $request->file('file');
                 $isDocx = strtolower((string) $file->getClientOriginalExtension()) === 'docx';
 
@@ -224,6 +255,117 @@ class CharacterisationImportController extends Controller
         }
 
         return $tables[$tableIndex];
+    }
+
+    /**
+     * Turns the client-built OCR payload into an ExtractedTable, refusing
+     * anything that does not match the shape ExtractedTable/ExtractedRow/
+     * ExtractedCell expect — a malformed or oversized `extracted_table` is
+     * refused HERE, before NormaliseExtractedTable ever sees it, because
+     * this JSON came from an OCR run the server never witnessed and is
+     * hostile input by construction (see the MAX_EXTRACTED_TABLE_* constants).
+     */
+    private function parseExtractedTablePayload(string $json): ExtractedTable
+    {
+        try {
+            $decoded = json_decode($json, associative: true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw ValidationException::withMessages([
+                'extracted_table' => __('Não foi possível ler o resultado do reconhecimento da imagem.'),
+            ]);
+        }
+
+        if (! is_array($decoded) || ! is_array($decoded['rows'] ?? null)) {
+            throw ValidationException::withMessages([
+                'extracted_table' => __('Não foi possível ler o resultado do reconhecimento da imagem.'),
+            ]);
+        }
+
+        $sourceType = ExtractedTableSource::tryFrom((string) ($decoded['source_type'] ?? ''));
+
+        // Only the two OCR variants — never 'docx', 'xlsx' or anything else
+        // this payload has no business claiming to be.
+        if (! in_array($sourceType, [ExtractedTableSource::PastedImage, ExtractedTableSource::ImageUpload], true)) {
+            throw ValidationException::withMessages([
+                'extracted_table' => __('Origem da tabela reconhecida inválida.'),
+            ]);
+        }
+
+        $rawRows = array_values($decoded['rows']);
+
+        if (count($rawRows) > self::MAX_EXTRACTED_TABLE_ROWS) {
+            throw ValidationException::withMessages([
+                'extracted_table' => __('A imagem tem :count linhas — mais do que esta importação aceita de uma vez.', [
+                    'count' => count($rawRows),
+                ]),
+            ]);
+        }
+
+        $rows = [];
+
+        foreach ($rawRows as $rowIndex => $rawRow) {
+            if (! is_array($rawRow) || ! is_array($rawRow['cells'] ?? null)) {
+                throw ValidationException::withMessages([
+                    'extracted_table' => __('Não foi possível ler o resultado do reconhecimento da imagem.'),
+                ]);
+            }
+
+            $rawCells = array_values($rawRow['cells']);
+
+            if (count($rawCells) > self::MAX_EXTRACTED_TABLE_COLUMNS) {
+                throw ValidationException::withMessages([
+                    'extracted_table' => __('A imagem tem colunas a mais para ser lida com segurança.'),
+                ]);
+            }
+
+            $cells = [];
+
+            foreach ($rawCells as $columnIndex => $rawCell) {
+                if (! is_array($rawCell) || ! is_string($rawCell['text'] ?? null)) {
+                    throw ValidationException::withMessages([
+                        'extracted_table' => __('Não foi possível ler o resultado do reconhecimento da imagem.'),
+                    ]);
+                }
+
+                $text = $rawCell['text'];
+
+                if (mb_strlen($text) > self::MAX_EXTRACTED_CELL_TEXT_LENGTH) {
+                    throw ValidationException::withMessages([
+                        'extracted_table' => __('Uma célula reconhecida tem texto a mais para ser lida com segurança.'),
+                    ]);
+                }
+
+                $confidence = $rawCell['confidence'] ?? null;
+
+                $cells[] = new ExtractedCell(
+                    text: $text,
+                    // ExtractedCell's row/column are 1-INDEXED (see
+                    // HtmlTableExtractor::extractRow, the convention every
+                    // other extractor already follows) — the payload's own
+                    // row/column are 0-indexed array positions, so +1 here,
+                    // not a copy of them.
+                    row: (int) $rowIndex + 1,
+                    column: (int) $columnIndex + 1,
+                    colspan: 1,
+                    rowspan: 1,
+                    // Extraction confidence — see ExtractedCell's own
+                    // docblock: this is never CodeConfidence, and is clamped
+                    // rather than trusted verbatim because it came from the
+                    // browser, not from tesseract's own report to this server.
+                    confidence: is_numeric($confidence) ? max(0.0, min(1.0, (float) $confidence)) : null,
+                );
+            }
+
+            // ExtractedRow's own index is 1-indexed too (see
+            // HtmlTableExtractor's $rowIndex, which starts at 1).
+            $rows[] = new ExtractedRow(index: (int) $rowIndex + 1, cells: $cells);
+        }
+
+        return new ExtractedTable(
+            rows: $rows,
+            sourceType: $sourceType,
+            sourceFilename: is_string($decoded['source_filename'] ?? null) ? $decoded['source_filename'] : null,
+        );
     }
 
     /**

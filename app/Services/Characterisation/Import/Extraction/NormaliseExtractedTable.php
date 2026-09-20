@@ -46,14 +46,21 @@ use App\Services\Import\Tabular\UnreadableSpreadsheet;
  *     fallback for merge-less sources — runs on the expanded rectangle, which
  *     is the shape ClassifyColumns and the legend/caption content checks
  *     already expect. Only Data rows survive into TableGrid::rows; Group and
- *     Legend rows are dropped but COUNTED, and the count is exposed via
- *     warnings() so the controller can tell the teacher what was left out and
- *     why, rather than the row simply vanishing.
+ *     Legend rows are dropped but COUNTED, and the count is returned alongside
+ *     the grid (see NormalisedTable) so the controller can tell the teacher
+ *     what was left out and why, rather than the row simply vanishing.
  *
- * `warnings()` reflects the most recent call to `normalise()`. This class is
- * built fresh per import (see ReadCharacterisationTable), so that statefulness
- * never crosses a request boundary — it exists purely because TableGrid itself
- * has no field for it, and changing TableGrid's shape is out of scope here.
+ * NORMALISE() RETURNS ITS WARNINGS RATHER THAN STORING THEM. It used to set
+ * an instance property during normalise() and expose it through a separate
+ * warnings() call — safe only as long as this class is built fresh per
+ * import, and silently wrong the day it is ever bound as a singleton
+ * (Octane, or an accidental container change): a second, concurrent
+ * normalise() call on the same instance would leak one organization's
+ * dropped rows into another's response before the first caller ever reads
+ * warnings(). Returning a NormalisedTable — the grid AND its warnings,
+ * together, from the one call that produced them — makes that impossible
+ * rather than a convention to remember. This class keeps no state between
+ * calls at all.
  */
 class NormaliseExtractedTable
 {
@@ -63,13 +70,8 @@ class NormaliseExtractedTable
 
     private const MAX_CELLS = 20000;
 
-    /** @var list<string> */
-    private array $warnings = [];
-
-    public function normalise(ExtractedTable $table): TableGrid
+    public function normalise(ExtractedTable $table): NormalisedTable
     {
-        $this->warnings = [];
-
         if ($table->isEmpty()) {
             throw new UnreadableSpreadsheet(__('A tabela não tem linhas com conteúdo.'));
         }
@@ -109,15 +111,37 @@ class NormaliseExtractedTable
 
         $plainMatrix = array_map(fn (array $entry) => $entry['cells'], $entries);
 
-        $headerLevels = $this->headerLevels($plainMatrix);
-        // headerLevels() always seeds itself with the primary header row
-        // before optionally prefixing earlier levels, so the last element —
-        // the highest index — is always present.
-        $headerEndIndex = $headerLevels[count($headerLevels) - 1];
-        $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
+        $primaryHeaderIndex = (new FindHeaderRow)->find($plainMatrix);
 
-        $bodyEntries = array_slice($entries, $headerEndIndex + 1);
-        $dataRows = $this->classifyBody($bodyEntries, $structuralGroupRows);
+        $headerWarnings = [];
+
+        if ($primaryHeaderIndex === null) {
+            // F7: FindHeaderRow could not confidently name a header row in
+            // the first 15 — this used to fall back to declaring row 0 the
+            // header anyway and slicing it off, which silently discarded
+            // whatever that row actually was (very often the first real
+            // student, on a header-less export). Refusing the whole import
+            // here would be the OTHER extreme: a table this scorer simply
+            // does not recognise the header shape of is not the same thing
+            // as a table with nothing useful in it. So EVERY row is kept as
+            // data instead — nothing is guessed away — with generic column
+            // labels standing in for a header nobody could identify, and a
+            // warning telling the teacher to check the columns landed right.
+            $headers = $this->genericHeaders($columnCount);
+            $bodyEntries = $entries;
+            $headerWarnings[] = __('Não foi possível identificar a linha de títulos desta tabela — todas as linhas foram importadas como alunos. Confirme se as colunas ficaram corretas.');
+        } else {
+            $headerLevels = $this->headerLevels($plainMatrix, $primaryHeaderIndex);
+            // headerLevels() always seeds itself with the primary header row
+            // before optionally prefixing earlier levels, so the last
+            // element — the highest index — is always present.
+            $headerEndIndex = $headerLevels[count($headerLevels) - 1];
+            $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
+            $bodyEntries = array_slice($entries, $headerEndIndex + 1);
+        }
+
+        [$dataRows, $bodyWarnings] = $this->classifyBody($bodyEntries, $structuralGroupRows);
+        $warnings = [...$headerWarnings, ...$bodyWarnings];
 
         if (count($headers) > self::MAX_COLUMNS) {
             throw new UnreadableSpreadsheet(__('A tabela tem colunas a mais para ser lida com segurança.'));
@@ -129,18 +153,12 @@ class NormaliseExtractedTable
             ]));
         }
 
-        return new TableGrid($headers, array_map(
+        $grid = new TableGrid($headers, array_map(
             fn (array $row) => array_map('strval', array_slice($row, 0, count($headers))),
             $dataRows,
         ));
-    }
 
-    /**
-     * @return list<string>
-     */
-    public function warnings(): array
-    {
-        return $this->warnings;
+        return new NormalisedTable($grid, $warnings);
     }
 
     /**
@@ -207,6 +225,23 @@ class NormaliseExtractedTable
             }
         }
 
+        // Bounded BEFORE allocating, not after. Every extractor already
+        // refuses a source with more than MAX_ROWS <tr>/w:tr/… elements, but
+        // that check never sees this method's input: it runs on the SOURCE's
+        // own row count, while this reads ExtractedCell::$row/$rowspan, which
+        // is a plain int a caller could construct with any value at all (an
+        // ExtractedTable built by hand, or a future source whose row numbers
+        // come from somewhere sparse). A row number in the tens of thousands
+        // would otherwise turn array_fill() below into a multi-hundred-
+        // megabyte allocation for a handful of actual cells — refused here,
+        // at the one place that is about to make that allocation, rather
+        // than relying on every future caller to have already checked.
+        if ($totalRows > self::MAX_ROWS) {
+            throw new UnreadableSpreadsheet(__('A tabela tem :count linhas — mais do que esta importação aceita de uma vez. Importe uma turma de cada vez.', [
+                'count' => $totalRows,
+            ]));
+        }
+
         $matrix = array_fill(0, $totalRows, array_fill(0, $columnCount, ''));
 
         foreach ($table->rows as $row) {
@@ -235,9 +270,8 @@ class NormaliseExtractedTable
      * @param  list<list<string>>  $matrix
      * @return list<int>
      */
-    private function headerLevels(array $matrix): array
+    private function headerLevels(array $matrix, int $primary): array
     {
-        $primary = (new FindHeaderRow)->find($matrix);
         $levels = [$primary];
 
         // Walk upward while the row above still looks like a header level
@@ -254,6 +288,43 @@ class NormaliseExtractedTable
     }
 
     /**
+     * Stand-in column labels for a table FindHeaderRow could not identify a
+     * header row in at all (F7) — «Coluna 1», «Coluna 2», … — so downstream
+     * (the preview, ClassifyColumns) still has a non-empty string per column
+     * rather than needing a special case for "no header". The teacher sees
+     * these in the preview and can rename what matters; what they must never
+     * see is one of their own students silently missing instead.
+     *
+     * @return list<string>
+     */
+    private function genericHeaders(int $columnCount): array
+    {
+        $headers = [];
+
+        for ($column = 1; $column <= $columnCount; $column++) {
+            $headers[] = __('Coluna :number', ['number' => $column]);
+        }
+
+        return $headers;
+    }
+
+    /**
+     * F13: this used to accept ANY row with 2+ short (<=40 char) non-empty
+     * cells as a joinable header level — which is also exactly the shape a
+     * school's own letterhead takes above the real header: «Escola Básica de
+     * Miraflores» next to «2026/2027», both short, both non-empty. Joined the
+     * same way a real «Apoio»/«Ing.» pair is, that turns every column's
+     * label into «Escola Básica de Miraflores Nome» — the institution's name
+     * leaking into data the preview, and eventually the class record,
+     * actually stores.
+     *
+     * A genuine header level — «Apoio», «Medidas», «Ing.» — is a LABEL: one
+     * or two words, never a digit in sight. A letterhead line is a
+     * SENTENCE-ISH FRAGMENT (a school's full name tends to run three words
+     * or more) or carries a year («2026/2027», «2026»), which a column
+     * label never does. Both are now enough on their own to disqualify the
+     * whole row from being folded into the header.
+     *
      * @param  list<string>  $row
      */
     private function looksLikeHeaderLevel(array $row): bool
@@ -266,6 +337,14 @@ class NormaliseExtractedTable
 
         foreach ($nonEmpty as $cell) {
             if (mb_strlen($cell) > 40) {
+                return false;
+            }
+
+            if (preg_match('/\d/u', $cell) === 1) {
+                return false;
+            }
+
+            if (count(preg_split('/\s+/u', trim($cell)) ?: []) > 3) {
                 return false;
             }
         }
@@ -301,11 +380,11 @@ class NormaliseExtractedTable
 
     /**
      * Data rows only — Group and Legend rows are dropped here, after being
-     * counted into warnings().
+     * counted into the warnings returned alongside the data rows.
      *
      * @param  list<array{number: int, cells: list<string>}>  $bodyEntries
      * @param  array<int, true>  $structuralGroupRows  row numbers already known to be a merged caption — see structuralGroupRowNumbers()
-     * @return list<list<string>>
+     * @return array{0: list<list<string>>, 1: list<string>}
      */
     private function classifyBody(array $bodyEntries, array $structuralGroupRows): array
     {
@@ -342,8 +421,10 @@ class NormaliseExtractedTable
         $groupCount = count(array_filter($kinds, fn (ExtractedRowKind $kind) => $kind === ExtractedRowKind::Group));
         $legendCount = count(array_filter($kinds, fn (ExtractedRowKind $kind) => $kind === ExtractedRowKind::Legend));
 
+        $warnings = [];
+
         if ($groupCount > 0) {
-            $this->warnings[] = trans_choice(
+            $warnings[] = trans_choice(
                 ':count linha de agrupamento não foi importada como aluno.|:count linhas de agrupamento não foram importadas como alunos.',
                 $groupCount,
                 ['count' => $groupCount],
@@ -351,7 +432,7 @@ class NormaliseExtractedTable
         }
 
         if ($legendCount > 0) {
-            $this->warnings[] = trans_choice(
+            $warnings[] = trans_choice(
                 ':count linha de legenda foi ignorada.|:count linhas de legenda foram ignoradas.',
                 $legendCount,
                 ['count' => $legendCount],
@@ -366,7 +447,7 @@ class NormaliseExtractedTable
             }
         }
 
-        return $data;
+        return [$data, $warnings];
     }
 
     /**
@@ -420,8 +501,33 @@ class NormaliseExtractedTable
     }
 
     /**
-     * A trailing caption/key: a " - " glossary pair («MU - Medidas
-     * Universais»), or a row starting with a recognised legend marker.
+     * A trailing caption/key: a «MU - Medidas Universais»-style glossary
+     * line, or a row starting with a recognised legend marker («Legenda»,
+     * «Nota:», «Key:»).
+     *
+     * THIS USED TO MATCH ANY CELL CONTAINING " - " AT ALL, which also
+     * matches ordinary free-text observations a teacher writes about a real
+     * student — «Apoio tutorial - 2x por semana» reads exactly like that, and
+     * the backward legend-trim walk above would drop that student's whole
+     * row as if it were a caption. A caption wrongly imported is one untick
+     * in the preview; a child silently missing from it is not recoverable —
+     * so this now requires the row to be STRUCTURALLY caption-like before a
+     * " - " is allowed to mean anything:
+     *
+     *  - few non-empty cells (a real row of data — name, notes, measures —
+     *    tends to fill more of the table than a one- or two-cell caption
+     *    does);
+     *  - no cell reads like a person's name (two or more capitalised words,
+     *    no digits — the same shape a name takes everywhere else in this
+     *    importer); a row that names someone is a student, never a glossary
+     *    entry;
+     *  - AND at least one cell has the glossary's own shape: a short
+     *    acronym followed by " - " («MU - …», «AAA - …»), not merely any
+     *    text that happens to contain a hyphen surrounded by spaces.
+     *
+     * Where none of this is met, the row stays Data — exactly the same
+     * "when in doubt, do not drop" rule looksLikeGroupByContent() documents
+     * for group rows.
      *
      * @param  list<string>  $row
      */
@@ -429,8 +535,14 @@ class NormaliseExtractedTable
     {
         $nonEmpty = array_values(array_filter($row, fn (string $cell) => trim($cell) !== ''));
 
-        if ($nonEmpty === []) {
+        if ($nonEmpty === [] || count($nonEmpty) > 2) {
             return false;
+        }
+
+        foreach ($nonEmpty as $cell) {
+            if ($this->looksLikePersonName($cell)) {
+                return false;
+            }
         }
 
         foreach ($nonEmpty as $cell) {
@@ -440,11 +552,40 @@ class NormaliseExtractedTable
                 return true;
             }
 
-            if (str_contains($cell, ' - ')) {
+            // A short KEY followed by " - " — an acronym («MU - Medidas
+            // Universais»), or a short label a school's own key uses («X
+            // (continua) - N (novo)», «Coadjuvação - trabalho articulado…»).
+            // "Short" is what does the work here, not case: a real
+            // observation's lead-in before its own " - " tends to run
+            // longer than a glossary's key ever does, and — more
+            // importantly — this test only ever runs on a cell that already
+            // survived the name check above, so a row that also names a
+            // student («Bruno Costa | Apoio tutorial - 2x por semana») never
+            // reaches this branch at all: it was ruled out by
+            // looksLikePersonName() first, whatever this pattern matches.
+            if (preg_match('/^.{1,28}?\s-\s/u', trim($cell)) === 1) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Two or more capitalised words, no digits — the shape a person's name
+     * takes throughout this importer. Deliberately loose: it exists only to
+     * RULE OUT a cell from being mistaken for a caption, so a false positive
+     * here (treating some non-name text as name-shaped) merely keeps a row
+     * as Data, which is always the safe direction.
+     */
+    private function looksLikePersonName(string $cell): bool
+    {
+        $trimmed = trim($cell);
+
+        if ($trimmed === '' || preg_match('/\d/u', $trimmed) === 1) {
+            return false;
+        }
+
+        return preg_match('/^\p{Lu}[\p{Ll}\'-]+(\s+(d[aeo]s?|e)\s+|\s+)\p{Lu}[\p{Ll}\'-]+/u', $trimmed) === 1;
     }
 }
