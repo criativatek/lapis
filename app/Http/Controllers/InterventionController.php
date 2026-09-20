@@ -318,6 +318,9 @@ class InterventionController extends Controller
             // Arriving from a student's page: the class is in the URL and the
             // student is named here, so the form opens on them (§17).
             'prefill' => $this->prefillFrom($request, $class),
+            // Where «Voltar»/«Concluir» take the teacher back to (navigation
+            // only — never trusted from an arbitrary URL, see backTo()).
+            'backTo' => $this->backTo($request, $class),
         ]);
     }
 
@@ -379,6 +382,41 @@ class InterventionController extends Controller
                 'tracking_indicator' => $this->queryText($request, 'indicador', 300),
                 'review_suggestion' => $this->queryText($request, 'revisao', 500),
             ],
+        ];
+    }
+
+    /**
+     * WHERE «VOLTAR»/«CONCLUIR» LEAD.
+     *
+     * The teacher's place of origin is never taken from an arbitrary URL: it is
+     * resolved to a known route plus a model this teacher is authorised to see,
+     * the same discipline `prefillFrom()` already applies to `?aluno=`. Arriving
+     * with a valid `aluno` — which is exactly the shape the student page's
+     * "Adicionar estratégia" link sends — sends the teacher back to that
+     * student. Anything else, including a bogus or unauthorised `aluno`, falls
+     * back to the class list (`interventions.index`): never a dead end, and
+     * never a page this teacher could not already reach.
+     *
+     * @return array{label: string, href: string}
+     */
+    protected function backTo(Request $request, SchoolClass $class): array
+    {
+        $ulid = $request->query('aluno');
+
+        if (is_string($ulid) && $ulid !== '') {
+            $enrollment = $class->activeEnrollments()->where('ulid', $ulid)->first();
+
+            if ($enrollment !== null) {
+                return [
+                    'label' => __('Voltar ao aluno'),
+                    'href' => route('student-progress.student', ['class' => $class->ulid, 'enrollment' => $enrollment->ulid]),
+                ];
+            }
+        }
+
+        return [
+            'label' => __('Voltar'),
+            'href' => route('interventions.index'),
         ];
     }
 

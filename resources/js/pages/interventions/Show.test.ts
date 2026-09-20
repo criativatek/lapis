@@ -18,7 +18,7 @@ vi.mock('@inertiajs/vue3', () => ({
         inheritAttrs: false,
         setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()),
     }),
-    router: { get: mocks.get, patch: mocks.patch, delete: vi.fn() },
+    router: { get: mocks.get, patch: mocks.patch, delete: vi.fn(), on: vi.fn(() => vi.fn()) },
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
             ...data,
@@ -137,6 +137,7 @@ function props(overrides: Record<string, unknown> = {}) {
         filters: {},
         interventions: [],
         prefill: null,
+        backTo: { label: 'Voltar', href: '/interventions' },
         ...overrides,
     };
 }
