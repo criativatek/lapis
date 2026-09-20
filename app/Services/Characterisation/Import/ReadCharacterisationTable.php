@@ -168,6 +168,20 @@ class ReadCharacterisationTable
     }
 
     /**
+     * Whatever NormaliseExtractedTable had to leave out of the most recent
+     * fromExtractedTable()/fromPastedHtml() call — a caption or legend row
+     * dropped, say. Empty for fromPastedText()/fromUploadedFile(), which
+     * never go through the normaliser: there is nothing to report because
+     * there is no ExtractedTable classification happening on those paths.
+     *
+     * @return list<string>
+     */
+    public function lastWarnings(): array
+    {
+        return $this->normaliser->warnings();
+    }
+
+    /**
      * A .docx can hold several tables — a class characterisation and a
      * legend table, say — so this returns all of them rather than guessing
      * which one the teacher meant. The controller decides what to do with
