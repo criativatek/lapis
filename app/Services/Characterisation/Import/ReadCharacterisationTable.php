@@ -4,18 +4,25 @@ namespace App\Services\Characterisation\Import;
 
 use App\Domain\Import\Tabular\TabularCell;
 use App\Domain\Import\Tabular\TabularSheet;
+use App\Services\Characterisation\Import\Extraction\DocxTableExtractor;
+use App\Services\Characterisation\Import\Extraction\ExtractedTable;
+use App\Services\Characterisation\Import\Extraction\HtmlTableExtractor;
+use App\Services\Characterisation\Import\Extraction\NormaliseExtractedTable;
 use App\Services\Import\Tabular\CsvTabularReader;
 use App\Services\Import\Tabular\UnreadableSpreadsheet;
 use App\Services\Import\Tabular\XlsxTabularReader;
 use Illuminate\Http\UploadedFile;
 
 /**
- * Turns the three things a teacher can hand us into one TableGrid.
+ * Turns whatever a teacher hands us into one TableGrid.
  *
- * Pasted text, CSV and XLSX — and nothing else. PDF and images would need OCR,
- * which is a subsystem rather than a parser, and the architecture does not need
- * it in order to be ready for it: everything downstream reads a TableGrid, so a
- * future source arrives by producing one.
+ * Pasted text, pasted HTML (from Word/Excel/Google Sheets clipboards), CSV,
+ * XLSX and .docx tables — a live image paste and an OCR'd upload would need a
+ * recognition subsystem rather than a parser, and the architecture does not
+ * need those to exist yet in order to be ready for them: everything downstream
+ * reads a TableGrid, so a future source arrives by producing an ExtractedTable
+ * and calling fromExtractedTable(), exactly like every source above already
+ * does.
  *
  * FILES ARE READ BY THE READERS THAT ALREADY EXIST. CsvTabularReader and
  * XlsxTabularReader were written for the correction-grid importer and they
@@ -43,6 +50,9 @@ class ReadCharacterisationTable
     public function __construct(
         private readonly CsvTabularReader $csv = new CsvTabularReader,
         private readonly XlsxTabularReader $xlsx = new XlsxTabularReader,
+        private readonly HtmlTableExtractor $html = new HtmlTableExtractor,
+        private readonly DocxTableExtractor $docx = new DocxTableExtractor,
+        private readonly NormaliseExtractedTable $normaliser = new NormaliseExtractedTable,
     ) {}
 
     /**
@@ -62,7 +72,7 @@ class ReadCharacterisationTable
             throw new UnreadableSpreadsheet(__('Não foi possível ler nenhuma linha do texto colado. Copie a tabela incluindo a linha dos títulos.'));
         }
 
-        $delimiter = $this->sniffDelimiter($lines);
+        $delimiter = (new SniffDelimiter)->sniff($lines);
 
         $matrix = array_map(
             // str_getcsv yields null for an unquoted empty trailing field, and
@@ -121,6 +131,56 @@ class ReadCharacterisationTable
     }
 
     /**
+     * A clipboard HTML fragment — Word, Excel and Google Sheets all put a real
+     * `<table>` on the clipboard alongside their plain text, and reading it
+     * instead of the plain text is strictly more information for free: a
+     * merged cell, a multiline cell, a multi-level header are all visible in
+     * the markup and already lost in the tab-separated text next to it.
+     *
+     * Routed through HtmlTableExtractor + NormaliseExtractedTable rather than
+     * parsed here, because turning merged cells into a rectangle and turning
+     * rows into Header/Group/Legend/Data is exactly what fromExtractedTable's
+     * pipeline already does — a second copy of that classification, tuned
+     * only for this entry point, is exactly the kind of drift this feature's
+     * architecture (everything downstream reads one shape) exists to avoid.
+     */
+    public function fromPastedHtml(string $html): TableGrid
+    {
+        $tables = $this->html->extract($html);
+
+        if ($tables === []) {
+            throw new UnreadableSpreadsheet(__('Não foi possível reconhecer nenhuma tabela no conteúdo colado.'));
+        }
+
+        return $this->fromExtractedTable($tables[0]);
+    }
+
+    /**
+     * The shared landing point for every ExtractedTable, whatever produced
+     * it — pasted HTML, a spreadsheet, one table out of several read from a
+     * .docx. NormaliseExtractedTable is what actually expands merges and
+     * classifies rows; this method exists so callers reach it through the
+     * same class that already enforces MAX_ROWS/MAX_COLUMNS elsewhere.
+     */
+    public function fromExtractedTable(ExtractedTable $table): TableGrid
+    {
+        return $this->normaliser->normalise($table);
+    }
+
+    /**
+     * A .docx can hold several tables — a class characterisation and a
+     * legend table, say — so this returns all of them rather than guessing
+     * which one the teacher meant. The controller decides what to do with
+     * more than one; this method's job stops at reading them.
+     *
+     * @return list<ExtractedTable>
+     */
+    public function tablesFromUploadedFile(UploadedFile $file): array
+    {
+        return $this->docx->extract($file);
+    }
+
+    /**
      * @param  list<list<string>>  $matrix
      */
     private function toGrid(array $matrix): TableGrid
@@ -134,7 +194,7 @@ class ReadCharacterisationTable
             throw new UnreadableSpreadsheet(__('A tabela não tem linhas com conteúdo.'));
         }
 
-        $headerIndex = $this->findHeaderRow($matrix);
+        $headerIndex = (new FindHeaderRow)->find($matrix);
         $headers = array_map('strval', $matrix[$headerIndex]);
         $rows = array_slice($matrix, $headerIndex + 1);
 
@@ -152,93 +212,5 @@ class ReadCharacterisationTable
             fn (array $row) => array_map('strval', array_slice($row, 0, count($headers))),
             $rows,
         ));
-    }
-
-    /**
-     * School exports put a printed report above the data — school name, year, a
-     * title — so the header is rarely row 1. Find it by content, the way the
-     * roster importer finds «N.º MATR.» / «NOME», rather than trusting position.
-     *
-     * A candidate row must name the student somehow: a line of prose that
-     * happens to contain the word «notas» is not a header, and treating it as
-     * one would shift every student's text up by a row.
-     *
-     * @param  list<list<string>>  $matrix
-     */
-    private function findHeaderRow(array $matrix): int
-    {
-        $classifier = new ClassifyColumns;
-        $bestIndex = 0;
-        $bestScore = -1;
-
-        foreach (array_slice($matrix, 0, 15) as $index => $row) {
-            $columns = $classifier->classify(new TableGrid(array_map('strval', $row), []));
-
-            $namesStudent = array_filter(
-                $columns,
-                fn (ClassifiedColumn $column) => $column->role->isIdentifying(),
-            );
-
-            if ($namesStudent === []) {
-                continue;
-            }
-
-            $score = count(array_filter(
-                $columns,
-                fn (ClassifiedColumn $column) => $column->role !== ColumnRole::Unknown,
-            ));
-
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $bestIndex = $index;
-            }
-        }
-
-        return $bestScore < 0 ? 0 : $bestIndex;
-    }
-
-    /**
-     * Measured, not preferred: the delimiter that yields the same field count on
-     * the most lines wins. A Portuguese export separated by semicolons is at
-     * least as common as a comma-separated one, and a name like «Silva, Ana»
-     * makes the naive choice actively wrong.
-     *
-     * @param  list<string>  $lines
-     */
-    private function sniffDelimiter(array $lines): string
-    {
-        $sample = array_slice($lines, 0, 10);
-        $best = "\t";
-        $bestScore = 0;
-
-        foreach (["\t", ';', ',', '|'] as $candidate) {
-            $counts = array_map(
-                fn (string $line) => count(str_getcsv($line, $candidate, '"', '\\')),
-                $sample,
-            );
-
-            if ($counts === []) {
-                continue;
-            }
-
-            $fields = max($counts);
-
-            if ($fields < 2) {
-                continue;
-            }
-
-            // Consistency is what identifies a delimiter; a character that
-            // splits one line into nine fields and the next into two is
-            // punctuation, not structure.
-            $consistent = count(array_filter($counts, fn (int $count) => $count === $fields));
-            $score = $consistent * 100 + $fields;
-
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $best = $candidate;
-            }
-        }
-
-        return $best;
     }
 }
