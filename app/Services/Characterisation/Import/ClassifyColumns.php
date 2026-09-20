@@ -2,7 +2,9 @@
 
 namespace App\Services\Characterisation\Import;
 
+use App\Models\CatalogueFamily;
 use App\Models\SupportMeasureLevel;
+use App\Support\Characterisation\AcronymDictionary;
 use Illuminate\Support\Str;
 
 /**
@@ -16,6 +18,10 @@ use Illuminate\Support\Str;
  */
 class ClassifyColumns
 {
+    public function __construct(
+        private readonly AcronymDictionary $acronyms = new AcronymDictionary,
+    ) {}
+
     /**
      * Header fragments, per role. First match wins, so the list is ordered from
      * most specific to least: "n.º de processo" must be tested before "n.º".
@@ -88,16 +94,63 @@ class ClassifyColumns
             }
         }
 
-        return ColumnRole::Unknown;
+        return $this->roleFromAcronym($header) ?? ColumnRole::Unknown;
+    }
+
+    /**
+     * A header that doesn't say "medida" or "apoio" may still say nothing but a
+     * confirmed acronym — the real tables this feature was built to read use
+     * "MU"/"MS"/"MA" as their measures columns' entire headers, never the
+     * spelled-out words. AcronymDictionary is the single source of truth for
+     * which acronyms are confirmed (§20): this must not hardcode a second list
+     * of legal codes, so it asks the dictionary rather than matching "MU"
+     * itself.
+     *
+     * The match is on the WHOLE header, not a fragment of it — a header must BE
+     * the acronym, not merely contain it, or "Outras medidas/recursos" would
+     * classify by a stray substring and a student's own name could too.
+     *
+     * An unconfirmed acronym (RTP, PEI, ATE...) is recognised as an acronym but
+     * carries no level and no family, so it resolves to nothing here and stays
+     * Unknown — exactly the dictionary's contract, and exactly why RTP/PEI must
+     * not become a measures column even though they are legally adjacent.
+     */
+    private function roleFromAcronym(string $header): ?ColumnRole
+    {
+        $entry = $this->acronyms->find(trim($header));
+
+        if ($entry === null || ! $entry->isConfirmed()) {
+            return null;
+        }
+
+        if ($entry->level !== null) {
+            return ColumnRole::Measures;
+        }
+
+        if ($entry->family === CatalogueFamily::SupportResource) {
+            return ColumnRole::Resources;
+        }
+
+        return null;
     }
 
     /**
      * A measures column may name its own level — "Medidas seletivas" — and that
      * is what lets the letters underneath it mean something. Without it the
      * column carries no level and the cells stay ambiguous, which is correct.
+     *
+     * The dictionary is consulted first: a header that is bare "MU" carries no
+     * word like "universa" for the text match below to find, but the confirmed
+     * acronym already names its level.
      */
     private function levelFor(string $header): ?SupportMeasureLevel
     {
+        $entry = $this->acronyms->find(trim($header));
+
+        if ($entry !== null && $entry->level !== null) {
+            return $entry->level;
+        }
+
         $folded = $this->fold($header);
 
         return match (true) {
