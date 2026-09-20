@@ -50,7 +50,24 @@ describe('resolvePastePayload', () => {
         expect(payload).toEqual({ kind: 'text', text: 'Aluno\tObservações\nAna Silva\tTexto.' });
     });
 
-    it('routes an image clipboard paste to the image seam', () => {
+    // The shape a BROWSER actually produces for Ctrl+V of a screenshot, measured
+    // in Chromium: `types` is `["Files"]` — never `["image/png"]` — and the media
+    // type lives on the file. The earlier version of this test asserted
+    // `types: ['image/png']`, a shape no browser emits, so it passed while the
+    // only gesture the OCR path exists for could never reach it.
+    it('routes a pasted screenshot to the image seam, which announces itself as "Files"', () => {
+        const file = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        const payload = resolvePastePayload({
+            types: ['Files'],
+            getData: () => '',
+            files: [file],
+        });
+
+        expect(payload).toEqual({ kind: 'image', file });
+    });
+
+    it('still routes an image when the clipboard does announce a concrete image type', () => {
         const file = new File(['fake'], 'tabela.png', { type: 'image/png' });
 
         const payload = resolvePastePayload({
@@ -60,6 +77,22 @@ describe('resolvePastePayload', () => {
         });
 
         expect(payload).toEqual({ kind: 'image', file });
+    });
+
+    // Priority still holds: a spreadsheet paste carries BOTH a table and, on some
+    // platforms, an image of it. The table must win — an image of a table read by
+    // OCR is strictly worse than the table itself.
+    it('prefers an HTML table over an image that arrives alongside it', () => {
+        const file = new File(['fake'], 'tabela.png', { type: 'image/png' });
+
+        const payload = resolvePastePayload({
+            types: ['text/html', 'Files'],
+            getData: (format: string) =>
+                format === 'text/html' ? '<table><tr><td>Ana Silva</td></tr></table>' : '',
+            files: [file],
+        });
+
+        expect(payload).toEqual({ kind: 'html', html: '<table><tr><td>Ana Silva</td></tr></table>' });
     });
 
     it('falls back to plain text/plain when nothing else is present', () => {
