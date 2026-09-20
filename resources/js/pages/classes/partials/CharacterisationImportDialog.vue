@@ -14,7 +14,7 @@
  * de «o professor decide» do resto da funcionalidade.
  */
 import { router } from '@inertiajs/vue3';
-import { AlertTriangle, FileUp, Loader2 } from '@lucide/vue';
+import { AlertTriangle, FileUp, ImageOff, Loader2 } from '@lucide/vue';
 import { computed, reactive, ref, watch } from 'vue';
 import FileInput from '@/components/FileInput.vue';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Textarea } from '@/components/ui/textarea';
+import { extractTableFromImage } from './characterisation-image-extraction';
+import { resolvePastePayload } from './characterisation-paste-priority';
 
 type StudentOption = { ulid: string; name: string; class_number: number | null };
 
@@ -73,8 +75,14 @@ type PreviewResponse = {
     };
     source_kind: string;
     original_filename: string | null;
+    warnings: string[];
     sections: { key: string; label: string }[];
 };
+
+// Devolvido em vez de `preview` quando um .docx tem mais do que uma tabela
+// (§ item 3) — sem escolha nenhuma feita a adivinhar.
+type DocxTableChoice = { index: number; row_count: number; column_count: number; label: string };
+type TableChooserResponse = { tables: DocxTableChoice[] };
 
 const props = defineProps<{
     open: boolean;
@@ -93,15 +101,22 @@ type RowState = {
     sections: Record<string, string>;
 };
 
-const step = ref<'input' | 'preview'>('input');
+const step = ref<'input' | 'chooser' | 'preview'>('input');
 const pastedText = ref('');
+const pastedHtml = ref('');
 const file = ref<File | null>(null);
 const loading = ref(false);
 const submitting = ref(false);
 const loadError = ref<string | null>(null);
+// Imagem detetada no clipboard, mas sem destino estruturado ainda (§ item 6):
+// a extração de imagem é uma fatia futura, e isto existe só para dizer isso
+// com clareza em vez de falhar em silêncio.
+const imageDetected = ref<{ file: File | Blob; error: string } | null>(null);
 
 const previewData = ref<PreviewResponse | null>(null);
 const rowStates = reactive<Record<number, RowState>>({});
+
+const tableChoices = ref<DocxTableChoice[] | null>(null);
 
 watch(
     () => props.open,
@@ -115,22 +130,76 @@ watch(
 function resetToInput(): void {
     step.value = 'input';
     pastedText.value = '';
+    pastedHtml.value = '';
     file.value = null;
     loadError.value = null;
     previewData.value = null;
+    imageDetected.value = null;
+    tableChoices.value = null;
     Object.keys(rowStates).forEach((key) => delete rowStates[Number(key)]);
 }
 
 function onFileChange(event: Event): void {
     file.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+    pastedHtml.value = '';
+    imageDetected.value = null;
+}
+
+// A prioridade da cola está isolada em characterisation-paste-priority.ts
+// (§8): HTML com tabela primeiro, texto tabular depois, imagem a seguir, e só
+// no fim texto simples — nunca o inverso, que é exatamente o que perdia a
+// estrutura de uma tabela colada do Word/Excel.
+function onPaste(event: ClipboardEvent): void {
+    if (event.clipboardData === null) {
+        return;
+    }
+
+    const payload = resolvePastePayload(event.clipboardData);
+
+    if (payload.kind === 'none') {
+        return;
+    }
+
+    event.preventDefault();
+    file.value = null;
+    imageDetected.value = null;
+
+    if (payload.kind === 'html') {
+        pastedHtml.value = payload.html;
+        pastedText.value = '';
+
+        return;
+    }
+
+    if (payload.kind === 'text') {
+        pastedText.value = payload.text;
+        pastedHtml.value = '';
+
+        return;
+    }
+
+    if (payload.kind === 'image') {
+        pastedText.value = '';
+        pastedHtml.value = '';
+        handleImage(payload.file);
+    }
+}
+
+function handleImage(imageFile: File | Blob): void {
+    extractTableFromImage(imageFile).catch(() => {
+        imageDetected.value = {
+            file: imageFile,
+            error: 'A importação a partir de imagens ainda não está disponível. Cole a tabela em texto ou escolha um ficheiro.',
+        };
+    });
 }
 
 function csrfToken(): string {
     return decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? '');
 }
 
-async function loadPreview(): Promise<void> {
-    if (pastedText.value.trim() === '' && file.value === null) {
+async function loadPreview(tableIndex: number | null = null): Promise<void> {
+    if (pastedText.value.trim() === '' && pastedHtml.value.trim() === '' && file.value === null) {
         loadError.value = 'Cole a tabela ou escolha um ficheiro.';
 
         return;
@@ -143,6 +212,12 @@ async function loadPreview(): Promise<void> {
 
     if (file.value !== null) {
         body.append('file', file.value);
+
+        if (tableIndex !== null) {
+            body.append('table_index', String(tableIndex));
+        }
+    } else if (pastedHtml.value !== '') {
+        body.append('pasted_html', pastedHtml.value);
     } else {
         body.append('pasted_text', pastedText.value);
     }
@@ -163,9 +238,21 @@ async function loadPreview(): Promise<void> {
         if (!response.ok) {
             loadError.value =
                 (payload?.errors?.file?.[0] as string | undefined) ??
+                (payload?.errors?.pasted_html?.[0] as string | undefined) ??
                 (payload?.errors?.pasted_text?.[0] as string | undefined) ??
                 (payload?.message as string | undefined) ??
                 'Não foi possível ler o ficheiro.';
+
+            return;
+        }
+
+        // Um .docx com mais do que uma tabela devolve um seletor, sem
+        // `preview` nenhuma — nunca se adivinha qual delas era a certa
+        // (§ item 3).
+        if (!('preview' in payload)) {
+            const chooser = payload as TableChooserResponse;
+            tableChoices.value = chooser.tables;
+            step.value = 'chooser';
 
             return;
         }
@@ -189,6 +276,10 @@ async function loadPreview(): Promise<void> {
     } finally {
         loading.value = false;
     }
+}
+
+function chooseTable(index: number): void {
+    void loadPreview(index);
 }
 
 const rows = computed(() => Object.values(rowStates).sort((a, b) => a.row.row_number - b.row.row_number));
@@ -288,27 +379,40 @@ function closeDialog(): void {
             <template v-if="step === 'input'">
                 <div class="space-y-4 py-2">
                     <p class="text-sm text-muted-foreground">
-                        Cole uma tabela copiada do Excel ou do Google Sheets, ou escolha um ficheiro CSV ou
-                        XLSX. Colar do Excel funciona diretamente — não é preciso guardar como CSV primeiro.
+                        Cole uma tabela do Word, Excel ou Google Sheets, cole uma imagem da tabela ou escolha um
+                        ficheiro. Colar do Word ou do Excel funciona diretamente — não é preciso guardar como
+                        CSV primeiro.
                     </p>
                     <div class="grid gap-2">
                         <Label for="characterisation-paste">Colar tabela</Label>
+                        <!-- Alcançável pelo teclado (§51): é o próprio campo de
+                             texto que recebe o Ctrl+V, sem depender de um
+                             clique numa div sem foco. -->
                         <Textarea
                             id="characterisation-paste"
                             v-model="pastedText"
                             rows="6"
                             placeholder="Cole aqui a tabela…"
                             :disabled="file !== null"
+                            @paste="onPaste"
                         />
+                        <p v-if="pastedHtml !== ''" class="text-xs text-muted-foreground">
+                            Tabela reconhecida na cola — pronta a pré-visualizar.
+                        </p>
+                    </div>
+                    <div v-if="imageDetected" class="flex items-start gap-2 rounded-md border p-2 text-sm">
+                        <ImageOff class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <p>Imagem detetada. {{ imageDetected.error }}</p>
                     </div>
                     <div class="grid gap-2">
                         <Label for="characterisation-file">Ou escolha um ficheiro</Label>
                         <FileInput
                             id="characterisation-file"
-                            accept=".csv,.xlsx"
-                            :disabled="pastedText.trim() !== ''"
+                            accept=".csv,.xlsx,.docx,.png,.jpg,.jpeg,.webp"
+                            :disabled="pastedText.trim() !== '' || pastedHtml.trim() !== ''"
                             @change="onFileChange"
                         />
+                        <p class="text-xs text-muted-foreground">Word (.docx), Excel (.xlsx), CSV ou Imagem (.png, .jpg, .webp).</p>
                     </div>
                     <p v-if="loadError" class="flex items-center gap-1.5 text-sm text-destructive">
                         <AlertTriangle class="size-4" /> {{ loadError }}
@@ -316,11 +420,33 @@ function closeDialog(): void {
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" @click="closeDialog">Cancelar</Button>
-                    <Button type="button" :disabled="loading" @click="loadPreview">
+                    <Button type="button" :disabled="loading" @click="() => loadPreview()">
                         <Loader2 v-if="loading" class="size-4 animate-spin" />
                         <FileUp v-else class="size-4" />
                         Pré-visualizar
                     </Button>
+                </DialogFooter>
+            </template>
+
+            <template v-else-if="step === 'chooser' && tableChoices !== null">
+                <div class="space-y-3 py-2">
+                    <p class="text-sm text-muted-foreground">
+                        Este documento tem mais do que uma tabela. Escolha qual delas é a caracterização a importar.
+                    </p>
+                    <ul class="space-y-2">
+                        <li v-for="choice in tableChoices" :key="choice.index">
+                            <button
+                                type="button"
+                                class="w-full rounded-md border p-3 text-left text-sm hover:bg-accent"
+                                @click="chooseTable(choice.index)"
+                            >
+                                {{ choice.label }}
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="step = 'input'">Voltar</Button>
                 </DialogFooter>
             </template>
 
@@ -330,6 +456,16 @@ function closeDialog(): void {
                         Reveja cada linha antes de confirmar. Só as linhas assinaladas serão gravadas —
                         o que não for reconhecido não é guardado.
                     </p>
+
+                    <!-- Avisos de leitura (§40): transmitidos em texto, não só
+                         pela cor — uma legenda ou linha de grupo ignorada não
+                         é um erro, mas o professor tem de saber que ficou de
+                         fora. -->
+                    <ul v-if="previewData.warnings.length > 0" class="space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
+                        <li v-for="(warning, index) in previewData.warnings" :key="index" class="flex items-start gap-1.5">
+                            <AlertTriangle class="mt-0.5 size-3.5 shrink-0" /> {{ warning }}
+                        </li>
+                    </ul>
 
                     <!-- Empilhado em cartões a toda a largura, para caber sem scroll
                          horizontal a 390px (o requisito da spec §7). -->
