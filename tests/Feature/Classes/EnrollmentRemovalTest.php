@@ -495,15 +495,19 @@ class EnrollmentRemovalTest extends TestCase
         // Uma query pelos ids da turma, mais uma por relação. NUNCA uma por
         // aluno: doze alunos ou trinta, o custo é o mesmo — que é a condição
         // sob a qual esta antecipação pode viver no ecrã da turma.
-        // 14 = 1 (ids da turma) + 13 relações de EnrollmentHistory::RELATIONS,
-        // 15, MEDIDO E NÃO DEDUZIDO. `idsWithHistoryIn()` custa uma query
-        // pelos ids da turma mais uma por entrada de
-        // `EnrollmentHistory::RELATIONS` (são treze, agora que
-        // `enrollment_characterisations` e `external_subject_results`
-        // passaram a ser duas delas); a que sobra é a resolução do tenant
-        // que o `runFor()` deste próprio teste paga. A fórmula que este
-        // comentário trazia antes estava desencontrada por essa mesma
-        // unidade — o número foi agora medido.
+        // 15, MEDIDO E NÃO DEDUZIDO — 1 + 13 + 1.
+        //
+        // `idsWithHistoryIn()` custa uma query pelos ids da turma mais uma
+        // por entrada de `EnrollmentHistory::RELATIONS` (são treze, agora
+        // que `enrollment_characterisations` e `external_subject_results`
+        // passaram a ser duas delas): catorze.
+        //
+        // A DÉCIMA QUINTA NÃO É DO SERVIÇO, É DESTE TESTE:
+        // `$this->user->personalOrganization()` é avaliado como ARGUMENTO de
+        // `runFor()`, já dentro da janela do `DB::listen` aberta acima, e faz
+        // o seu próprio `->first()`. O `runFor()` em si não consulta nada —
+        // troca uma propriedade e devolve. Dizer o contrário seria pôr no
+        // comentário uma explicação que o código não confirma.
         //
         // O QUE ESTE CASO GUARDA NÃO É O NÚMERO: é que ele acompanha as
         // RELAÇÕES e nunca os ALUNOS. São doze alunos aqui de propósito, e

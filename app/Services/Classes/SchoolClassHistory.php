@@ -172,8 +172,19 @@ class SchoolClassHistory
      * turma de apoio continua inteiro na sua turma de origem.
      *
      * A ordem é a das chaves estrangeiras RESTRICT: aulas → pertenças a grupos
-     * → inscrições → tempos do horário → grupos. As ocorrências canceladas, os
-     * professores da turma e o pivô dos eventos saem sozinhos (cascade).
+     * → janelas de frequência da disciplina → inscrições → tempos do horário →
+     * grupos. As ocorrências canceladas, os professores da turma e o pivô dos
+     * eventos saem sozinhos (cascade).
+     *
+     * ESTA LISTA TEM DE ACOMPANHAR `EnrollmentHistory::CLEARED_WITH_ENROLLMENT`.
+     * As duas dizem a mesma coisa por caminhos diferentes — «isto sai com a
+     * inscrição, não a impede de sair» — mas aquela é percorrida em ciclo e
+     * esta está escrita à mão, pelo que uma entrada nova ali não aparece aqui
+     * sozinha. Quando não aparece, `blockingInPreparation()` não vê nada a
+     * bloquear (só consulta `RELATIONS`), o DELETE às inscrições bate na
+     * RESTRICT e o professor recebe uma recusa sem causa nomeada, para sempre:
+     * exatamente o beco que pôr estas tabelas fora de `RELATIONS` existe para
+     * evitar.
      */
     public function clearPreparation(SchoolClass $class): void
     {
@@ -186,6 +197,7 @@ class SchoolClassHistory
         // sua própria RESTRICT.
         DB::table('lessons')->where('class_id', $classId)->where('status', LessonStatus::Preparation->value)->delete();
         DB::table('class_group_memberships')->whereIn('enrollment_id', $enrollmentIds)->delete();
+        DB::table('subject_participations')->whereIn('enrollment_id', $enrollmentIds)->delete();
         DB::table('enrollments')->where('class_id', $classId)->delete();
         DB::table('recurring_lesson_slots')->where('class_id', $classId)->delete();
         DB::table('class_groups')->where('class_id', $classId)->delete();

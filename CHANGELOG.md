@@ -25,6 +25,76 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.151.0] — 2026-09-20
+
+Um aluno pode pertencer à turma e não frequentar uma das disciplinas — no 8.º F
+faz PLNM em vez de Português. Até aqui só havia duas respostas, e ambas erradas:
+deixá-lo na pauta a ser avaliado em instrumentos que não fez, ou removê-lo da
+turma e perder a história. Esta versão separa **pertença à turma** de
+**participação numa disciplina**.
+
+### Adicionado
+- **Participação por disciplina**, gerida no contexto da turma e junto da lista
+  de alunos, sem menu lateral novo e com o estado dito de forma discreta ao lado
+  do nome. Assenta na **inscrição** — uma linha de `classes` já é o par (turma,
+  disciplina) —, pelo que deixar de frequentar Português não toca em Matemática:
+  são inscrições diferentes. `enrollments.status` nunca é alterado; o aluno
+  continua na turma.
+- **Vigência temporal**: uma linha de `subject_participations` é um período de
+  NÃO-frequência, e a ausência de linha significa «frequenta». É o que torna a
+  migração puramente aditiva — todas as inscrições que já existiam continuam a
+  significar o que significavam, sem escrever um único registo.
+- **Motivo/percurso**, extensível: `alternative_subject` mais um detalhe em
+  texto livre. O PLNM é o primeiro caso real, não a definição do domínio — o
+  código não conhece a sigla, e o significado canónico continua a ser o do
+  `AcronymDictionary` (um percurso curricular, nunca uma medida).
+- **Reativação**: o aluno volta aos fluxos normais a partir da data indicada. A
+  janela anterior é fechada, nunca apagada; quando a data pedida é o próprio dia
+  em que a janela abriu, a janela é removida por nunca ter chegado a valer um
+  dia.
+- **Resultados externos** (`external_subject_results`): a classificação obtida
+  no percurso alternativo, registada para o aluno não ficar sem resultado
+  nenhum. Vive em tabela própria precisamente para nunca ser confundida com um
+  resultado calculado: não entra em `student_overall_results`,
+  `student_domain_results` nem `calculation_snapshots`, e não finge ter
+  domínios, critérios, instrumentos ou evidência. Um número cuja escala de
+  origem não conhecemos nunca é colocado na escala da turma.
+- **Universo da análise**, à escolha do professor e sempre visível: «Apenas
+  alunos que frequentam a disciplina» ou «Todos os alunos da turma». A escolha
+  afeta denominadores, percentagens, sucesso/insucesso e distribuições de forma
+  coerente, e é dita no ecrã e nas exportações.
+
+### Alterado
+- **A regra temporal passou a ser duas perguntas, e não uma.** O que assenta em
+  evidência lê-se pela data do próprio dado: um instrumento de outubro continua
+  do aluno mesmo que a janela de não-frequência abra em janeiro, e um posterior
+  já não é dele — e não é um zero dele, pela mesma regra do ingresso tardio
+  (§11.4). O balanço final do período lê-se pela situação no momento de
+  referência: se aí o aluno já não frequenta, não entra no denominador final.
+  Os dois factos são verdadeiros ao mesmo tempo, de propósito. **Nunca há
+  pro-rata de alunos nem denominador fracionário.**
+- **Uma só lógica central** para «que alunos entram nesta análise»
+  (`ClassCohort`), onde antes doze sítios faziam a pergunta cada um à sua
+  maneira. E não filtra apenas: rotula, porque um ecrã que apagasse o aluno
+  diria dele algo falso.
+- As **análises por domínio, critério e instrumento** decidem-se pelos dados que
+  cada aluno tem. Quando alguém fica de fora por não existirem dados, o
+  relatório di-lo por palavras, com número e proveniência dinâmicos — e nenhum
+  texto exportado nomeia o produto.
+
+### Preservado
+- **«Não frequenta» não é «não participou»**, nem falta, nem ausência, nem zero,
+  nem «sem classificação». É um estado próprio, e nenhum ecrã, relatório ou
+  exportação o apresenta como um dos outros.
+- **O histórico anterior fica intacto.** Uma classificação interna registada
+  antes da mudança é preservada e nunca sobrescrita — mas também não passa
+  automaticamente a ser a classificação final da disciplina se, à data de
+  referência, o aluno já não a frequenta.
+- O **PLNM não é uma medida** e não aparece em Estratégias e Medidas; a
+  importação e a caracterização continuam concerns distintos da participação,
+  e nenhuma janela de participação é criada automaticamente a partir de uma
+  sigla numa folha.
+
 ## [0.150.0] — 2026-09-20
 
 A caracterização pedagógica da turma e de cada aluno, e um fluxo para a

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Classes;
 
+use App\Actions\SubjectParticipation\MarkNotAttendingSubject;
 use App\Models\AcademicYear;
 use App\Models\ClassGroup;
 use App\Models\ClassGroupMembership;
@@ -16,6 +17,7 @@ use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\Subject;
+use App\Models\SubjectParticipationReason;
 use App\Models\User;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -166,6 +168,42 @@ class ClassPreparationDeletionTest extends TestCase
         $this->assertTrue(DB::table('students')->where('id', $shared->getKey())->exists());
         $this->assertTrue(DB::table('enrollments')->where('id', $otherEnrollment->getKey())->exists());
         $this->assertTrue($this->exists($other));
+    }
+
+    /**
+     * UMA JANELA DE «NÃO FREQUENTA» NÃO PODE PRENDER UMA TURMA POR PREPARAR.
+     *
+     * `subject_participations` está em `EnrollmentHistory::CLEARED_WITH_ENROLLMENT`
+     * e não em `RELATIONS`, de propósito: é arrumação sobre a inscrição, não
+     * história pedagógica. Mas `blockingInPreparation()` só consulta
+     * `RELATIONS`, pelo que não vê nada a bloquear — e se `clearPreparation()`
+     * não apagar a janela, o DELETE às inscrições bate na RESTRICT e o
+     * professor recebe «a turma tem dados que têm de ser preservados» sem
+     * causa nomeada, outra vez e outra vez, sem saída.
+     *
+     * É o mesmo beco que as pertenças a grupos já têm coberto acima, e a razão
+     * de as duas listas terem de andar a par.
+     */
+    #[Test]
+    public function a_class_in_preparation_with_a_subject_participation_window_is_still_deleted(): void
+    {
+        $class = $this->makeClass();
+        $enrollment = $this->enrol($class);
+
+        $this->inTenant(fn () => app(MarkNotAttendingSubject::class)->execute(
+            $enrollment,
+            SubjectParticipationReason::AlternativeSubject,
+            '2026-09-20',
+            reasonDetail: 'PLNM',
+        ));
+
+        $this->assertTrue(DB::table('subject_participations')->where('enrollment_id', $enrollment->getKey())->exists());
+
+        $this->actingAs($this->teacher)->delete("/classes/{$class->ulid}")->assertRedirect('/classes');
+
+        $this->assertFalse($this->exists($class));
+        $this->assertFalse(DB::table('enrollments')->where('id', $enrollment->getKey())->exists());
+        $this->assertFalse(DB::table('subject_participations')->where('enrollment_id', $enrollment->getKey())->exists());
     }
 
     #[Test]
