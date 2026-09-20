@@ -1,38 +1,21 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CalendarClock, CheckCircle2, FileText, Pencil, Trash2 } from '@lucide/vue';
+import { CalendarClock, CheckCircle2, ChevronDown, FileText, Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import type { CatalogueType as InterventionType } from '@/lib/interventionPresentation';
 import { statusToneClasses } from '@/lib/statusTone';
+import InterventionSummary from './partials/InterventionSummary.vue';
+import MeasurePicker from './partials/MeasurePicker.vue';
+import SelectedMeasures from './partials/SelectedMeasures.vue';
 
-type LegalMapping = {
-    mode: 'direct' | 'contextual' | 'evaluation_only';
-    level: string | null;
-    level_label: string | null;
-    measure: string | null;
-    measure_label: string | null;
-    evaluation_adaptation: string | null;
-    evaluation_adaptation_label: string | null;
-};
-
-type InterventionType = {
-    value: string;
-    label: string;
-    context: string;
-    context_label: string;
-    requires_description: boolean;
-    /**
-     * What KIND of thing this is under the applicable law: a named legal
-     * measure, ordinary teaching, an adaptation to the assessment process, or
-     * a resource. The framework's reading, not the item's own property — under
-     * no framework everything is a pedagogical strategy.
-     */
-    family: string;
-    family_label: string;
-    may_carry_measure_level: boolean;
-    legal_mapping: LegalMapping | null;
-};
+/**
+ * A forma do catálogo é UMA SÓ e vive na camada de apresentação, para que a
+ * página e os componentes de escolha nunca divirjam sobre ela — e para que
+ * os metadados canónicos que o servidor envia (`family`, `presentation`, …)
+ * sejam lidos num sítio só. Ver `@/lib/interventionPresentation`.
+ */
 
 type Review = {
     ulid: string;
@@ -656,22 +639,74 @@ function removeBatch(intervention: Intervention): void {
     }
 }
 
-const typeSearch = ref('');
-const filteredTypeGroups = computed(() => {
-    const needle = typeSearch.value.trim().toLocaleLowerCase('pt-PT');
+/**
+ * A ESCOLHA DE MEDIDAS, VISTA PELO PICKER — uma lista, sempre.
+ *
+ * O formulário continua a ter os DOIS campos que o servidor espera e que
+ * sempre teve: `intervention_types[]` ao criar (uma a dez, cada uma com
+ * acompanhamento próprio) e `intervention_type` ao editar (uma intervenção
+ * é uma medida). O que muda é só o desenho: o mesmo componente serve os
+ * dois casos e escreve no campo certo.
+ *
+ * Isto é deliberadamente uma projecção e não um terceiro campo: os
+ * `watch()` que já existiam sobre `form.intervention_type` e sobre
+ * `form.intervention_types.length` continuam a disparar exactamente como
+ * antes, e o enquadramento legal continua a ser recalculado pelas mesmas
+ * regras.
+ */
+const pickerSelection = computed<string[]>({
+    get: () => (editingUlid.value ? (form.intervention_type ? [form.intervention_type] : []) : form.intervention_types),
+    set: (values) => {
+        if (editingUlid.value) {
+            // Ao editar nunca se fica sem medida: recusar a desmarcação é o
+            // que impede um clique distraído de guardar uma intervenção sem
+            // tipo nenhum.
+            if (values[0]) {
+                form.intervention_type = values[0];
+            }
 
-    if (!needle) {
-return typeGroups.value;
-}
+            return;
+        }
 
-    return typeGroups.value
-        .map((group) => ({ ...group, types: group.types.filter((type) => type.label.toLocaleLowerCase('pt-PT').includes(needle)) }))
-        .filter((group) => group.types.length > 0);
+        form.intervention_types = values;
+    },
 });
 
 function removeSelectedType(value: string): void {
     form.intervention_types = form.intervention_types.filter((type) => type !== value);
 }
+
+/**
+ * MODO SIMPLES / DETALHADO.
+ *
+ * Em cima ficam os campos que quase toda a gente preenche; a finalidade, a
+ * frequência, o indicador e a descrição vivem numa secção que se abre. A
+ * intenção é carga cognitiva, não esconder nada: a secção abre sozinha — e
+ * não se deixa fechar — assim que houver ali seja o que for a preencher ou
+ * preenchido.
+ */
+const detailedOpen = ref(false);
+
+/** Nenhuma informação obrigatória ou já escrita fica atrás de um triângulo. */
+const detailedMustStayOpen = computed(
+    () =>
+        selectedType.value?.requires_description === true
+        || form.purpose !== null
+        || form.frequency.trim() !== ''
+        || form.tracking_indicator.trim() !== ''
+        || form.description.trim() !== ''
+        || form.errors.purpose !== undefined
+        || form.errors.frequency !== undefined
+        || form.errors.tracking_indicator !== undefined
+        || form.errors.description !== undefined,
+);
+
+const detailedSectionOpen = computed({
+    get: () => detailedOpen.value || detailedMustStayOpen.value,
+    set: (open: boolean) => {
+        detailedOpen.value = open;
+    },
+});
 
 function addSupportMeasure(): void {
     if (!form.support_measure_code) {
@@ -790,8 +825,6 @@ function clearFilters(): void {
     applyFilters();
 }
 
-/** How many of the listed interventions the teacher said they would revisit by now. */
-const pendingCount = computed(() => props.interventions.filter((row) => row.needs_review).length);
 </script>
 
 <template>
@@ -804,6 +837,17 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
         </div>
 
         <p class="text-xs text-muted-foreground">As estratégias e medidas apoiam o acompanhamento pedagógico e não alteram automaticamente a classificação.</p>
+
+        <!-- O que está em curso, em cima e antes do formulário: quantas,
+             de que níveis, e quando é a próxima revisão (§4). Calculado
+             sobre as intervenções que a página já recebeu — nenhum pedido
+             novo ao servidor. -->
+        <InterventionSummary
+            :interventions="interventions"
+            :today="today"
+            :level-order="supportMeasureLevels.map((level) => level.value)"
+            @show-pending="filterNeedsReview = true; applyFilters()"
+        />
 
         <!-- §13 do apoio de IA: uma proposta, nunca um registo. Os campos
              abaixo ficam pré-preenchidos e editáveis — nada fica gravado
@@ -820,7 +864,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         v-for="targetType in targetTypes"
                         :key="targetType.value"
                         type="button"
-                        class="rounded-md px-2 py-1 text-xs"
+                        class="min-h-9 rounded-md px-3 py-1 text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         :class="form.target_type === targetType.value ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/40'"
                         @click="form.target_type = targetType.value as TargetType"
                     >
@@ -852,52 +896,46 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             </div>
             <p v-if="form.errors.enrollment_ids" class="text-xs text-red-600">{{ form.errors.enrollment_ids }}</p>
 
-            <div class="grid gap-3 sm:grid-cols-2">
-                <label v-if="editingUlid" class="text-sm">
-                    <span class="mb-1 block text-xs text-muted-foreground">Medida pedagógica</span>
-                    <select v-model="form.intervention_type" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
-                        <optgroup v-for="group in typeGroups" :key="group.label" :label="group.label">
-                            <option v-for="type in group.types" :key="type.value" :value="type.value">{{ type.label }}</option>
-                        </optgroup>
-                    </select>
-                    <p v-if="form.errors.intervention_type" class="mt-1 text-xs text-red-600">{{ form.errors.intervention_type }}</p>
-                </label>
-                <div v-else class="text-sm">
-                    <span class="mb-1 block text-xs text-muted-foreground">Medidas pedagógicas</span>
-                    <div class="rounded-md border border-border bg-background p-2">
-                        <div class="mb-2 flex flex-wrap gap-1.5">
-                            <span v-for="value in form.intervention_types" :key="value" class="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-1 text-xs">
-                                {{ types.find((type) => type.value === value)?.label }}
-                                <button type="button" :aria-label="`Remover ${types.find((type) => type.value === value)?.label}`" @click="removeSelectedType(value)">×</button>
-                            </span>
-                        </div>
-                        <input v-model="typeSearch" type="search" class="mb-2 w-full rounded-md border border-border bg-background px-2 py-1.5" placeholder="Pesquisar e escolher várias…" />
-                        <div class="max-h-44 space-y-2 overflow-y-auto">
-                            <fieldset v-for="group in filteredTypeGroups" :key="group.label">
-                                <legend class="text-xs font-medium text-muted-foreground">{{ group.label }}</legend>
-                                <label v-for="type in group.types" :key="type.value" class="flex min-h-8 items-center gap-2 text-sm">
-                                    <input v-model="form.intervention_types" type="checkbox" :value="type.value" :disabled="form.intervention_types.length >= 10 && !form.intervention_types.includes(type.value)" />
-                                    <span>{{ type.label }}</span>
-                                    <span
-                                        v-if="type.family !== 'pedagogical_strategy'"
-                                        class="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                                        :title="type.family_label"
-                                    >{{ type.family_label }}</span>
-                                </label>
-                            </fieldset>
-                        </div>
-                    </div>
-                    <p class="mt-1 text-xs text-muted-foreground">Escolha entre uma e dez; cada medida terá acompanhamento independente.</p>
-                    <p v-if="form.errors.intervention_types" class="mt-1 text-xs text-red-600">{{ form.errors.intervention_types }}</p>
+            <!-- ---------------------------------- escolher o que se vai fazer
+                 O QUE JÁ ESTÁ ESCOLHIDO VEM PRIMEIRO, e só depois o
+                 catálogo. Era exactamente ao contrário: para saber o que
+                 tinha escolhido, o professor tinha de procurar as caixas
+                 marcadas dentro de uma lista com scroll próprio (§5). -->
+            <fieldset class="space-y-3 rounded-lg border border-border p-3">
+                <legend class="px-1 text-xs font-medium text-muted-foreground">
+                    {{ editingUlid ? 'Medida pedagógica' : 'Estratégias e medidas' }}
+                </legend>
+
+                <SelectedMeasures
+                    :types="types"
+                    :selected="pickerSelection"
+                    :removable="!editingUlid"
+                    @remove="removeSelectedType"
+                />
+
+                <div class="space-y-2 border-t border-border pt-3">
+                    <h3 class="text-sm font-medium">
+                        {{ editingUlid ? 'Trocar por outra' : 'Adicionar estratégia ou medida' }}
+                    </h3>
+
+                    <MeasurePicker
+                        v-model="pickerSelection"
+                        :types="types"
+                        :multiple="!editingUlid"
+                        :max="editingUlid ? undefined : 10"
+                    />
                 </div>
-                <label class="text-sm">
-                    <span class="mb-1 block text-xs text-muted-foreground">Data</span>
-                    <input v-model="form.started_on" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5" />
-                    <p v-if="form.errors.started_on" class="mt-1 text-xs text-red-600">{{ form.errors.started_on }}</p>
-                </label>
-            </div>
+
+                <p v-if="form.errors.intervention_type" class="text-xs text-red-600">{{ form.errors.intervention_type }}</p>
+                <p v-if="form.errors.intervention_types" class="text-xs text-red-600">{{ form.errors.intervention_types }}</p>
+            </fieldset>
 
             <div class="grid gap-3 sm:grid-cols-2">
+                <label class="text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Data</span>
+                    <input v-model="form.started_on" type="date" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" />
+                    <p v-if="form.errors.started_on" class="mt-1 text-xs text-red-600">{{ form.errors.started_on }}</p>
+                </label>
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Domínio</span>
                     <select v-model="form.domain_relation" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
@@ -915,18 +953,24 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             </div>
 
             <!-- ------------------------------------- o raciocínio pedagógico
-                 PORQUÊ → O QUÊ → PARA QUÊ. Every field optional: registering
-                 something small has to stay as fast as it was, and a teacher
-                 who only wants to note what they did is never stopped by a
-                 required objective (§5, §16). -->
-            <fieldset class="space-y-3 rounded-lg border border-border p-3">
+                 NECESSIDADE → INTERVENÇÃO → OBJETIVO → REVISÃO. Os mesmos
+                 quatro campos de sempre, com os mesmos nomes e o mesmo
+                 significado — o que muda é lerem-se como uma sequência
+                 numerada e não como quatro caixas soltas (§11).
+
+                 Todos continuam opcionais: registar uma coisa pequena tem
+                 de continuar a ser tão rápido como era, e quem só quer
+                 anotar o que fez nunca é travado por um objetivo
+                 obrigatório (§5, §16). -->
+            <fieldset class="space-y-4 rounded-lg border border-border p-3">
                 <legend class="px-1 text-xs font-medium text-muted-foreground">
                     Raciocínio pedagógico <span class="font-normal">(opcional)</span>
                 </legend>
 
                 <div class="space-y-1.5">
-                    <label for="motive" class="block text-xs text-muted-foreground">
-                        Situação ou dificuldade que motivou
+                    <label for="motive" class="flex items-center gap-2 text-xs font-medium">
+                        <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground" aria-hidden="true">1</span>
+                        <span>Necessidade — o que foi observado?</span>
                     </label>
 
                     <!-- The library is offered as chips, never as the only way
@@ -962,7 +1006,10 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 </div>
 
                 <div class="space-y-1.5">
-                    <label for="strategy" class="block text-xs text-muted-foreground">Estratégia adotada</label>
+                    <label for="strategy" class="flex items-center gap-2 text-xs font-medium">
+                        <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground" aria-hidden="true">2</span>
+                        <span>Intervenção — o que vamos fazer?</span>
+                    </label>
 
                     <!-- Only the strategies that answer the chosen situation.
                          They appear because somebody wrote down that they answer
@@ -996,7 +1043,10 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 </div>
 
                 <div class="space-y-1.5">
-                    <label for="objective" class="block text-xs text-muted-foreground">Objetivo</label>
+                    <label for="objective" class="flex items-center gap-2 text-xs font-medium">
+                        <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground" aria-hidden="true">3</span>
+                        <span>Objetivo — o que pretendemos alcançar?</span>
+                    </label>
                     <textarea
                         id="objective"
                         v-model="form.objective"
@@ -1012,12 +1062,15 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 </div>
 
                 <div class="space-y-1.5">
-                    <label for="review-on" class="block text-xs text-muted-foreground">Rever em (opcional)</label>
+                    <label for="review-on" class="flex items-center gap-2 text-xs font-medium">
+                        <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-semibold text-muted-foreground" aria-hidden="true">4</span>
+                        <span>Revisão — quando vamos rever? <span class="font-normal text-muted-foreground">(opcional)</span></span>
+                    </label>
                     <input
                         id="review-on"
                         v-model="form.review_on"
                         type="date"
-                        class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm sm:w-56"
+                        class="min-h-11 w-full rounded-md border border-border bg-background px-3 py-2 text-sm sm:w-56"
                     />
                     <p class="text-xs text-muted-foreground">
                         A partir desta data a intervenção aparece como «revisão pendente».
@@ -1029,11 +1082,39 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 </div>
             </fieldset>
 
+            <!-- ----------------------------------- modo simples / detalhado
+                 Os campos que quase toda a gente preenche ficam acima; a
+                 finalidade, a frequência, o indicador e a descrição vivem
+                 aqui dentro (§12).
+
+                 NADA DE OBRIGATÓRIO NEM DE JÁ ESCRITO FICA ESCONDIDO: quando
+                 a medida escolhida exige descrição, ou quando qualquer um
+                 destes campos tem conteúdo ou erro, a secção abre sozinha e
+                 o botão deixa de a poder fechar. Reduzir carga cognitiva
+                 não é esconder informação. -->
+            <div class="rounded-lg border border-border">
+                <button
+                    type="button"
+                    class="flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    :aria-expanded="detailedSectionOpen"
+                    :disabled="detailedMustStayOpen"
+                    aria-controls="detailed-followup"
+                    @click="detailedSectionOpen = !detailedSectionOpen"
+                >
+                    <span>
+                        Acompanhamento detalhado
+                        <span class="font-normal text-muted-foreground">— finalidade, frequência, descrição</span>
+                    </span>
+                    <ChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" :class="detailedSectionOpen ? 'rotate-180' : ''" aria-hidden="true" />
+                </button>
+
+                <div v-show="detailedSectionOpen" id="detailed-followup" class="space-y-3 border-t border-border p-3">
+
             <!-- §8: finalidade, frequência e indicador de acompanhamento.
                  Three finalidades, equally weighted — Melhoria is a real
                  option and not an afterthought after Recuperação/Consolidação. -->
-            <fieldset class="space-y-3 rounded-lg border border-border p-3">
-                <legend class="px-1 text-xs font-medium text-muted-foreground">
+            <fieldset class="space-y-3">
+                <legend class="text-xs font-medium text-muted-foreground">
                     Finalidade e acompanhamento <span class="font-normal">(opcional)</span>
                 </legend>
 
@@ -1110,10 +1191,13 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                 <p v-if="form.errors.description" class="mt-1 text-xs text-red-600">{{ form.errors.description }}</p>
             </label>
 
-            <label class="flex items-center gap-2 text-sm">
+            <label class="flex min-h-11 items-center gap-2 text-sm">
                 <input v-model="form.available_for_reports" type="checkbox" class="rounded border-border" />
                 Disponível para relatórios
             </label>
+
+                </div>
+            </div>
 
             <p v-if="!editingUlid && form.intervention_types.length > 1" class="text-xs text-muted-foreground">
                 O enquadramento automático será calculado separadamente para cada medida. Pode ajustá-lo depois em cada registo.
@@ -1128,9 +1212,9 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             <div v-else-if="selectedMapping?.mode === 'contextual'" class="space-y-2 rounded-md bg-muted/30 p-3 text-xs">
                 <p class="text-muted-foreground">Possível enquadramento: {{ [selectedMapping.level_label, selectedMapping.measure_label].filter(Boolean).join(' — ') }}</p>
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" class="rounded-md border border-emerald-600 px-2.5 py-1 text-emerald-700 dark:text-emerald-400" @click="chooseContextualFraming('confirm')">Confirmar</button>
-                    <button type="button" class="rounded-md border border-border px-2.5 py-1" @click="chooseContextualFraming('manual')">Alterar</button>
-                    <button type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground" @click="chooseContextualFraming('none')">Sem enquadramento</button>
+                    <button type="button" class="min-h-9 rounded-md border border-emerald-600 px-2.5 py-1 text-emerald-700 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:text-emerald-400" @click="chooseContextualFraming('confirm')">Confirmar</button>
+                    <button type="button" class="min-h-9 rounded-md border border-border px-2.5 py-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="chooseContextualFraming('manual')">Alterar</button>
+                    <button type="button" class="min-h-9 rounded-md border border-border px-2.5 py-1 text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="chooseContextualFraming('none')">Sem enquadramento</button>
                 </div>
                 <p v-if="form.confirm_suggested_framing" class="text-emerald-700 dark:text-emerald-400">Sugestão confirmada.</p>
                 <p v-else-if="form.legal_framing === 'none'" class="text-muted-foreground">Sem enquadramento selecionado.</p>
@@ -1170,7 +1254,7 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                             <option v-for="adaptation in evaluationAdaptations" :key="adaptation.value" :value="adaptation.value">{{ adaptation.label }}</option>
                         </select>
                     </div>
-                    <button v-else type="button" class="block text-xs text-primary hover:underline" @click="openManualAdaptation">
+                    <button v-else type="button" class="block min-h-9 text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="openManualAdaptation">
                         + Associar adaptação no processo de avaliação
                     </button>
 
@@ -1197,14 +1281,14 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         </label>
                         <button type="button" class="self-end rounded-md border border-border px-3 py-2 text-sm sm:col-span-2 sm:justify-self-start" :disabled="!form.support_measure_code" @click="addSupportMeasure">Adicionar medida de suporte</button>
                     </div>
-                    <button v-else type="button" class="text-xs text-primary hover:underline" @click="openManualMeasure">
+                    <button v-else type="button" class="min-h-9 text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="openManualMeasure">
                         Associar medida de suporte à aprendizagem
                     </button>
 
                     <button
                         v-if="manualMeasureOpen || manualAdaptationOpen || selectedMapping"
                         type="button"
-                        class="block text-xs text-muted-foreground hover:underline"
+                        class="block min-h-9 text-xs text-muted-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         @click="removeFraming"
                     >
                         Remover enquadramento
@@ -1220,33 +1304,91 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
             </div>
         </form>
 
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Aluno</span><select v-model="filterEnrollmentId" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Tipo</span><select v-model="filterInterventionType" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><optgroup v-for="group in typeGroups" :key="group.label" :label="group.label"><option v-for="type in group.types" :key="type.value" :value="type.value">{{ type.label }}</option></optgroup></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Contexto</span><select v-model="filterContext" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option v-for="context in contexts" :key="context.value" :value="context.value">{{ context.label }}</option></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Domínio</span><select v-model="filterDomainId" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Período</span><select v-model="filterPeriodId" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option v-for="period in periods" :key="period.id" :value="period.id">{{ period.label }}</option></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Relatórios</span><select v-model="filterAvailableForReports" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option :value="true">Disponível</option><option :value="false">Não disponível</option></select></label>
-            <label class="flex items-center gap-2"><span class="text-xs text-muted-foreground">Nível</span><select v-model="filterSupportMeasureLevel" class="rounded-md border border-border bg-background px-2 py-1" @change="applyFilters"><option :value="null">Todos</option><option v-for="level in supportMeasureLevels" :key="level.value" :value="level.value">{{ level.label }}</option></select></label>
-            <button type="button" class="text-xs text-primary hover:underline" @click="clearFilters">Limpar filtros</button>
-        </div>
+        <!-- OS FILTROS EM GRELHA, não numa linha só.
+             Sete selects lado a lado numa linha flex davam, a 390px, sete
+             caixas esmagadas e rótulos partidos. Em grelha, cada um ocupa a
+             largura toda no telemóvel e três colunas no ecrã grande (§15). -->
+        <section class="space-y-2 rounded-lg border border-border p-3" aria-labelledby="interventions-filters-heading">
+            <div class="flex items-center justify-between gap-2">
+                <h2 id="interventions-filters-heading" class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Filtrar</h2>
+                <button type="button" class="min-h-9 text-xs text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="clearFilters">Limpar filtros</button>
+            </div>
 
-        <!-- «A acompanhar»: the ones whose own review date has arrived. No rule
-             invents a deadline from elapsed time — this counts only dates the
-             teacher chose (§37, §80). -->
-        <button
-            v-if="pendingCount > 0 && !filterNeedsReview"
-            type="button"
-            class="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-left text-sm hover:bg-muted/50"
-            @click="filterNeedsReview = true; applyFilters()"
-        >
-            <CalendarClock class="size-4 shrink-0 text-muted-foreground" />
-            <span>
-                {{ pendingCount }}
-                {{ pendingCount === 1 ? 'intervenção com revisão pendente' : 'intervenções com revisão pendente' }}
-            </span>
-            <span class="ml-auto text-xs text-muted-foreground">Ver só estas</span>
-        </button>
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Aluno</span>
+                    <select v-model="filterEnrollmentId" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Tipo</span>
+                    <select v-model="filterInterventionType" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <optgroup v-for="group in typeGroups" :key="group.label" :label="group.label">
+                            <option v-for="type in group.types" :key="type.value" :value="type.value">{{ type.label }}</option>
+                        </optgroup>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Contexto</span>
+                    <select v-model="filterContext" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="context in contexts" :key="context.value" :value="context.value">{{ context.label }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Domínio</span>
+                    <select v-model="filterDomainId" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Período</span>
+                    <select v-model="filterPeriodId" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="period in periods" :key="period.id" :value="period.id">{{ period.label }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Estado</span>
+                    <select v-model="filterStatus" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Nível da medida</span>
+                    <select v-model="filterSupportMeasureLevel" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option v-for="level in supportMeasureLevels" :key="level.value" :value="level.value">{{ level.label }}</option>
+                    </select>
+                </label>
+                <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-muted-foreground">Relatórios</span>
+                    <select v-model="filterAvailableForReports" class="min-h-11 w-full rounded-md border border-border bg-background px-2 py-1.5" @change="applyFilters">
+                        <option :value="null">Todos</option>
+                        <option :value="true">Disponível</option>
+                        <option :value="false">Não disponível</option>
+                    </select>
+                </label>
+            </div>
+
+            <!-- «A acompanhar»: as que têm a data de revisão que o professor
+                 escolheu já chegada. Nenhuma regra inventa um prazo a partir
+                 do tempo decorrido (§37, §80). -->
+            <button
+                v-if="filterNeedsReview"
+                type="button"
+                class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs text-amber-900 hover:bg-amber-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+                @click="filterNeedsReview = false; applyFilters()"
+            >
+                <CalendarClock class="size-3.5 shrink-0" aria-hidden="true" />
+                A mostrar só as de revisão pendente — <span class="font-medium underline">ver todas</span>
+            </button>
+        </section>
 
         <EmptyState
             v-if="interventions.length === 0"
@@ -1322,26 +1464,26 @@ const pendingCount = computed(() => props.interventions.filter((row) => row.need
                         <p v-if="intervention.description" class="mt-1 text-sm text-muted-foreground">{{ intervention.description }}</p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <button type="button" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40" title="Editar" @click="edit(intervention)"><Pencil class="size-4" /></button>
-                        <button type="button" class="rounded-md p-1.5 text-muted-foreground hover:bg-muted/40 hover:text-red-600" title="Remover" @click="remove(intervention)"><Trash2 class="size-4" /></button>
-                        <button v-if="intervention.created_batch_ulid" type="button" class="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 hover:text-red-600" @click="removeBatch(intervention)">Remover lote</button>
+                        <button type="button" class="flex min-h-9 min-w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Editar" :aria-label="`Editar intervenção de ${intervention.target_label}`" @click="edit(intervention)"><Pencil class="size-4" aria-hidden="true" /></button>
+                        <button type="button" class="flex min-h-9 min-w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" title="Remover" :aria-label="`Remover intervenção de ${intervention.target_label}`" @click="remove(intervention)"><Trash2 class="size-4" aria-hidden="true" /></button>
+                        <button v-if="intervention.created_batch_ulid" type="button" class="min-h-9 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="removeBatch(intervention)">Remover lote</button>
                     </div>
                 </div>
 
                 <div class="flex flex-wrap gap-2 text-xs">
                     <template v-if="!intervention.is_closed">
-                        <button v-if="intervention.status === 'new'" type="button" class="rounded-md border border-border px-2.5 py-1 hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Marcar em curso</button>
-                        <button type="button" class="rounded-md border border-emerald-600 px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950" @click="setStatus(intervention, 'concluded')">Concluir</button>
+                        <button v-if="intervention.status === 'new'" type="button" class="min-h-9 rounded-md border border-border px-2.5 py-1 hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Marcar em curso</button>
+                        <button type="button" class="min-h-9 rounded-md border border-emerald-600 px-2.5 py-1 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950" @click="setStatus(intervention, 'concluded')">Concluir</button>
                         <!-- «Suspender», não «cancelar»: uma intervenção que
                              deixou de ser adequada continua a fazer parte do
                              ano (§45). -->
-                        <button v-if="intervention.status !== 'suspended'" type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'suspended')">Suspender</button>
+                        <button v-if="intervention.status !== 'suspended'" type="button" class="min-h-9 rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'suspended')">Suspender</button>
                     </template>
                     <!-- Reabrir preserva a conclusão anterior no histórico (§44). -->
-                    <button v-else type="button" class="rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Reabrir</button>
+                    <button v-else type="button" class="min-h-9 rounded-md border border-border px-2.5 py-1 text-muted-foreground hover:bg-muted/40" @click="setStatus(intervention, 'in_progress')">Reabrir</button>
                     <!-- Acrescentar história nunca obriga a editar a intervenção
                          (§42). -->
-                    <button v-if="openReview !== intervention.ulid" type="button" class="text-primary hover:underline" @click="openReviewFor(intervention)">+ Acompanhamento</button>
+                    <button v-if="openReview !== intervention.ulid" type="button" class="min-h-9 px-1 text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" @click="openReviewFor(intervention)">+ Acompanhamento</button>
                 </div>
 
                 <div class="border-t border-border pt-3">
