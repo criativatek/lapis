@@ -69,6 +69,10 @@ class ClassDistributionComposer implements SectionComposer
                 // denominator, and «Síntese da avaliação global» has already
                 // explained why those students are outside the rate.
                 $this->outsideScaleSentence($rows),
+                // «Incluem-se N alunos avaliados em X...» (req 12) — só quando
+                // `BuildClassStatistics` usou de facto um resultado externo
+                // para chegar a estes números.
+                $context->fact('notes.external_inclusion'),
             ]),
             [ContentSource::Classification, ContentSource::Statistics],
             [

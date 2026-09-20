@@ -165,6 +165,11 @@ class GenerateDataExport
             ->get();
         $classIds = $classes->pluck('id');
 
+        // NOT routed through ClassCohort::for(): this is a GDPR/data-access
+        // export, and one that silently dropped a student because he does
+        // not currently attend one of his subjects would be wrong — every
+        // enrolment he ever had belongs in his own export, regardless of
+        // frequência.
         $enrollments = Enrollment::query()->whereIn('class_id', $classIds)->with('student.identity')->get();
         $students = $enrollments->pluck('student')->filter()->unique('id')->values();
 

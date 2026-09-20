@@ -180,6 +180,14 @@ class ClassReportSource implements ReportSource
             'continuous_evolution' => $statistics['continuous_evolution'] ?? null,
             'period_series' => $statistics['period_series'] ?? [],
             'students' => $statistics['students'] ?? [],
+            // O universo desta leitura e os factos sobre quem não frequenta
+            // (req 7): um relatório nunca gera esta frase sem saber quantos
+            // ficaram de fora e porquê. Um relatório não tem, hoje, o seletor
+            // que a Estatística tem — lê sempre `AttendingOnly`, que é o que
+            // `BuildClassStatistics::for()` já usa por omissão.
+            'universe' => $statistics['universe'] ?? null,
+            'cohort' => $statistics['cohort'] ?? null,
+            'notes' => $statistics['notes'] ?? null,
         ];
     }
 
@@ -229,6 +237,11 @@ class ClassReportSource implements ReportSource
             'continuous_evolution' => null,
             'period_series' => [],
             'students' => $this->snapshotStudents($snapshot),
+            // A photograph never recorded a universe, or the external
+            // results. Absent, never guessed as `AttendingOnly` (§30).
+            'universe' => null,
+            'cohort' => null,
+            'notes' => null,
         ];
     }
 

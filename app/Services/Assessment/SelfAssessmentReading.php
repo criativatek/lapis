@@ -43,9 +43,26 @@ class SelfAssessmentReading
      */
     public function forClassPeriod(SchoolClass $class, AcademicPeriod $period): Collection
     {
+        // DECISÃO DO PRODUCT OWNER (regra das duas perguntas), aplicada e
+        // DOCUMENTADA aqui por não ter data própria para decidir de outra
+        // forma: uma `SelfAssessment` não tem uma data DELA — não é «este
+        // instrumento aplicado a 12 de outubro», é «o juízo global do aluno
+        // sobre TODO o período». Sem uma data de evidência para comparar
+        // contra a janela, esta pergunta não é a pergunta (A) — é a mesma
+        // pergunta (B) que sempre foi: «este aluno frequentava a disciplina
+        // A ESTE PERÍODO, lido no seu momento de referência?». Por isso
+        // continua exatamente como estava: ClassCohort::for() — o resolver
+        // único de «que alunos entram na análise desta disciplina» (ver o
+        // seu docblock) — AttendingOnly, à data de `ClassCohort::asOfPeriod()`
+        // (M4): o próprio fim do período quando já passou, ou hoje quando o
+        // período ainda está em curso.
+        $attendingIds = ClassCohort::for($class, ClassCohort::asOfPeriod($period))
+            ->attending()
+            ->pluck('id');
+
         return SelfAssessment::query()
             ->where('academic_period_id', $period->getKey())
-            ->whereHas('enrollment', fn ($query) => $query->where('class_id', $class->getKey()))
+            ->whereIn('enrollment_id', $attendingIds)
             ->whereIn('status', [SelfAssessmentStatus::Submitted, SelfAssessmentStatus::Reviewed])
             ->with(['responses.question', 'responses.scaleLevel'])
             ->get()

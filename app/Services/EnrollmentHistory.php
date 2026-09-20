@@ -60,6 +60,11 @@ class EnrollmentHistory
         // lá escreveu mesmo alguma coisa, por isso um aluno acrescentado por
         // engano não fica preso só por a ficha ter sido aberta e fechada.
         'enrollment_characterisations' => 'caracterização pedagógica',
+        // Uma classificação obtida fora desta aplicação e cá registada — ver o
+        // docblock de `external_subject_results`. Apagá-la em silêncio ao
+        // remover a inscrição apagaria uma nota real, tal como apagar
+        // `student_item_scores` apagaria uma avaliação real.
+        'external_subject_results' => 'resultados externos registados',
     ];
 
     /**
@@ -90,6 +95,15 @@ class EnrollmentHistory
      */
     protected const CLEARED_WITH_ENROLLMENT = [
         'class_group_memberships' => 'pertenças a grupos da turma',
+        // Uma janela de não-frequência é uma arrumação organizativa sobre a
+        // inscrição — «durante este período, este aluno não frequentou esta
+        // disciplina» — e não é história que sobreviva à própria inscrição,
+        // pela mesma razão que as pertenças a grupos acima. E PÔ-LA NA LISTA
+        // DE CIMA CRIARIA O MESMO BECO que o comentário ali já descreve: um
+        // aluno acrescentado por engano e marcado como «não frequenta» nunca
+        // mais poderia ser removido da turma, por causa de uma marcação e não
+        // de uma avaliação.
+        'subject_participations' => 'registos de frequência da disciplina',
     ];
 
     /**

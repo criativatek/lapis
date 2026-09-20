@@ -54,8 +54,15 @@ class BuildImportPreview
         $mapping = ImportMapping::fromArray($import->mapping_snapshot);
         $class = $import->schoolClass;
 
-        $students = $this->matcher->for($grid, $class, $mapping->students);
         $instrument = $mapping->instrumentId === null ? null : Instrument::find($mapping->instrumentId);
+
+        // M6: a turma é resolvida À DATA A QUE A GRELHA SE REFERE — a
+        // `applied_on` do instrumento, quando um já foi escolhido — nunca a
+        // hoje implicitamente. Sem isso, uma grelha aplicada em março e só
+        // importada em junho deixava de conseguir corresponder a um aluno que
+        // tivesse deixado de frequentar a disciplina entretanto, e as suas
+        // notas ficavam silenciosamente sem correspondência possível.
+        $students = $this->matcher->for($grid, $class, $mapping->students, $instrument?->applied_on?->toDateString());
 
         $items = $this->items($grid, $mapping, $instrument);
 
@@ -767,6 +774,9 @@ class BuildImportPreview
             return [];
         }
 
+        // NOT routed through ClassCohort::for(): this is a keyBy lookup map
+        // for enrolment ids already chosen by MatchSourceStudents, not a
+        // cohort — the filtering to attending-only already happened there.
         $enrollments = $class->enrollments()->get()->keyBy('id');
         $affected = 0;
 

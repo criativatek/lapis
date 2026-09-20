@@ -57,6 +57,10 @@ class MatchRosterToEnrollments
         // reappears on the school's own corrected file is the same student —
         // matching only the active roll would enrol them a second time and
         // strand their record on the old row (§7).
+        //
+        // NOT routed through ClassCohort::for(), on purpose: a roster import
+        // must see the whole roster, including a student who does not attend
+        // this subject — the file being matched is still about them.
         $enrollments = $class->enrollments()->with('student.identity')->get();
 
         foreach ($enrollments as $enrollment) {

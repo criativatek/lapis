@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Archive, ArchiveRestore, FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { Archive, ArchiveRestore, ClipboardList, FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
 import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
@@ -60,6 +60,25 @@ type Student = {
     class_group_id: number | null;
     /** Desde quando essa pertença vale (§ ClassRoster::compositionFor()). */
     class_group_since: string | null;
+    /**
+     * A janela de não-frequência em vigor hoje — `null` quando frequenta
+     * normalmente, que é o estado mais comum (§ ClassCohort).
+     */
+    subject_participation: {
+        reason: string;
+        reason_label: string;
+        reason_detail: string | null;
+        note: string | null;
+        effective_from: string;
+    } | null;
+    /** O resultado externo mais recente desta inscrição, se houver algum. */
+    external_result: {
+        ulid: string;
+        origin: string;
+        level_code: string | null;
+        numeric_value: string | null;
+        recorded_on: string;
+    } | null;
 };
 
 type ProfileOption = { version_id: number; label: string };
@@ -107,6 +126,14 @@ const props = defineProps<{
      * mesmo sinal que `classGroups`.
      */
     classGroupsDefaultDate: string | null;
+    /** Os motivos do domínio (SubjectParticipationReason) — nunca escritos à mão aqui. */
+    subjectParticipationReasons: { value: string; label: string }[];
+    /**
+     * Falso para um observer: pode ver esta secção, mas os botões que abrem
+     * ou fecham a frequência da disciplina ficam escondidos (§
+     * SubjectParticipationPolicy::manage()).
+     */
+    canManageSubjectParticipation: boolean;
 }>();
 
 /**
@@ -464,6 +491,131 @@ function submitPhotos(): void {
         onSuccess: () => {
             photoDialogOpen.value = false;
         },
+    });
+}
+
+// ------------------------------------------------------------------
+// Frequência da disciplina e resultado externo. Colocados DEPOIS de todos
+// os outros formulários — nunca entre eles — para não deslocar o índice que
+// `Show.test.ts` já usa para encontrar cada `useForm()` pela sua posição.
+// ------------------------------------------------------------------
+
+const today = new Date().toISOString().slice(0, 10);
+
+const participationDialogOpen = ref(false);
+const participatingStudent = ref<Student | null>(null);
+
+const participationForm = useForm<{
+    enrollment_id: number | null;
+    effective_from: string;
+    reason: string;
+    reason_detail: string;
+    note: string;
+}>({
+    enrollment_id: null,
+    effective_from: today,
+    reason: props.subjectParticipationReasons[0]?.value ?? '',
+    reason_detail: '',
+    note: '',
+});
+
+/** Abre o diálogo «Não frequenta a disciplina» — de novo, ou para corrigir
+ * a janela já em vigor (§ MarkNotAttendingSubject: mesma data == correção). */
+function openMarkNotAttending(student: Student): void {
+    participatingStudent.value = student;
+    participationForm.clearErrors();
+    participationForm.enrollment_id = student.id;
+    participationForm.effective_from = student.subject_participation?.effective_from ?? today;
+    participationForm.reason = student.subject_participation?.reason ?? props.subjectParticipationReasons[0]?.value ?? '';
+    participationForm.reason_detail = student.subject_participation?.reason_detail ?? '';
+    participationForm.note = student.subject_participation?.note ?? '';
+    participationDialogOpen.value = true;
+}
+
+function submitMarkNotAttending(): void {
+    participationForm.post(`/classes/${props.schoolClass.ulid}/participations`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            participationDialogOpen.value = false;
+        },
+    });
+}
+
+const reactivateDialogOpen = ref(false);
+const reactivatingStudent = ref<Student | null>(null);
+
+const reactivateForm = useForm<{ enrollment_id: number | null; effective_from: string }>({
+    enrollment_id: null,
+    effective_from: today,
+});
+
+function openReactivate(student: Student): void {
+    reactivatingStudent.value = student;
+    reactivateForm.clearErrors();
+    reactivateForm.enrollment_id = student.id;
+    reactivateForm.effective_from = today;
+    reactivateDialogOpen.value = true;
+}
+
+function submitReactivate(): void {
+    reactivateForm.post(`/classes/${props.schoolClass.ulid}/participations/reactivations`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            reactivateDialogOpen.value = false;
+        },
+    });
+}
+
+const resultDialogOpen = ref(false);
+const resultStudent = ref<Student | null>(null);
+
+const resultForm = useForm<{
+    enrollment_id: number | null;
+    origin: string;
+    recorded_on: string;
+    level_code: string;
+    numeric_value: string;
+}>({
+    enrollment_id: null,
+    origin: '',
+    recorded_on: today,
+    level_code: '',
+    numeric_value: '',
+});
+
+/** Abre o diálogo do resultado externo — vazio, ou a corrigir o que já
+ * existe (§ RecordExternalSubjectResult: mesmo período == correção). */
+function openRecordResult(student: Student): void {
+    resultStudent.value = student;
+    resultForm.clearErrors();
+    resultForm.enrollment_id = student.id;
+    resultForm.origin = student.external_result?.origin ?? '';
+    resultForm.recorded_on = student.external_result?.recorded_on ?? today;
+    resultForm.level_code = student.external_result?.level_code ?? '';
+    resultForm.numeric_value = student.external_result?.numeric_value ?? '';
+    resultDialogOpen.value = true;
+}
+
+function submitRecordResult(): void {
+    resultForm.post(`/classes/${props.schoolClass.ulid}/external-results`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            resultDialogOpen.value = false;
+        },
+    });
+}
+
+function deleteResult(student: Student): void {
+    if (student.external_result === null) {
+        return;
+    }
+
+    if (!confirm(`Remover o resultado externo de ${student.name}?`)) {
+        return;
+    }
+
+    router.delete(`/classes/${props.schoolClass.ulid}/external-results/${student.external_result.ulid}`, {
+        preserveScroll: true,
     });
 }
 </script>
@@ -829,11 +981,46 @@ function submitPhotos(): void {
                                             <template v-if="index > 0"> · </template>{{ origin.label }}<template v-if="origin.class_number != null">, n.º {{ origin.class_number }}</template>
                                         </template>
                                     </p>
+                                    <!-- Estado / Motivo / Desde / Resultado externo — a
+                                         frequência da disciplina, ao lado do nome. -->
+                                    <p
+                                        v-if="student.subject_participation"
+                                        class="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Motivo: {{ student.subject_participation.reason_label }}<template v-if="student.subject_participation.reason_detail">, {{ student.subject_participation.reason_detail }}</template>
+                                        · Desde {{ formatDate(student.subject_participation.effective_from) }}
+                                        <template v-if="canManageSubjectParticipation">
+                                            ·
+                                            <button type="button" class="underline" @click="openMarkNotAttending(student)">Editar</button>
+                                            ·
+                                            <button type="button" class="underline" @click="openReactivate(student)">Reativar</button>
+                                        </template>
+                                    </p>
+                                    <p
+                                        v-if="student.external_result"
+                                        class="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Resultado externo: {{ student.external_result.level_code ?? student.external_result.numeric_value }}
+                                        ({{ student.external_result.origin }}, {{ formatDate(student.external_result.recorded_on) }})
+                                        <template v-if="canManageSubjectParticipation">
+                                            ·
+                                            <button type="button" class="underline" @click="openRecordResult(student)">Editar</button>
+                                        </template>
+                                    </p>
                                 </div>
                                 <Badge
                                     v-if="student.is_late_entry"
                                     variant="outline"
                                     >ingresso tardio</Badge
+                                >
+                                <!-- Discreto de propósito: «não frequenta» não é
+                                     uma falta nem um alarme, é um facto como
+                                     outro qualquer sobre o aluno. -->
+                                <Badge
+                                    v-if="student.subject_participation"
+                                    variant="secondary"
+                                    :title="`Desde ${formatDate(student.subject_participation.effective_from)}`"
+                                    >não frequenta {{ schoolClass.subject }}</Badge
                                 >
                             </div>
                         </td>
@@ -861,6 +1048,28 @@ function submitPhotos(): void {
                                     >
                                         <Footprints class="size-4" />
                                     </Link>
+                                </Button>
+                                <Button
+                                    v-if="canManageSubjectParticipation && !student.subject_participation"
+                                    variant="ghost"
+                                    size="icon"
+                                    class="size-11"
+                                    :aria-label="`Marcar ${student.name} como não frequentando ${schoolClass.subject}`"
+                                    title="Marcar como não frequentando a disciplina"
+                                    @click="openMarkNotAttending(student)"
+                                >
+                                    <ClipboardList class="size-4" />
+                                </Button>
+                                <Button
+                                    v-if="canManageSubjectParticipation && !student.external_result"
+                                    variant="ghost"
+                                    size="icon"
+                                    class="size-11"
+                                    :aria-label="`Registar resultado externo de ${student.name}`"
+                                    title="Registar resultado externo"
+                                    @click="openRecordResult(student)"
+                                >
+                                    <FileUp class="size-4" />
                                 </Button>
                                 <Button
                                     variant="ghost"
@@ -1166,6 +1375,161 @@ function submitPhotos(): void {
                         <Button type="submit" :disabled="photoForm.processing">
                             Rever associação
                         </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="participationDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitMarkNotAttending">
+                    <DialogHeader>
+                        <DialogTitle
+                            >{{ participatingStudent?.subject_participation ? 'Corrigir' : 'Marcar como não frequentando' }}
+                            {{ schoolClass.subject }}</DialogTitle
+                        >
+                        <DialogDescription>
+                            {{ participatingStudent?.name }} continua inscrito na turma — só deixa de ser
+                            avaliado a {{ schoolClass.subject }} a partir da data indicada.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label for="participation-effective-from">A partir de</Label>
+                            <Input
+                                id="participation-effective-from"
+                                v-model="participationForm.effective_from"
+                                type="date"
+                            />
+                            <InputError :message="participationForm.errors.effective_from" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="participation-reason">Motivo</Label>
+                            <select
+                                id="participation-reason"
+                                v-model="participationForm.reason"
+                                class="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                            >
+                                <option v-for="reason in subjectParticipationReasons" :key="reason.value" :value="reason.value">
+                                    {{ reason.label }}
+                                </option>
+                            </select>
+                            <InputError :message="participationForm.errors.reason" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="participation-reason-detail">Detalhe (opcional)</Label>
+                            <Input
+                                id="participation-reason-detail"
+                                v-model="participationForm.reason_detail"
+                                maxlength="64"
+                                placeholder="Ex.: PLNM"
+                            />
+                            <InputError :message="participationForm.errors.reason_detail" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="participation-note">Nota (opcional)</Label>
+                            <Input id="participation-note" v-model="participationForm.note" maxlength="255" />
+                            <InputError :message="participationForm.errors.note" />
+                        </div>
+                    </div>
+                    <DialogFooter class="gap-2">
+                        <Button type="button" variant="outline" class="min-h-11" @click="participationDialogOpen = false">
+                            Cancelar
+                        </Button>
+                        <Button type="submit" class="min-h-11" :disabled="participationForm.processing">
+                            Guardar
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="reactivateDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitReactivate">
+                    <DialogHeader>
+                        <DialogTitle>Voltar a frequentar {{ schoolClass.subject }}</DialogTitle>
+                        <DialogDescription>
+                            {{ reactivatingStudent?.name }} volta aos fluxos normais de avaliação de
+                            {{ schoolClass.subject }} a partir da data indicada.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label for="reactivate-effective-from">A partir de</Label>
+                            <Input
+                                id="reactivate-effective-from"
+                                v-model="reactivateForm.effective_from"
+                                type="date"
+                            />
+                            <InputError :message="reactivateForm.errors.effective_from" />
+                        </div>
+                    </div>
+                    <DialogFooter class="gap-2">
+                        <Button type="button" variant="outline" class="min-h-11" @click="reactivateDialogOpen = false">
+                            Cancelar
+                        </Button>
+                        <Button type="submit" class="min-h-11" :disabled="reactivateForm.processing">
+                            Reativar
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog v-model:open="resultDialogOpen">
+            <DialogContent>
+                <form @submit.prevent="submitRecordResult">
+                    <DialogHeader>
+                        <DialogTitle>Resultado externo — {{ schoolClass.subject }}</DialogTitle>
+                        <DialogDescription>
+                            {{ resultStudent?.name }}. Uma classificação obtida fora do sistema — indique pelo
+                            menos o código de nível ou o valor numérico.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label for="result-origin">Origem</Label>
+                            <Input id="result-origin" v-model="resultForm.origin" maxlength="64" placeholder="Ex.: PLNM" />
+                            <InputError :message="resultForm.errors.origin" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="result-recorded-on">Data</Label>
+                            <Input id="result-recorded-on" v-model="resultForm.recorded_on" type="date" />
+                            <InputError :message="resultForm.errors.recorded_on" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="result-level-code">Código de nível</Label>
+                            <Input id="result-level-code" v-model="resultForm.level_code" maxlength="16" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label for="result-numeric-value">Valor numérico</Label>
+                            <Input id="result-numeric-value" v-model="resultForm.numeric_value" type="number" step="0.001" />
+                            <!-- `scale_level_id` — o campo do lado do servidor
+                                 quando nem o código nem o valor chegam — não é
+                                 um campo deste formulário; lido por índice de
+                                 string, como `enrollmentLimitError` já faz. -->
+                            <InputError :message="(resultForm.errors as Record<string, string>).scale_level_id" />
+                        </div>
+                    </div>
+                    <DialogFooter class="gap-2 sm:justify-between">
+                        <Button
+                            v-if="resultStudent?.external_result"
+                            type="button"
+                            variant="ghost"
+                            class="min-h-11 text-destructive"
+                            @click="resultStudent && deleteResult(resultStudent)"
+                        >
+                            Remover
+                        </Button>
+                        <div class="flex gap-2">
+                            <Button type="button" variant="outline" class="min-h-11" @click="resultDialogOpen = false">
+                                Cancelar
+                            </Button>
+                            <Button type="submit" class="min-h-11" :disabled="resultForm.processing">
+                                Guardar
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </form>
             </DialogContent>

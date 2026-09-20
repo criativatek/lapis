@@ -80,6 +80,11 @@ function baseProps() {
         // aluno e não passam sequer por ali.
         classGroups: null,
         classGroupsDefaultDate: null,
+        subjectParticipationReasons: [
+            { value: 'alternative_subject', label: 'Frequenta disciplina alternativa' },
+            { value: 'other', label: 'Outro motivo' },
+        ],
+        canManageSubjectParticipation: true,
     };
 }
 
@@ -163,6 +168,8 @@ function student(overrides: Record<string, unknown> = {}) {
         photo_url: null,
         can_be_removed: true,
         origins: [],
+        subject_participation: null,
+        external_result: null,
         ...overrides,
     };
 }

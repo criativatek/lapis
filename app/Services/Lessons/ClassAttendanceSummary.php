@@ -35,6 +35,18 @@ class ClassAttendanceSummary
      */
     public function for(SchoolClass $class, ?string $from = null, ?string $to = null): array
     {
+        // NÃO PASSA POR ClassCohort::for(), E DE PROPÓSITO: assiduidade é
+        // outra pergunta — presença NA AULA — e não está na lista do que a
+        // frequência da disciplina manda excluir (instrumentos, grelhas,
+        // aplicações, autoavaliações, médias, análises por domínio).
+        //
+        // O QUE FICA POR DECIDIR, E NÃO SE DECIDE AQUI: como uma linha de
+        // `classes` É o par (turma, disciplina), é defensável que um aluno
+        // que não frequenta Português também não deva constar da pauta de
+        // presenças das aulas de Português. Isso é uma decisão pedagógica, e
+        // §1 diz que essas não se inventam — mudá-la em silêncio aqui daria
+        // outro número à assiduidade de toda a turma. Fica o comportamento
+        // como estava até alguém a tomar.
         $enrollments = Enrollment::query()
             ->where('class_id', $class->id)
             ->with('student.identity')

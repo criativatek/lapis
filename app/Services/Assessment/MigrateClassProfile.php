@@ -70,7 +70,18 @@ class MigrateClassProfile
         $affected = 0;
         $recalculated = 0;
 
-        foreach ($class->enrollments()->with('student.identity')->orderBy('class_number')->get() as $enrollment) {
+        // ClassCohort::for() — o resolver único de «que alunos entram na
+        // análise desta disciplina» (ver o seu docblock). AttendingOnly: uma
+        // migração de perfil recalcula proposta e é avaliação propriamente
+        // dita.
+        //
+        // H5: SEM DATA ÚNICA AQUI DE PROPÓSITO — este preview percorre TODOS
+        // os períodos do ano para a mesma matrícula (o `foreach ($periods
+        // as $period)` abaixo), não um só período selecionado; não há um
+        // «período» para passar a `asOfPeriod()`. Fica «hoje», que é a
+        // pergunta que este ecrã de facto faz: «se eu migrasse agora, quem
+        // está inscrito nesta disciplina hoje?».
+        foreach (ClassCohort::for($class)->attending() as $enrollment) {
             $cells = [];
             $enrollmentChanged = false;
 

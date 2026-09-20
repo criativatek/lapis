@@ -78,6 +78,7 @@ use App\Http\Controllers\StudentDirectoryController;
 use App\Http\Controllers\StudentPhotoController;
 use App\Http\Controllers\StudentProgressController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\SubjectParticipationController;
 use App\Http\Controllers\SupportClassStudentController;
 use App\Http\Controllers\SupportController;
 use App\Http\Controllers\TeacherTimetableController;
@@ -497,6 +498,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->name('classes.roster-imports.discard');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
+
+        // Frequência da disciplina e resultados externos — módulo `classes`,
+        // não `lessons`: é avaliação (quem entra nos denominadores, quem tem
+        // uma classificação obtida fora do sistema), nunca o horário.
+        Route::post('classes/{class}/participations', [SubjectParticipationController::class, 'store'])->name('classes.participations.store');
+        Route::post('classes/{class}/participations/reactivations', [SubjectParticipationController::class, 'reactivate'])->name('classes.participations.reactivate');
+        Route::post('classes/{class}/external-results', [SubjectParticipationController::class, 'storeResult'])->name('classes.external-results.store');
+        Route::delete('classes/{class}/external-results/{externalSubjectResult}', [SubjectParticipationController::class, 'destroyResult'])->name('classes.external-results.destroy');
     });
 
     // «Alunos» — the directory. Its own module gate, `students`, which is the

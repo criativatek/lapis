@@ -115,6 +115,12 @@ class BuildResultsProgression
         $enrollments = $this->enrollmentsOf($class);
         $domains = $this->domainsIn($standalone, $accumulated);
 
+        // A frequência da disciplina, período a período — nunca «hoje» para
+        // toda a grelha. Ver ClassCohort::for(): cada período é lido à data do
+        // seu próprio fim, para que um período já fechado não mude de resposta
+        // consoante o dia em que alguém o reabre no ecrã.
+        $participations = $this->participationsByPeriod($class, $periods);
+
         // The scale and its rounding, resolved ONCE for the whole page: both the
         // proposals and the per-domain mentions are read on it, and asking the
         // profile version per row would be a query for an answer that never
@@ -147,6 +153,7 @@ class BuildResultsProgression
                     $selfAssessments,
                     $classifications,
                     $scale,
+                    $participations,
                 ),
             ];
         }
@@ -205,6 +212,7 @@ class BuildResultsProgression
      * @param  Collection<int, Domain>  $domains
      * @param  array<string, SelfAssessment>  $selfAssessments
      * @param  array<string, array<string, mixed>>  $classifications
+     * @param  array<string, array{state: string, reason: string, reason_detail: string|null, since: string}>  $participations
      * @return list<array<string, mixed>>
      */
     protected function periodsFor(
@@ -216,6 +224,7 @@ class BuildResultsProgression
         array $selfAssessments,
         array $classifications,
         ?Scale $scale = null,
+        array $participations = [],
     ): array {
         $rows = [];
         $previousPeriodId = null;
@@ -242,12 +251,62 @@ class BuildResultsProgression
                 'domains' => $this->domainRows($domains, $own, $running, $before, $selfAssessment, $scale),
                 'self_assessment' => $this->globalSelfAssessment($selfAssessment),
                 'classification' => $classifications[$enrollmentId.':'.$period->id] ?? null,
+                // O aluno continua NA LISTA — RÓTULADO, nunca omitido (ver o
+                // docblock de ClassCohort/ClassCohortResult). Null aqui
+                // significa «frequentava a disciplina neste período», que é
+                // diferente de «—»: aqui a resposta É um resultado. Quando não
+                // é null, este período não gerou evidência dele por um motivo
+                // que não é uma falta, um zero nem «não avaliado» — é «não
+                // frequentava», e a grelha tem de o dizer com essa palavra e
+                // não com a ausência de uma.
+                'participation' => $participations[$enrollmentId.':'.$period->id] ?? null,
             ];
 
             $previousPeriodId = $period->id;
         }
 
         return $rows;
+    }
+
+    /**
+     * A frequência de cada matrícula, período a período — cada período lido à
+     * data do seu próprio fim (`ends_on`), nunca «hoje»: um período de
+     * novembro já fechado não pode mudar de resposta consoante o dia em que
+     * a grelha é reaberta (ver o docblock de ClassCohort).
+     *
+     * @param  Collection<int, AcademicPeriod>  $periods
+     * @return array<string, array{state: string, reason: string, reason_detail: string|null, since: string}>
+     */
+    protected function participationsByPeriod(SchoolClass $class, Collection $periods): array
+    {
+        $byKey = [];
+
+        // M6: as matrículas carregam-se UMA VEZ para a turma toda, não uma
+        // vez por período — ClassCohort::for() reidrataria `student.identity`
+        // a cada volta deste laço só para chegar aos mesmos ids. Só a
+        // segunda consulta (as janelas em vigor) muda com a data.
+        $enrollmentIds = ClassCohort::for($class)->all()->pluck('id');
+
+        foreach ($periods as $period) {
+            // H5/M4: cada período lido à data de `ClassCohort::asOfPeriod()`
+            // — o seu próprio fim, ou hoje se ainda estiver em curso — nunca
+            // «hoje» sem mais: um período de novembro já fechado não pode
+            // mudar de resposta consoante o dia em que a grelha é reaberta,
+            // e um período em curso não pode ser julgado por uma janela que
+            // só abre no futuro (ver o docblock de ClassCohort).
+            $participations = ClassCohort::participationsOn($enrollmentIds, ClassCohort::asOfPeriod($period));
+
+            foreach ($participations as $enrollmentId => $participation) {
+                $byKey[$enrollmentId.':'.$period->id] = [
+                    'state' => $participation->state->value,
+                    'reason' => $participation->reason->value,
+                    'reason_detail' => $participation->reason_detail,
+                    'since' => $participation->effective_from->toDateString(),
+                ];
+            }
+        }
+
+        return $byKey;
     }
 
     /**

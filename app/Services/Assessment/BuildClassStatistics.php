@@ -4,6 +4,9 @@ namespace App\Services\Assessment;
 
 use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
+use App\Models\CohortUniverse;
+use App\Models\ExternalSubjectResult;
+use App\Models\ProfileVersionPeriod;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
@@ -108,10 +111,17 @@ class BuildClassStatistics
         ?AcademicPeriod $period = null,
         ?AssessmentCutoff $cutoff = null,
         ?array $progression = null,
+        CohortUniverse $universe = CohortUniverse::AttendingOnly,
     ): array {
-        // THE ONE CALL, still. Everything below is arithmetic over its output —
-        // no further queries, whatever the size of the class (§39). The cutoff,
-        // if there is one, was already applied to the evidence in there.
+        // THE ONE CALL for the progression, still. Everything below is
+        // arithmetic over its output — EXCEPT `universeRowsFor()`, which, only
+        // when the universe is `AllClassStudents` and only for the students who
+        // do not attend, issues a CONSTANT number of extra queries (one for the
+        // period's `profile_version_periods` row, one for their
+        // `external_subject_results`) to resolve external results — never one
+        // per student, and never at all for `AttendingOnly` (M5). That cost does
+        // not grow with the size of the class; it is bounded by the number of
+        // periods and universes read, not by how many students are in it.
         $progression = $this->progressionFor($class, $cutoff, $progression);
 
         $periods = $progression['periods'];
@@ -127,6 +137,55 @@ class BuildClassStatistics
         $scale = $class->profileVersion?->scale()->with('levels')->first();
         $rows = $this->rowsFor($students, $selected['id']);
 
+        $universeResolution = $this->universeRowsFor($rows, $class, $selected, $universe, $scale);
+        $universeRows = $universeResolution['rows'];
+
+        // H1: A ANÁLISE POR DOMÍNIO NUNCA É DECIDIDA PELO COHORT À DATA DE
+        // REFERÊNCIA (`period.participation`, a pergunta B) — é decidida pela
+        // DATA DA PRÓPRIA EVIDÊNCIA (a pergunta A). Um aluno que já não
+        // frequenta à data de referência mas que respondeu a um instrumento
+        // DENTRO da janela em que ainda frequentava mantém essa evidência
+        // válida na análise por domínio; a decisão do product owner (§ regra
+        // das duas perguntas) exige-o explicitamente. `domainCell()` já é o
+        // portão certo — só devolve algo quando existem DADOS — por isso basta
+        // alimentar `domainStatistics()` com a progressão COMPLETA (`$rows`),
+        // nunca com um subconjunto filtrado pelo cohort de referência.
+        $domainEligibleRows = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => $this->rowHasDomainEvidence($row, $domains),
+        ));
+
+        // O denominador «X de Y» impresso pelo Vue: quem PODERIA ter tido
+        // dados de domínio nesta leitura — nunca mais que isto, e nunca o
+        // cohort de referência (que responderia à pergunta errada).
+        $domainEligibleIds = array_map(
+            fn (array $row): int => (int) $row['enrollment_id'],
+            $domainEligibleRows,
+        );
+
+        // A nota «não inclui N alunos…» só pode falar de quem foi
+        // GENUINAMENTE excluído por FALTA DE DADOS DE DOMÍNIO — tipicamente
+        // quem não frequenta à data de referência e não tem nenhuma evidência
+        // dentro da janela em que frequentou. Um aluno não-frequentante à
+        // data de referência mas presente em `$domainEligibleRows` (porque
+        // respondeu dentro da janela) NUNCA entra aqui — as duas notas
+        // (`domain_exclusion` e `partial_period_attendance`) nunca podem
+        // contradizer-se sobre o mesmo aluno.
+        $domainExcludedRows = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => ($row['period']['participation'] ?? null) !== null
+                && ! in_array((int) $row['enrollment_id'], $domainEligibleIds, true),
+        ));
+
+        /** @var list<string> $domainExcludedOrigins */
+        $domainExcludedOrigins = array_values(array_unique(array_filter(
+            array_map(
+                fn (array $row): ?string => $row['period']['participation']['reason_detail'] ?? null,
+                $domainExcludedRows,
+            ),
+            fn (?string $detail): bool => $detail !== null && $detail !== '',
+        )));
+
         // WHICH FIGURE IS THE ANSWER, at each moment of this year. Read from
         // the profile version's own periods, so a school that configures
         // continuity differently gets a different answer here without a line
@@ -138,7 +197,14 @@ class BuildClassStatistics
         // The same students, read at the period before — so a change of side on
         // the scale can be seen at all. Another reshaping of what is already in
         // hand, not another read.
-        $previousRows = $previous === null ? [] : $this->rowsFor($students, $previous['id']);
+        $previousRowsRaw = $previous === null ? [] : $this->rowsFor($students, $previous['id']);
+        $previousResolution = $previous === null
+            ? null
+            // H2: nunca aplicar resultados externos ao período anterior — só
+            // servem para ler o período selecionado, nunca para fabricar uma
+            // comparação.
+            : $this->universeRowsFor($previousRowsRaw, $class, $previous, $universe, $scale, applyExternalResults: false);
+        $previousRows = $previousResolution['rows'] ?? [];
 
         return [
             'periods' => $periods,
@@ -146,25 +212,69 @@ class BuildClassStatistics
             'previous_period' => $previous,
             'domains' => $domains,
             'scale' => $this->scalePayload($scale),
+            // O universo escolhido, devolvido para nunca ficar implícito (req
+            // 8): quem lê um número aqui sabe sempre qual foi o denominador.
+            'universe' => [
+                'value' => $universe->value,
+                'label' => $universe->label(),
+            ],
+            // Os factos sobre quem não frequenta, para as frases que os
+            // relatórios e o ecrã constroem por cima (req 3, req 12).
+            'cohort' => [
+                'not_attending_count' => $universeResolution['not_attending_count'],
+                'not_attending_origins' => $universeResolution['not_attending_origins'],
+                'external_included_count' => $universeResolution['external_included_count'],
+                // H1: quantos não frequentam E não têm resultado externo — a
+                // única forma honesta de o ecrã dizer que ficaram fora de
+                // toda a fração, em vez de aparecerem como «sem
+                // classificação» (req 9).
+                'not_attending_without_result' => $universeResolution['not_attending_without_result'],
+            ],
+            'notes' => [
+                // H1: já não lê `$universeResolution['not_attending_count']`
+                // (a pergunta B, cohort à data de referência) — lê quem ficou
+                // GENUINAMENTE sem dados de domínio, calculado acima.
+                'domain_exclusion' => $this->domainExclusionNote(
+                    count($domainExcludedRows),
+                    $domainExcludedOrigins,
+                ),
+                'external_inclusion' => $universe === CohortUniverse::AllClassStudents
+                    ? $this->externalInclusionNote(
+                        $universeResolution['external_included_count'],
+                        $universeResolution['not_attending_origins'],
+                    )
+                    : null,
+                // §6 da decisão do product owner (regra das duas perguntas):
+                // uma nota neutra, sem nome de produto, para quando pelo
+                // menos um aluno frequentou a disciplina apenas durante
+                // PARTE deste período — para que quem lê a análise saiba que
+                // a evidência de antes da janela abrir continua válida nela.
+                'partial_period_attendance' => $this->partialPeriodAttendanceNote($rows, $selected, $domains),
+            ],
             // Which reading answers «como está a turma» at this moment, and
             // which one is the supplementary «e só neste período?» (§1, §5).
             'primary' => $this->primaryPayload($primaryKind, $scopes, $periods, $selected),
-            'summary' => $this->summary($rows, $scale, $primaryKind),
-            'evolution' => $this->evolution($rows, $previousRows, $scale),
+            'summary' => $this->summary($universeRows, $scale, $primaryKind, count($domainEligibleRows)),
+            'evolution' => $this->evolution($universeRows, $previousRows, $scale),
             'continuous_evolution' => $this->continuousEvolution(
-                $rows,
+                $universeRows,
                 $previousRows,
                 $primaryKind,
                 $previous === null ? null : ($scopes[$previous['id']] ?? 'period'),
             ),
             // The grades, and the averages. Two readings, never averaged into
             // one, each named on screen by what it counts (§1, §8).
-            'assigned_distribution' => $this->assignedDistribution($rows, $scale),
-            'distribution' => $this->distribution($rows, $scale),
+            'assigned_distribution' => $this->assignedDistribution($universeRows, $scale),
+            'distribution' => $this->distribution($universeRows, $scale),
+            // SEMPRE `$rows` (a progressão completa, H1) — a análise por
+            // domínio nunca segue o universo (req 10) NEM o cohort à data de
+            // referência: `domainCell()` já é o portão data-driven correto
+            // (só devolve algo quando há dados), e é ele — nunca
+            // `period.participation` — que decide quem aparece aqui.
             'domain_statistics' => $this->domainStatistics($rows, $domains, $scale),
             'period_series' => $this->periodSeries($students, $periods, $domains, $scopes),
             'students' => $this->students(
-                $rows,
+                $universeRows,
                 $scale,
                 $students,
                 $previousRows,
@@ -173,6 +283,555 @@ class BuildClassStatistics
                 $previous === null ? null : ($scopes[$previous['id']] ?? 'period'),
             ),
         ];
+    }
+
+    /**
+     * H1: se esta linha tem QUALQUER dado de domínio — o único portão que a
+     * análise por domínio pode usar, DATA-DRIVEN, nunca o cohort à data de
+     * referência (`period.participation`, que responde à pergunta B, não à
+     * pergunta A). Um aluno que já não frequenta à data de referência mas que
+     * respondeu a um instrumento dentro da janela em que ainda frequentava
+     * tem `domainCell()` não-nulo aqui e conta para este grupo.
+     *
+     * @param  array<string, mixed>  $row
+     * @param  list<array{id: int, name: string}>  $domains
+     */
+    protected function rowHasDomainEvidence(array $row, array $domains): bool
+    {
+        foreach ($domains as $domain) {
+            if ($this->domainCell($row, $domain['id']) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * O universo pedido, resolvido: `AttendingOnly` fica só com quem frequenta;
+     * `AllClassStudents` (req 9) acrescenta quem não frequenta e tem um
+     * resultado externo compatível — rotulado (req 6/7), nunca disfarçado de
+     * evidência desta disciplina. Quem não frequenta e não tem resultado
+     * externo simplesmente fica de fora da fração: nunca um zero, nunca uma
+     * insucesso, nunca «sem classificação» (req 9).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $period
+     * @return array{rows: list<array<string, mixed>>, not_attending_count: int, not_attending_origins: list<string>, external_included_count: int, not_attending_without_result: int}
+     */
+    protected function universeRowsFor(
+        array $rows,
+        SchoolClass $class,
+        array $period,
+        CohortUniverse $universe,
+        ?Scale $scale,
+        bool $applyExternalResults = true,
+    ): array {
+        $attending = [];
+        $notAttending = [];
+
+        foreach ($rows as $row) {
+            if (($row['period']['participation'] ?? null) === null) {
+                $attending[] = $row;
+            } else {
+                $notAttending[] = $row;
+            }
+        }
+
+        /** @var list<string> $origins */
+        $origins = array_values(array_unique(array_filter(
+            array_map(
+                fn (array $row): ?string => $row['period']['participation']['reason_detail'] ?? null,
+                $notAttending,
+            ),
+            fn (?string $detail): bool => $detail !== null && $detail !== '',
+        )));
+
+        if ($notAttending === []) {
+            return [
+                'rows' => $attending,
+                'not_attending_count' => 0,
+                'not_attending_origins' => $origins,
+                'external_included_count' => 0,
+                'not_attending_without_result' => 0,
+            ];
+        }
+
+        // H2: um resultado externo NUNCA é aplicado à comparação do período
+        // anterior — só ao período selecionado. Aplicá-lo aos dois lados
+        // fabricaria uma evolução/transição que ninguém observou (§H2).
+        $externals = $applyExternalResults
+            ? $this->externalResultsFor(
+                $class,
+                $period,
+                array_map(fn (array $row): int => (int) $row['enrollment_id'], $notAttending),
+            )
+            : [];
+
+        // M3: estes três números são calculados AQUI, sempre — mesmo sob
+        // `AttendingOnly`, que não usa `$processed` em `rows`. Antes desta
+        // correção, o ramo de cima devolvia `not_attending_without_result =
+        // count($notAttending)` sem consultar nenhum resultado externo, o que
+        // dizia "sem resultado" de alunos que de facto o têm registado noutro
+        // sítio — a mesma figura é exportada por `ClassReportSource`, que
+        // herdava o mesmo erro.
+        $included = 0;
+        $withoutResult = 0;
+        $processed = [];
+
+        foreach ($notAttending as $row) {
+            $external = $externals[(int) $row['enrollment_id']] ?? null;
+            $classified = $external === null ? null : $this->withExternalClassification($row, $external, $scale);
+
+            // H1: só conta como incluído — e só sai de
+            // `not_attending_without_result` — quem o resultado externo
+            // EFETIVAMENTE RESOLVEU a um nível desta escala
+            // (`classification.final` não nulo). Um `ExternalSubjectResult`
+            // existe mas com `scale_level_id` nulo (só `level_code` ou só
+            // `numeric_value`) não dá origem a classificação nenhuma — «não
+            // frequenta» nunca pode reproduzir «sem classificação» só porque
+            // o registo externo não coube nesta escala.
+            if ($classified === null || ($classified['period']['classification']['final'] ?? null) === null) {
+                // Sem classificação resolvida: continua na lista (rotulado,
+                // nunca omitido), carregando a proveniência externa quando
+                // ela existe (via `withExternalClassification()`), mas sem
+                // classificação nenhuma — fora de toda a fração, nunca um
+                // zero (req 9). Marcado, para que `countableRows()` o exclua
+                // de todos os numeradores e denominadores — «não frequenta»
+                // nunca é «sem classificação».
+                $row = $classified ?? $row;
+                $row['period'] ??= [];
+                $row['period']['participation_only'] = true;
+
+                // DECISÃO DO PRODUCT OWNER (substitui a redação original de
+                // H3): uma classificação interna PRÉ-EXISTENTE nunca é
+                // apagada na base de dados — nada é escrito aqui, isto é só
+                // uma estrutura em memória — mas também nunca é
+                // automaticamente a resposta FINAL desta análise para um
+                // aluno que, à data de referência, não frequenta a
+                // disciplina e cujo resultado externo (quando existe) não se
+                // resolveu a um nível. Sem isso, uma decisão tomada quando
+                // ele ainda frequentava sobreviveria como «final» mesmo
+                // depois de deixar de frequentar, sem ninguém a ter
+                // reafirmado nessa condição. Só se aplica quando não há
+                // resultado externo NENHUM — quando existe mas não resolveu,
+                // `withExternalClassification()` já escreveu o seu próprio
+                // `classification` (final nulo, proveniência presente), que
+                // fica exatamente como está.
+                if ($classified === null) {
+                    $row['period']['classification'] = null;
+                }
+
+                $processed[] = $row;
+                $withoutResult++;
+
+                continue;
+            }
+
+            // O resultado externo RESOLVEU A UM NÍVEL: é a resposta final
+            // desta análise para este período, e substitui — só nesta
+            // estrutura em memória, nunca na base de dados — qualquer
+            // classificação interna pré-existente que o aluno tivesse. Essa
+            // classificação interna nunca é apagada onde vive (§ decisão do
+            // product owner que revoga a redação original de H3); só deixa
+            // de ser lida como a resposta desta leitura específica.
+            $included++;
+            $processed[] = $classified;
+        }
+
+        // `AttendingOnly` nunca mostra quem não frequenta — os três números
+        // acima são calculados da mesma forma para os dois universos (M3),
+        // só a lista de linhas devolvida é que difere.
+        $rows = $universe === CohortUniverse::AttendingOnly ? $attending : array_merge($attending, $processed);
+
+        return [
+            'rows' => $rows,
+            'not_attending_count' => count($notAttending),
+            'not_attending_origins' => $origins,
+            // `AttendingOnly` nunca mostra estes alunos, por isso nunca
+            // "inclui" nenhum — o `$included` calculado é só o que
+            // `AllClassStudents` de facto acrescenta a `rows`. `M3` só pede
+            // `not_attending_without_result` correto nos dois universos, não
+            // este.
+            'external_included_count' => $universe === CohortUniverse::AttendingOnly ? 0 : $included,
+            'not_attending_without_result' => $withoutResult,
+        ];
+    }
+
+    /**
+     * As linhas que contam para qualquer fração — numerador ou denominador.
+     *
+     * H1: quem não frequenta esta disciplina e não tem resultado externo
+     * fica marcado (`period.participation_only`) mas continua visível em
+     * `students[]`, rotulado. Esta é a ÚNICA regra que os retira de toda a
+     * aritmética estatística — enunciada aqui uma vez, e usada por todos os
+     * agregados que recebem o universo alargado.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    protected function countableRows(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            fn (array $row): bool => ($row['period']['participation_only'] ?? false) !== true,
+        ));
+    }
+
+    /**
+     * O resultado externo compatível com este período — o próprio, ou o do ano
+     * completo (`period_id` nulo) quando não há um mais específico — para cada
+     * matrícula pedida. UMA SÓ CONSULTA para o período todo, nunca uma por
+     * aluno.
+     *
+     * @param  array<string, mixed>  $period  a linha do período (id da
+     *                                        AcademicPeriod, como a progressão a devolve)
+     * @param  list<int>  $enrollmentIds
+     * @return array<int, ExternalSubjectResult>
+     */
+    protected function externalResultsFor(SchoolClass $class, array $period, array $enrollmentIds): array
+    {
+        if ($enrollmentIds === [] || $class->assessment_profile_version_id === null) {
+            return [];
+        }
+
+        // `external_subject_results.period_id` aponta para
+        // `profile_version_periods`, não para `academic_periods` — a mesma
+        // distinção que a migração documenta: o resultado externo prende-se ao
+        // período TAL COMO O PERFIL DE AVALIAÇÃO EM VIGOR O DEFINE.
+        $profilePeriodId = ProfileVersionPeriod::query()
+            ->where('assessment_profile_version_id', $class->assessment_profile_version_id)
+            ->where('academic_period_id', $period['id'])
+            ->value('id');
+
+        $results = ExternalSubjectResult::query()
+            ->whereIn('enrollment_id', $enrollmentIds)
+            ->where(function ($query) use ($profilePeriodId): void {
+                $query->whereNull('period_id');
+
+                if ($profilePeriodId !== null) {
+                    $query->orWhere('period_id', $profilePeriodId);
+                }
+            })
+            ->get();
+
+        $byEnrollment = [];
+
+        foreach ($results as $result) {
+            $id = (int) $result->enrollment_id;
+            $current = $byEnrollment[$id] ?? null;
+
+            // O do período concreto ganha ao do ano completo, quando os dois
+            // existem para a mesma matrícula.
+            if ($current === null || ($current->period_id === null && $result->period_id !== null)) {
+                $byEnrollment[$id] = $result;
+            }
+        }
+
+        return $byEnrollment;
+    }
+
+    /**
+     * O nível da escala que este resultado externo corresponde — SÓ um
+     * `scale_level_id` que pertença à ESCALA DESTA TURMA (req H4).
+     *
+     * NUNCA `level_code`: um código sem se saber a que escala pertence não
+     * pode ser comparado ao código dos níveis desta escala sem adivinhar que
+     * as duas escalas usam a mesma numeração — e um PLNM «4» não é um nível 4
+     * desta disciplina só por coincidência de código.
+     *
+     * NUNCA um `scale_level_id` de outra escala: aceitá-lo colocaria o aluno
+     * numa banda que a escala desta turma nunca decidiu.
+     */
+    protected function resolveExternalLevel(ExternalSubjectResult $external, ?Scale $scale): ?ScaleLevel
+    {
+        if ($external->scale_level_id === null || $scale === null) {
+            return null;
+        }
+
+        return $scale->levels->first(
+            fn (ScaleLevel $level): bool => (int) $level->id === (int) $external->scale_level_id,
+        );
+    }
+
+    /**
+     * O valor deste resultado externo, levado para o MESMO espaço normalizado
+     * (0–100) que os resultados calculados já usam.
+     *
+     * NUNCA O `numeric_value` EM BRUTO (req H4). Sem a escala de origem
+     * registada, um número não diz nada: um PLNM «4 em 5» e um teste «4 em
+     * 20» são o mesmo `numeric_value` e significam coisas opostas — normalizar
+     * contra a escala DESTA turma seria adivinhar a escala de origem e pôr
+     * uma nota na boca de quem a atribuiu.
+     *
+     * SÓ QUANDO HÁ UM NÍVEL RESOLVIDO NESTA ESCALA (via `scale_level_id`): o
+     * PONTO MÉDIO da sua banda normalizada — a única leitura numérica que um
+     * nível já colocado nesta escala pode honestamente dar a uma média. Sem
+     * isso, fica de fora da média, nunca coagido a zero (req 9).
+     */
+    protected function normalizedExternalValue(ExternalSubjectResult $external, ?Scale $scale, ?ScaleLevel $level): ?string
+    {
+        if ($level !== null && $level->band_min_normalized !== null && $level->band_max_normalized !== null) {
+            return Bc::div(
+                Bc::add(Bc::of((string) $level->band_min_normalized), Bc::of((string) $level->band_max_normalized)),
+                '2',
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Rotula uma matrícula que não frequenta com a classificação do seu
+     * resultado externo — pela MESMA lógica de escala que qualquer outra
+     * classificação já usa (`is_negative`, `bandFor()`), nunca uma segunda
+     * noção de «passar» (req 2). NUNCA escrito em `student_overall_results`,
+     * `student_domain_results` ou `calculation_snapshots`: isto é só a forma
+     * de o ler numa estatística, a estrutura em memória nunca é gravada.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    protected function withExternalClassification(array $row, ExternalSubjectResult $external, ?Scale $scale): array
+    {
+        $level = $this->resolveExternalLevel($external, $scale);
+        $normalized = $this->normalizedExternalValue($external, $scale, $level);
+
+        $row['period'] ??= [];
+        $row['period']['classification'] = [
+            'status' => 'confirmed',
+            'final' => $this->bandPayload($level),
+            // H2/H4: NUNCA o `numeric_value` em bruto, incondicionalmente —
+            // mesmo quando um nível já foi resolvido. `final` acima já carrega
+            // a colocação nesta escala; `final_value` é o que
+            // `assignedValueDistribution()`/`assignedKeyOf()` usam para meter
+            // um valor num BALDE ou numa BANDA desta escala, e a escala de
+            // origem do número em bruto nunca é conhecida — um PLNM «4 em 5»
+            // colocado num balde/banda de um 0–20 seria exatamente a
+            // adivinhação de escala que este requisito proíbe (H2, corrige a
+            // fuga que sobrevivia à primeira ronda).
+            'final_value' => null,
+            // H3: a proveniência TAMBÉM dentro de `classification`, não só no
+            // `period.external` irmão — para que nenhum leitor deste array
+            // (nem o Statistics.vue, nem um export futuro) possa apresentar
+            // um resultado externo como se esta disciplina o tivesse
+            // calculado. `status` continua «confirmed» de propósito: é o que
+            // `assignedOutcomeOf()` precisa para continuar a funcionar.
+            'external' => [
+                'source' => 'external',
+                'origin' => $external->origin,
+            ],
+        ];
+        // Só entra na média/distribuição calculada quando há um valor
+        // normalizado significativo — nunca o número em bruto (req 9).
+        $row['period']['accumulated_average'] = $normalized;
+        // A PROVENIÊNCIA, visível em quem consome esta linha (req 6/7): nunca
+        // apresentado como se fosse evidência desta disciplina.
+        $row['period']['external'] = [
+            'source' => 'external',
+            'origin' => $external->origin,
+        ];
+
+        return $row;
+    }
+
+    /**
+     * «Esta análise por domínio não inclui N alunos avaliados em X, por não
+     * existirem dados disponíveis para este domínio.» (req 3) — singular,
+     * plural, várias proveniências unidas por «e», e o recurso sem inventar
+     * uma proveniência quando nenhuma é conhecida.
+     *
+     * @param  list<string>  $origins
+     */
+    protected function domainExclusionNote(int $notAttendingCount, array $origins): ?string
+    {
+        if ($notAttendingCount === 0) {
+            return null;
+        }
+
+        if ($origins === []) {
+            $subject = $notAttendingCount === 1
+                ? '1 aluno que não frequenta esta disciplina'
+                : "{$notAttendingCount} alunos que não frequentam esta disciplina";
+
+            return "Esta análise por domínio não inclui {$subject}, por não existirem dados disponíveis para este domínio.";
+        }
+
+        $subject = $notAttendingCount === 1 ? '1 aluno avaliado em' : "{$notAttendingCount} alunos avaliados em";
+
+        return "Esta análise por domínio não inclui {$subject} {$this->joinOrigins($origins)}, por não existirem dados disponíveis para este domínio.";
+    }
+
+    /**
+     * «Incluem-se N alunos avaliados em X, com base na classificação final
+     * registada.» (req 12) — só quando o universo pedido é «toda a turma» e
+     * pelo menos um resultado externo foi usado.
+     *
+     * @param  list<string>  $origins
+     */
+    protected function externalInclusionNote(int $includedCount, array $origins): ?string
+    {
+        if ($includedCount === 0) {
+            return null;
+        }
+
+        if ($origins === []) {
+            $subject = $includedCount === 1 ? '1 aluno' : "{$includedCount} alunos";
+
+            return "Incluem-se {$subject}, com base na classificação final registada.";
+        }
+
+        $subject = $includedCount === 1 ? '1 aluno avaliado em' : "{$includedCount} alunos avaliados em";
+
+        return "Incluem-se {$subject} {$this->joinOrigins($origins)}, com base na classificação final registada.";
+    }
+
+    /**
+     * §6 da decisão do product owner: «Alguns alunos frequentaram a
+     * disciplina apenas durante parte do período. Os resultados obtidos
+     * durante esse intervalo são considerados nas análises
+     * correspondentes.» — NEUTRA, SEM NOME DE PRODUTO NENHUM, e só quando
+     * pelo menos um aluno desta análise frequentou de facto só PARTE do
+     * período (nunca quando um aluno não frequentou o período nenhum, que já
+     * tem a sua própria nota em `domainExclusionNote()`).
+     *
+     * M1c: A CONSULTA DO PERÍODO NUNCA CORRE NO CASO COMUM — uma turma sem
+     * nenhuma matrícula marcada como não-frequentante à data de referência
+     * não pode ter janela nenhuma que se sobreponha ao período, e o
+     * invariante de consultas do ficheiro (ver docblock da classe) exige que
+     * esse caso continue a não pagar nenhuma consulta extra.
+     *
+     * M1b: FREQUÊNCIA PARCIAL = QUALQUER JANELA DE NÃO-FREQUÊNCIA QUE SE
+     * SOBREPONHA AO PERÍODO, aberta OU fechada dentro dele — lida sobre
+     * `ClassCohort::windowsFor()`, nunca só sobre a janela em vigor à data de
+     * referência (`participation.since`). Um aluno cuja janela abriu a 10/01
+     * e FECHOU a 20/02 (voltou a meio do período) teve frequência
+     * genuinamente parcial e tinha ficado sem nota nenhuma antes desta
+     * correção, porque `participation` (a data de referência) já não a via.
+     *
+     * M1d: NUNCA emitida para um aluno sem NENHUMA evidência neste período —
+     * a frase afirma que resultados «são considerados», e não há nada a
+     * considerar quando não existe nenhum.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $selected
+     * @param  list<array{id: int, name: string}>  $domains
+     */
+    protected function partialPeriodAttendanceNote(array $rows, array $selected, array $domains): ?string
+    {
+        // TODOS OS ALUNOS SÃO CANDIDATOS, e não só os que não frequentam À
+        // DATA DE REFERÊNCIA.
+        //
+        // Semear esta lista a partir de `period.participation` era o que
+        // tornava o caso da RE-ENTRADA inalcançável: uma janela que abriu a 10
+        // de janeiro e FECHOU a 20 de fevereiro, dentro de um período que
+        // termina a 31 de março, deixa `participation` a null à data de
+        // referência — o aluno voltou a frequentar — e a frequência dele foi,
+        // ainda assim, genuinamente parcial. É precisamente o caso que esta
+        // nota existe para dizer.
+        //
+        // Quem decide é `windowsFor()`, que carrega TODAS as janelas (abertas
+        // e fechadas); um aluno sem janela nenhuma sai no `continue` abaixo
+        // sem custo. A consulta é uma só para a turma inteira.
+        $enrollmentIds = array_map(
+            static fn (array $row): int => (int) $row['enrollment_id'],
+            $rows,
+        );
+
+        if ($enrollmentIds === []) {
+            return null;
+        }
+
+        $windows = ClassCohort::windowsFor(collect($enrollmentIds));
+
+        if ($windows->isEmpty()) {
+            // O caso esmagadoramente comum: nenhuma turma com zero janelas
+            // paga a consulta do período abaixo.
+            return null;
+        }
+
+        $period = AcademicPeriod::query()->whereKey($selected['id'])->first(['starts_on', 'ends_on']);
+
+        if ($period === null) {
+            return null;
+        }
+
+        $startsOn = $period->starts_on->toDateString();
+        $endsOn = $period->ends_on->toDateString();
+
+        $byEnrollment = [];
+
+        foreach ($rows as $row) {
+            $byEnrollment[(int) $row['enrollment_id']] = $row;
+        }
+
+        foreach ($enrollmentIds as $enrollmentId) {
+            $enrollmentWindows = $windows->get($enrollmentId);
+
+            if ($enrollmentWindows === null || $enrollmentWindows->isEmpty()) {
+                continue;
+            }
+
+            $row = $byEnrollment[$enrollmentId] ?? null;
+
+            if ($row === null) {
+                continue;
+            }
+
+            // M1d: sem evidência nenhuma neste período, a frase não tem nada
+            // a que se referir.
+            if (($row['period']['weighted_average'] ?? null) === null
+                && ! $this->rowHasDomainEvidence($row, $domains)) {
+                continue;
+            }
+
+            foreach ($enrollmentWindows as $window) {
+                $from = $window->effective_from->toDateString();
+                $until = $window->effective_until?->toDateString();
+
+                // A janela abriu DENTRO do período (a matrícula frequentou a
+                // primeira parte e deixou de frequentar), ou fechou DENTRO
+                // dele (voltou a meio do período, M1b). Uma janela que já
+                // estava aberta antes do período começar E que não fechou
+                // dentro dele não é frequência parcial DESTE período — é
+                // simplesmente não o ter frequentado nenhum.
+                // `$until < $endsOn`, E NÃO `<=`, DE PROPÓSITO.
+                // `effective_until` é INCLUSIVO — é o último dia em que o
+                // aluno NÃO frequentou (ver `ClassCohort::wasAttendingOn()`,
+                // que o lê com `>= $on`) — logo o aluno regressa em
+                // `until + 1`. Para que o regresso caia dentro deste período é
+                // preciso `until + 1 <= endsOn`, que é exatamente
+                // `until < endsOn`. Com `<=`, uma janela que fecha no próprio
+                // último dia do período contaria como frequência parcial dele,
+                // quando na verdade o aluno só regressou depois de o período
+                // acabar — não frequentou dia nenhum.
+                $opensDuringPeriod = $from > $startsOn && $from <= $endsOn;
+                $closesDuringPeriod = $until !== null && $until >= $startsOn && $until < $endsOn;
+
+                if ($opensDuringPeriod || $closesDuringPeriod) {
+                    return 'Alguns alunos frequentaram a disciplina apenas durante parte do período. '
+                        .'Os resultados obtidos durante esse intervalo são considerados nas análises correspondentes.';
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * «PLNM» sozinho, ou «PLNM e Espanhol» quando há mais que uma proveniência.
+     *
+     * @param  list<string>  $origins
+     */
+    protected function joinOrigins(array $origins): string
+    {
+        if (count($origins) <= 1) {
+            return $origins[0] ?? '';
+        }
+
+        $last = array_pop($origins);
+
+        return implode(', ', $origins).' e '.$last;
     }
 
     /**
@@ -327,10 +986,24 @@ class BuildClassStatistics
      * @param  list<array<string, mixed>>  $rows
      * @return array<string, mixed>
      */
-    protected function summary(array $rows, ?Scale $scale, string $primaryKind = 'period'): array
+    protected function summary(array $rows, ?Scale $scale, string $primaryKind = 'period', ?int $domainStudentsTotal = null): array
     {
+        $rows = $this->countableRows($rows);
         $standalone = $this->valuesOf($rows, 'weighted_average');
         $accumulated = $this->valuesOf($rows, 'accumulated_average');
+
+        // M2: um aluno incluído por resultado externo TEM um resultado — só
+        // não é uma `weighted_average`, porque esta disciplina não a
+        // calculou. Contá-lo em `students_without_result` (que antes desta
+        // correção olhava só para `weighted_average`) dizia «ainda sem
+        // qualquer elemento avaliado» de alguém precisamente incluído porque
+        // tem um. Sem fabricar a média que falta (req 9): fica de fora dos
+        // dois lados da conta, nem com resultado nem sem ele.
+        $withoutExternal = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => ($row['period']['external'] ?? null) === null,
+        ));
+        $withoutResult = count($withoutExternal) - count($this->valuesOf($withoutExternal, 'weighted_average'));
 
         $partial = 0;
 
@@ -352,8 +1025,26 @@ class BuildClassStatistics
 
         return [
             'students_total' => count($rows),
+            // M1: o denominador PRÓPRIO do bloco «por domínio», que não é o
+            // `students_total` acima.
+            //
+            // JÁ NÃO É «quem frequenta à data de referência». Desde a decisão
+            // do product owner, `domainStatistics()` recebe a progressão
+            // COMPLETA e decide aluno a aluno PELOS DADOS que existem — uma
+            // evidência produzida enquanto o aluno frequentava continua dele
+            // (pergunta (A)), mesmo que a janela de não-frequência tenha
+            // aberto depois e mesmo que, à data de referência, ele já não
+            // entre no balanço final (pergunta (B)). Os dois factos são
+            // verdadeiros ao mesmo tempo, de propósito.
+            //
+            // Este número conta, exatamente, os alunos que TÊM pelo menos uma
+            // célula de domínio nesta leitura — não «os que poderiam ter
+            // tido», que seria outro número e levaria a outra correção. É o
+            // denominador que a linha do Vue usa, para nunca dividir por um
+            // universo que os domínios não usaram.
+            'domain_students_total' => $domainStudentsTotal ?? count($rows),
             'students_with_result' => count($standalone),
-            'students_without_result' => count($rows) - count($standalone),
+            'students_without_result' => $withoutResult,
             'class_average' => $this->mean($standalone),
             'accumulated_average' => $this->mean($accumulated),
             // THE ANSWER, and the other one. Both are already above under their
@@ -406,6 +1097,7 @@ class BuildClassStatistics
      */
     protected function success(array $rows, ?Scale $scale): array
     {
+        $rows = $this->countableRows($rows);
         $succeeded = 0;
         $failed = 0;
         $unplaced = 0;
@@ -449,6 +1141,20 @@ class BuildClassStatistics
      */
     protected function evolution(array $rows, array $previousRows = [], ?Scale $scale = null): array
     {
+        $rows = $this->countableRows($rows);
+        $previousRows = $this->countableRows($previousRows);
+
+        // M5: a mesma guarda que `transitionOf()`/`continuousMovementOf()` já
+        // aplicam, aqui em falta antes desta correção. Um resultado externo é
+        // uma classificação única, nunca uma trajetória — sem esta exclusão
+        // essas linhas caíam sempre em `no_comparison` (o seu `evolution` é
+        // sempre null) e inflacionavam esse balde e o denominador de todas as
+        // percentagens, encolhendo progrediu/manteve-se/regrediu sem que
+        // ninguém tivesse deixado de progredir, manter-se ou regredir.
+        $rows = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => ($row['period']['external'] ?? null) === null,
+        ));
         $counts = ['progressed' => 0, 'stable' => 0, 'regressed' => 0, 'no_comparison' => 0];
         $changes = [];
 
@@ -515,6 +1221,9 @@ class BuildClassStatistics
         string $kind,
         ?string $previousKind,
     ): array {
+        $rows = $this->countableRows($rows);
+        $previousRows = $this->countableRows($previousRows);
+
         $before = [];
 
         foreach ($previousRows as $row) {
@@ -581,6 +1290,13 @@ class BuildClassStatistics
             return null;
         }
 
+        // H2: um resultado externo é uma classificação única, nunca uma
+        // trajetória — comparar contra si mesmo (ou contra o período
+        // anterior) fabricaria um movimento que ninguém observou.
+        if (($row['period']['external'] ?? null) !== null || ($previousRow['period']['external'] ?? null) !== null) {
+            return null;
+        }
+
         $from = $this->primaryValueOf($previousRow, $previousKind);
         $to = $this->primaryValueOf($row, $kind);
 
@@ -627,6 +1343,9 @@ class BuildClassStatistics
      */
     protected function transitions(array $rows, array $previousRows, ?Scale $scale): array
     {
+        $rows = $this->countableRows($rows);
+        $previousRows = $this->countableRows($previousRows);
+
         $before = [];
 
         foreach ($previousRows as $row) {
@@ -690,6 +1409,12 @@ class BuildClassStatistics
     protected function transitionOf(array $row, ?array $previousRow, ?Scale $scale): string
     {
         if ($previousRow === null) {
+            return 'no_assigned_classification';
+        }
+
+        // H2: sem trajetória para um resultado externo — nem no lado atual
+        // nem no anterior.
+        if (($row['period']['external'] ?? null) !== null || ($previousRow['period']['external'] ?? null) !== null) {
             return 'no_assigned_classification';
         }
 
@@ -898,6 +1623,8 @@ class BuildClassStatistics
      */
     protected function assignedDistribution(array $rows, ?Scale $scale): array
     {
+        $rows = $this->countableRows($rows);
+
         // A NUMERIC SCALE IS DISTRIBUTED BY THE NUMBER THE TEACHER WROTE.
         //
         // «Insuficiente: 3» is not the answer to «quantos tiveram 8?» — on a
@@ -1084,6 +1811,8 @@ class BuildClassStatistics
      */
     protected function distribution(array $rows, ?Scale $scale): array
     {
+        $rows = $this->countableRows($rows);
+
         if ($scale === null || $scale->levels->isEmpty()) {
             return [];
         }
@@ -1142,6 +1871,21 @@ class BuildClassStatistics
             $partial = 0;
             $succeeded = 0;
             $placed = 0;
+            // QUANTOS ALUNOS ESTE DOMÍNIO CHEGA A ABRANGER — e não quantos
+            // alunos a turma tem.
+            //
+            // Desde a decisão do product owner, este método recebe a
+            // progressão COMPLETA, para que uma evidência produzida enquanto o
+            // aluno frequentava continue a contar mesmo que uma janela de
+            // não-frequência tenha aberto depois (pergunta (A)). Contar o
+            // «sem resultado» contra `count($rows)` passaria a dizer «sem
+            // resultado» de quem NUNCA teve dado nenhum neste domínio — que é
+            // exatamente a frase que a nota logo acima recusa dizer, e que a
+            // regra proíbe: «não frequenta» não é «sem classificação».
+            //
+            // Contado por domínio, e não uma vez para todos: um domínio pode
+            // abranger alunos que outro não abrange.
+            $covered = 0;
 
             foreach ($rows as $row) {
                 $cell = $this->domainCell($row, $domain['id']);
@@ -1149,6 +1893,8 @@ class BuildClassStatistics
                 if ($cell === null) {
                     continue;
                 }
+
+                $covered++;
 
                 // The same rule as the class figure, applied to this domain's
                 // own mention: the scale decides, and a domain the scale places
@@ -1192,7 +1938,7 @@ class BuildClassStatistics
                 'accumulated_average' => $accumulatedMean,
                 'evolution_average' => $this->mean($changes),
                 'students_with_result' => count($period),
-                'students_without_result' => count($rows) - count($period),
+                'students_without_result' => $covered - count($period),
                 'partial_coverage_count' => $partial,
                 // Success within this domain — «5 de 6» — so a teacher can see
                 // which domain is carrying the class and which is holding it
@@ -1374,6 +2120,10 @@ class BuildClassStatistics
                 'domains' => $period['domains'] ?? [],
                 'self_assessment' => $period['self_assessment'] ?? null,
                 'classification' => $period['classification'] ?? null,
+                // A PROVENIÊNCIA, quando esta linha é uma classificação
+                // resolvida a partir de um resultado externo (req 6/7) — nunca
+                // presente para uma evidência desta disciplina.
+                'external' => $period['external'] ?? null,
                 // Their whole year, for the individual panel (§3, §5).
                 'series' => $series[$row['enrollment_id']] ?? [],
                 // Which side of the scale they were on and are on now — the
@@ -1406,6 +2156,7 @@ class BuildClassStatistics
      */
     protected function mostCommonBand(array $rows, ?Scale $scale): ?array
     {
+        $rows = $this->countableRows($rows);
         $counts = [];
         $levels = [];
 
@@ -1669,12 +2420,28 @@ class BuildClassStatistics
             'previous_period' => null,
             'domains' => $domains,
             'scale' => null,
+            'universe' => [
+                'value' => CohortUniverse::AttendingOnly->value,
+                'label' => CohortUniverse::AttendingOnly->label(),
+            ],
+            'cohort' => [
+                'not_attending_count' => 0,
+                'not_attending_origins' => [],
+                'external_included_count' => 0,
+                'not_attending_without_result' => 0,
+            ],
+            'notes' => [
+                'domain_exclusion' => null,
+                'external_inclusion' => null,
+                'partial_period_attendance' => null,
+            ],
             'primary' => [
                 'kind' => 'period', 'label' => 'Média Ponderada', 'short_label' => 'Média da turma',
                 'caption' => null, 'supplementary_label' => null, 'has_supplementary' => false, 'scopes' => [],
             ],
             'summary' => [
                 'students_total' => 0,
+                'domain_students_total' => 0,
                 'students_with_result' => 0,
                 'students_without_result' => 0,
                 'class_average' => null,

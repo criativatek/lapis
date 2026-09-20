@@ -12,6 +12,7 @@ use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Assessment\ClassCohort;
 use App\Services\Audit\AuditLog;
 use App\Services\Evidence\Ai\IncidentDescriptionAssistant;
 use App\Services\Evidence\DetectEvidenceAccumulationWarnings;
@@ -96,7 +97,17 @@ class EvidenceController extends Controller
         return Inertia::render('records/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'activeEnrollmentIds' => $class->activeEnrollments()->pluck('id'),
-            'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
+            // M6: este é o MAPA id→nome para TUDO o que pode aparecer no
+            // ecrã — inclui quem já não frequenta esta disciplina, porque um
+            // EvidenceRecord existente pode continuar a apontar para ele
+            // (registado antes da janela abrir, ou de outro período) e o
+            // Vue (`selectableEnrollments`, o dropdown de edição) precisa de
+            // resolver o nome de QUALQUER matrícula que um registo referencie,
+            // não só de quem frequenta hoje. `all()`, nunca `attending()` —
+            // a filtragem de quem pode ser o ALVO DE UM REGISTO NOVO continua
+            // a ser feita no Vue com `activeEnrollmentIds` (linha abaixo),
+            // que é o único sítio onde «não frequenta» deve mesmo excluir.
+            'enrollments' => ClassCohort::for($class)->all()
                 ->map(fn ($enrollment) => ['id' => $enrollment->id, 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)']),
             'domains' => Domain::where('subject_id', $class->subject_id)->orderBy('name')->get(['id', 'name']),
             'kinds' => collect(EvidenceKind::cases())->map(fn (EvidenceKind $kind) => [

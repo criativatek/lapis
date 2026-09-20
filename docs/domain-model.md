@@ -245,6 +245,68 @@ Deliberadamente **não** é uma coluna `class_group_id` em `enrollments`: uma co
 
 > **Uma pertença não impede remover uma inscrição sem história.** Ao contrário das dez relações de `EnrollmentHistory::RELATIONS`, esta está em `CLEARED_WITH_ENROLLMENT`: sai com a inscrição, na mesma transação, e só depois de estar provado que não há uma única avaliação, evidência ou classificação a proteger. O grupo com que cada **aula** nasceu vive em `lessons.class_group_id`, e não aqui.
 
+#### `subject_participations`
+Os períodos em que um aluno **não frequenta** a disciplina desta turma — o caso que lhe deu origem é o PLNM: o aluno continua a pertencer ao 8.º F, mas é avaliado noutro percurso e não nos instrumentos de Português.
+
+**Uma linha é um período de NÃO-frequência. Sem linha = frequenta.** É esta a decisão que torna a tabela puramente aditiva: todas as inscrições que já existiam continuam a significar «frequenta», sem escrever um único registo. Não há um estado `attending` a povoar — há a ausência dele, que já era verdade.
+
+**Prende-se à inscrição, e não a um trio (aluno, turma, disciplina).** Uma linha de `classes` já **é** o par (turma, disciplina) — «8.º F · Português» e «8.º F · PLNM» são duas linhas com o mesmo `label` e `subject_id` diferente — logo uma `Enrollment` já é o triplo. Guardar aqui outra vez a disciplina duplicaria `classes.subject_id` e deixaria as duas discordar. Consequência que se ganha de graça: **«não frequenta Português» não pode afectar Matemática**, porque são inscrições diferentes.
+
+**O aluno continua na turma.** `enrollments.status` permanece `active`; `EnrollmentStatus::Left` e `status_reason` são a ferramenta errada, porque tiram o aluno da pauta (§9, §27).
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id`, `ulid`, `organization_id` | | não | |
+| `enrollment_id` | `BIGINT UNSIGNED` | não | FK `enrollments` · `ON DELETE RESTRICT` |
+| `state` | `VARCHAR(16)` | não | CHECK `('not_attending')` |
+| `reason` | `VARCHAR(32)` | não | CHECK `('alternative_subject','other')` |
+| `reason_detail` | `VARCHAR(64)` | sim | «PLNM». Texto livre **de propósito** — ver abaixo. |
+| `note` | `VARCHAR(255)` | sim | Observação mínima |
+| `effective_from` | `DATE` | não | Inclusivo |
+| `effective_until` | `DATE` | sim | Inclusivo. `NULL` = ainda em vigor. |
+| `created_at`, `updated_at` | `DATETIME` | não | |
+
+`CHECK subject_participations_window_check`: `effective_until IS NULL OR effective_until >= effective_from` (só MySQL/MariaDB) · `INDEX(organization_id, enrollment_id, effective_from, effective_until)`
+
+> **Porquê `alternative_subject` + texto livre, e não um caso `plnm`.** O conjunto dos percursos alternativos a uma disciplina é currículo de cada escola, não deste domínio: um caso de enum por currículo significaria uma migração por escola. O PLNM é suportado sem que o código conheça o PLNM.
+
+> **A não-sobreposição não cabe numa constraint**, como em `class_group_memberships` e pela mesma razão. É imposta pelas ações em `App\Actions\SubjectParticipation\*`, com `lockForUpdate()` e re-verificação **dentro** da transação. Reactivar **fecha** a janela em `data - 1`; quando a data pedida é o próprio dia em que ela abriu, a janela é apagada — nunca chegou a valer um dia.
+
+> **Sai com a inscrição.** Está em `EnrollmentHistory::CLEARED_WITH_ENROLLMENT`, não em `RELATIONS`: uma janela de não-frequência é arrumação organizativa, não história pedagógica. Pô-la na outra lista criaria o beco que essa lista já documenta — um aluno acrescentado por engano e marcado «não frequenta» nunca mais poderia ser removido, por causa de uma marcação e não de uma avaliação.
+
+> **Duas perguntas, duas respostas — decisão do product owner.** Uma janela aqui NUNCA apaga retroativamente evidência produzida enquanto o aluno ainda frequentava. Há sempre duas perguntas diferentes, e cada uma tem a sua resposta:
+>
+> - **(A) Qualquer coisa assente em evidência/instrumentos** — lê-se pela DATA DO PRÓPRIO DADO (`instruments.applied_on`). Se o aluno frequentava a disciplina nesse dia, essa evidência continua válida: continua a aparecer nas análises desse instrumento, nas análises de domínio/critério compatíveis, e nas análises por intervalo de datas. Um instrumento aplicado em outubro continua dele mesmo que a janela de não-frequência só tenha aberto em janeiro; um instrumento aplicado depois de a janela abrir já não é dele. É a regra que `BuildClassElements::resultRow()` e `ClassResultsCalculator::scoreInputsFor()` aplicam via `ClassCohort::wasAttendingOn()`, ao lado da regra de ingresso tardio (§11.4) — nunca a substituindo.
+> - **(B) O balanço final de um período** — lê-se pelo COHORT À DATA DE REFERÊNCIA (normalmente o fim do período), que é exatamente o que `ClassCohort::asOfPeriod()` já respondia e continua a responder sem alteração: se a essa data o aluno já está noutro percurso, não entra no denominador final de Português.
+>
+> Nunca há pro-rata de alunos nem denominador fracionário — um aluno conta inteiro na pergunta a que responde, ou não conta nessa pergunta. Aplicar a resposta de (B) a (A) — excluir a inscrição inteira do cálculo do ano só por uma janela que abriu depois — era o erro que esta nota corrige: apagava evidência de outubro só porque o aluno mudou de percurso em janeiro.
+
+#### `external_subject_results`
+A classificação que veio **de fora desta disciplina** — o nível que o professor de PLNM atribuiu, registado pelo professor de Português para que o aluno não fique sem resultado nenhum.
+
+**Existe para que um resultado externo nunca seja confundido com um resultado calculado.** Nunca é escrito em `student_overall_results`, `student_domain_results` nem `calculation_snapshots`: não tem critérios, não tem instrumentos, não tem domínios e não tem evidência, e nada no produto pode dar a entender que tem (§7 do briefing, §3.3).
+
+| Coluna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id`, `ulid`, `organization_id` | | não | |
+| `enrollment_id` | `BIGINT UNSIGNED` | não | FK `enrollments` · `ON DELETE RESTRICT` |
+| `period_id` | `BIGINT UNSIGNED` | sim | FK `profile_version_periods`. `NULL` = ano completo. |
+| `origin` | `VARCHAR(64)` | não | «PLNM» — de onde veio a classificação |
+| `scale_level_id` | `BIGINT UNSIGNED` | sim | FK `scale_levels`, **da escala desta turma** |
+| `level_code` | `VARCHAR(16)` | sim | O nível tal como foi registado, quando não assenta na escala |
+| `numeric_value` | `DECIMAL(6,3)` | sim | `DECIMAL`, nunca `float` (§24.4) |
+| `recorded_on` | `DATE` | não | |
+| `note` | `VARCHAR(255)` | sim | |
+| `created_at`, `updated_at` | `DATETIME` | não | |
+
+`UNIQUE(enrollment_id, period_id)` · `CHECK external_subject_results_value_present_check`: pelo menos um de `scale_level_id`, `level_code`, `numeric_value` · `INDEX(organization_id, enrollment_id)`
+
+> **O mínimo é o nível.** Não se exigem dados de domínio que não existem: o professor de Português não tem — nem deve inventar — a decomposição por domínios de uma avaliação feita noutra disciplina.
+
+> **A UNIQUE não protege a linha de ano completo.** O MySQL trata cada `NULL` como distinto, pelo que `period_id = NULL` passaria duas vezes. A invariante é imposta por `RecordExternalSubjectResult` com `lockForUpdate()` antes da leitura — a mesma armadilha que a nota da Q9 em `enrollments` descreve.
+
+> **Um número sem escala de origem não é colocado numa escala conhecida.** `numeric_value` não guarda a escala em que foi obtido, pelo que nunca é normalizado contra a escala desta turma: um 4-em-5 lido numa escala de 0–20 daria 20% e um «Insuficiente» que ninguém atribuiu. Só um `scale_level_id` **da escala desta turma** produz um valor normalizado; sem ele o aluno fica fora da média — nunca com um zero (§1: o significado pedagógico não se adivinha).
+
 ---
 ### 2.3 Escalas
 

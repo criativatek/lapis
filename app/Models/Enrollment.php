@@ -132,6 +132,22 @@ class Enrollment extends Model
     }
 
     /**
+     * @return HasMany<SubjectParticipation, $this>
+     */
+    public function subjectParticipations(): HasMany
+    {
+        return $this->hasMany(SubjectParticipation::class);
+    }
+
+    /**
+     * @return HasMany<ExternalSubjectResult, $this>
+     */
+    public function externalSubjectResults(): HasMany
+    {
+        return $this->hasMany(ExternalSubjectResult::class);
+    }
+
+    /**
      * Whether this student's Evidence records show up in their class's
      * report. NULL means "no per-student override" — falls back to the
      * class's own default (SchoolClass::$include_evidence_in_report), never

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\CohortUniverse;
 use App\Models\InterimAssessment;
 use App\Models\SchoolClass;
 use App\Services\Assessment\Ai\ClassAnalyst;
@@ -13,6 +14,7 @@ use App\Support\Assessment\DecisionScale;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rules\Enum;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -75,10 +77,19 @@ class ClassStatisticsController extends Controller
         // moment is a separate, explicit act (§3).
         $validated = $request->validate([
             'ate' => ['nullable', 'date_format:Y-m-d'],
+            // «Universo da análise» (req 8): validado como um valor real do
+            // enum, nunca aceite às cegas — um pedido que inventasse um
+            // universo desconhecido cairia no default em vez de fingir que o
+            // aplicou.
+            'universo' => ['nullable', new Enum(CohortUniverse::class)],
         ]);
 
+        $universe = isset($validated['universo'])
+            ? CohortUniverse::from($validated['universo'])
+            : CohortUniverse::AttendingOnly;
+
         $cutoff = AssessmentCutoff::on($validated['ate'] ?? null);
-        $statistics = $this->statistics->for($class, $period, $cutoff);
+        $statistics = $this->statistics->for($class, $period, $cutoff, universe: $universe);
 
         // The two automatic movement readings, removed from the payload when
         // the plan does not include them — never sent and hidden, because a
@@ -95,6 +106,13 @@ class ClassStatisticsController extends Controller
             : AcademicPeriod::query()->whereKey($statistics['selected_period']['id'])->first();
 
         return Inertia::render('results/Statistics', [
+            // As duas opções do radio group, com as palavras que
+            // `CohortUniverse::label()` já decide num só sítio — nunca
+            // repetidas no Vue.
+            'universeOptions' => array_map(fn (CohortUniverse $case): array => [
+                'value' => $case->value,
+                'label' => $case->label(),
+            ], CohortUniverse::cases()),
             'schoolClass' => [
                 'ulid' => $class->ulid,
                 'label' => $class->label,

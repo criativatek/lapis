@@ -66,6 +66,11 @@ class DomainResultsComposer implements SectionComposer
                     $this->successSentence($withValue),
                 ]),
                 $this->coverageSentence($rows),
+                // «Esta análise por domínio não inclui N alunos...» (req 3) —
+                // a análise por domínio é sempre `AttendingOnly`
+                // (`BuildClassStatistics::domainStatistics()`), qualquer que
+                // seja o universo escolhido para os outros números.
+                $context->fact('notes.domain_exclusion'),
             ]),
             [ContentSource::Statistics, ContentSource::Results],
             ['domains' => $rows],

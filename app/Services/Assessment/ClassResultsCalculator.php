@@ -15,6 +15,7 @@ use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use App\Models\SubjectParticipation;
 use App\Support\Assessment\AssessmentCutoff;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -81,8 +82,20 @@ class ClassResultsCalculator
 
         $results = [];
 
-        foreach ($class->enrollments()->with('student.identity')->orderBy('class_number')->get() as $enrollment) {
-            $scoreInputs = $this->scoreInputsFor($enrollment, $instruments, $scoresByEnrollmentItem);
+        // DECISÃO DO PRODUCT OWNER (regra das duas perguntas): um resultado
+        // de período/acumulado é a soma de ELEMENTOS, e cada elemento é uma
+        // pergunta do tipo (A) — decidida pela SUA data, nunca pelo cohort a
+        // uma única data de referência. Excluir a matrícula em bloco (como
+        // `attending()` fazia) apagava retroativamente instrumentos de
+        // outubro só porque uma janela de não-frequência abriu em janeiro.
+        // Todas as matrículas entram (`all()`); é `scoreInputsFor()` que
+        // decide, elemento a elemento, a elegibilidade real
+        // (`ClassCohort::wasAttendingOn()`).
+        $enrollments = ClassCohort::enrollmentsFor($class)->values();
+        $windows = ClassCohort::windowsFor($enrollments->map(fn (Enrollment $enrollment): int => (int) $enrollment->getKey()));
+
+        foreach ($enrollments as $enrollment) {
+            $scoreInputs = $this->scoreInputsFor($enrollment, $instruments, $scoresByEnrollmentItem, $windows);
 
             $results[] = [
                 'enrollment' => $enrollment,
@@ -120,10 +133,12 @@ class ClassResultsCalculator
             ->get()
             ->keyBy(fn (StudentItemScore $score) => $score->enrollment_id.':'.$score->instrument_item_id);
 
+        $windows = ClassCohort::windowsFor(collect([(int) $enrollment->getKey()]));
+
         $results = [];
 
         foreach ($instruments as $instrument) {
-            $inputs = $this->scoreInputsFor($enrollment, collect([$instrument]), $scores);
+            $inputs = $this->scoreInputsFor($enrollment, collect([$instrument]), $scores, $windows);
             $results[(int) $instrument->getKey()] = $this->engine->calculate($inputs, $domainWeights, $rule, $scaleBands);
         }
 
@@ -279,9 +294,10 @@ class ClassResultsCalculator
     /**
      * @param  Collection<int, Instrument>  $instruments
      * @param  Collection<string, StudentItemScore>  $scores
+     * @param  Collection<int, Collection<int, SubjectParticipation>>  $windows  o resultado de `ClassCohort::windowsFor()`
      * @return list<ScoreInput>
      */
-    protected function scoreInputsFor(Enrollment $enrollment, $instruments, $scores): array
+    protected function scoreInputsFor(Enrollment $enrollment, $instruments, $scores, Collection $windows): array
     {
         $inputs = [];
 
@@ -289,8 +305,16 @@ class ClassResultsCalculator
             // Derived late-entry rule (§11.4): an instrument applied before the
             // student enrolled, or after they left, does not apply to them. The
             // engine never sees dates — this is where the derivation happens.
+            //
+            // PLUS ONE MORE CLAUSE (product owner decision, the two-question
+            // rule): an element is question (A), decided by ITS OWN date. An
+            // instrument applied while the student was still attending THIS
+            // SUBJECT remains theirs even if a non-attendance window opened
+            // later; one applied after that window opened is not theirs, even
+            // while the enrolment itself stays open.
             $applicable = $enrollment->enrolled_on->lessThanOrEqualTo($instrument->applied_on)
-                && ($enrollment->left_on === null || $enrollment->left_on->greaterThanOrEqualTo($instrument->applied_on));
+                && ($enrollment->left_on === null || $enrollment->left_on->greaterThanOrEqualTo($instrument->applied_on))
+                && ClassCohort::wasAttendingOn($windows, (int) $enrollment->getKey(), $instrument->applied_on->toDateString());
 
             foreach ($instrument->items as $item) {
                 $score = $scores->get($enrollment->id.':'.$item->id);

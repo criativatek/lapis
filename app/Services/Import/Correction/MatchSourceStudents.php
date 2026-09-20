@@ -6,6 +6,7 @@ use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CanonicalStudent;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
+use App\Services\Assessment\ClassCohort;
 
 /**
  * Suggests which enrolment each row of the file belongs to — and refuses to
@@ -35,11 +36,16 @@ class MatchSourceStudents
 
     /**
      * @param  array<string, int|null>  $alreadyDecided  decisions the teacher already made, which always win
+     * @param  string|null  $referenceDate  the date the grid/application itself refers to (M6) — an
+     *                                      instrument's `applied_on`, when known. Resolving the cohort at TODAY instead
+     *                                      would make a grid imported months after it was applied unmatchable against a
+     *                                      student who has since stopped attending: his scores at the time the grid was
+     *                                      applied are real regardless of what changed afterwards.
      * @return list<array<string, mixed>>
      */
-    public function for(CanonicalCorrectionGrid $grid, SchoolClass $class, array $alreadyDecided = []): array
+    public function for(CanonicalCorrectionGrid $grid, SchoolClass $class, array $alreadyDecided = [], ?string $referenceDate = null): array
     {
-        $enrollments = $this->enrollments($class);
+        $enrollments = $this->enrollments($class, $referenceDate);
 
         $byNumber = [];
         $byName = [];
@@ -208,12 +214,22 @@ class MatchSourceStudents
      *
      * @return list<array<string, mixed>>
      */
-    protected function enrollments(SchoolClass $class): array
+    protected function enrollments(SchoolClass $class, ?string $referenceDate = null): array
     {
-        return $class->enrollments()
-            ->with('student.identity')
-            ->orderBy('class_number')
-            ->get()
+        // ClassCohort::for() — o resolver único de «que alunos entram na
+        // análise desta disciplina» (ver o seu docblock). AttendingOnly: uma
+        // grelha de correção desta disciplina não pode ser atribuída a um
+        // aluno que não a frequenta — MAS «não frequenta» tem de ser lido À
+        // DATA A QUE A GRELHA SE REFERE (M6), nunca implicitamente hoje. Uma
+        // grelha aplicada em março e importada em junho continua a poder ser
+        // atribuída a um aluno que deixou de frequentar entretanto — em março
+        // ele frequentava, e é essa data que decide, não a de hoje. Sem uma
+        // data conhecida (nenhum instrumento escolhido ainda), usa-se `all()`
+        // — a turma toda — em vez do universo de hoje, para nunca perder uma
+        // linha só por uma mudança de frequência posterior à importação.
+        $cohort = ClassCohort::for($class, $referenceDate);
+
+        return ($referenceDate === null ? $cohort->all() : $cohort->attending())
             ->map(function (Enrollment $enrollment): array {
                 $name = $enrollment->student->identity?->display_name;
 

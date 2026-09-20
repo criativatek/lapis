@@ -12,12 +12,16 @@ use App\Models\Classification;
 use App\Models\ClassStatus;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
+use App\Models\ExternalSubjectResult;
 use App\Models\ProfileVersionStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\Subject;
+use App\Models\SubjectParticipation;
+use App\Models\SubjectParticipationReason;
 use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
+use App\Services\Assessment\ClassCohort;
 use App\Services\Audit\AuditLog;
 use App\Services\Classes\ClassRoster;
 use App\Services\Classes\ReusableStudents;
@@ -199,6 +203,32 @@ class ClassController extends Controller
             )
             : [];
 
+        // Quem frequenta a disciplina HOJE, e quem não frequenta — o mesmo
+        // resolver único que a análise de resultados já usa (ClassCohort),
+        // para que esta secção nunca discorde da estatística sobre o que é
+        // «frequentar». `RÓTULA`, não filtra: continua a mostrar todos os
+        // alunos da turma no ecrã, só que com o estado dito por palavras.
+        $cohort = ClassCohort::for($class, $today);
+
+        // O resultado externo mais recente de cada inscrição — um por
+        // inscrição chega a este ecrã (o ano completo, quando existe, ou o
+        // último período lançado); editar um período específico faz-se
+        // corrigindo o mesmo registo, tal como RecordExternalSubjectResult
+        // já trata «já existe uma linha para este período» como correção.
+        $externalResultsByEnrollment = ExternalSubjectResult::query()
+            ->whereIn('enrollment_id', $class->enrollments()->select('id'))
+            ->orderByDesc('recorded_on')
+            ->get()
+            ->groupBy('enrollment_id')
+            ->map(fn ($results) => $results->first());
+
+        // Quem pode abrir/fechar uma janela de não-frequência ou lançar um
+        // resultado externo — ensinar a turma, e não ser observer (§
+        // SubjectParticipationPolicy::manage()). Calculado uma vez para o
+        // ecrã inteiro, e não em cada botão, porque a resposta é a mesma
+        // para todos.
+        $canManageParticipation = Gate::allows('manage', [SubjectParticipation::class, $class]);
+
         return Inertia::render('classes/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -335,6 +365,38 @@ class ClassController extends Controller
                     // Só numa turma de apoio: a turma de origem e o n.º lá,
                     // lidos — nunca copiados — da inscrição de origem.
                     'origins' => $origins[$enrollment->student_id] ?? [],
+                    // A frequência da disciplina — ver ClassCohort. `null`
+                    // quando frequenta normalmente, e é o estado mais comum.
+                    'subject_participation' => (function () use ($cohort, $enrollment) {
+                        $participation = $cohort->participationOf($enrollment);
+
+                        if ($participation === null) {
+                            return null;
+                        }
+
+                        return [
+                            'reason' => $participation->reason->value,
+                            'reason_label' => $participation->reason->label(),
+                            'reason_detail' => $participation->reason_detail,
+                            'note' => $participation->note,
+                            'effective_from' => $participation->effective_from->toDateString(),
+                        ];
+                    })(),
+                    'external_result' => (function () use ($externalResultsByEnrollment, $enrollment) {
+                        $result = $externalResultsByEnrollment->get($enrollment->id);
+
+                        if ($result === null) {
+                            return null;
+                        }
+
+                        return [
+                            'ulid' => $result->ulid,
+                            'origin' => $result->origin,
+                            'level_code' => $result->level_code,
+                            'numeric_value' => $result->numeric_value,
+                            'recorded_on' => $result->recorded_on->toDateString(),
+                        ];
+                    })(),
                 ]),
 
             // NOT DELETED, JUST NOT HERE ANY MORE. Kept visible so a teacher
@@ -354,6 +416,18 @@ class ClassController extends Controller
                     // «Mudou de turma», never «moved_class».
                     'state_label' => $enrollment->status_reason?->label() ?? $enrollment->status->label(),
                 ]),
+            // A secção «Frequência da disciplina» no ecrã da turma. O motivo
+            // vem do enum, nunca escrito à mão no Vue — um valor novo no
+            // domínio aparece aqui sem tocar na página.
+            'subjectParticipationReasons' => array_map(
+                fn (SubjectParticipationReason $reason) => ['value' => $reason->value, 'label' => $reason->label()],
+                SubjectParticipationReason::cases(),
+            ),
+            // Esconde os botões de escrita de quem estruturalmente não os
+            // pode usar (observer) — a autoridade continua a ser
+            // SubjectParticipationPolicy::manage(), que o controlador volta
+            // a verificar em cada pedido.
+            'canManageSubjectParticipation' => $canManageParticipation,
         ]);
     }
 

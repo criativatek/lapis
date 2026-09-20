@@ -73,6 +73,13 @@ type Student = {
     domains: DomainCell[];
     self_assessment: Level;
     classification: { status: string; is_published: boolean; final: Level; proposed: Level } | null;
+    /**
+     * H3: a proveniência quando esta classificação vem de um resultado
+     * externo — nunca presente para uma evidência desta disciplina. Rotulado
+     * discretamente onde a classificação é mostrada, para que um PLNM 4 nunca
+     * pareça uma nota de Português decidida pelo professor.
+     */
+    external: { source: string; origin: string } | null;
     /** The student's own line through the year, from the canonical read model. */
     series: {
         period_id: number; period_label: string;
@@ -134,7 +141,10 @@ type Statistics = {
         scopes: Record<string, 'period' | 'accumulated'>;
     };
     summary: {
-        students_total: number; students_with_result: number; students_without_result: number;
+        students_total: number;
+        /** M1: o denominador da análise por domínio — quem frequenta esta disciplina, com ou sem resultado externo. */
+        domain_students_total: number;
+        students_with_result: number; students_without_result: number;
         class_average: string | null; accumulated_average: string | null;
         primary_average: string | null; supplementary_average: string | null;
         partial_coverage_count: number;
@@ -171,6 +181,16 @@ type Statistics = {
         classified: number; unplaced: number; without_classification: number;
     };
     distribution: (NonNullable<Band> & { key?: string; count: number; percentage: string | null })[];
+    /** O universo escolhido para esta leitura (req 8) — nunca implícito. */
+    universe: { value: 'attending_only' | 'all_class_students'; label: string };
+    /** Quem não frequenta esta disciplina, e quantos entraram por um resultado externo (req 3, req 12). */
+    cohort: {
+        not_attending_count: number; not_attending_origins: string[]; external_included_count: number;
+        /** M3: dos que não frequentam, quantos ficam fora de toda a fração por não terem nenhum resultado externo aplicável (H1). */
+        not_attending_without_result: number;
+    };
+    /** As frases que o servidor já escreveu para os dois casos (req 3, req 12) — nunca recompostas no browser. */
+    notes: { domain_exclusion: string | null; external_inclusion: string | null; partial_period_attendance: string | null };
     domain_statistics: DomainStatistic[];
     period_series: {
         period_id: number; label: string; sequence: number;
@@ -186,6 +206,8 @@ const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     decision: { label: string; classifies_by_level: boolean };
     cutoff: { date: string | null; label: string | null; is_open: boolean };
+    /** As duas opções do radio group «Universo da análise» (req 8), com as palavras que `CohortUniverse::label()` já decide. */
+    universeOptions: { value: 'attending_only' | 'all_class_students'; label: string }[];
     suggestedInterimName: string | null;
     interimAssessments: {
         ulid: string; name: string; reference_date: string; reference_date_label: string;
@@ -215,8 +237,16 @@ const props = defineProps<{
  */
 const chosenDate = ref<string>(props.cutoff.date ?? '');
 
-function applyCutoff(date: string): void {
-    const query = date === '' ? {} : { ate: date };
+// -------------------------------------------------- «Universo da análise»
+
+/**
+ * O mesmo tipo de escolha livre que «Dados até» já é: muda o que a página
+ * mostra e não regista nada (req 8). Fica na URL pela mesma razão — para
+ * sobreviver a um refresh e poder ser partilhada.
+ */
+const chosenUniverse = ref<'attending_only' | 'all_class_students'>(props.statistics.universe.value);
+
+function navigate(query: Record<string, string>): void {
     const period = props.statistics.selected_period?.ulid;
 
     router.get(
@@ -224,6 +254,32 @@ function applyCutoff(date: string): void {
         query,
         { preserveScroll: true, preserveState: false },
     );
+}
+
+function currentQuery(): Record<string, string> {
+    const query: Record<string, string> = {};
+
+    if (chosenDate.value !== '') {
+        query.ate = chosenDate.value;
+    }
+
+    // «attending_only» é o valor por omissão do servidor — omitido da URL
+    // para que o link partilhado continue simples no caso mais comum.
+    if (chosenUniverse.value !== 'attending_only') {
+        query.universo = chosenUniverse.value;
+    }
+
+    return query;
+}
+
+function applyCutoff(date: string): void {
+    chosenDate.value = date;
+    navigate(currentQuery());
+}
+
+function applyUniverse(value: 'attending_only' | 'all_class_students'): void {
+    chosenUniverse.value = value;
+    navigate(currentQuery());
 }
 
 // ------------------------------------------------- guardar uma intercalar
@@ -864,7 +920,10 @@ const domainBars = computed<DomainBar[]>(() => stats.value.domain_statistics.map
         direction: row.evolution_average === null
             ? null
             : Number(row.evolution_average) > 0 ? 'up' : Number(row.evolution_average) < 0 ? 'down' : 'flat',
-        students: `${row.students_with_result} de ${stats.value.summary.students_total} com resultado`
+        // M1: o denominador é quem frequenta este domínio — nunca
+        // `students_total`, que sob `AllClassStudents` já inclui os
+        // externos-com-nível, que nunca têm dados de domínio.
+        students: `${row.students_with_result} de ${stats.value.summary.domain_students_total} com resultado`
             + (row.partial_coverage_count > 0 ? ` · ${row.partial_coverage_count} com informação parcial` : ''),
     };
 }));
@@ -1364,6 +1423,26 @@ const studentRows = computed(() => {
                 </button>
             </div>
 
+            <!-- ================================= «Universo da análise» (req 8) -->
+            <fieldset class="flex flex-wrap items-center gap-4 rounded-xl bg-muted/25 px-4 py-3">
+                <legend class="text-sm text-muted-foreground">Universo da análise:</legend>
+                <label
+                    v-for="option in universeOptions"
+                    :key="option.value"
+                    class="flex items-center gap-1.5 text-sm"
+                >
+                    <input
+                        type="radio"
+                        name="universo-da-analise"
+                        :value="option.value"
+                        :checked="chosenUniverse === option.value"
+                        class="size-4 accent-primary"
+                        @change="applyUniverse(option.value)"
+                    />
+                    {{ option.label }}
+                </label>
+            </fieldset>
+
             <!-- O formulário. Só aparece quando o professor o pede. -->
             <form
                 v-if="savingInterim"
@@ -1626,6 +1705,21 @@ const studentRows = computed(() => {
                         <span class="text-muted-foreground">Com informação parcial</span>
                         <span class="ml-auto font-semibold tabular-nums">{{ stats.summary.partial_coverage_count }}</span>
                     </p>
+                    <!-- M3: o remédio de H1 — quantos alunos ficam de fora
+                         destes números por não frequentarem a disciplina e
+                         não terem nenhum resultado externo aplicável. Só sob
+                         «toda a turma»: sob «apenas frequentam» eles já nem
+                         aparecem na lista, e a frase seria redundante. -->
+                    <p
+                        v-if="stats.universe.value === 'all_class_students' && stats.cohort.not_attending_without_result > 0"
+                        class="mt-3 flex items-baseline gap-2 border-t border-border/50 pt-2.5 text-[11px]"
+                    >
+                        <span class="text-muted-foreground">
+                            {{ stats.cohort.not_attending_without_result === 1
+                                ? 'Fora destes números: 1 aluno que não frequenta e não tem resultado externo'
+                                : `Fora destes números: ${stats.cohort.not_attending_without_result} alunos que não frequentam e não têm resultado externo` }}
+                        </span>
+                    </p>
                 </KpiCard>
 
                 <!-- The evolution of the READING ON SCREEN. In «avaliação
@@ -1652,6 +1746,19 @@ const studentRows = computed(() => {
                         : 'Compara o trabalho realizado neste período com o do período anterior.'"
                 />
             </div>
+
+            <!-- M1a/§6: a nota neutra do product owner — pelo menos um aluno
+                 frequentou a disciplina apenas durante parte deste período, e
+                 a evidência de antes da janela abrir continua válida nas
+                 análises. Ao lado dos resultados do período, nunca escondida
+                 dentro de uma secção específica (era calculada e nunca lida
+                 antes desta correção). -->
+            <p
+                v-if="stats.notes.partial_period_attendance"
+                class="rounded-xl bg-muted/25 px-3.5 py-2.5 text-xs text-muted-foreground"
+            >
+                {{ stats.notes.partial_period_attendance }}
+            </p>
 
             <!-- ============================ 02 · COMO EVOLUIU A TURMA
 
@@ -1714,6 +1821,13 @@ const studentRows = computed(() => {
                         :success-share="formatShare(stats.summary.success.rate)"
                         :failure-share="formatShare(stats.summary.success.failure_rate)"
                     />
+
+                    <!-- H3: também aqui, não só na distribuição — quem lê a
+                         taxa de sucesso tem de saber que parte destas
+                         classificações não foi decidida por esta disciplina. -->
+                    <p v-if="stats.notes.external_inclusion" class="mt-3 rounded-xl bg-background/50 px-3.5 py-2.5 text-xs text-muted-foreground dark:bg-background/25">
+                        {{ stats.notes.external_inclusion }}
+                    </p>
                 </section>
 
                 <!-- ================= 04 · DISTRIBUIÇÃO DAS CLASSIFICAÇÕES -->
@@ -1753,6 +1867,13 @@ const studentRows = computed(() => {
                             <span class="text-muted-foreground">Classificados sem banda na escala</span>
                             <strong class="font-semibold tabular-nums">{{ stats.assigned_distribution.unplaced }}</strong>
                         </span>
+                    </p>
+
+                    <!-- «Incluem-se N alunos avaliados em X...» (req 12) — só
+                         quando o universo escolhido usou de facto um
+                         resultado externo para chegar a estes números. -->
+                    <p v-if="stats.notes.external_inclusion" class="mt-3 rounded-xl bg-background/50 px-3.5 py-2.5 text-xs text-muted-foreground dark:bg-background/25">
+                        {{ stats.notes.external_inclusion }}
                     </p>
 
                     <!-- ---- a leitura secundária: onde caem as médias ---- -->
@@ -1911,6 +2032,14 @@ const studentRows = computed(() => {
                      no parallel table. Domain ink, scale mention, trend change
                      — three statements that never borrow each other's colour. -->
                 <DomainBars :bars="domainBars" :selected-id="selectedDomainId" @select="toggleDomain" />
+
+                <!-- «Esta análise por domínio não inclui N alunos...» (req 3)
+                     — a análise por domínio é sempre feita só sobre quem
+                     frequenta a disciplina, qualquer que seja o universo
+                     escolhido acima. -->
+                <p v-if="stats.notes.domain_exclusion" class="mt-3 rounded-xl bg-muted/25 px-3.5 py-2.5 text-xs text-muted-foreground">
+                    {{ stats.notes.domain_exclusion }}
+                </p>
             </section>
 
             <!-- =========================== 07 · COMO MUDARAM AO LONGO DO ANO -->
@@ -2089,6 +2218,16 @@ const studentRows = computed(() => {
                                         </span>
                                         <span class="truncate">{{ student.name }}</span>
                                         <CircleAlert v-if="student.coverage_warning && student.weighted_average !== null" class="size-3 shrink-0 text-amber-500" />
+                                        <!-- H3: discreto, mas presente — a classificação
+                                             desta linha pode vir de um resultado externo,
+                                             nunca desta disciplina. -->
+                                        <span
+                                            v-if="student.external"
+                                            class="shrink-0 rounded px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
+                                            :title="`Classificação externa · ${student.external.origin}`"
+                                        >
+                                            externo
+                                        </span>
                                     </button>
                                 </th>
                                 <td
@@ -2215,6 +2354,22 @@ const studentRows = computed(() => {
                             <p class="text-[11px] uppercase tracking-wider text-muted-foreground">{{ decision.label }}</p>
                             <p v-if="selected.classification?.final" class="mt-1 text-sm font-medium">
                                 {{ selected.classification.final.code }} — {{ selected.classification.final.label }}
+                                <!-- H3: discreto, mas presente — nunca deixar
+                                     que um resultado externo pareça uma
+                                     classificação decidida nesta disciplina. -->
+                                <span v-if="selected.external" class="ml-1 text-xs font-normal text-muted-foreground">
+                                    (externo · {{ selected.external.origin }})
+                                </span>
+                            </p>
+                            <!-- M4: a proveniência tem de aparecer mesmo
+                                 quando `final` é nulo — um resultado externo
+                                 pode existir e não se ter resolvido a um
+                                 nível desta escala (H1), e «Ainda sem decisão
+                                 registada» sozinho escondia precisamente esse
+                                 facto. -->
+                            <p v-else-if="selected.external" class="mt-1 text-sm text-muted-foreground">
+                                Sem classificação nesta escala
+                                <span class="ml-1 text-xs font-normal">(externo · {{ selected.external.origin }})</span>
                             </p>
                             <p v-else class="mt-1 text-sm text-muted-foreground">Ainda sem decisão registada</p>
                         </div>

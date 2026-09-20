@@ -15,6 +15,7 @@ use App\Models\ResultState;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use App\Models\SubjectParticipation;
 use Illuminate\Support\Collection;
 
 /**
@@ -78,11 +79,16 @@ class BuildClassElements
             return ['elements' => [], 'by_student' => []];
         }
 
-        $enrollments = Enrollment::query()
-            ->where('class_id', $class->getKey())
-            ->with('student.identity')
-            ->orderBy('class_number')
-            ->get();
+        // DECISÃO DO PRODUCT OWNER (regra das duas perguntas): esta lista é
+        // por ELEMENTO, e um elemento é uma pergunta do tipo (A) — decidida
+        // pela data DELE, nunca pelo cohort a uma data de referência única.
+        // Todas as matrículas entram (`all()`, nunca `attending()`); é
+        // `resultRow()` que decide, elemento a elemento, se ele se aplicava
+        // àquele aluno naquele dia (`ClassCohort::wasAttendingOn()`) — para
+        // que um instrumento de outubro continue a contar para um aluno cuja
+        // janela de não-frequência só abriu em janeiro.
+        $enrollments = ClassCohort::enrollmentsFor($class)->values();
+        $windows = ClassCohort::windowsFor($enrollments->map(fn (Enrollment $enrollment): int => (int) $enrollment->getKey()));
 
         $scores = StudentItemScore::query()
             ->whereIn('instrument_id', $instruments->pluck('id'))
@@ -112,6 +118,7 @@ class BuildClassElements
                     $domainWeights,
                     $scaleBands,
                     $scale,
+                    $windows,
                 );
             }
 
@@ -165,6 +172,7 @@ class BuildClassElements
      * @param  Collection<string, StudentItemScore>  $scores
      * @param  array<int, string>  $domainWeights
      * @param  list<ScaleBand>  $scaleBands
+     * @param  Collection<int, Collection<int, SubjectParticipation>>  $windows  o resultado de `ClassCohort::windowsFor()`
      * @return array<string, mixed>
      */
     protected function resultRow(
@@ -175,12 +183,29 @@ class BuildClassElements
         array $domainWeights,
         array $scaleBands,
         ?Scale $scale,
+        Collection $windows,
     ): array {
         // A mesma regra de ingresso tardio que o motor aplica (§11.4): um
         // elemento aplicado antes de o aluno entrar, ou depois de sair, não é
         // dele — e não é um zero dele.
-        $applicable = $enrollment->enrolled_on->lessThanOrEqualTo($instrument->applied_on)
+        //
+        // MAIS UMA CLÁUSULA (decisão do product owner, regra das duas
+        // perguntas): um elemento é uma pergunta do tipo (A), decidida pela
+        // SUA data. Um instrumento aplicado enquanto o aluno frequentava esta
+        // disciplina continua dele mesmo que uma janela de não-frequência
+        // tenha aberto depois — e um instrumento aplicado depois de essa
+        // janela abrir não é dele, mesmo que a matrícula continue aberta.
+        // M3: as DUAS causas de inaplicabilidade são factos diferentes e
+        // dizem-se com palavras diferentes (ver `stateLabel()`) — um aluno
+        // fora da janela de matrícula não está a frequentar a disciplina, mas
+        // um aluno fora da janela de frequência (regra das duas perguntas)
+        // continua matriculado. Confundir as duas dizia «fora do período de
+        // matrícula» a um aluno que, à data do instrumento, estava matriculado
+        // e apenas não frequentava a disciplina.
+        $withinEnrollmentWindow = $enrollment->enrolled_on->lessThanOrEqualTo($instrument->applied_on)
             && ($enrollment->left_on === null || $enrollment->left_on->greaterThanOrEqualTo($instrument->applied_on));
+        $wasAttending = ClassCohort::wasAttendingOn($windows, (int) $enrollment->getKey(), $instrument->applied_on->toDateString());
+        $applicable = $withinEnrollmentWindow && $wasAttending;
 
         $inputs = [];
         $states = [];
@@ -234,7 +259,7 @@ class BuildClassElements
             'points_earned' => Bc::truncate($earned, 4),
             'points_possible' => Bc::truncate($possible, 4),
             'result_state' => $outcome->resultState,
-            'state_label' => $this->stateLabel($applicable, $states, $outcome->normalizedValue),
+            'state_label' => $this->stateLabel($applicable, $withinEnrollmentWindow, $states, $outcome->normalizedValue),
             'level' => $level === null ? null : [
                 'scale_level_id' => (int) $level->id,
                 'code' => (string) $level->code,
@@ -254,12 +279,20 @@ class BuildClassElements
      * aluno neste elemento», e a resposta mais importante é a primeira: o
      * elemento não se aplicava a ele.
      *
+     * M3: DUAS RAZÕES, DUAS FRASES. «Fora do período de matrícula» só é
+     * verdade quando a matrícula (`enrolled_on`/`left_on`) é a causa — quando
+     * a matrícula continua dentro da janela e é a frequência da disciplina
+     * (regra das duas perguntas) que exclui o elemento, dizer «fora do
+     * período de matrícula» a um aluno matriculado seria falso.
+     *
      * @param  list<ResultState>  $states
      */
-    protected function stateLabel(bool $applicable, array $states, ?string $value): string
+    protected function stateLabel(bool $applicable, bool $withinEnrollmentWindow, array $states, ?string $value): string
     {
         if (! $applicable) {
-            return 'Não aplicável — fora do período de matrícula';
+            return $withinEnrollmentWindow
+                ? 'Não aplicável — não frequentava a disciplina nesta data'
+                : 'Não aplicável — fora do período de matrícula';
         }
 
         if ($states === []) {

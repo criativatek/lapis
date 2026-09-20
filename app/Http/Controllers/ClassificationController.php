@@ -10,6 +10,7 @@ use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
+use App\Services\Assessment\ClassCohort;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\ProposeClassifications;
@@ -52,7 +53,20 @@ class ClassificationController extends Controller
             ? $periods->firstWhere('ulid', $period)
             : $periods->first();
 
-        $enrollments = $class->enrollments()->with('student.identity')->orderBy('class_number')->get();
+        // ClassCohort::for() — o resolver único de «que alunos entram na
+        // análise desta disciplina» (ver o seu docblock). AttendingOnly: a
+        // classificação é a decisão sobre o resultado calculado, e um aluno
+        // que não frequenta esta disciplina não tem proposta nenhuma para
+        // decidir.
+        //
+        // H5: lido à data DO PERÍODO SELECIONADO, não «hoje» — um período de
+        // março consultado hoje não pode reescrever a história com uma janela
+        // de não-frequência que só abriu depois de março. Sem período
+        // selecionado (turma ainda sem períodos), mantém-se hoje.
+        $enrollments = ClassCohort::for(
+            $class,
+            $selected === null ? null : ClassCohort::asOfPeriod($selected),
+        )->attending();
 
         $live = $selected !== null
             ? Classification::query()
