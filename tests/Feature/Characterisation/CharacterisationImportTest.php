@@ -599,6 +599,83 @@ class CharacterisationImportTest extends TestCase
     }
 
     /**
+     * THE END-TO-END TEST FOR THE MU/MS/MA COLUMN DEFECT. Every other
+     * intervention test above hands `measure_codes` to confirm() already
+     * resolved — none of them exercises ClassifyColumns against a real
+     * measures COLUMN the way a school's own table names it: bare "MU", not
+     * "Medidas Universais". Before the fix, "MU" classified as Unknown, the
+     * preview never resolved anything under it, and «a) b)» was ignored
+     * outright — nothing reached Estratégias e Medidas. This goes through
+     * preview() with an actual MU column, confirms exactly what the preview
+     * proposed (as the browser would), and asserts both the source measures
+     * and the resulting interventions exist with the right codes and level.
+     */
+    #[Test]
+    public function an_mu_column_reaches_estrategias_e_medidas(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        $preview = $this->preview("Aluno\tMU\nAna Silva\ta) b)\n")->assertOk();
+
+        $measures = $preview->json('preview.rows.0.measures');
+        $this->assertCount(2, $measures, 'MU a) b) must resolve to two distinct measures.');
+        $this->assertSame('universal', $measures[0]['level']);
+        $this->assertSame('universal', $measures[1]['level']);
+
+        $codes = array_column($measures, 'code');
+        $this->assertContains('pedagogical_differentiation', $codes);
+        $this->assertContains('curricular_accommodation', $codes);
+
+        $rawTokens = array_combine($codes, array_column($measures, 'raw_token'));
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => $codes,
+            'raw_tokens' => $rawTokens,
+        ]])->assertRedirect();
+
+        $this->assertSame(
+            2,
+            EnrollmentCharacterisationSourceMeasure::withoutGlobalScope('organization')->count(),
+            'The source measures read from the MU column must be written.',
+        );
+
+        $interventions = Intervention::withoutGlobalScope('organization')->get();
+        $this->assertCount(2, $interventions, 'Two codes under MU must create two interventions in Estratégias e Medidas.');
+
+        $interventionCodes = $interventions->pluck('support_measure_code')->map(fn ($code) => $code->value)->all();
+        $this->assertContains('pedagogical_differentiation', $interventionCodes);
+        $this->assertContains('curricular_accommodation', $interventionCodes);
+
+        foreach ($interventions as $intervention) {
+            $this->assertSame($enrollment->getKey(), $intervention->enrollment_id);
+            $this->assertSame(SupportMeasureLevel::Universal, $intervention->support_measure_level);
+        }
+    }
+
+    /**
+     * The negative that already held before this fix, kept here so the two
+     * cases stay side by side: a PLNM cell — a curricular pathway, not a
+     * legal measure — must still create no intervention, MU column or not.
+     */
+    #[Test]
+    public function a_plnm_cell_creates_no_intervention(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Beatriz Carvalho');
+
+        $preview = $this->preview("Aluno\tMU\nBeatriz Carvalho\tPLNM\n")->assertOk();
+
+        $this->assertSame([], $preview->json('preview.rows.0.measures'));
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [],
+        ]])->assertRedirect();
+
+        $this->assertSame(0, Intervention::withoutGlobalScope('organization')->count());
+    }
+
+    /**
      * §30: a measure already active for this student does not get a second
      * Intervention from a re-import — it is left alone rather than guessed
      * about.
