@@ -25,6 +25,57 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.149.0] — 2026-09-20
+
+A reformulação visual de «Estratégias e Medidas», sobre a fundação legal que a
+0.148.0 assentou. A página funcionava e lia-se como um formulário
+administrativo longo. Nenhuma regra de negócio muda aqui: esta versão não
+toca em domínio, esquema nem catálogo.
+
+### Alterado
+- **Escolher medidas passa a ser cards com pesquisa e filtros**, em vez do
+  catálogo inteiro numa lista de caixas de 44px com scroll próprio. A pesquisa
+  é local sobre o payload já carregado — sem acentos, sem maiúsculas, todas as
+  palavras exigidas — e os filtros por família só aparecem para as famílias que
+  o catálogo realmente traz.
+- **O que já está escolhido vem primeiro.** Um bloco «Selecionadas» acima do
+  catálogo, com o nome, a família, o nível e um botão de remover que diz o que
+  remove. Antes, saber o que se tinha escolhido obrigava a procurar as caixas
+  marcadas uma a uma.
+- **Organização por famílias e níveis** — as quatro famílias que a 0.148.0
+  passou a produzir (`CatalogueFamily`) tornam-se a estrutura visível da
+  página, com a categoria pedagógica preservada como segundo eixo dentro de
+  cada uma. «Apoios e recursos» aparece naturalmente no dia em que o
+  enquadramento ler um item assim, e não aparece enquanto não ler.
+- **Raciocínio pedagógico em sequência** — NECESSIDADE → INTERVENÇÃO →
+  OBJETIVO → REVISÃO, numerado. Os mesmos quatro campos, todos opcionais como
+  sempre foram.
+- **Modo simples**: finalidade, frequência, indicador e descrição passam a uma
+  secção que abre. Abre sozinha, e não se deixa fechar, sempre que houver ali
+  algo obrigatório, preenchido, com erro, ou uma decisão tomada.
+- **Resumo no topo** — quantas estão ativas, que níveis estão mobilizados e
+  qual é a próxima revisão, calculado sobre o que a página já recebeu. Conta
+  só as abertas e só os níveis que o enquadramento atribuiu; a ordem dos níveis
+  é a do diploma, não uma lista escrita no frontend.
+- **Filtros em grelha** em vez de sete selects esmagados numa linha, e o filtro
+  de estado que o servidor já suportava passa a existir no ecrã.
+
+### Adicionado
+- **Camada de apresentação** (`resources/js/lib/interventionPresentation.ts`) —
+  consome os metadados canónicos que a 0.148.0 introduziu (`family`,
+  `family_label`, `may_carry_measure_level` e `presentation`). **O servidor é a
+  fonte**: a metadata canónica vence sempre, incluindo quando responde `null`.
+  A derivação local sobreviveu apenas como compatibilidade com um payload que
+  ainda não a traga, e nunca corre quando o servidor se pronunciou. Uma
+  adaptação ao processo de avaliação continua sem nível, aqui como lá.
+
+### Acessibilidade e mobile
+- Cada opção do catálogo é um `input` real dentro de uma `label`: teclado,
+  leitor de ecrã e estado «selecionado» passam a vir da semântica. O
+  destinatário (Aluno/Grupo/Turma) passou de três botões distinguidos só por
+  cor a um grupo de rádios. Alvos de toque a 44px nos que são só ícone.
+  A página é utilizável a 390px sem scroll horizontal.
+
 ## [0.148.0] — 2026-09-20
 
 Fundação de «Estratégias e Medidas»: separa o **conceito pedagógico** do

@@ -249,6 +249,82 @@ describe('MeasurePicker — acessibilidade', () => {
     });
 });
 
+/**
+ * COM O PAYLOAD QUE O SERVIDOR ENVIA HOJE. O catálogo passou a classificar
+ * cada item e a mandar o rótulo da família e o nível já resolvidos; o ecrã
+ * mostra o que recebeu e não decide nada.
+ */
+describe('MeasurePicker — payload canónico', () => {
+    const CANONICAL: CatalogueType[] = [
+        {
+            value: 'tutorial_support',
+            label: 'Apoio tutorial',
+            context: 'learning',
+            context_label: 'Aprendizagem',
+            requires_description: false,
+            family: 'support_measure',
+            family_label: 'Medida legal',
+            may_carry_measure_level: true,
+            legal_mapping: { mode: 'direct', level: 'selective', level_label: 'Medida seletiva', measure: 'tutorial_support', measure_label: 'Apoio tutorial', evaluation_adaptation: null, evaluation_adaptation_label: null },
+            presentation: { family: 'support_measure', legal_level: 'selective', legal_level_label: 'Medida seletiva', article: 'artigo 9.º', status: 'in_force', display_label: null },
+        },
+        {
+            value: 'extra_time',
+            label: 'Tempo suplementar em situação de avaliação',
+            context: 'evaluation',
+            context_label: 'Avaliação',
+            requires_description: false,
+            family: 'evaluation_adaptation',
+            family_label: 'Adaptação ao processo de avaliação',
+            may_carry_measure_level: false,
+            legal_mapping: { mode: 'evaluation_only', level: null, level_label: null, measure: null, measure_label: null, evaluation_adaptation: 'extra_time', evaluation_adaptation_label: 'Tempo suplementar' },
+            presentation: { family: 'evaluation_adaptation', legal_level: null, legal_level_label: null },
+        },
+        {
+            value: 'cri_support',
+            label: 'Apoio de CRI',
+            context: 'learning',
+            context_label: 'Aprendizagem',
+            requires_description: false,
+            family: 'resource_support',
+            family_label: 'Apoio ou recurso',
+            may_carry_measure_level: false,
+            legal_mapping: null,
+            presentation: { family: 'resource_support', legal_level: null, legal_level_label: null },
+        },
+    ];
+
+    it('names each family exactly as the server named it', () => {
+        const text = picker({ types: CANONICAL }).text();
+
+        expect(text).toContain('Medida legal');
+        expect(text).toContain('Adaptação ao processo de avaliação');
+        expect(text).toContain('Apoio ou recurso');
+    });
+
+    it('offers a filter for the apoio/recurso family once the server sends one', () => {
+        const labels = picker({ types: CANONICAL })
+            .findAll('[role="group"] button')
+            .map((button) => button.text());
+
+        expect(labels).toContain('Apoio ou recurso');
+    });
+
+    /** §12.3: uma adaptação à avaliação nunca é medida e nunca tem nível. */
+    it('gives an assessment adaptation no level pill at all', () => {
+        const wrapper = picker({ types: [CANONICAL[1]] });
+
+        expect(wrapper.text()).toContain('Tempo suplementar em situação de avaliação');
+        expect(wrapper.text()).not.toContain('Medida universal');
+        expect(wrapper.text()).not.toContain('Medida seletiva');
+        expect(wrapper.text()).not.toContain('Não especificado');
+    });
+
+    it('states the level only where the server stated one', () => {
+        expect(picker({ types: CANONICAL }).text()).toContain('Medida seletiva');
+    });
+});
+
 describe('MeasurePicker — casos extremos', () => {
     it('survives an empty catalogue without a filter bar or a crash', () => {
         const wrapper = picker({ types: [] });
