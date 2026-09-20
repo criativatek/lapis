@@ -45,6 +45,8 @@ final class LegalFrameworkRegistry
             return null;
         }
 
+        $applicable = [];
+
         foreach ($this->frameworks as $framework) {
             // The status check comes first and is not negotiable. A draft or a
             // published-but-not-yet-in-force version may legitimately sit in
@@ -58,11 +60,26 @@ final class LegalFrameworkRegistry
             }
 
             if ($framework->jurisdiction() === $normalised && $framework->coversDate($date)) {
-                return $framework;
+                $applicable[] = $framework;
             }
         }
 
-        return null;
+        // EVERY candidate is collected before one is chosen, deliberately. The
+        // obvious loop returns the first match, which means that when two
+        // versions both claim a date — a configuration error — the legal
+        // reading of every record on that date is decided by the order
+        // somebody wrote a constructor, silently, and changes the day that
+        // order changes. A date is governed by exactly one regime; anything
+        // else is a bug that must be seen, not absorbed.
+        if (count($applicable) > 1) {
+            throw new OverlappingLegalFrameworksException(
+                $normalised,
+                $date->toDateString(),
+                array_map(fn (InterventionLegalFramework $framework) => $framework->code(), $applicable),
+            );
+        }
+
+        return $applicable[0] ?? null;
     }
 
     /**

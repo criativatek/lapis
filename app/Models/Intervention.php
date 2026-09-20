@@ -39,6 +39,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $domain_id
  * @property InterventionTargetType $target_type
  * @property InterventionType|null $intervention_type
+ * @property string|null $intervention_type_label
  * @property InterventionPurpose|null $purpose
  * @property string|null $motive_code
  * @property string|null $motive_label
@@ -67,7 +68,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'created_batch_ulid', 'class_id', 'enrollment_id', 'academic_period_id', 'domain_id',
-    'target_type', 'intervention_type', 'purpose', 'domain_relation',
+    'target_type', 'intervention_type', 'intervention_type_label', 'purpose', 'domain_relation',
     'motive_code', 'motive_label', 'strategy_code', 'strategy_label', 'objective',
     'title', 'description', 'description_source',
     'status', 'started_on', 'expected_end_on', 'review_on', 'concluded_on',
@@ -269,9 +270,32 @@ class Intervention extends Model
      * the answer is null — the row is named by its participants and its date,
      * which is all it ever actually said (§1, §3).
      */
+    /**
+     * The designation of this intervention's TYPE, as it read when the
+     * intervention was recorded.
+     *
+     * Snapshot first, live enum only as a fallback. The fallback is not a
+     * degraded answer — it is the right one for a record made before this was
+     * stored, and it is what every report did for all of them until now.
+     *
+     * This is what a report must use to label a group of interventions.
+     * Reading the enum directly means a future rename silently rewrites how
+     * records made years earlier are described; reading `title` instead means
+     * free text and old import placeholders get printed as pedagogical
+     * categories, which is a bug this codebase has already shipped once.
+     */
+    public function typeLabel(): ?string
+    {
+        if ($this->intervention_type_label !== null && trim($this->intervention_type_label) !== '') {
+            return $this->intervention_type_label;
+        }
+
+        return $this->intervention_type?->label();
+    }
+
     public function pedagogicalTitle(): ?string
     {
-        foreach ([$this->strategy_label, $this->title, $this->intervention_type?->label()] as $candidate) {
+        foreach ([$this->strategy_label, $this->title, $this->typeLabel()] as $candidate) {
             $meaningful = PedagogicalText::meaningful($candidate);
 
             if ($meaningful !== null) {

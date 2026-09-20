@@ -439,6 +439,10 @@ class InterventionController extends Controller
                     'intervention_type' => $type,
                     'domain_relation' => $validated['domain_relation'],
                     'title' => $reasoning['strategy_label'] ?? $type->label(),
+                    // The designation stamped at write time. `title` cannot
+                    // serve as this snapshot: it holds the strategy's label
+                    // whenever the teacher picked one from the library.
+                    'intervention_type_label' => $type->label(),
                     'description' => $validated['description'] ?? null,
                     'description_source' => InterventionDescriptionSource::Manual,
                     'status' => InterventionStatus::New,
@@ -542,6 +546,9 @@ class InterventionController extends Controller
                 'intervention_type' => $type,
                 'domain_relation' => $validated['domain_relation'],
                 'title' => $reasoning['strategy_label'] ?? $type->label(),
+                // Re-stamped on update because the TYPE may have changed; the
+                // designation follows whatever type the record now carries.
+                'intervention_type_label' => $type->label(),
                 'description' => $validated['description'] ?? null,
                 'started_on' => $validated['started_on'],
                 'available_for_reports' => $validated['available_for_reports'] ?? true,
@@ -1178,7 +1185,7 @@ class InterventionController extends Controller
             'last_followup_on' => $intervention->reviews->first()?->reviewed_on->toDateString(),
             'followup_count' => $intervention->reviews->count(),
             'intervention_type' => $intervention->intervention_type?->value,
-            'intervention_type_label' => $intervention->intervention_type?->label(),
+            'intervention_type_label' => $intervention->typeLabel(),
             'context' => $intervention->context()?->value,
             'context_label' => $intervention->context()?->label(),
             'target_type' => $intervention->target_type->value,

@@ -210,7 +210,13 @@ class StudentReportSource extends ClassReportSource
             $byType[$key] ??= [
                 'type' => $key,
                 // Never the title — see ClassReportSource::interventionFacts.
-                'label' => $intervention->intervention_type?->label(),
+                // typeLabel(), not the live enum: the designation as it read
+                // WHEN THIS WAS RECORDED. Reading the enum here meant renaming
+                // a label rewrote how records made years earlier are
+                // described. Still not the title — see the note above; the
+                // snapshot lives in its own column precisely because `title`
+                // cannot tell a designation from free text.
+                'label' => $intervention->typeLabel(),
                 'count' => 0,
             ];
 
@@ -238,7 +244,7 @@ class StudentReportSource extends ClassReportSource
                     // stand-in displayTitle() falls back to would only ever be a
                     // generic word standing where a name should be.
                     'title' => $intervention->pedagogicalTitle(),
-                    'type' => $intervention->intervention_type?->label(),
+                    'type' => $intervention->typeLabel(),
                     'domain' => $intervention->domain?->name,
                     'status' => $intervention->status->label(),
                     'started_on' => $intervention->started_on->toDateString(),

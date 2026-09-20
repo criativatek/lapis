@@ -473,7 +473,13 @@ class ClassReportSource implements ReportSource
                 // dominio» — the title of a row that predates the type column —
                 // ended up printed as a kind of pedagogical action. A record
                 // with no type is reported as having none (§10, §11).
-                'label' => $intervention->intervention_type?->label(),
+                // typeLabel(), not the live enum: the designation as it read
+                // WHEN THIS WAS RECORDED. Reading the enum here meant renaming
+                // a label rewrote how records made years earlier are
+                // described. Still not the title — see the note above; the
+                // snapshot lives in its own column precisely because `title`
+                // cannot tell a designation from free text.
+                'label' => $intervention->typeLabel(),
                 'count' => 0,
             ];
 
@@ -515,7 +521,7 @@ class ClassReportSource implements ReportSource
                 ->map(fn (Intervention $intervention) => [
                     // The accessor, never the column: see above.
                     'title' => $intervention->pedagogicalTitle(),
-                    'type' => $intervention->intervention_type?->label(),
+                    'type' => $intervention->typeLabel(),
                     // No domain is no domain. The absence never becomes a
                     // category of its own (§2).
                     'domain' => $intervention->domain?->name,

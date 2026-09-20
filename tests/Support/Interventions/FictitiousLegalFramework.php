@@ -13,7 +13,7 @@ use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalMapping;
 use App\Support\Interventions\LegalReference;
 use App\Support\Interventions\LegalReferenceStatus;
-use Carbon\CarbonImmutable;
+use App\Support\Interventions\ValidityWindow;
 use Carbon\CarbonInterface;
 
 /**
@@ -81,21 +81,10 @@ final class FictitiousLegalFramework implements InterventionLegalFramework
         return $this->status;
     }
 
-    /**
-     * In force between validFrom and validUntil, both open-ended when null —
-     * the behaviour a real versioned framework has, so the resolver is
-     * exercised against something that actually ends.
-     */
+    /** The same arithmetic the real frameworks use, never a copy of it. */
     public function coversDate(CarbonInterface $date): bool
     {
-        $immutable = CarbonImmutable::parse($date->toDateString());
-
-        if ($this->validFrom !== null && $immutable->lessThan(CarbonImmutable::parse($this->validFrom->toDateString()))) {
-            return false;
-        }
-
-        return $this->validUntil === null
-            || $immutable->lessThanOrEqualTo(CarbonImmutable::parse($this->validUntil->toDateString()));
+        return ValidityWindow::covers($this->validFrom, $this->validUntil, $date);
     }
 
     public function hasLegalTaxonomy(): bool

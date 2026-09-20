@@ -940,8 +940,9 @@ class BuildStudentProgress
                 // then to the catalogue type. Never a code (§35).
                 'title' => $intervention->displayTitle(),
                 // Absent rather than falsified when the row predates the type
-                // column.
-                'type' => $intervention->intervention_type?->label(),
+                // column — and the designation as it read when this was
+                // recorded, not as it reads today.
+                'type' => $intervention->typeLabel(),
                 // The three questions the timeline can show without becoming a
                 // second detail screen: what motivated it, what it was for, and
                 // what the teacher has observed so far. All null-safe — an older

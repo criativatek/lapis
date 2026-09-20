@@ -60,16 +60,31 @@ registos já feitos sob ele.** Foi assim que «Reforço das aprendizagens» pass
 «Antecipação e reforço das aprendizagens» — a designação do artigo 9.º, alínea d)
 — sem tocar em `learning_reinforcement`.
 
-O `title` de uma intervenção é um **snapshot** do label no momento da escrita,
-por isso um registo feito antes de um rename continua a dizer o que dizia.
+### A designação do tipo é estampada, não relida
 
-**Mas o que lê o enum ao vivo não é snapshot.** `StudentReportSource` agrupa as
-intervenções por tipo e tira o rótulo do grupo do enum, por isso um relatório
-**regerado** sobre um registo antigo passa a usar a designação nova. No caso
-deste rename isso é o resultado pretendido — a medida sempre foi o artigo 9.º,
-alínea d) — mas é uma alteração à forma como registos antigos são descritos, e
-não só os novos. Um rename de label é barato para a identidade dos dados e
-**não é neutro** para o texto dos relatórios: decidir um é decidir os dois.
+Um relatório agrupa intervenções por tipo e dá um rótulo a cada grupo. Esse
+rótulo **não pode** vir do enum ao vivo: renomear um label reescreveria a forma
+como registos feitos anos antes são descritos, na primeira vez que alguém
+regerasse o relatório.
+
+Também **não pode** vir do `title`. Esta base de código já tentou isso e
+reverteu: `title` é escrito como `strategy_label ?? type->label()`, por isso
+muitas vezes nem é a designação de um tipo, e em linhas importadas guarda o que
+um processo antigo lá pôs — foi assim que «Legado sem dominio» chegou a um
+documento impresso como se fosse uma espécie de ação pedagógica. O `title` não
+consegue distinguir uma designação de texto livre.
+
+Por isso existe `interventions.intervention_type_label`: uma coluna que só
+alguma vez contém uma designação. Toda a leitura passa por
+`Intervention::typeLabel()` — **snapshot primeiro, enum ao vivo como fallback**.
+
+O fallback não é uma resposta degradada: é a resposta certa para um registo
+feito antes de a coluna existir, e é o que todos os relatórios fizeram para
+todos os registos até agora. Nada regride por ficar a null.
+
+O **agrupamento continua a ser pelo código**, nunca pela designação — dois
+registos do mesmo tipo não se separam em dois grupos só porque foram escritos
+em momentos diferentes.
 
 ## Versionamento
 
@@ -158,6 +173,55 @@ Resultado: a medida **desaparece dos dropdowns** (`supportMeasureLevels()` filtr
 por `status->isSelectable()`) e **continua a resolver** para label e citação, para
 que um registo antigo não passe a renderizar um vazio. Nenhuma linha é tocada.
 
+## Vigência
+
+`ValidityWindow::covers()` é a única implementação de «esta versão vigorava
+nesta data», e todos os frameworks respondem por ela. É uma função pura sobre
+os dois limites, e não um trait, porque um trait herda as assinaturas
+estreitadas da classe que o usa — em Portugal `validFrom()` não é nullable, o
+ramo do null ficava morto ali e vivo noutro lado, e é essa a forma de regra que
+acaba subtilmente diferente em dois sítios.
+
+**Ambos os limites são inclusivos.**
+
+- `validFrom` — um diploma que entra em vigor numa data está em vigor **nessa**
+  data. O DL 54/2018 foi publicado a 6 de julho de 2018 e entrou em vigor no dia
+  seguinte: `validFrom` é 2018-07-07, e uma intervenção datada de 2018-07-07 é
+  coberta por ele.
+- `validUntil` — nomeia o **último dia** de vigência, não o primeiro dia de
+  não-vigência. Um limite exclusivo lê-se como uma data em que a lei ao mesmo
+  tempo se aplica e não se aplica, consoante a quem se pergunte, e o erro de um
+  dia fica invisível até exatamente um registo cair nele.
+
+Duas versões consecutivas diferem por um dia: uma acaba a 2030-08-31, a
+seguinte começa a 2030-09-01. Nunca partilham uma data e nenhuma data cai entre
+elas — é isso que permite ao registry tratar **qualquer** data partilhada como
+erro de configuração.
+
+Um limite ausente é um limite ausente: `null` significa sem limite desse lado,
+nunca «ainda não em vigor». A comparação é por **dia de calendário**, nunca por
+instante.
+
+Consequência a conhecer: uma intervenção datada antes de 2018-07-07 resolve
+para **nenhum** framework. É a resposta honesta — o regime não existia — e o
+registo continua editável, porque a validação não rejeita uma medida que a lei
+aplicável não consegue posicionar (guarda apenas o nível submetido).
+
+## Duas versões para a mesma data: falha explícita
+
+`LegalFrameworkRegistry::find()` recolhe **todos** os candidatos aplicáveis
+antes de escolher. Se houver mais do que um, lança
+`OverlappingLegalFrameworksException` em vez de devolver o primeiro.
+
+Uma data é regida por exatamente um regime. Responder pela ordem do array faria
+a leitura jurídica de todos os registos dessa data depender da ordem por que
+alguém escreveu um construtor — em silêncio, e mudando no dia em que essa ordem
+mudasse. A alternativa a falhar alto não é «um default sensato»: é uma
+classificação legal sobre uma criança escolhida por ordem de array.
+
+Um draft a partilhar data com o regime em vigor **não** é sobreposição: é o
+estado normal enquanto uma revisão se prepara. O filtro de estado corre antes.
+
 ## Fronteiras
 
 - **IA/Gemini:** o catálogo de medidas e níveis **não é injetado** em nenhum
@@ -177,13 +241,10 @@ reformulação visual da página.
   marca com uma etiqueta tudo o que não é estratégia pedagógica. Agrupar o ecrã
   por família, e mostrar `article`/`citation`/`designation` por medida (já
   presentes no payload, ainda não renderizados), é a fatia seguinte.
-- **`coversDate()` da versão portuguesa devolve `true` para toda a linha
-  temporal**, e `LegalFrameworkRegistry::find()` devolve o primeiro match
-  aplicável. No dia em que existir uma segunda versão, **estreitar este método
-  ao mesmo tempo** que a nova é registada — senão intervenções de 2019 passam a
-  resolver para quem estiver primeiro no array. A estampa
-  `legal_framework_code` torna isso detetável; ainda não existe um alerta
-  automático que compare a estampa com o framework resolvido.
+- **Ainda não existe alerta automático** que compare a estampa
+  `legal_framework_code` de um registo com o framework que a data resolve. A
+  incoerência é detetável (é para isso que a estampa serve), mas quem a quiser
+  ver tem de a procurar.
 - **`LegalMapping::level()`** cai em `SupportMeasureCode::currentPortugueseLevel()`
   quando não recebe um override, por isso o payload do catálogo leva o nível *de
   hoje* mesmo para um framework histórico. Hoje coincidem. Quem acrescentar uma

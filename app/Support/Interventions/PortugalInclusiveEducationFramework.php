@@ -22,10 +22,13 @@ use Carbon\CarbonInterface;
  * needs to know any of it, which is what lets another jurisdiction be added
  * without touching the catalogue, the model, the controller or the UI.
  *
- * `coversDate()` returns true unconditionally: this is the only Portuguese
- * version encoded, so it answers for the whole timeline. The revision approved
- * in 2026 with effect announced for 2027 is deliberately NOT encoded here —
- * it will be a second framework with its own effective dates, added once the
+ * It is bounded in time like any other version: in force from 2018-07-07,
+ * with no end yet. A record dated before that resolves to NO framework rather
+ * than to this one — the regime did not exist, and saying it did would be the
+ * retroactive reinterpretation the module is built to prevent.
+ *
+ * The announced revision of the regime is deliberately NOT encoded here — it
+ * will be a second framework with its own effective dates, added once the
  * final text exists. Writing it from a preliminary draft would put speculative
  * law in front of teachers.
  *
@@ -72,24 +75,20 @@ final class PortugalInclusiveEducationFramework implements InterventionLegalFram
         return LegalFrameworkStatus::Active;
     }
 
-    public function jurisdiction(): string
-    {
-        return 'PT';
-    }
-
     /**
-     * True for the whole timeline, deliberately.
-     *
-     * This is the only Portuguese version encoded, so it has to answer for
-     * interventions dated before 2018-07-07 too — a record imported from an
-     * earlier year must still resolve to something rather than silently losing
-     * its framing. The day a second version exists this becomes a real
-     * comparison against validFrom()/validUntil(), and the earlier regime gets
-     * a framework of its own; until then, narrowing it would only open a hole.
+     * Real effective dates, not a blanket `true`. An intervention dated before
+     * 2018-07-07 resolves to NO framework, which is the honest answer: this
+     * regime did not exist yet, and framing such a record under it would be
+     * the retroactive reinterpretation this module is built to prevent.
      */
     public function coversDate(CarbonInterface $date): bool
     {
-        return true;
+        return ValidityWindow::covers($this->validFrom(), $this->validUntil(), $date);
+    }
+
+    public function jurisdiction(): string
+    {
+        return 'PT';
     }
 
     public function hasLegalTaxonomy(): bool
