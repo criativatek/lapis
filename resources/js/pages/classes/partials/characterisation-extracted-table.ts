@@ -29,23 +29,35 @@ export type ExtractedCellPayload = {
     confidence: number | null;
 };
 
-/** Mirrors ExtractedRow. `kind` always starts 'unknown' from a client-built
- * table — NormaliseExtractedTable classifies Header/Data/Group/Legend
- * server-side, once, with the whole table visible, exactly as it does for
- * every other source. */
+/** Mirrors ExtractedRow. `kind` starts 'unknown' from a FRESH client-built
+ * table (OCR's own output, before any review) — NormaliseExtractedTable
+ * classifies Header/Data/Group/Legend server-side, once, with the whole
+ * table visible, exactly as it does for every other source.
+ *
+ * The other four values are §39's: once the teacher has reviewed the
+ * structural grid (CharacterisationImportDialog's "Rever tabela
+ * reconhecida") and corrected a row's kind herself, the corrected table is
+ * sent back carrying that EXPLICIT kind — mirroring ExtractedRowKind's own
+ * cases — so NormaliseExtractedTable honours her decision instead of
+ * re-running its own header/group/legend guesses on it (see that class's
+ * own docblock on why re-guessing a reviewed row would be wrong). */
 export type ExtractedRowPayload = {
     index: number;
     cells: ExtractedCellPayload[];
-    kind: 'unknown';
+    kind: 'unknown' | 'header' | 'data' | 'group' | 'legend';
 };
 
-/** Mirrors ExtractedTable. `source_type` is one of the two OCR variants the
- * server already reserves (ExtractedTableSource::PastedImage /
- * ::ImageUpload) — never any of the other cases, which the server never
- * accepts from this payload (see the controller's source_kind validation). */
+/** Mirrors ExtractedTable. `source_type` is one of the FOUR variants the
+ * server accepts from this client-built payload (see
+ * CharacterisationImportController::parseExtractedTablePayload): the two OCR
+ * ones (ExtractedTableSource::PastedImage/::ImageUpload) for a fresh OCR
+ * run, and the two §39 "corrected" ones (::CorrectedDocx/
+ * ::CorrectedPastedHtml) for a .docx/pasted-HTML table resubmitted after the
+ * structural review step. Never ::Docx or ::PastedHtml themselves — those
+ * stay reserved for a genuine server-side read of the original file. */
 export type ExtractedTablePayload = {
     rows: ExtractedRowPayload[];
-    source_type: 'pasted_image' | 'image_upload';
+    source_type: 'pasted_image' | 'image_upload' | 'corrected_docx' | 'corrected_pasted_html';
     source_filename: string | null;
     warnings: string[];
     extraction_confidence: number;

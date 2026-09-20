@@ -72,6 +72,27 @@ class ReadCharacterisationTable
     private array $lastWarnings = [];
 
     /**
+     * The structural table (§38) from the most recent `from*()` call — the
+     * WHOLE recognised table, header rows and dropped Group/Legend rows
+     * included, so CharacterisationImportController can render "Rever tabela
+     * reconhecida" without a second read of the source. Bundled the same way
+     * $lastWarnings is (see that property's own comment): populated by
+     * fromExtractedTable(), the one place NormaliseExtractedTable runs.
+     *
+     * @var list<string>
+     */
+    private array $lastStructuralHeaders = [];
+
+    /**
+     * @var list<array{number: int, kind: string, cells: list<string>}>
+     */
+    private array $lastStructuralRows = [];
+
+    private bool $lastHadMergedCells = false;
+
+    private bool $lastWasPreClassified = false;
+
+    /**
      * Pasted plain text — TSV, comma- or semicolon-separated, whatever
      * SniffDelimiter measures it to be — routed through TsvTableExtractor
      * rather than parsed here directly, so a caption row or a multi-level
@@ -155,6 +176,10 @@ class ReadCharacterisationTable
     {
         $normalised = $this->normaliser->normalise($table);
         $this->lastWarnings = $normalised->warnings;
+        $this->lastStructuralHeaders = $normalised->structuralHeaders;
+        $this->lastStructuralRows = $normalised->structuralRows;
+        $this->lastHadMergedCells = $normalised->hadMergedCells;
+        $this->lastWasPreClassified = $normalised->wasPreClassified;
 
         return $normalised->grid;
     }
@@ -171,6 +196,32 @@ class ReadCharacterisationTable
     public function lastWarnings(): array
     {
         return $this->lastWarnings;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function lastStructuralHeaders(): array
+    {
+        return $this->lastStructuralHeaders;
+    }
+
+    /**
+     * @return list<array{number: int, kind: string, cells: list<string>}>
+     */
+    public function lastStructuralRows(): array
+    {
+        return $this->lastStructuralRows;
+    }
+
+    public function lastHadMergedCells(): bool
+    {
+        return $this->lastHadMergedCells;
+    }
+
+    public function lastWasPreClassified(): bool
+    {
+        return $this->lastWasPreClassified;
     }
 
     /**

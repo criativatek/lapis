@@ -20,10 +20,11 @@ import FileInput from '@/components/FileInput.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Textarea } from '@/components/ui/textarea';
-import type { ExtractedTablePayload } from './characterisation-extracted-table';
+import type { ExtractedCellPayload, ExtractedRowPayload, ExtractedTablePayload } from './characterisation-extracted-table';
 import { extractTableFromImage, ImageDecodeError  } from './characterisation-image-extraction';
 import type {OcrProgress} from './characterisation-image-extraction';
 import { resolvePastePayload } from './characterisation-paste-priority';
@@ -86,6 +87,23 @@ type PreviewRow = {
     unresolved: Resolution[];
 };
 
+// §38: mirrors NormaliseExtractedTable's own row kinds (ExtractedRowKind) —
+// 'unknown' is never sent by the server (every structural row is already
+// classified), but stays here so a row the teacher marks back to "não
+// decidido" has somewhere honest to sit; see structuralKindOptions().
+type StructuralRowKind = 'header' | 'data' | 'group' | 'legend' | 'unknown';
+
+type StructuralRow = {
+    number: number;
+    kind: StructuralRowKind;
+    cells: string[];
+};
+
+type StructuralData = {
+    headers: string[];
+    rows: StructuralRow[];
+};
+
 type PreviewResponse = {
     preview: {
         columns: unknown[];
@@ -97,6 +115,10 @@ type PreviewResponse = {
     original_filename: string | null;
     warnings: string[];
     sections: { key: string; label: string }[];
+    // §38: present on every response (possibly with 0 rows on a simple
+    // source), but only READ when `show_structural_step` says to.
+    structural: StructuralData;
+    show_structural_step: boolean;
 };
 
 // Devolvido em vez de `preview` quando um .docx tem mais do que uma tabela
@@ -121,7 +143,7 @@ type RowState = {
     sections: Record<string, string>;
 };
 
-const step = ref<'input' | 'chooser' | 'preview'>('input');
+const step = ref<'input' | 'chooser' | 'structural' | 'preview'>('input');
 const pastedText = ref('');
 const pastedHtml = ref('');
 const file = ref<File | null>(null);
@@ -146,6 +168,43 @@ const rowStates = reactive<Record<number, RowState>>({});
 
 const tableChoices = ref<DocxTableChoice[] | null>(null);
 
+// §38/§39 — "Rever tabela reconhecida". The whole recognised table (header,
+// data, and what was classified Group/Legend and dropped), editable, before
+// the per-student preview is derived from it. `structuralRowStates` is keyed
+// by the row's own (stable) `number` from the server — never by array
+// index — so reordering never happens and a row's identity survives edits.
+type StructuralRowState = { row: StructuralRow; kind: StructuralRowKind | 'ignore'; cells: string[] };
+const structuralHeaders = ref<string[]>([]);
+const structuralRowStates = reactive<Record<number, StructuralRowState>>({});
+// Column-level "Ignorar coluna" (§39) — index into structuralHeaders.
+const ignoredColumns = reactive<Set<number>>(new Set());
+// What the CURRENT structural review is reviewing — captured from the
+// response that first set `show_structural_step`, since the corrected
+// resubmission carries no `file`/`pasted_html` of its own to re-derive it
+// from (see CharacterisationImportController::preview()'s own comment on
+// why `original_filename` is echoed back for exactly this reason).
+const pendingSourceKind = ref<string | null>(null);
+const pendingOriginalFilename = ref<string | null>(null);
+// Extraction confidence (§18) — ONLY ever populated for an OCR source, and
+// ONLY for a cell the teacher has not since edited (an edited cell is exact:
+// whatever she typed, not a guess tesseract made — see markCellEdited()).
+// Never the domain confidence CodeResolution carries; this answers "did I
+// read this right", nothing about what the text MEANS.
+const structuralCellConfidence = reactive<Record<string, number | null>>({});
+const editedStructuralCells = reactive<Set<string>>(new Set());
+
+function cellKey(rowNumber: number, columnIndex: number): string {
+    return `${rowNumber}:${columnIndex}`;
+}
+
+function clearStructuralState(): void {
+    structuralHeaders.value = [];
+    Object.keys(structuralRowStates).forEach((key) => delete structuralRowStates[Number(key)]);
+    ignoredColumns.clear();
+    Object.keys(structuralCellConfidence).forEach((key) => delete structuralCellConfidence[key]);
+    editedStructuralCells.clear();
+}
+
 watch(
     () => props.open,
     (isOpen) => {
@@ -163,6 +222,9 @@ watch(
 function clearPreviewState(): void {
     previewData.value = null;
     Object.keys(rowStates).forEach((key) => delete rowStates[Number(key)]);
+    clearStructuralState();
+    pendingSourceKind.value = null;
+    pendingOriginalFilename.value = null;
 }
 
 function resetToInput(): void {
@@ -297,40 +359,17 @@ function csrfToken(): string {
     return decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? '');
 }
 
-async function loadPreview(tableIndex: number | null = null): Promise<void> {
-    if (
-        pastedText.value.trim() === '' &&
-        pastedHtml.value.trim() === '' &&
-        file.value === null &&
-        ocrExtractedTable.value === null
-    ) {
-        loadError.value = 'Cole a tabela ou escolha um ficheiro.';
-
-        return;
-    }
-
+/**
+ * The one place that POSTs to the preview endpoint and decides which of the
+ * THREE shapes it can come back as: a .docx table chooser, a §38 structural
+ * review, or an ordinary per-student preview. Used both by loadPreview() (a
+ * fresh source) and applyStructuralCorrections() (§39's corrected
+ * resubmission) — the branching is identical either way, only what goes into
+ * `body` differs.
+ */
+async function postPreview(body: FormData): Promise<void> {
     loading.value = true;
     loadError.value = null;
-
-    const body = new FormData();
-
-    if (ocrExtractedTable.value !== null) {
-        // The image itself is never sent — only the table the OCR seam
-        // already recognised, in-browser (§ privacy). `source_kind` doubles
-        // here as what the server expects in `extracted_table.source_type`.
-        body.append('extracted_table', JSON.stringify(ocrExtractedTable.value));
-        body.append('source_kind', ocrExtractedTable.value.source_type);
-    } else if (file.value !== null) {
-        body.append('file', file.value);
-
-        if (tableIndex !== null) {
-            body.append('table_index', String(tableIndex));
-        }
-    } else if (pastedHtml.value !== '') {
-        body.append('pasted_html', pastedHtml.value);
-    } else {
-        body.append('pasted_text', pastedText.value);
-    }
 
     try {
         const response = await fetch(`/classes/${props.classUlid}/characterisation-imports/preview`, {
@@ -368,30 +407,223 @@ async function loadPreview(tableIndex: number | null = null): Promise<void> {
             return;
         }
 
+        const typedPayload = payload as PreviewResponse;
+
         // Limpa ANTES de repovoar (F5) — uma pré-visualização nova nunca deve
         // herdar linhas da anterior, mesmo que esta chamada não tenha passado
         // por resetToInput()/backToInputStep() (ex.: escolher uma tabela
         // diferente no seletor do .docx chama loadPreview() diretamente).
         clearPreviewState();
-        previewData.value = payload as PreviewResponse;
+        previewData.value = typedPayload;
 
-        payload.preview.rows.forEach((row: PreviewRow) => {
-            rowStates[row.row_number] = {
-                row,
-                // Só as linhas pré-selecionadas pelo servidor começam marcadas
-                // — tudo o resto exige uma decisão explícita do professor.
-                included: row.match.preselected,
-                enrollmentUlid: row.match.enrollment_ulid,
-                sections: { ...row.sections },
-            };
-        });
+        // §38: a complex source is shown the WHOLE recognised table first —
+        // header, data, and what was classified Group/Legend and dropped —
+        // rather than jumping straight to the per-student preview. The
+        // trigger (`show_structural_step`) is decided server-side, once, so
+        // it can never drift from NormaliseExtractedTable's own
+        // classification (see CharacterisationImportController::preview()).
+        if (typedPayload.show_structural_step) {
+            pendingSourceKind.value = typedPayload.source_kind;
+            pendingOriginalFilename.value = typedPayload.original_filename;
+            structuralHeaders.value = typedPayload.structural.headers;
 
+            typedPayload.structural.rows.forEach((row) => {
+                structuralRowStates[row.number] = { row, kind: row.kind, cells: [...row.cells] };
+            });
+
+            populateStructuralCellConfidence(typedPayload.structural.rows);
+
+            step.value = 'structural';
+
+            return;
+        }
+
+        populateRowStates(typedPayload.preview.rows);
         step.value = 'preview';
     } catch {
         loadError.value = 'Não foi possível ler o ficheiro.';
     } finally {
         loading.value = false;
     }
+}
+
+function populateRowStates(rows: PreviewRow[]): void {
+    rows.forEach((row) => {
+        rowStates[row.row_number] = {
+            row,
+            // Só as linhas pré-selecionadas pelo servidor começam marcadas —
+            // tudo o resto exige uma decisão explícita do professor.
+            included: row.match.preselected,
+            enrollmentUlid: row.match.enrollment_ulid,
+            sections: { ...row.sections },
+        };
+    });
+}
+
+/**
+ * §18 — extraction confidence overlay for the structural grid. ONLY ever
+ * populated when the table being reviewed came from OCR: `ocrExtractedTable`
+ * is the same object extractTableFromImage() produced, still held locally,
+ * and its rows/cells are in the exact same order (by 1-based row number) as
+ * the server's `structural.rows` — the server never reorders rows, only
+ * classifies and (for Group/Legend) drops them from $grid, never from
+ * `structural.rows` itself. A .docx or pasted-HTML table read EXACTLY has no
+ * extraction-confidence question to answer (see ExtractedCell's own
+ * docblock), so this is a no-op for those sources.
+ */
+function populateStructuralCellConfidence(rows: StructuralRow[]): void {
+    if (ocrExtractedTable.value === null) {
+        return;
+    }
+
+    const ocrRowsByNumber = new Map(ocrExtractedTable.value.rows.map((row) => [row.index + 1, row]));
+
+    rows.forEach((row) => {
+        const ocrRow = ocrRowsByNumber.get(row.number);
+
+        if (!ocrRow) {
+            return;
+        }
+
+        ocrRow.cells.forEach((cell) => {
+            structuralCellConfidence[cellKey(row.number, cell.column)] = cell.confidence;
+        });
+    });
+}
+
+async function loadPreview(tableIndex: number | null = null): Promise<void> {
+    if (
+        pastedText.value.trim() === '' &&
+        pastedHtml.value.trim() === '' &&
+        file.value === null &&
+        ocrExtractedTable.value === null
+    ) {
+        loadError.value = 'Cole a tabela ou escolha um ficheiro.';
+
+        return;
+    }
+
+    const body = new FormData();
+
+    if (ocrExtractedTable.value !== null) {
+        // The image itself is never sent — only the table the OCR seam
+        // already recognised, in-browser (§ privacy). `source_kind` doubles
+        // here as what the server expects in `extracted_table.source_type`.
+        body.append('extracted_table', JSON.stringify(ocrExtractedTable.value));
+        body.append('source_kind', ocrExtractedTable.value.source_type);
+    } else if (file.value !== null) {
+        body.append('file', file.value);
+
+        if (tableIndex !== null) {
+            body.append('table_index', String(tableIndex));
+        }
+    } else if (pastedHtml.value !== '') {
+        body.append('pasted_html', pastedHtml.value);
+    } else {
+        body.append('pasted_text', pastedText.value);
+    }
+
+    await postPreview(body);
+}
+
+// §39: the row-kind choices the structural grid offers — mirrors
+// ExtractedRowKind, plus 'ignore' (never sent as a row at all; see
+// applyStructuralCorrections()). Portuguese labels only exist here, in the
+// UI layer — the server keeps speaking its own enum values.
+const structuralKindOptions: { value: StructuralRowState['kind']; label: string }[] = [
+    { value: 'header', label: 'Cabeçalho' },
+    { value: 'data', label: 'Aluno (dados)' },
+    { value: 'group', label: 'Agrupamento (não é aluno)' },
+    { value: 'legend', label: 'Legenda' },
+    { value: 'ignore', label: 'Ignorar linha' },
+];
+
+const structuralRows = computed(() => Object.values(structuralRowStates).sort((a, b) => a.row.number - b.row.number));
+
+function toggleIgnoredColumn(columnIndex: number, value: boolean): void {
+    if (value) {
+        ignoredColumns.add(columnIndex);
+    } else {
+        ignoredColumns.delete(columnIndex);
+    }
+}
+
+function markCellEdited(rowNumber: number, columnIndex: number): void {
+    // §19: an edited cell is exact — whatever the teacher typed — not a
+    // guess tesseract made, so its extraction-confidence badge must stop
+    // showing the moment she touches it. The ORIGINAL token stays visible
+    // nowhere else in this step (§39 has no "raw_token" concept — that is
+    // the per-student preview's job); this step edits the recognised table
+    // directly, and an edit here is the explicit acceptance §19 requires.
+    editedStructuralCells.add(cellKey(rowNumber, columnIndex));
+}
+
+/**
+ * §39: turns the (possibly edited) structural grid back into the same
+ * ExtractedTablePayload shape OCR already produces, and resubmits it through
+ * the identical preview endpoint/pipeline — normalise → match → merge →
+ * confirm never branches on where the table came from. Ignored rows are
+ * dropped outright; ignored columns are removed from every surviving row,
+ * re-numbered so column indices stay contiguous (see the payload's own
+ * `column` field).
+ */
+function applyStructuralCorrections(): void {
+    const keptColumnIndices = structuralHeaders.value
+        .map((_, index) => index)
+        .filter((index) => !ignoredColumns.has(index));
+
+    const rows: ExtractedRowPayload[] = structuralRows.value
+        .filter((state) => state.kind !== 'ignore')
+        .map((state, rowIndex): ExtractedRowPayload => ({
+            index: rowIndex,
+            // 'unknown' never reaches here — the row-kind selector only ever
+            // offers header/data/group/legend/ignore (see
+            // structuralKindOptions) — but the type is shared with the OCR
+            // payload's own ExtractedRowPayload, which allows it.
+            kind: state.kind as ExtractedRowPayload['kind'],
+            cells: keptColumnIndices.map((columnIndex, newColumnIndex): ExtractedCellPayload => ({
+                text: state.cells[columnIndex] ?? '',
+                row: rowIndex,
+                column: newColumnIndex,
+                colspan: 1,
+                rowspan: 1,
+                confidence: editedStructuralCells.has(cellKey(state.row.number, columnIndex))
+                    ? null
+                    : (structuralCellConfidence[cellKey(state.row.number, columnIndex)] ?? null),
+            })),
+        }));
+
+    // Corrected resubmissions use their OWN source_type — never the real
+    // ::Docx/::PastedHtml, which stay reserved for a genuine server-side
+    // read of the original file (see ExtractedTableSource::CorrectedDocx's
+    // own docblock). An OCR source keeps its own pasted_image/image_upload
+    // value — corrections there were already an accepted source_type before
+    // §39 existed.
+    const sourceType: ExtractedTablePayload['source_type'] =
+        pendingSourceKind.value === 'docx'
+            ? 'corrected_docx'
+            : pendingSourceKind.value === 'pasted_html'
+              ? 'corrected_pasted_html'
+              : pendingSourceKind.value === 'image_upload'
+                ? 'image_upload'
+                : 'pasted_image';
+
+    const correctedTable: ExtractedTablePayload = {
+        rows,
+        source_type: sourceType,
+        source_filename: pendingOriginalFilename.value,
+        warnings: [],
+        extraction_confidence: 1,
+    };
+
+    const body = new FormData();
+    body.append('extracted_table', JSON.stringify(correctedTable));
+
+    if (pendingOriginalFilename.value !== null) {
+        body.append('original_filename', pendingOriginalFilename.value);
+    }
+
+    void postPreview(body);
 }
 
 function chooseTable(index: number): void {
@@ -588,6 +820,131 @@ function closeDialog(): void {
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" @click="backToInputStep">Voltar</Button>
+                </DialogFooter>
+            </template>
+
+            <!-- §38: "Rever tabela reconhecida" — only for complex sources
+                 (.docx, image/OCR, pasted HTML with a merged cell; see
+                 `show_structural_step`, decided server-side). A single step
+                 inside this same dialog, not a second application: compact,
+                 with scroll kept INSIDE the table (§51/§52) so the page
+                 itself never grows wider than the viewport. -->
+            <template v-else-if="step === 'structural'">
+                <div class="space-y-3 py-2">
+                    <p class="text-sm text-muted-foreground">
+                        Esta é a tabela tal como foi reconhecida. Corrija o que for preciso — o texto de uma célula,
+                        se uma linha é de alunos, um agrupamento ou uma legenda, ou se uma coluna deve ser ignorada —
+                        antes de continuar para a pré-visualização por aluno.
+                    </p>
+
+                    <ul v-if="previewData?.warnings.length" class="space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
+                        <li v-for="(warning, index) in previewData.warnings" :key="index" class="flex items-start gap-1.5">
+                            <AlertTriangle class="mt-0.5 size-3.5 shrink-0" /> {{ warning }}
+                        </li>
+                    </ul>
+
+                    <!-- Scroll HORIZONTAL só aqui dentro — nunca a página
+                         (§51/§52). max-h + overflow-y para tabelas longas não
+                         empurrarem o resto do diálogo para fora do ecrã. -->
+                    <div class="max-h-[50vh] overflow-x-auto overflow-y-auto rounded-md border">
+                        <table class="w-full min-w-max border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b bg-muted/50">
+                                    <th class="w-40 p-2 text-left font-medium">Linha</th>
+                                    <th
+                                        v-for="(header, columnIndex) in structuralHeaders"
+                                        :key="columnIndex"
+                                        class="min-w-40 p-2 text-left font-medium"
+                                    >
+                                        <div class="space-y-1">
+                                            <span :class="{ 'line-through opacity-50': ignoredColumns.has(columnIndex) }">
+                                                {{ header || `Coluna ${columnIndex + 1}` }}
+                                            </span>
+                                            <label class="flex items-center gap-1.5 text-[11px] font-normal text-muted-foreground">
+                                                <Checkbox
+                                                    :model-value="ignoredColumns.has(columnIndex)"
+                                                    @update:model-value="(value) => toggleIgnoredColumn(columnIndex, value === true)"
+                                                />
+                                                Ignorar coluna
+                                            </label>
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="state in structuralRows"
+                                    :key="state.row.number"
+                                    class="border-b align-top"
+                                    :class="{ 'bg-muted/40 opacity-70': state.kind !== 'data' }"
+                                >
+                                    <td class="p-2">
+                                        <NativeSelect v-model="state.kind" :aria-label="`Tipo da linha ${state.row.number}`">
+                                            <option v-for="option in structuralKindOptions" :key="option.value" :value="option.value">
+                                                {{ option.label }}
+                                            </option>
+                                        </NativeSelect>
+                                        <!-- F40: PORQUÊ esta linha foi/vai ser
+                                             ignorada — em texto, não só a
+                                             opacidade (§51 avisos não só por
+                                             cor). -->
+                                        <p v-if="state.kind === 'group'" class="mt-1 text-[11px] text-muted-foreground">
+                                            Agrupamento — não entra como aluno.
+                                        </p>
+                                        <p v-else-if="state.kind === 'legend'" class="mt-1 text-[11px] text-muted-foreground">
+                                            Legenda — ignorada.
+                                        </p>
+                                        <p v-else-if="state.kind === 'ignore'" class="mt-1 text-[11px] text-muted-foreground">
+                                            Esta linha não será importada.
+                                        </p>
+                                        <p v-else-if="state.kind === 'header'" class="mt-1 text-[11px] text-muted-foreground">
+                                            Título das colunas.
+                                        </p>
+                                    </td>
+                                    <td
+                                        v-for="(_, columnIndex) in structuralHeaders"
+                                        :key="columnIndex"
+                                        class="p-2"
+                                        :class="{ 'opacity-40': ignoredColumns.has(columnIndex) }"
+                                    >
+                                        <Input
+                                            v-model="state.cells[columnIndex]"
+                                            :disabled="ignoredColumns.has(columnIndex)"
+                                            :aria-label="`Linha ${state.row.number}, coluna ${columnIndex + 1}`"
+                                            class="h-8 text-xs"
+                                            @input="markCellEdited(state.row.number, columnIndex)"
+                                        />
+                                        <!-- §18: confiança de EXTRAÇÃO (li bem
+                                             esta célula?) — só existe para OCR,
+                                             nunca para uma célula já editada
+                                             (essa passou a ser exata), e nunca
+                                             confundida com a confiança de
+                                             domínio (essa aparece só no passo
+                                             seguinte, por medida/recurso). -->
+                                        <p
+                                            v-if="
+                                                !editedStructuralCells.has(cellKey(state.row.number, columnIndex)) &&
+                                                structuralCellConfidence[cellKey(state.row.number, columnIndex)] !== undefined &&
+                                                structuralCellConfidence[cellKey(state.row.number, columnIndex)] !== null &&
+                                                structuralCellConfidence[cellKey(state.row.number, columnIndex)]! < 0.7
+                                            "
+                                            class="mt-1 flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-500"
+                                        >
+                                            <AlertTriangle class="size-3 shrink-0" />
+                                            Confiança de leitura baixa — confirme o texto.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="backToInputStep">Escolher outro ficheiro</Button>
+                    <Button type="button" :disabled="loading" @click="applyStructuralCorrections">
+                        <Loader2 v-if="loading" class="size-4 animate-spin" />
+                        Continuar
+                    </Button>
                 </DialogFooter>
             </template>
 
