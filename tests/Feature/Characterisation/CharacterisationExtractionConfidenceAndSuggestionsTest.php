@@ -144,7 +144,9 @@ class CharacterisationExtractionConfidenceAndSuggestionsTest extends TestCase
     {
         $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
             'extracted_table' => json_encode($this->ocrTableWithLowConfidenceToken('ACN5', 0.4)),
-            'corrections' => ['ACN5' => 'ACNS'],
+            // F4: `corrections` is a JSON STRING field now, not a nested
+            // form array — see parseCorrectionsPayload()'s own comment.
+            'corrections' => json_encode(['ACN5' => 'ACNS']),
         ]);
 
         $response->assertOk();
@@ -229,5 +231,125 @@ class CharacterisationExtractionConfidenceAndSuggestionsTest extends TestCase
         $this->assertCount(1, $row['unresolved']);
         $this->assertSame(0.95, $row['unresolved'][0]['extraction_confidence']);
         $this->assertNull($row['unresolved'][0]['suggested_correction']);
+    }
+
+    /**
+     * F5 (second adversarial review): a `corrected_docx`/`corrected_pasted_html`
+     * table is text this server itself read EXACTLY out of the original
+     * file — it has no "did I read this right" question to answer, unlike a
+     * genuine OCR guess. `parseExtractedTablePayload()` used to clamp but
+     * still TRUST whatever confidence value the client sent for every
+     * allowed source type, including these two, which meant a hostile or
+     * merely buggy client could fabricate a LOW confidence for a token the
+     * school's file genuinely wrote and get suggestionsFor() to offer a
+     * rewrite of it — the one thing §18/§19 exist to rule out. Confidence
+     * from these two source types is now always nulled server-side.
+     */
+    #[Test]
+    public function a_corrected_docx_source_never_trusts_a_client_supplied_low_confidence(): void
+    {
+        $correctedTable = [
+            'source_type' => 'corrected_docx',
+            'source_filename' => 'caracterizacao.docx',
+            'warnings' => [],
+            'extraction_confidence' => 1,
+            'rows' => [
+                [
+                    'index' => 0,
+                    'kind' => 'header',
+                    'cells' => [
+                        ['text' => 'Nome', 'row' => 0, 'column' => 0, 'colspan' => 1, 'rowspan' => 1, 'confidence' => null],
+                        ['text' => 'Medidas', 'row' => 0, 'column' => 1, 'colspan' => 1, 'rowspan' => 1, 'confidence' => null],
+                    ],
+                ],
+                [
+                    'index' => 1,
+                    'kind' => 'data',
+                    'cells' => [
+                        ['text' => 'Maria Santos', 'row' => 1, 'column' => 0, 'colspan' => 1, 'rowspan' => 1, 'confidence' => null],
+                        // A malicious/buggy client claims a LOW confidence
+                        // for text the school's own .docx genuinely wrote —
+                        // this must never be trusted enough to offer
+                        // rewriting it.
+                        ['text' => 'ACN5', 'row' => 1, 'column' => 1, 'colspan' => 1, 'rowspan' => 1, 'confidence' => 0.1],
+                    ],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
+            'extracted_table' => json_encode($correctedTable),
+        ]);
+
+        $response->assertOk();
+
+        $row = $this->measureRow($response);
+
+        $this->assertCount(1, $row['unresolved']);
+        $unresolved = $row['unresolved'][0];
+        $this->assertSame('ACN5', $unresolved['raw_token']);
+        $this->assertNull($unresolved['extraction_confidence'], 'A corrected_docx cell was exactly read — it has no extraction confidence to report.');
+        $this->assertNull($unresolved['suggested_correction'], 'No suggestion may ever be offered for text the school actually wrote.');
+    }
+
+    /**
+     * F4 (second adversarial review): a raw token containing `[`/`]` used to
+     * be sent as `corrections[MU[1]]`, which PHP's own form-key parser reads
+     * as array-nesting syntax and silently truncates/misroutes. Sending
+     * `corrections` as one JSON string sidesteps that entirely — the token
+     * survives as a plain string key regardless of what characters it
+     * contains.
+     */
+    #[Test]
+    public function a_correction_key_containing_brackets_is_applied_to_the_right_token(): void
+    {
+        // Starts/ends with a word character (a `\b` needs one adjacent to
+        // match at all) so this exercises the bracket/form-key problem
+        // specifically, not the separate leading/trailing-whitespace one.
+        $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
+            'extracted_table' => json_encode($this->ocrTableWithLowConfidenceToken('A[C]N5', 0.4)),
+            'corrections' => json_encode(['A[C]N5' => 'ACNS']),
+        ]);
+
+        $response->assertOk();
+
+        $row = $this->measureRow($response);
+
+        $this->assertCount(1, $row['measures'], 'The bracket-bearing token must still resolve once corrected.');
+        $this->assertCount(0, $row['unresolved']);
+    }
+
+    /**
+     * F4 / F6: an empty accepted value must be refused outright rather than
+     * silently deleting the token from the cell — the old bracket-array
+     * validation (`corrections.*` => nullable) let
+     * ConvertEmptyStringsToNull turn `corrections[ACN5]=` into null, and
+     * applyCorrections() would happily preg_replace the token away.
+     */
+    #[Test]
+    public function an_empty_accepted_correction_is_a_validation_error(): void
+    {
+        $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
+            'extracted_table' => json_encode($this->ocrTableWithLowConfidenceToken('ACN5', 0.4)),
+            'corrections' => json_encode(['ACN5' => '']),
+        ]);
+
+        $response->assertUnprocessable()->assertJsonValidationErrors(['corrections']);
+    }
+
+    /**
+     * F4: malformed JSON in `corrections` is refused with a clear message,
+     * never silently ignored (which would look exactly like "no correction
+     * accepted" to the teacher, with no error at all).
+     */
+    #[Test]
+    public function malformed_corrections_json_is_a_validation_error(): void
+    {
+        $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
+            'extracted_table' => json_encode($this->ocrTableWithLowConfidenceToken('ACN5', 0.4)),
+            'corrections' => '{not valid json',
+        ]);
+
+        $response->assertUnprocessable()->assertJsonValidationErrors(['corrections']);
     }
 }

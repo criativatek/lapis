@@ -236,7 +236,17 @@ class BuildCharacterisationPreview
     private function applyCorrections(string $value, array $corrections): string
     {
         foreach ($corrections as $original => $accepted) {
-            if ($original === '') {
+            // F4: trimmed defensively, here too — a `\b…\b`-bounded regex
+            // built from an UNTRIMMED key can never match, because a `\b`
+            // can never sit next to a space inside the pattern itself. The
+            // controller already trims every key/value in
+            // parseCorrectionsPayload(), but this is the one place that
+            // actually builds the regex, so it does not trust a caller
+            // (present or future) to have done that first.
+            $original = trim((string) $original);
+            $accepted = trim($accepted);
+
+            if ($original === '' || $accepted === '') {
                 continue;
             }
 

@@ -137,6 +137,21 @@ class NormaliseExtractedTable
         // Data does not silently flip back to Legend on the next preview.
         $explicitKinds = $this->explicitRowKinds($table);
 
+        // F3: all-or-nothing. explicitRowKinds() only ever sees the kind a
+        // row was tagged with — it has no way to tell "the client meant this
+        // row to be Data" apart from "the client never classified this row
+        // at all". splitPreClassified() defaults every untagged row to Data,
+        // which is correct for a table §39 itself produced (every row IS
+        // tagged there) but silently wrong for a hand-built or malformed
+        // `extracted_table` payload that tagged only SOME rows: the header
+        // row and any legend would be swept into Data as if a teacher had
+        // reviewed and approved them, and `wasPreClassified` would suppress
+        // the one step that could have caught it. A partial tagging is
+        // therefore refused outright rather than guessed at half of.
+        if ($explicitKinds !== [] && count($explicitKinds) !== count($entries)) {
+            throw new UnreadableSpreadsheet(__('A tabela enviada tem linhas classificadas e outras não — isso não é permitido. Classifique todas as linhas ou nenhuma.'));
+        }
+
         // Header entries too — separately from $bodyEntries — purely so
         // structuralRows (below) can show the header row(s) as editable rows
         // in §38's grid, kind='header', exactly as a Group/Legend row is
@@ -543,18 +558,28 @@ class NormaliseExtractedTable
         $belowRowNumber = $primary + 2; // 1-based ExtractedRow::$index of the printed row right below the primary one.
         $ownColumns = $this->ownColumnsOf($table, $belowRowNumber);
 
+        // F2: a second header level exists to SUBDIVIDE a colspan the
+        // primary row itself declared («Apoios» split into «P»/«Ing.») —
+        // never merely because some earlier row's rowspan happens to reach
+        // down this far. `rowspanCoveredColumns()` used to accept a rowspan
+        // from ANY earlier row, including an ordinary left "spine" column
+        // (e.g. a class-name cell merged A1:A9) that has nothing to do with
+        // the header at all: with a spine, row 2's own columns are a subset
+        // of the header's TOTAL columns for exactly the wrong reason — the
+        // spine, not a colspan — and the first real student got folded into
+        // the header, silently, with no warning and (for .xlsx, whose
+        // structural review step didn't exist for this shape) no way back.
+        // Requiring $ownColumns to be a strict, non-empty subset of columns
+        // the PRIMARY header row itself merged across with colspan>1 rules
+        // that out: a plain vertical spine never has colspan>1 in the header
+        // row, only rowspan, so it no longer qualifies.
+        $headerColspanColumns = $this->headerColspanColumns($table, $primary + 1);
+
         if ($ownColumns !== null
             && $ownColumns !== []
             && count($ownColumns) < $columnCount
             && $primary + 1 < count($matrix)
-            // Every column this row does NOT own must be accounted for by an
-            // actual rowspan reaching down from an earlier row — never merely
-            // ABSENT. A plain TSV/CSV row shorter than the header (a trailing
-            // cell that simply did not survive the copy — see TableGrid::cell's
-            // own docblock) has missing columns too, but nothing rowspans into
-            // them; treating that as a header continuation would fold a real,
-            // short DATA row straight into the header and lose it as a student.
-            && $this->everyColumnAccountedFor($ownColumns, $this->rowspanCoveredColumns($table, $belowRowNumber), $columnCount)
+            && $this->isSubsetOf($ownColumns, $headerColspanColumns)
             && $this->looksLikeHeaderLevel($this->onlyOwnColumns($matrix[$primary + 1], $ownColumns))
         ) {
             $levels[] = ['index' => $primary + 1, 'ownColumns' => $ownColumns];
@@ -564,25 +589,29 @@ class NormaliseExtractedTable
     }
 
     /**
-     * The 0-based column indices covered by an EARLIER row's rowspan reaching
-     * down into $rowNumber — the structural fact that distinguishes "this
-     * column is missing because a cell above spans down into it" from "this
-     * column is missing because the row simply ended early", which
-     * headerLevels() cannot tell apart any other way (see its own comment).
+     * F2: the 0-based column indices the PRIMARY header row itself merges
+     * across with a colspan greater than 1 — i.e. the columns a second
+     * header level would exist to subdivide. Deliberately reads only cells
+     * belonging to $primaryRowNumber, and only a colspan (never a rowspan):
+     * a left "spine" column merged vertically down the whole sheet (e.g. a
+     * class name spanning A1:A9) never shows up here, however far its
+     * rowspan reaches, because it is not a header subdivision — see
+     * headerLevels()'s own comment for the concrete spine case this rules
+     * out.
      *
      * @return array<int, true>
      */
-    private function rowspanCoveredColumns(ExtractedTable $table, int $rowNumber): array
+    private function headerColspanColumns(ExtractedTable $table, int $primaryRowNumber): array
     {
         $columns = [];
 
         foreach ($table->rows as $row) {
-            if ($row->index >= $rowNumber) {
+            if ($row->index !== $primaryRowNumber) {
                 continue;
             }
 
             foreach ($row->cells as $cell) {
-                if ($cell->row + $cell->rowspan - 1 < $rowNumber) {
+                if ($cell->colspan <= 1) {
                     continue;
                 }
 
@@ -596,13 +625,23 @@ class NormaliseExtractedTable
     }
 
     /**
-     * @param  array<int, true>  $ownColumns
-     * @param  array<int, true>  $rowspanCoveredColumns
+     * Whether every column of $subset also appears in $superset, and $subset
+     * is not itself empty — used by headerLevels() to require the row below
+     * the primary header to own ONLY columns the header itself subdivided
+     * (see headerColspanColumns()), never merely SOME of them alongside
+     * others a colspan never touched.
+     *
+     * @param  array<int, true>  $subset
+     * @param  array<int, true>  $superset
      */
-    private function everyColumnAccountedFor(array $ownColumns, array $rowspanCoveredColumns, int $columnCount): bool
+    private function isSubsetOf(array $subset, array $superset): bool
     {
-        for ($column = 0; $column < $columnCount; $column++) {
-            if (! isset($ownColumns[$column]) && ! isset($rowspanCoveredColumns[$column])) {
+        if ($subset === []) {
+            return false;
+        }
+
+        foreach (array_keys($subset) as $column) {
+            if (! isset($superset[$column])) {
                 return false;
             }
         }
