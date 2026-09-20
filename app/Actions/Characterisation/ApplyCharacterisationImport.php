@@ -20,6 +20,7 @@ use App\Models\SchoolClass;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 use App\Models\User;
+use App\Services\Audit\AuditLog;
 use App\Services\Characterisation\Import\MergeCharacterisationSections;
 use App\Services\Characterisation\RecordCharacterisation;
 use App\Support\Characterisation\CharacterisationSection;
@@ -65,6 +66,7 @@ class ApplyCharacterisationImport
         private readonly MergeCharacterisationSections $merger,
         private readonly CreateIntervention $creator,
         private readonly LegalFrameworkResolver $frameworks,
+        private readonly AuditLog $audit,
     ) {}
 
     /**
@@ -138,6 +140,7 @@ class ApplyCharacterisationImport
                     $startedOn,
                     $frameworkCode,
                     $confirmedBy,
+                    $batch,
                 );
 
                 if ($changed !== [] || $measures > 0 || $interventionsCreated > 0) {
@@ -309,6 +312,23 @@ class ApplyCharacterisationImport
      * for a person to look at. That is why this checks "is there an active one
      * at all", not "is there one that also matches on every other field".
      *
+     * AUDIT (§44, F11): `intervention.created` used to be recorded ONLY from
+     * InterventionController::store(), which is the manual form's own path —
+     * an intervention created here, from an import, left no trace in the
+     * audit log at all. InterventionController records it AFTER its
+     * transaction commits, because that controller only has one intervention
+     * (or a handful from one form submission) to record once the write is
+     * certain. This method is different: it runs once PER DECISION, inside
+     * the SAME transaction ApplyCharacterisationImport::apply() wraps the
+     * whole import in, and a later decision in that same loop can still fail
+     * and roll the entire batch back. Recording the event here — inside that
+     * transaction, through an ordinary Eloquent write, never a queued job —
+     * means the audit row rolls back right along with the intervention it
+     * describes, so the trail can never claim an intervention exists that
+     * the rollback just undid. IDs and counts only, exactly like every other
+     * audit event this feature already writes — never the pedagogical text
+     * in `description`.
+     *
      * @param  array<string, mixed>  $decision
      */
     private function createInterventions(
@@ -318,6 +338,7 @@ class ApplyCharacterisationImport
         Carbon $startedOn,
         ?string $frameworkCode,
         User $confirmedBy,
+        CharacterisationImportBatch $batch,
     ): int {
         $created = 0;
 
@@ -328,7 +349,7 @@ class ApplyCharacterisationImport
 
             $type = InterventionType::tryFrom($code->value) ?? InterventionType::Other;
 
-            $this->creator->create(
+            $intervention = $this->creator->create(
                 class: $class,
                 attributes: [
                     'enrollment_id' => $enrollment->getKey(),
@@ -352,6 +373,20 @@ class ApplyCharacterisationImport
                 supportMeasures: [['level' => $level->value, 'code' => $code->value]],
                 participantIds: [$enrollment->getKey()],
                 createdBy: $confirmedBy,
+            );
+
+            $this->audit->record(
+                'intervention.created',
+                $intervention,
+                $confirmedBy,
+                __('Intervenção criada a partir da importação da caracterização.'),
+                [
+                    'class_id' => $class->getKey(),
+                    'enrollment_id' => $enrollment->getKey(),
+                    'import_batch_ulid' => $batch->ulid,
+                    'support_measure_level' => $level->value,
+                    'support_measure_code' => $code->value,
+                ],
             );
 
             $created++;

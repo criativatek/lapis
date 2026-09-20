@@ -4,6 +4,7 @@ namespace Tests\Feature\Characterisation;
 
 use App\Actions\Interventions\CreateIntervention;
 use App\Models\AcademicYear;
+use App\Models\AuditEvent;
 use App\Models\CharacterisationImportBatch;
 use App\Models\CharacterisationRevision;
 use App\Models\Enrollment;
@@ -16,6 +17,7 @@ use App\Models\Subject;
 use App\Models\SupportMeasureCode;
 use App\Models\SupportMeasureLevel;
 use App\Models\User;
+use App\Services\Characterisation\RecordCharacterisation;
 use App\Services\StudentEnrollmentService;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -617,6 +619,90 @@ class CharacterisationImportTest extends TestCase
         $this->confirm($decision)->assertRedirect();
 
         $this->assertSame(1, Intervention::withoutGlobalScope('organization')->count());
+    }
+
+    /**
+     * F11: an intervention created FROM AN IMPORT is audited exactly like one
+     * created by hand — ids and counts, never the pedagogical text.
+     */
+    #[Test]
+    public function an_import_created_intervention_is_audited(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+        $code = SupportMeasureCode::PsychopedagogicalSupport;
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [$code->value],
+            'raw_tokens' => [$code->value => 'Apoio psicopedagógico'],
+        ]])->assertRedirect();
+
+        $intervention = Intervention::withoutGlobalScope('organization')->firstOrFail();
+
+        $event = AuditEvent::withoutGlobalScope('organization')
+            ->where('event', 'intervention.created')
+            ->where('subject_id', $intervention->getKey())
+            ->firstOrFail();
+
+        $this->assertSame($this->user->getKey(), $event->causer_id);
+        $this->assertSame('Intervention', $event->subject_type);
+        $this->assertSame($enrollment->getKey(), $event->properties['enrollment_id']);
+        $this->assertSame($code->value, $event->properties['support_measure_code']);
+
+        // Ids and counts only — never the pedagogical text ("o ficheiro
+        // indicava: Apoio psicopedagógico") that description carries.
+        $this->assertStringNotContainsString('Apoio psicopedagógico', json_encode($event->properties));
+    }
+
+    /**
+     * F11: the audit write happens INSIDE the same transaction as the
+     * intervention it describes — forcing the import's transaction to roll
+     * back (here, by making the second decision's characterisation write
+     * throw) must leave neither the intervention from the FIRST decision nor
+     * its audit event behind. A queued audit write would survive a rollback
+     * it should not have; an in-transaction Eloquent write cannot.
+     */
+    #[Test]
+    public function no_audit_event_survives_a_rolled_back_import(): void
+    {
+        $first = $this->enrol($this->user, $this->class, 'Ana Silva');
+        $second = $this->enrol($this->user, $this->class, 'Bruno Costa');
+        $code = SupportMeasureCode::PsychopedagogicalSupport;
+
+        $this->partialMock(RecordCharacterisation::class, function ($mock) {
+            $calls = 0;
+
+            $mock->shouldReceive('apply')
+                ->twice()
+                ->andReturnUsing(function (...$args) use (&$calls) {
+                    $calls++;
+
+                    if ($calls === 2) {
+                        throw new \RuntimeException('forced rollback for the test');
+                    }
+
+                    return [];
+                });
+        });
+
+        $this->confirm([
+            [
+                'enrollment_ulid' => $first->ulid,
+                'measure_codes' => [$code->value],
+                'raw_tokens' => [$code->value => 'Apoio psicopedagógico'],
+            ],
+            [
+                'enrollment_ulid' => $second->ulid,
+                'measure_codes' => [$code->value],
+                'raw_tokens' => [$code->value => 'Apoio psicopedagógico'],
+            ],
+        ]);
+
+        $this->assertSame(0, Intervention::withoutGlobalScope('organization')->count());
+        $this->assertSame(
+            0,
+            AuditEvent::withoutGlobalScope('organization')->where('event', 'intervention.created')->count(),
+        );
     }
 
     /** A bare, level-less letter creates no measure and no intervention. */

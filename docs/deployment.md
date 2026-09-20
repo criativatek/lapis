@@ -968,6 +968,11 @@ npm run build   # gera public/build
 E enviar `public/build/` (e `public/hot` ausente) para o servidor via SFTP/rsync.
 Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev server.
 
+`npm run build` também gera `public/vendor/tesseract/` (worker, núcleo WASM
+e traineddata de português para a importação de caracterização por imagem —
+ver `docs/characterisation-ocr.md`), copiado de `node_modules` no próprio
+build, não committed. Enviar essa pasta juntamente com `public/build/`.
+
 ## Checklist pós-deploy
 
 - [ ] **`https://lapispro.com`** mostra o Lapispro (não o «Hello World»). Verificar

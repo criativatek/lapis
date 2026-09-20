@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
+import { tesseractAssets } from './resources/build/vite-plugin-tesseract-assets';
 
 export default defineConfig({
     /*
@@ -47,5 +48,6 @@ export default defineConfig({
         wayfinder({
             formVariants: true,
         }),
+        tesseractAssets(),
     ],
 });

@@ -111,7 +111,17 @@ class HtmlTableExtractor implements TableExtractor
 
     private function extractTable(DOMElement $tableNode, DOMXPath $xpath): ?ExtractedTable
     {
-        $rowNodes = $this->elements('.//tr', $xpath, $tableNode);
+        // Child axis (`./tr`), not descendant (`.//tr`): Word/Excel clipboard
+        // HTML can nest a table inside a `<td>` (a merged-cell note, a legend
+        // rendered as its own mini-table), and `.//tr` would pull that inner
+        // table's rows into the outer table's row list. `//table` at the top
+        // of extract() already visits the inner table separately — reading it
+        // AGAIN here, folded into the outer table, would duplicate it and
+        // misattribute its cells to the outer table's columns. A `<tbody>`
+        // wrapper is fine either way: `./tr` still reaches rows one level
+        // down through `<tbody>` because a `<tbody>` is itself a child of
+        // `<table>` and DOMDocument does not insert an implicit one.
+        $rowNodes = $this->rowsOf($tableNode, $xpath);
 
         if ($rowNodes === [] || count($rowNodes) > self::MAX_ROWS) {
             return null;
@@ -120,8 +130,16 @@ class HtmlTableExtractor implements TableExtractor
         $rows = [];
         $rowIndex = 1;
 
+        // Columns an earlier row's rowspan still covers, keyed by column
+        // number, holding the last row index that column remains occupied
+        // through — see extractRow()'s own comment for why this has to be
+        // tracked at all (unlike DocxTableExtractor's w:vMerge, HTML never
+        // repeats a continuation marker on the covered row, so the ONLY
+        // record of "this column is taken" is what the origin cell declared).
+        $occupiedThrough = [];
+
         foreach ($rowNodes as $rowNode) {
-            $cells = $this->extractRow($rowNode, $xpath, $rowIndex);
+            $cells = $this->extractRow($rowNode, $xpath, $rowIndex, $occupiedThrough);
 
             if ($cells === null) {
                 return null;
@@ -144,14 +162,55 @@ class HtmlTableExtractor implements TableExtractor
     }
 
     /**
+     * `<tr>` elements one level below `<table>` OR its `<tbody>`/`<thead>`/
+     * `<tfoot>` — the child axis both times, never descendant, so a table
+     * nested inside a `<td>` never contributes its rows here (see the
+     * caller's comment).
+     *
+     * @return list<DOMElement>
+     */
+    private function rowsOf(DOMElement $tableNode, DOMXPath $xpath): array
+    {
+        $rows = $this->elements('./tr', $xpath, $tableNode);
+
+        foreach ($this->elements('./tbody|./thead|./tfoot', $xpath, $tableNode) as $section) {
+            $rows = [...$rows, ...$this->elements('./tr', $xpath, $section)];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * A `<tr>`'s `<td>`/`<th>` children are numbered as if the row started
+     * from a blank sheet — no `<tr>` ever repeats a cell an earlier row's
+     * `rowspan` already covers, the way a rectangular grid would. Reading
+     * markup that way silently shifts every cell after a rowspan one column
+     * to the left, for every row underneath it: a "Turma"/"Nº" column merged
+     * down three rows moves three students' worth of data one column over,
+     * with nothing in the markup itself signalling the mistake. So
+     * $occupiedThrough — carried across every row of the table, not just
+     * this one — is consulted before each new `<td>` is placed, exactly the
+     * way DocxTableExtractor tracks `w:vMerge`, and the column cursor skips
+     * past whatever is still spoken for before advancing.
+     *
+     * Only the child axis (`./td|./th`) is read here too, for the same
+     * nested-table reason as rowsOf(): a `<td>` inside this row that itself
+     * contains a `<table><tr><td>…` must not have that inner `<td>` counted
+     * as one of THIS row's cells.
+     *
+     * @param  array<int, int>  $occupiedThrough  column => last row index still covered by an earlier rowspan; mutated in place
      * @return list<ExtractedCell>|null null means the row exceeds the column ceiling and the whole table is refused
      */
-    private function extractRow(DOMElement $rowNode, DOMXPath $xpath, int $rowIndex): ?array
+    private function extractRow(DOMElement $rowNode, DOMXPath $xpath, int $rowIndex, array &$occupiedThrough): ?array
     {
         $cells = [];
         $column = 1;
 
         foreach ($this->elements('./td|./th', $xpath, $rowNode) as $cellNode) {
+            while (($occupiedThrough[$column] ?? 0) >= $rowIndex) {
+                $column++;
+            }
+
             $colspan = max(1, (int) ($cellNode->getAttribute('colspan') ?: 1));
             $rowspan = max(1, (int) ($cellNode->getAttribute('rowspan') ?: 1));
 
@@ -166,6 +225,12 @@ class HtmlTableExtractor implements TableExtractor
                 colspan: $colspan,
                 rowspan: $rowspan,
             );
+
+            if ($rowspan > 1) {
+                for ($c = $column; $c < $column + $colspan; $c++) {
+                    $occupiedThrough[$c] = $rowIndex + $rowspan - 1;
+                }
+            }
 
             $column += $colspan;
         }

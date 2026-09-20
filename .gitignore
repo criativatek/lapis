@@ -11,6 +11,10 @@
 /resources/js/actions
 /resources/js/routes
 /resources/js/wayfinder
+# tesseract.js runtime assets (worker, WASM core, pt traineddata), copied
+# from node_modules at build/dev time by resources/build/vite-plugin-tesseract-assets.ts
+# — never committed, see docs/characterisation-ocr.md.
+/public/vendor/tesseract
 /vendor
 .DS_Store
 .env

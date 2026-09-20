@@ -57,12 +57,88 @@ class HtmlTableExtractorTest extends TestCase
         // Row 2's first cell has rowspan 2, and multiline text joined with "\n".
         $secondRowCells = $table->rows[1]->cells;
         $this->assertSame('Turma A', $secondRowCells[0]->text);
+        $this->assertSame(1, $secondRowCells[0]->column);
         $this->assertSame(2, $secondRowCells[0]->rowspan);
         $this->assertStringContainsString("Participa.\nFalta pouco.", $secondRowCells[2]->text);
 
-        // <br> becomes a newline boundary too.
+        // Row 3 has only two <td>s of its own ("Bruno Costa" and the
+        // multiline observation) because "Turma A"'s rowspan from row 2 still
+        // covers column 1 here. Antes desta correção este teste afirmava o
+        // bug: sem seguir a ocupação do rowspan, "Bruno Costa" ficava na
+        // coluna 1 (a coluna da turma) e a observação na coluna 2, deslocando
+        // toda a linha uma coluna para a esquerda. As colunas reais são 2 e 3.
         $thirdRowCells = $table->rows[2]->cells;
+        $this->assertSame('Bruno Costa', $thirdRowCells[0]->text);
+        $this->assertSame(2, $thirdRowCells[0]->column);
+        $this->assertSame(3, $thirdRowCells[1]->column);
         $this->assertStringContainsString("Linha um\nlinha dois", $thirdRowCells[1]->text);
+    }
+
+    public function test_it_advances_columns_past_a_rowspan_covering_several_rows(): void
+    {
+        // A "Turma"/"Grupo"/"Nº"-style first column merged down across every
+        // row of the table — the shape a school export uses for "all these
+        // students share one class" — must never cause a student row to slip
+        // into the wrong column just because it has fewer <td>s than the
+        // header row.
+        $html = <<<'HTML'
+            <table>
+              <tr><td>Turma</td><td>Nome</td><td>Notas</td></tr>
+              <tr><td rowspan="3">7ºA</td><td>Ana Silva</td><td>Boa</td></tr>
+              <tr><td>Bruno Costa</td><td>Regular</td></tr>
+              <tr><td>Carla Dias</td><td>Boa</td></tr>
+            </table>
+            HTML;
+
+        $tables = $this->extractor()->extract($html);
+        $table = $tables[0];
+
+        // Row 1 (index 2) carries "7ºA" itself, the origin of the rowspan, so
+        // its name/notes cells are at [1]/[2]; rows 2-3 (indices 3-4) never
+        // repeat "7ºA" at all, so their name/notes cells are at [0]/[1] — but
+        // in both cases the COLUMN NUMBER, not the array index, must land on
+        // 2/3 either way.
+        $first = $table->rows[1]->cells;
+        $this->assertSame(2, $first[1]->column);
+        $this->assertSame(3, $first[2]->column);
+        $this->assertSame('Ana Silva', $first[1]->text);
+
+        foreach ([2, 3] as $rowIndex) {
+            $row = $table->rows[$rowIndex]->cells;
+            $this->assertSame(2, $row[0]->column, "linha {$rowIndex}: nome deve ficar na coluna 2");
+            $this->assertSame(3, $row[1]->column, "linha {$rowIndex}: notas deve ficar na coluna 3");
+        }
+
+        $this->assertSame('Bruno Costa', $table->rows[2]->cells[0]->text);
+        $this->assertSame('Carla Dias', $table->rows[3]->cells[0]->text);
+    }
+
+    public function test_it_does_not_duplicate_rows_from_a_table_nested_inside_a_cell(): void
+    {
+        // Word clipboard markup occasionally nests a whole table inside one
+        // <td> (a note, a mini legend). The descendant axis (`.//tr`) would
+        // pull the inner table's rows into the outer table's row list AND
+        // `//table` at the top level would extract the inner table again on
+        // its own — duplicating and misattributing its cells. The child axis
+        // must keep the outer table's own two rows exactly two rows.
+        $html = <<<'HTML'
+            <table>
+              <tr><td>Nome</td><td>Notas</td></tr>
+              <tr>
+                <td>Ana Silva</td>
+                <td>
+                  <table><tr><td>Legenda interna</td></tr></table>
+                  Boa
+                </td>
+              </tr>
+            </table>
+            HTML;
+
+        $tables = $this->extractor()->extract($html);
+
+        $outer = $tables[0];
+        $this->assertCount(2, $outer->rows);
+        $this->assertSame('Ana Silva', $outer->rows[1]->cells[0]->text);
     }
 
     public function test_it_reads_excel_clipboard_html(): void
