@@ -205,7 +205,12 @@ class HtmlTableExtractorTest extends TestCase
 
         $tables = $this->extractor()->extract($html);
 
-        $this->assertSame("MU a) b) e)\n\nNecessita de apoio na organizacao.", $tables[0]->rows[0]->cells[0]->text);
+        // ONE newline, not two: a cell never carries a blank line. The `<br>`
+        // and the two paragraph boundaries are the same separation stated
+        // twice, and collapsing the run is what makes this deterministic
+        // across libxml builds — see textOf(). This assertion read "\n\n"
+        // until CI on Linux disagreed with the Windows machine that wrote it.
+        $this->assertSame("MU a) b) e)\nNecessita de apoio na organizacao.", $tables[0]->rows[0]->cells[0]->text);
     }
 
     public function test_it_never_matches_content_without_a_table(): void
