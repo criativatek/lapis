@@ -146,6 +146,7 @@ function intervention(overrides: Record<string, unknown> = {}) {
     return {
         ulid: 'int-1',
         created_batch_ulid: null,
+        origin_label: null,
         title: 'Apoio tutorial',
         description: null,
         motive_code: null,

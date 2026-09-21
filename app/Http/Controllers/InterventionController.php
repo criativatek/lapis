@@ -15,6 +15,7 @@ use App\Models\InterventionContext;
 use App\Models\InterventionDescriptionSource;
 use App\Models\InterventionDomainRelation;
 use App\Models\InterventionEffectiveness;
+use App\Models\InterventionOrigin;
 use App\Models\InterventionPurpose;
 use App\Models\InterventionReview;
 use App\Models\InterventionStatus;
@@ -30,6 +31,7 @@ use App\Models\SupportMeasureLevel;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Reporting\ReportLibraryProvider;
+use App\Support\Interventions\InterventionAuditProperties;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Interventions\PedagogicalText;
@@ -544,11 +546,7 @@ class InterventionController extends Controller
             ]),
             properties: [
                 ...$properties,
-                'class_id' => (int) $intervention->class_id,
-                'target_type' => $intervention->target_type->value,
-                'participants' => $intervention->participants()->count(),
-                'intervention_type' => $intervention->intervention_type?->value,
-                'status' => $intervention->status->value,
+                ...InterventionAuditProperties::base($intervention),
             ],
         );
     }
@@ -575,7 +573,15 @@ class InterventionController extends Controller
 
         $reasoning = $this->resolveReasoning($validated);
 
-        DB::transaction(function () use ($intervention, $validated, $type, $framing, $reasoning): void {
+        // Captured before fill() overwrites them: whether the type is actually
+        // changing, and whether the label on file was ever derived from the
+        // OLD type in the first place.
+        $previousType = $intervention->intervention_type;
+        $previousLabel = $intervention->intervention_type_label;
+        $typeChanged = $previousType !== $type;
+        $labelWasTypeDerived = $previousType !== null && $previousLabel === $previousType->label();
+
+        DB::transaction(function () use ($intervention, $validated, $type, $framing, $reasoning, $typeChanged, $labelWasTypeDerived, $previousLabel): void {
             $participantIds = $validated['enrollment_ids'] ?? [];
 
             $intervention->fill([
@@ -594,9 +600,19 @@ class InterventionController extends Controller
                 'intervention_type' => $type,
                 'domain_relation' => $validated['domain_relation'],
                 'title' => $reasoning['strategy_label'] ?? $type->label(),
-                // Re-stamped on update because the TYPE may have changed; the
-                // designation follows whatever type the record now carries.
-                'intervention_type_label' => $type->label(),
+                // Re-stamped on update ONLY when the TYPE actually changed, or
+                // when the label on file was never anything but the OLD type's
+                // own label to begin with. What this did not anticipate: an
+                // import stamps `intervention_type = Other` with the REAL
+                // measure name in `intervention_type_label` (no same-named
+                // type exists for several SupportMeasureCode cases — see
+                // ApplyCharacterisationImport). Unconditionally re-stamping
+                // here silently renamed that measure to "Outro" the moment a
+                // teacher saved an otherwise-unrelated edit, because the edit
+                // form can only round-trip `intervention_type = other`. A
+                // label that came from a measure, not from the type, must
+                // survive an edit that leaves the type alone.
+                'intervention_type_label' => ($typeChanged || $labelWasTypeDerived) ? $type->label() : $previousLabel,
                 'description' => $validated['description'] ?? null,
                 'started_on' => $validated['started_on'],
                 'available_for_reports' => $validated['available_for_reports'] ?? true,
@@ -1142,6 +1158,31 @@ class InterventionController extends Controller
     /**
      * Replaces the canonical set while keeping the legacy first pair readable.
      *
+     * WHY THIS DIFFERS FROM `CreateIntervention::create()`, DELIBERATELY. Both
+     * write `InterventionSupportMeasure` rows and stamp the parent, and it
+     * would be one method if the two callers ever had the same inputs — they
+     * do not:
+     *  - `CreateIntervention::create()` is handed an `attributes` array in
+     *    which `legal_framework_code` is ALWAYS already resolved by the
+     *    caller (`resolveLegalFraming()` on the controller's store() path,
+     *    the batch's own framework on the import path) — so it never needs a
+     *    fallback of its own, and using `?? null` there is correct.
+     *  - This method runs on an EDIT, where `$framing['legal_framing'] ===
+     *    'none'` deliberately clears the intervention's OWN framing while the
+     *    measures a teacher submitted must still be written with a stamp —
+     *    see the comment on the `legal_framework_code` fallback below. That
+     *    case has no equivalent at creation time, which is why the recompute
+     *    from `frameworkFor()` lives only here.
+     *  - This method ALSO re-writes the parent's `legal_mapping_source`
+     *    (below), because an edit can change or clear that decision;
+     *    `CreateIntervention::create()` never touches it — a fresh row's
+     *    `legal_mapping_source` is set once, directly in `$attributes`, by
+     *    whichever caller resolved the framing.
+     * If a third caller ever needs this same replace-and-stamp behaviour,
+     * that is the point to actually merge the two — not before, since forcing
+     * it now would mean smuggling an EDIT-only fallback into a class whose
+     * whole point is doing none of the caller's deciding for it.
+     *
      * @param  array<string, mixed>  $validated
      * @param  array<string, mixed>  $framing
      */
@@ -1257,6 +1298,13 @@ class InterventionController extends Controller
             'status_label' => $intervention->status->label(),
             'is_closed' => $intervention->status->isClosed(),
             'creator_name' => $intervention->creator?->name,
+            // Null and `manual` read the same (§ InterventionOrigin docblock):
+            // both mean a teacher typed this from the form, so the pill below
+            // only ever appears for a row an import actually created.
+            'origin' => $intervention->origin?->value,
+            'origin_label' => $intervention->origin === InterventionOrigin::CharacterisationImport
+                ? $intervention->origin->label()
+                : null,
             'started_on' => $intervention->started_on->toDateString(),
             'expected_end_on' => $intervention->expected_end_on?->toDateString(),
             'concluded_on' => $intervention->concluded_on?->toDateString(),

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Characterisation;
 
+use App\Actions\Characterisation\ApplyCharacterisationImport;
 use App\Actions\Interventions\CreateIntervention;
 use App\Models\AcademicYear;
 use App\Models\AuditEvent;
@@ -12,6 +13,9 @@ use App\Models\EnrollmentCharacterisation;
 use App\Models\EnrollmentCharacterisationSourceMeasure;
 use App\Models\EnrollmentStatus;
 use App\Models\Intervention;
+use App\Models\InterventionDescriptionSource;
+use App\Models\InterventionType;
+use App\Models\LegalMappingSource;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\SupportMeasureCode;
@@ -19,6 +23,7 @@ use App\Models\SupportMeasureLevel;
 use App\Models\User;
 use App\Services\Characterisation\RecordCharacterisation;
 use App\Services\StudentEnrollmentService;
+use App\Support\Characterisation\LegalCodeResolver;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -575,6 +580,17 @@ class CharacterisationImportTest extends TestCase
         $this->assertSame(SupportMeasureCode::PsychopedagogicalSupport, $intervention->support_measure_code);
         $this->assertSame('characterisation_import', $intervention->origin->value);
         $this->assertTrue($intervention->started_on->isToday());
+
+        // #4: the description is COMPOSED BY THIS IMPORT, quoting the
+        // school's paperwork — not the teacher's own words, so it must never
+        // be stamped `Manual` ("Escrita pelo professor").
+        $this->assertSame(InterventionDescriptionSource::Import, $intervention->description_source);
+
+        // #7: the app derived this framing from the framework and the
+        // teacher confirmed it row-by-row in the preview — exactly what
+        // SystemSuggestedConfirmed documents, not a teacher picking it
+        // unaided (Manual).
+        $this->assertSame(LegalMappingSource::SystemSuggestedConfirmed, $intervention->legal_mapping_source);
     }
 
     /** Two distinct recognised measures create two distinct interventions. */
@@ -699,6 +715,99 @@ class CharacterisationImportTest extends TestCase
     }
 
     /**
+     * §30, the case `activeInterventionExists()` used to miss (audit finding
+     * #2): a hand-created intervention carrying TWO measures stores only the
+     * FIRST on the parent's own `support_measure_code` column — the second
+     * lives exclusively in `intervention_support_measures`. Checking only the
+     * parent column let a sheet naming that second measure create a
+     * duplicate. Both places must be checked.
+     */
+    #[Test]
+    public function a_measure_held_only_in_a_multi_measure_interventions_pivot_is_still_deduplicated(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+
+        // The teacher registers one intervention carrying two measures by
+        // hand. The parent column holds only the first, pedagogical_differentiation.
+        $this->actingAs($this->user)->postJson("/classes/{$this->class->ulid}/interventions", [
+            'target_type' => 'student',
+            'enrollment_ids' => [$enrollment->getKey()],
+            'intervention_type' => InterventionType::WritingOrganizationSupport->value,
+            'domain_relation' => 'none',
+            'description' => null,
+            'started_on' => '2026-10-01',
+            'available_for_reports' => true,
+            'legal_framing' => 'manual',
+            'support_measures' => [
+                ['level' => 'universal', 'code' => SupportMeasureCode::PedagogicalDifferentiation->value],
+                ['level' => 'selective', 'code' => SupportMeasureCode::PsychopedagogicalSupport->value],
+            ],
+        ])->assertRedirect();
+
+        $registered = Intervention::withoutGlobalScope('organization')->firstOrFail();
+        $this->assertSame(SupportMeasureCode::PedagogicalDifferentiation, $registered->support_measure_code);
+        $this->assertTrue(
+            $registered->supportMeasures()
+                ->where('support_measure_code', SupportMeasureCode::PsychopedagogicalSupport->value)
+                ->exists(),
+            'The second measure must be held in the pivot, not the parent column, for this test to exercise the bug.',
+        );
+
+        // Importing a sheet naming the SECOND measure — already registered,
+        // just not on the parent column — must not create a duplicate.
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [SupportMeasureCode::PsychopedagogicalSupport->value],
+            'raw_tokens' => [SupportMeasureCode::PsychopedagogicalSupport->value => 'Apoio psicopedagógico'],
+        ]])->assertRedirect();
+
+        $this->assertSame(
+            1,
+            Intervention::withoutGlobalScope('organization')->count(),
+            'A measure already registered — even only in the pivot — must not be imported a second time.',
+        );
+    }
+
+    /**
+     * Audit finding #6: `recognisedMeasures()` used to ask a
+     * `LegalCodeResolver` for the level, which re-resolves the applicable
+     * framework itself, through `CurrentOrganization` + `now()` — a SECOND
+     * source of truth beside the framework `apply()` already resolved from
+     * `$class->organization` at the batch's own `$startedOn`. They agreed
+     * today only because CurrentOrganization happens to be bound to the same
+     * organization the class belongs to in every real request; if it were
+     * ever unresolved (a queued job, a console command), the resolver's
+     * `levelFor()` would return null for every code and the row would be
+     * counted `skipped`, indistinguishable from an empty one — silently,
+     * because that call swallows the unresolved case rather than throwing.
+     *
+     * Reaching that exact runtime scenario needs a caller other than the
+     * confirm() HTTP endpoint that also skips resolving CurrentOrganization
+     * entirely, which no other write in `apply()` currently tolerates. What
+     * IS directly testable, and pins the actual fix, is that the class no
+     * longer depends on `LegalCodeResolver` at all: the level is read from
+     * `InterventionLegalFramework::levelFor()` on the framework this action
+     * already resolved for itself, with no second lookup left to disagree.
+     */
+    #[Test]
+    public function the_action_no_longer_depends_on_legalcoderesolver_for_the_level(): void
+    {
+        $constructor = new \ReflectionMethod(ApplyCharacterisationImport::class, '__construct');
+        $paramTypes = array_map(
+            fn (\ReflectionParameter $parameter) => $parameter->getType()?->getName(),
+            $constructor->getParameters(),
+        );
+
+        $this->assertNotContains(
+            LegalCodeResolver::class,
+            $paramTypes,
+            'The level must come from the framework already resolved for the batch '.
+            '(InterventionLegalFramework::levelFor()), not from a second lookup through '.
+            'LegalCodeResolver, which resolves CurrentOrganization + now() independently.',
+        );
+    }
+
+    /**
      * F11: an intervention created FROM AN IMPORT is audited exactly like one
      * created by hand — ids and counts, never the pedagogical text.
      */
@@ -729,6 +838,48 @@ class CharacterisationImportTest extends TestCase
         // Ids and counts only — never the pedagogical text ("o ficheiro
         // indicava: Apoio psicopedagógico") that description carries.
         $this->assertStringNotContainsString('Apoio psicopedagógico', json_encode($event->properties));
+    }
+
+    /**
+     * Audit finding #5: the import wrote its OWN `intervention.created`
+     * property set instead of sharing the controller's shaper, so the same
+     * event name carried two different shapes depending on which path wrote
+     * it — the import's omitted `target_type`, `participants`,
+     * `intervention_type` and `status` that every controller-issued event
+     * carries. Both paths must now emit the same base shape, with the
+     * import's own extra keys merged on top.
+     */
+    #[Test]
+    public function an_import_created_interventions_audit_event_carries_the_same_base_shape_as_the_controllers(): void
+    {
+        $enrollment = $this->enrol($this->user, $this->class, 'Ana Silva');
+        $code = SupportMeasureCode::PsychopedagogicalSupport;
+
+        $this->confirm([[
+            'enrollment_ulid' => $enrollment->ulid,
+            'measure_codes' => [$code->value],
+            'raw_tokens' => [$code->value => 'Apoio psicopedagógico'],
+        ]])->assertRedirect();
+
+        $intervention = Intervention::withoutGlobalScope('organization')->firstOrFail();
+
+        $event = AuditEvent::withoutGlobalScope('organization')
+            ->where('event', 'intervention.created')
+            ->where('subject_id', $intervention->getKey())
+            ->firstOrFail();
+
+        // The base shape every controller-issued `intervention.created` event
+        // already carries (see InterventionController::record() and
+        // InterventionAuditProperties::base()).
+        $this->assertSame((int) $intervention->class_id, $event->properties['class_id']);
+        $this->assertSame('student', $event->properties['target_type']);
+        $this->assertSame(1, $event->properties['participants']);
+        $this->assertSame($intervention->intervention_type->value, $event->properties['intervention_type']);
+        $this->assertSame('new', $event->properties['status']);
+
+        // Plus the import's own extra keys, on top.
+        $this->assertSame($enrollment->getKey(), $event->properties['enrollment_id']);
+        $this->assertSame($code->value, $event->properties['support_measure_code']);
     }
 
     /**

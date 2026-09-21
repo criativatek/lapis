@@ -26,6 +26,31 @@ Ver o bloco de comentário no topo de `characterisation-image-extraction.ts`
 para o detalhe, e `characterisation-image-extraction.test.ts` para o teste
 que garante que nenhum pedido de rede transporta a imagem.
 
+### Medido, não apenas afirmado
+
+Um teste com worker simulado prova que o código não chama `fetch`; não prova
+que a aplicação servida se comporta assim. A garantia foi por isso verificada
+num browser real, com a rede observada durante todo o reconhecimento de uma
+imagem colada:
+
+| | |
+|---|---|
+| Pedidos para fora da aplicação | **0** |
+| Assets do tesseract pedidos | `/vendor/tesseract/worker.min.js`, `tesseract-core-simd-lstm.wasm.js`, `por.traineddata.gz` — todos da própria origem |
+| Resultado | «Tabela reconhecida na imagem (3 linhas)» |
+
+Vale a pena registar como esta verificação se pagou. Antes dela, o número de
+pedidos externos também era zero — mas pela pior das razões: o OCR nunca
+arrancava. A detecção de imagem procurava um tipo começado por `image/` em
+`clipboardData.types`, e um browser que recebe um screenshot anuncia
+`types: ["Files"]`, com o tipo concreto no ficheiro. O caminho inteiro estava
+inalcançável pelo gesto para que foi construído, e o teste unitário não o
+via porque escrevia à mão a forma que o código esperava em vez da que os
+browsers produzem.
+
+Um zero pode significar «nada sai» ou «nada acontece». Só a medição distingue
+os dois.
+
 ## Instalação: nada a transferir à mão
 
 `public/vendor/tesseract/` (worker, núcleo WASM e o modelo de português) é

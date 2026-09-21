@@ -63,6 +63,14 @@ class CreateIntervention
         $intervention->participants()->sync($participantIds);
 
         if ($supportMeasures !== []) {
+            // No fallback recompute of $frameworkCode here, unlike
+            // InterventionController::syncSupportMeasures() — see that
+            // method's docblock for why: every caller of THIS class already
+            // resolves `legal_framework_code` before calling, so `?? null`
+            // never actually triggers today, and adding an edit-only fallback
+            // (frameworkFor($intervention->started_on)) would be deciding
+            // something on the caller's behalf that this class deliberately
+            // leaves to them.
             $mappingSource = $attributes['legal_mapping_source'] ?? LegalMappingSource::Manual;
             $frameworkCode = $attributes['legal_framework_code'] ?? null;
 
