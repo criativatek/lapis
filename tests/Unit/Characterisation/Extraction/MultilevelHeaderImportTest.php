@@ -6,6 +6,7 @@ use App\Services\Characterisation\Import\ClassifyColumns;
 use App\Services\Characterisation\Import\ColumnRole;
 use App\Services\Characterisation\Import\Extraction\ExtractedCell;
 use App\Services\Characterisation\Import\Extraction\ExtractedRow;
+use App\Services\Characterisation\Import\Extraction\ExtractedRowKind;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
 use App\Services\Characterisation\Import\Extraction\ExtractedTableSource;
 use App\Services\Characterisation\Import\Extraction\HtmlTableExtractor;
@@ -65,6 +66,35 @@ class MultilevelHeaderImportTest extends TestCase
     private function expectedNames(): array
     {
         return MultilevelHeaderFixture::studentNames();
+    }
+
+    /**
+     * Rebuilds an ExtractedTable exactly as CharacterisationImportDialog does
+     * when the teacher clicks "Continuar" on the structural review step: every
+     * row from $result->structuralRows comes back with its (possibly
+     * teacher-corrected) kind explicitly set, cells expanded (no merges left
+     * to read — that information is gone by the time the dialog has a grid of
+     * rows/cells to show), tagged CorrectedPastedHtml (§39).
+     */
+    private function resubmitAsExtractedTable(NormalisedTable $result): ExtractedTable
+    {
+        $rows = [];
+
+        foreach ($result->structuralRows as $row) {
+            $cells = [];
+
+            foreach ($row['cells'] as $column => $text) {
+                $cells[] = new ExtractedCell($text, $row['number'], $column + 1);
+            }
+
+            $rows[] = new ExtractedRow(
+                $row['number'],
+                $cells,
+                ExtractedRowKind::from($row['kind']),
+            );
+        }
+
+        return new ExtractedTable($rows, ExtractedTableSource::CorrectedPastedHtml);
     }
 
     /**
@@ -421,5 +451,121 @@ class MultilevelHeaderImportTest extends TestCase
         foreach ($result->warnings as $warning) {
             $this->assertStringNotContainsString('foi selecionada por conter nomes', $warning);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // JANELA J (fix/characterisation-import-multilevel-headers): the §39
+    // round trip must be idempotent for a multi-level header. The title row
+    // ("Medidas 3.º ciclo") is tagged kind='header' by the structural review
+    // step alongside the two real header levels — see the class docblock at
+    // the top of NormaliseExtractedTable for the production defect this
+    // guards: resubmitting an UNMODIFIED structural table used to join the
+    // title into every column's name, turn column 0 into a "Measures" match,
+    // and drop every row as a footer.
+    // ------------------------------------------------------------------
+
+    /**
+     * THE KEY TEST: normalise the raw fixture, resubmit the resulting
+     * structural rows exactly as the dialog does, normalise again — the
+     * second pass must produce the SAME headers and the SAME data rows as
+     * the first.
+     */
+    public function test_the_multilevel_header_round_trip_is_idempotent(): void
+    {
+        $firstPass = $this->normalise($this->extractHtml());
+
+        $resubmitted = $this->resubmitAsExtractedTable($firstPass);
+        $secondPass = $this->normalise($resubmitted);
+
+        $this->assertSame($firstPass->grid->headers, $secondPass->grid->headers);
+        $this->assertSame($firstPass->grid->rows, $secondPass->grid->rows);
+        $this->assertSame(0, count($secondPass->structuralRows) - count($firstPass->structuralRows));
+        $this->assertNotEmpty($secondPass->grid->rows, 'The round trip must not turn every row into a footer.');
+    }
+
+    /**
+     * The title row survives the round trip as a header row the teacher can
+     * still see — it is excluded from the JOIN, not deleted or re-classified.
+     */
+    public function test_the_title_row_survives_the_round_trip_as_a_header_row(): void
+    {
+        $firstPass = $this->normalise($this->extractHtml());
+        $secondPass = $this->normalise($this->resubmitAsExtractedTable($firstPass));
+
+        $titleRows = array_filter(
+            $secondPass->structuralRows,
+            fn (array $row) => in_array(MultilevelHeaderFixture::titleRow(), $row['cells'], true),
+        );
+
+        $this->assertNotEmpty($titleRows);
+
+        foreach ($titleRows as $row) {
+            $this->assertSame('header', $row['kind']);
+        }
+    }
+
+    /**
+     * The inferred name column (§J, column 0) must survive the round trip:
+     * students still come through and footer_row_count stays 0 on the second
+     * pass, not just the first.
+     */
+    public function test_the_inferred_name_column_survives_the_round_trip(): void
+    {
+        $firstPass = $this->normalise($this->extractHtml());
+        $secondPass = $this->normalise($this->resubmitAsExtractedTable($firstPass));
+
+        $names = array_map(fn ($row) => $secondPass->grid->cell($row, 0), $secondPass->grid->rows);
+
+        $this->assertSame($this->expectedNames(), $names);
+
+        $dataKinds = array_filter(
+            array_column($secondPass->structuralRows, 'kind'),
+            fn (string $kind) => $kind === 'data',
+        );
+        $this->assertCount(count($this->expectedNames()), $dataKinds, 'No data row should have been reclassified as a footer.');
+    }
+
+    /**
+     * §39's core guarantee, still holding for this shape: a teacher's
+     * explicit reclassification of a row sticks across the round trip. Here
+     * she marks the second group caption ("Alunos sem RTP") as Data instead
+     * of Group — an unusual but legitimate correction — and it must still
+     * read as Data after a second round trip, never silently reverted.
+     */
+    public function test_a_teachers_explicit_reclassification_still_sticks_across_the_round_trip(): void
+    {
+        $firstPass = $this->normalise($this->extractHtml());
+
+        $structuralRows = $firstPass->structuralRows;
+
+        foreach ($structuralRows as &$row) {
+            if (in_array(MultilevelHeaderFixture::groupCaptionWithoutRtp(), $row['cells'], true)) {
+                $row['kind'] = 'data';
+            }
+        }
+        unset($row);
+
+        $rows = [];
+
+        foreach ($structuralRows as $row) {
+            $cells = [];
+
+            foreach ($row['cells'] as $column => $text) {
+                $cells[] = new ExtractedCell($text, $row['number'], $column + 1);
+            }
+
+            $rows[] = new ExtractedRow(
+                $row['number'],
+                $cells,
+                ExtractedRowKind::from($row['kind']),
+            );
+        }
+
+        $corrected = new ExtractedTable($rows, ExtractedTableSource::CorrectedPastedHtml);
+        $secondPass = $this->normalise($corrected);
+
+        $names = array_map(fn ($row) => $secondPass->grid->cell($row, 0), $secondPass->grid->rows);
+
+        $this->assertContains(MultilevelHeaderFixture::groupCaptionWithoutRtp(), $names, 'The teacher\'s explicit Data reclassification must stick.');
     }
 }
