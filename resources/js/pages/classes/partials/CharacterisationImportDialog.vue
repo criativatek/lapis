@@ -795,6 +795,70 @@ function chooseTable(index: number): void {
     void loadPreview(index);
 }
 
+// §38 report (2026-09-21 real-table screenshots): a real caracterização table
+// has ~15 columns, and an ordinary `sm:max-w-3xl` dialog only ever showed
+// 3-4 of them. This step ALONE gets a much wider, near-viewport modal — a
+// distinct `DialogContent` class, computed from `step`, so every OTHER
+// dialog in the app (including this component's own other steps) keeps its
+// normal, compact size. `dvh` (not `vh`) for the height clamp: `vh` includes
+// the mobile browser chrome that `dvh` already excludes, which is what kept
+// the footer reachable without a fixed height that breaks on a short phone
+// screen.
+const dialogContentClass = computed(() => {
+    if (step.value === 'structural') {
+        return 'flex max-h-[92dvh] w-[95vw] max-w-[1500px] flex-col overflow-hidden p-4 sm:p-6';
+    }
+
+    return 'max-h-[85vh] overflow-y-auto sm:max-w-3xl';
+});
+
+// §38 report: not every column deserves the same width — a 15-column table
+// at one uniform width was exactly what made the reviewer unusable (a code
+// column as wide as a free-text one). Classified from the header text alone
+// (the only thing available client-side), never from cell CONTENT, since a
+// short answer in a wide free-text column must not narrow it back down.
+// Returns inline styles (not just a Tailwind class) so the same value can
+// bound both the <th>/<td> and, via the "MUST NOT STRETCH THE GRID"
+// requirement, the editable field inside it.
+type ColumnWidth = { minWidth: string; width: string; maxWidth?: string };
+
+const NARROW_HEADER_PATTERN = /^(mu|ms|ma|rtp|pei|x|p|m|ing\.?|sim|não|nao)$/i;
+
+function columnWidthFor(header: string): ColumnWidth {
+    const normalised = (header ?? '').trim().toLowerCase();
+
+    if (normalised === '') {
+        return { minWidth: '96px', width: '110px' };
+    }
+
+    if (normalised.includes('observ') || normalised.includes('nota') || normalised.includes('descri')) {
+        return { minWidth: '260px', width: '320px' };
+    }
+
+    if (normalised.includes('aluno') || normalised.includes('nome')) {
+        return { minWidth: '160px', width: '200px' };
+    }
+
+    // Short codes (MU/MS/MA, RTP/PEI, X marks, P/M/Ing.) or anything a
+    // couple of characters long — a real header this short is never a
+    // free-text column.
+    if (NARROW_HEADER_PATTERN.test(normalised) || normalised.length <= 5) {
+        return { minWidth: '56px', width: '72px', maxWidth: '96px' };
+    }
+
+    return { minWidth: '110px', width: '140px' };
+}
+
+function columnWidthStyle(header: string): Record<string, string> {
+    const { minWidth, width, maxWidth } = columnWidthFor(header);
+
+    return {
+        minWidth,
+        width,
+        ...(maxWidth ? { maxWidth } : {}),
+    };
+}
+
 const rows = computed(() => Object.values(rowStates).sort((a, b) => a.row.row_number - b.row.row_number));
 
 // «possible» conta como por resolver, e tem de contar. É o estado que o
@@ -923,8 +987,8 @@ function closeDialog(): void {
 
 <template>
     <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
-        <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-            <DialogHeader>
+        <DialogContent :class="dialogContentClass">
+            <DialogHeader class="shrink-0">
                 <DialogTitle>Importar caracterização</DialogTitle>
             </DialogHeader>
 
@@ -1053,37 +1117,47 @@ function closeDialog(): void {
                  with scroll kept INSIDE the table (§51/§52) so the page
                  itself never grows wider than the viewport. -->
             <template v-else-if="step === 'structural'">
-                <!-- min-w-0: see the same comment on the other steps'
-                     wrapper — DialogContent's implicit grid track otherwise
-                     sizes to this div's max-content width. -->
-                <div class="min-w-0 space-y-3 py-2">
-                    <p class="text-sm text-muted-foreground">
+                <!-- min-w-0/min-h-0: DialogContent is now `flex flex-col` for
+                     this step (dialogContentClass) so this wrapper can be the
+                     ONE flex child that grows to fill the remaining height
+                     and lets the table area scroll internally — without
+                     min-h-0 a flex child never shrinks below its content's
+                     natural height, which is exactly what pushed the footer
+                     off-screen instead of the table scrolling. -->
+                <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 py-2">
+                    <p class="shrink-0 text-sm text-muted-foreground">
                         Esta é a tabela tal como foi reconhecida. Corrija o que for preciso — o texto de uma célula,
                         se uma linha é de alunos, um agrupamento ou uma legenda, ou se uma coluna deve ser ignorada —
                         antes de continuar para a pré-visualização por aluno.
                     </p>
 
-                    <ul v-if="previewData?.warnings.length" class="space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
+                    <ul v-if="previewData?.warnings.length" class="shrink-0 space-y-1 rounded-md border p-2 text-xs text-muted-foreground">
                         <li v-for="(warning, index) in previewData.warnings" :key="index" class="flex items-start gap-1.5">
                             <AlertTriangle class="mt-0.5 size-3.5 shrink-0" /> {{ warning }}
                         </li>
                     </ul>
 
-                    <!-- Scroll HORIZONTAL só aqui dentro — nunca a página
-                         (§51/§52). max-h + overflow-y para tabelas longas não
-                         empurrarem o resto do diálogo para fora do ecrã. -->
-                    <div class="max-h-[50vh] overflow-x-auto overflow-y-auto rounded-md border">
+                    <!-- Scroll HORIZONTAL e VERTICAL só aqui dentro — nunca a
+                         página (§51/§52). `flex-1 min-h-0` (not a fixed
+                         max-h) so the table claims whatever height the wider
+                         modal has left, on any screen. First column and
+                         header row are `sticky` (§38 report E/F) so a
+                         15-column table never loses the "que tipo de linha é
+                         esta" context while scrolling right, nor the column
+                         headers while scrolling down. -->
+                    <div class="min-h-0 flex-1 overflow-auto rounded-md border">
                         <table class="w-full min-w-max border-collapse text-xs">
                             <thead>
-                                <tr class="border-b bg-muted/50">
-                                    <th class="w-40 p-2 text-left font-medium">Linha</th>
+                                <tr>
+                                    <th class="sticky top-0 left-0 z-20 w-40 border-b bg-muted p-2 text-left font-medium">Linha</th>
                                     <th
                                         v-for="(header, columnIndex) in structuralHeaders"
                                         :key="columnIndex"
-                                        class="min-w-40 p-2 text-left font-medium"
+                                        class="sticky top-0 z-10 border-b bg-muted p-2 text-left font-medium"
+                                        :style="columnWidthStyle(header)"
                                     >
                                         <div class="space-y-1">
-                                            <span :class="{ 'line-through opacity-50': ignoredColumns.has(columnIndex) }">
+                                            <span class="block truncate" :class="{ 'line-through opacity-50': ignoredColumns.has(columnIndex) }">
                                                 {{ header || `Coluna ${columnIndex + 1}` }}
                                             </span>
                                             <label class="flex items-center gap-1.5 text-[11px] font-normal text-muted-foreground">
@@ -1091,7 +1165,7 @@ function closeDialog(): void {
                                                     :model-value="ignoredColumns.has(columnIndex)"
                                                     @update:model-value="(value) => toggleIgnoredColumn(columnIndex, value === true)"
                                                 />
-                                                Ignorar coluna
+                                                Ignorar
                                             </label>
                                         </div>
                                     </th>
@@ -1104,7 +1178,10 @@ function closeDialog(): void {
                                     class="border-b align-top"
                                     :class="{ 'bg-muted/40 opacity-70': state.kind !== 'data' }"
                                 >
-                                    <td class="p-2">
+                                    <td
+                                        class="sticky left-0 z-10 bg-background p-2"
+                                        :class="{ 'bg-muted/40': state.kind !== 'data' }"
+                                    >
                                         <NativeSelect v-model="state.kind" :aria-label="`Tipo da linha ${state.row.number}`">
                                             <option v-for="option in structuralKindOptions" :key="option.value" :value="option.value">
                                                 {{ option.label }}
@@ -1128,10 +1205,11 @@ function closeDialog(): void {
                                         </p>
                                     </td>
                                     <td
-                                        v-for="(_, columnIndex) in structuralHeaders"
+                                        v-for="(header, columnIndex) in structuralHeaders"
                                         :key="columnIndex"
-                                        class="p-2"
+                                        class="p-2 align-top"
                                         :class="{ 'opacity-40': ignoredColumns.has(columnIndex) }"
+                                        :style="columnWidthStyle(header)"
                                     >
                                         <!-- Defect (2026-09-20): a value
                                              containing "\n" is silently
@@ -1139,14 +1217,23 @@ function closeDialog(): void {
                                              `<input>` — a textarea is the
                                              only field here that round-trips
                                              a multiline observation losslessly,
-                                             touched or not. -->
+                                             touched or not.
+                                             §38 report D: `w-full min-w-0`
+                                             keeps the field exactly as wide as
+                                             its (role-sized) cell, never
+                                             wider — it was an editable field
+                                             ignoring the cell's width that
+                                             stretched the whole grid back out
+                                             to one-size-fits-all. It grows
+                                             VERTICALLY (rows, wrapping text)
+                                             rather than horizontally. -->
                                         <Textarea
                                             v-if="cellHasNewline(state.row, columnIndex)"
                                             v-model="state.cells[columnIndex]"
                                             :disabled="ignoredColumns.has(columnIndex)"
                                             :aria-label="`Linha ${state.row.number}, coluna ${columnIndex + 1}`"
                                             rows="2"
-                                            class="min-h-8 text-xs"
+                                            class="min-h-8 w-full min-w-0 resize-y text-xs"
                                             @input="markCellEdited(state.row.number, columnIndex)"
                                         />
                                         <Input
@@ -1154,7 +1241,7 @@ function closeDialog(): void {
                                             v-model="state.cells[columnIndex]"
                                             :disabled="ignoredColumns.has(columnIndex)"
                                             :aria-label="`Linha ${state.row.number}, coluna ${columnIndex + 1}`"
-                                            class="h-8 text-xs"
+                                            class="h-8 w-full min-w-0 text-xs"
                                             @input="markCellEdited(state.row.number, columnIndex)"
                                         />
                                         <!-- §18: confiança de EXTRAÇÃO (li bem
@@ -1182,7 +1269,12 @@ function closeDialog(): void {
                         </table>
                     </div>
                 </div>
-                <DialogFooter>
+                <!-- §38 report I: `shrink-0` (this step's DialogContent is a
+                     flex column) plus a top border/background keeps this
+                     footer visibly separated and reachable WITHOUT scrolling
+                     back through a 15-column table — it is never part of the
+                     scrollable table area above. -->
+                <DialogFooter class="shrink-0 border-t pt-3">
                     <Button type="button" variant="outline" @click="backToInputStep">Escolher outro ficheiro</Button>
                     <Button type="button" :disabled="loading" @click="applyStructuralCorrections">
                         <Loader2 v-if="loading" class="size-4 animate-spin" />
