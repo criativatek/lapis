@@ -2,7 +2,10 @@
 
 namespace App\Services\Characterisation\Import\Extraction;
 
+use App\Services\Characterisation\Import\ClassifyColumns;
+use App\Services\Characterisation\Import\ColumnRole;
 use App\Services\Characterisation\Import\FindHeaderRow;
+use App\Services\Characterisation\Import\LooksLikePersonName;
 use App\Services\Characterisation\Import\TableGrid;
 use App\Services\Import\Tabular\UnreadableSpreadsheet;
 
@@ -243,6 +246,26 @@ class NormaliseExtractedTable
                 $dataConfidences,
             ),
         );
+
+        // §J: ClassifyColumns's own last-resort fallback (see
+        // ClassifyColumns::inferNameColumnFromContent()) may have just
+        // picked the student-name column by CONTENT rather than by a
+        // printed title, because no header anywhere in this table named
+        // one. That must never reach the teacher as a silent guess — it is
+        // re-run here, on the finished $grid, for the SOLE purpose of
+        // surfacing that fact as a warning; BuildCharacterisationPreview
+        // classifies the same grid again for the preview itself, exactly as
+        // FindHeaderRow already classifies a candidate row separately from
+        // the classification the preview later performs on the chosen one.
+        foreach ((new ClassifyColumns)->classify($grid) as $column) {
+            if ($column->role === ColumnRole::StudentName && $column->inferredFromContent) {
+                $warnings[] = __('Não foi encontrada uma coluna com o nome do aluno identificada por título — a coluna «:header» foi selecionada por conter nomes. Confirme se está correta.', [
+                    'header' => $column->header !== '' ? $column->header : __('(sem título)'),
+                ]);
+
+                break;
+            }
+        }
 
         $structuralRows = [];
 
@@ -1139,20 +1162,16 @@ class NormaliseExtractedTable
     }
 
     /**
-     * Two or more capitalised words, no digits — the shape a person's name
-     * takes throughout this importer. Deliberately loose: it exists only to
-     * RULE OUT a cell from being mistaken for a caption, so a false positive
-     * here (treating some non-name text as name-shaped) merely keeps a row
-     * as Data, which is always the safe direction.
+     * Deliberately loose: it exists only to RULE OUT a cell from being
+     * mistaken for a caption, so a false positive here (treating some
+     * non-name text as name-shaped) merely keeps a row as Data, which is
+     * always the safe direction.
+     *
+     * Delegates to LooksLikePersonName — see that class's own docblock for
+     * why this is no longer its own regex.
      */
     private function looksLikePersonName(string $cell): bool
     {
-        $trimmed = trim($cell);
-
-        if ($trimmed === '' || preg_match('/\d/u', $trimmed) === 1) {
-            return false;
-        }
-
-        return preg_match('/^\p{Lu}[\p{Ll}\'-]+(\s+(d[aeo]s?|e)\s+|\s+)\p{Lu}[\p{Ll}\'-]+/u', $trimmed) === 1;
+        return LooksLikePersonName::check($cell);
     }
 }

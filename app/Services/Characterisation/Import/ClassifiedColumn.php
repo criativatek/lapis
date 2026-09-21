@@ -25,6 +25,18 @@ use App\Models\SupportMeasureLevel;
  * CharacterisationSection::Summary — see ClassifyColumns::roleFor() for the
  * detection and BuildCharacterisationPreview::sectionsFor() for the second
  * destination.
+ *
+ * `inferredFromContent` exists for the ONE column real schools export that
+ * ClassifyColumns cannot name from its header at all: a student-name column
+ * with no printed title in either header level (a blank cell above a column
+ * of names, common on a printed form). Classified by header text alone, that
+ * column stayed Unknown forever, no row ever matched a student, and the
+ * preview reported "0 de 0" one stage later than the bug that name suggests —
+ * not because no header was found, but because the one column the whole
+ * import exists to read had no label to find. See
+ * ClassifyColumns::inferNameColumnFromContent() for the last-resort fallback
+ * this flag marks, and NormaliseExtractedTable::normalise() for the warning
+ * it is never allowed to pass through silently.
  */
 readonly class ClassifiedColumn
 {
@@ -34,6 +46,7 @@ readonly class ClassifiedColumn
         public ColumnRole $role,
         public ?SupportMeasureLevel $level = null,
         public bool $alsoFreeText = false,
+        public bool $inferredFromContent = false,
     ) {}
 
     /**
@@ -49,6 +62,7 @@ readonly class ClassifiedColumn
             'level' => $this->level?->value,
             'level_label' => $this->level?->label(),
             'also_free_text' => $this->alsoFreeText,
+            'inferred_from_content' => $this->inferredFromContent,
         ];
     }
 }

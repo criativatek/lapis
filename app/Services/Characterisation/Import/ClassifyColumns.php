@@ -68,6 +68,23 @@ class ClassifyColumns
     private const FREE_TEXT_FRAGMENTS = self::PATTERNS[ColumnRole::Characterisation->value];
 
     /**
+     * A strong majority, not a bare one: this is a LAST-RESORT guess, run
+     * only once header text has already failed to name any identifying
+     * column at all (see inferNameColumnFromContent()'s own comment), so it
+     * must be very sure of itself before it is allowed to run at all.
+     */
+    private const NAME_INFERENCE_MIN_RATIO = 0.8;
+
+    /**
+     * A name is a couple of words, not a sentence. Capped well above any
+     * real Portuguese full name («Maria da Conceição Vieira dos Santos» is
+     * under 40) but well below an observation a teacher would actually
+     * write, so a free-text column's occasional short, name-shaped-looking
+     * sentence fragment cannot accumulate a majority on its own.
+     */
+    private const NAME_INFERENCE_MAX_CELL_LENGTH = 40;
+
+    /**
      * @return list<ClassifiedColumn>
      */
     public function classify(TableGrid $grid): array
@@ -86,7 +103,160 @@ class ClassifyColumns
             );
         }
 
-        return $this->withoutDuplicateIdentifiers($columns);
+        $columns = $this->withoutDuplicateIdentifiers($columns);
+
+        return $this->inferNameColumnFromContent($columns, $grid);
+    }
+
+    /**
+     * LAST RESORT: when NO header in the table named an identifying column
+     * at all, infer which column holds the student's name from what is
+     * actually written in it, rather than leave every row unmatchable.
+     *
+     * This is the production "0 de 0" one stage further back than it looks.
+     * A real export's student-name column can carry NO printed title in
+     * either header level — a blank cell sits above a column of names on a
+     * printed form — so header-text classification (roleFor(), above) never
+     * has anything to match and the column stays Unknown forever. Every row
+     * then fails BuildCharacterisationPreview's "identifies nobody" check
+     * for the SAME structural reason, and the teacher sees "todas as linhas
+     * foram identificadas como rodapé ou totais" — which reads like every
+     * one of HER rows was rejected, when in fact the importer never had a
+     * name column to read from at all.
+     *
+     * THE "NO POSITION-BASED GUESSING" RULE (this class's own docblock)
+     * STAYS INTACT for any table that labels its name column — a school is
+     * still free to put "Nome" wherever it likes, and this method never
+     * runs when header text already found StudentName or ClassNumber
+     * somewhere. This only fires in the one situation position-guessing
+     * would otherwise be the sole option: no label anywhere to trust.
+     *
+     * Guessing by CONTENT instead of position: the candidate column is
+     * whichever one's non-empty data cells overwhelmingly read like a
+     * person's name (LooksLikePersonName — the exact same shape
+     * NormaliseExtractedTable already trusts to rule a cell OUT of being a
+     * caption, promoted so this is not a second, independently-drifting
+     * heuristic). A column already classified confidently as something else
+     * — Measures, Resources, Characterisation free text, any recognised
+     * role — is never a candidate, so a school's real "Apoios" column can
+     * never be mistaken for the name column just because a few resource
+     * names happen to look capitalised. And a free-text observations column
+     * is excluded twice over: it is virtually never Unknown once headed
+     * "Observações" (it would already be Characterisation), and even an
+     * unlabelled one is guarded by NAME_INFERENCE_MAX_CELL_LENGTH, so a
+     * paragraph of prose cannot accumulate the strong majority this
+     * requires just because it occasionally opens with two capitalised
+     * words.
+     *
+     * @param  list<ClassifiedColumn>  $columns
+     * @return list<ClassifiedColumn>
+     */
+    private function inferNameColumnFromContent(array $columns, TableGrid $grid): array
+    {
+        // FindHeaderRow calls classify() with an EMPTY rows array purely to
+        // score a candidate header row by its OWN text — there is no body
+        // to read cell content from yet, and there must never be: scoring a
+        // header candidate against the very rows it might not even be the
+        // header of would be nonsensical. No rows, no inference — that path
+        // is unaffected by this method, exactly as it was before it existed.
+        if ($grid->isEmpty()) {
+            return $columns;
+        }
+
+        foreach ($columns as $column) {
+            if ($column->role->isIdentifying()) {
+                // A header already named the student — by text, not
+                // position — so guessing from content here would be a
+                // second, unwanted opinion on a question the header already
+                // answered. A table that labels its name column must
+                // behave exactly as it did before this method existed.
+                return $columns;
+            }
+        }
+
+        $bestIndex = null;
+
+        foreach ($columns as $column) {
+            if ($column->role !== ColumnRole::Unknown) {
+                // Confidently something else already — never a candidate,
+                // however name-shaped a few of its cells might coincidentally
+                // look (see this method's own docblock).
+                continue;
+            }
+
+            [$nameLike, $total] = $this->nameLikeCellStats($grid, $column->index);
+
+            if ($total === 0) {
+                continue;
+            }
+
+            if (($nameLike / $total) < self::NAME_INFERENCE_MIN_RATIO) {
+                continue;
+            }
+
+            // Columns are visited left to right ($grid->headers order), so
+            // the FIRST one to clear the majority bar is already the
+            // leftmost qualifying column — nothing further to compare it
+            // against.
+            $bestIndex = $column->index;
+
+            break;
+        }
+
+        if ($bestIndex === null) {
+            // Nothing in the table reads like a name column even by
+            // content — a genuinely unreadable table. Left as Unknown
+            // rather than guessed at, exactly like every other column this
+            // parser cannot recognise: the honest "não foi possível"
+            // failure, not a wrong guess dressed up as a right one.
+            return $columns;
+        }
+
+        return array_map(
+            fn (ClassifiedColumn $column) => $column->index === $bestIndex
+                ? new ClassifiedColumn(
+                    index: $column->index,
+                    header: $column->header,
+                    role: ColumnRole::StudentName,
+                    inferredFromContent: true,
+                )
+                : $column,
+            $columns,
+        );
+    }
+
+    /**
+     * @return array{0: int, 1: int} [how many of this column's non-empty
+     *                               cells look like a person's name, how many
+     *                               non-empty cells it has at all]
+     */
+    private function nameLikeCellStats(TableGrid $grid, int $columnIndex): array
+    {
+        $nameLike = 0;
+        $total = 0;
+
+        foreach ($grid->rows as $row) {
+            $cell = $grid->cell($row, $columnIndex);
+
+            if ($cell === '') {
+                continue;
+            }
+
+            $total++;
+
+            if (mb_strlen($cell) > self::NAME_INFERENCE_MAX_CELL_LENGTH) {
+                // Too long to be a name — see NAME_INFERENCE_MAX_CELL_LENGTH's
+                // own comment on why this is what keeps a free-text column
+                // from winning by accident.
+                continue;
+            }
+
+            if (LooksLikePersonName::check($cell)) {
+                $nameLike++;
+            }
+        }
+
+        return [$nameLike, $total];
     }
 
     private function roleFor(string $header): ColumnRole

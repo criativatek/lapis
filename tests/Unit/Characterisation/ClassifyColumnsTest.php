@@ -276,4 +276,142 @@ class ClassifyColumnsTest extends TestCase
         $this->assertSame(ColumnRole::Unknown, $byHeader['ATE']->role);
         $this->assertSame(ColumnRole::Unknown, $byHeader['Psicologia']->role);
     }
+
+    // ------------------------------------------------------------------
+    // JANELA J, second defect: no header names an identifying column at
+    // all (a real export's name column prints no title in either header
+    // level). ClassifyColumns must infer it from content, as a LAST
+    // RESORT, never as a first choice — see
+    // ClassifyColumns::inferNameColumnFromContent() for the full rationale.
+    // ------------------------------------------------------------------
+
+    /**
+     * @param  list<string>  $headers
+     * @param  list<list<string>>  $rows
+     * @return list<ClassifiedColumn>
+     */
+    private function classifyWithRows(array $headers, array $rows): array
+    {
+        return (new ClassifyColumns)->classify(new TableGrid($headers, $rows));
+    }
+
+    /**
+     * THE FIX: no header at all names the student ("" in every header cell,
+     * exactly MultilevelHeaderFixture's column 0), but its cells are
+     * overwhelmingly person-shaped — so it is inferred as StudentName, and
+     * flagged as such, rather than left Unknown forever.
+     */
+    public function test_an_unlabelled_name_column_is_inferred_from_its_content(): void
+    {
+        $columns = $this->classifyWithRows(
+            ['', 'Observações'],
+            [
+                ['Mariana Fonseca', 'Observação simples.'],
+                ['Tiago Nogueira', 'Primeira linha.'],
+                ['Leonor Machado', ''],
+                ['Guilherme Antunes', 'Aluno novo.'],
+            ],
+        );
+
+        $this->assertSame(ColumnRole::StudentName, $columns[0]->role);
+        $this->assertTrue($columns[0]->inferredFromContent);
+        $this->assertFalse($columns[1]->inferredFromContent, 'Only the inferred column is flagged.');
+    }
+
+    /**
+     * A table that DOES label its name column must behave EXACTLY as before
+     * this fallback existed — the header wins outright, and content is
+     * never even consulted for a second opinion.
+     */
+    public function test_a_labelled_name_column_is_unaffected_by_content_inference(): void
+    {
+        $columns = $this->classifyWithRows(
+            ['Nome', 'Observações'],
+            [
+                ['Mariana Fonseca', 'Observação simples.'],
+                ['Tiago Nogueira', 'Primeira linha.'],
+            ],
+        );
+
+        $this->assertSame(ColumnRole::StudentName, $columns[0]->role);
+        $this->assertFalse($columns[0]->inferredFromContent, 'A LABELLED name column was not inferred — the header already named it.');
+    }
+
+    /**
+     * A column already classified confidently as something else (Measures,
+     * here) is never up for grabs just because a stray cell happens to look
+     * name-shaped — it stays Measures, and the real (unlabelled) name column
+     * is what gets inferred instead.
+     */
+    public function test_inference_never_overrides_a_confidently_classified_column(): void
+    {
+        $columns = $this->classifyWithRows(
+            ['', 'Medidas'],
+            [
+                ['Mariana Fonseca', 'Medida Universal'],
+                ['Tiago Nogueira', 'Medida Seletiva'],
+                ['Leonor Machado', 'Medida Universal'],
+            ],
+        );
+
+        $this->assertSame(ColumnRole::StudentName, $columns[0]->role);
+        $this->assertTrue($columns[0]->inferredFromContent);
+        $this->assertSame(ColumnRole::Measures, $columns[1]->role, 'A column already classified by its header must never be reclassified by content.');
+    }
+
+    /**
+     * A free-text/observations column must never win the inference merely
+     * because it OCCASIONALLY opens with two capitalised words — a strong
+     * MAJORITY is required, and prose does not clear that bar the way a
+     * column that is actually nothing but names does.
+     */
+    public function test_a_free_text_column_never_wins_inference_by_occasional_name_shaped_prose(): void
+    {
+        $columns = $this->classifyWithRows(
+            ['', ''],
+            [
+                ['1', 'Muito participativo na aula.'],
+                ['2', 'Observações Gerais sobre o comportamento em sala.'],
+                ['3', 'Falta com frequência às aulas de Português.'],
+                ['4', 'Revela dificuldades de concentração.'],
+                ['5', 'Não entrega os trabalhos de casa a tempo.'],
+            ],
+        );
+
+        $this->assertSame(ColumnRole::Unknown, $columns[1]->role, 'A mostly-prose column must not be promoted to StudentName.');
+    }
+
+    /**
+     * When truly nothing in the table reads like a name — not even by
+     * content — the table stays honestly unreadable: no column becomes
+     * StudentName, exactly the pre-existing "não foi possível" failure
+     * rather than a wrong guess dressed up as a right one.
+     */
+    public function test_a_table_with_no_name_like_column_stays_unclassified(): void
+    {
+        $columns = $this->classifyWithRows(
+            ['', ''],
+            [
+                ['12345', 'x'],
+                ['67890', 'y'],
+            ],
+        );
+
+        $this->assertSame(ColumnRole::Unknown, $columns[0]->role);
+        $this->assertSame(ColumnRole::Unknown, $columns[1]->role);
+    }
+
+    /**
+     * FindHeaderRow calls classify() with an EMPTY rows array purely to
+     * score a header candidate's own text — there is no body to read
+     * content from at that point, and there must never be. This is the
+     * regression guard for that caller: unchanged behaviour, not merely
+     * "does not crash".
+     */
+    public function test_no_inference_is_attempted_when_the_grid_has_no_rows(): void
+    {
+        $columns = (new ClassifyColumns)->classify(new TableGrid(['', 'Observações'], []));
+
+        $this->assertSame(ColumnRole::Unknown, $columns[0]->role);
+    }
 }
