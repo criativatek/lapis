@@ -47,6 +47,7 @@ class BuildCharacterisationPreview
         private readonly LegalCodeResolver $resolver,
         private readonly MergeCharacterisationSections $merger,
         private readonly SuggestAcronymCorrection $suggester,
+        private readonly SeparateLegalCandidates $separator,
     ) {}
 
     /**
@@ -233,12 +234,28 @@ class BuildCharacterisationPreview
             // call an exact "ACNS" typed by hand would.
             $value = $this->applyCorrections($value, $corrections);
 
+            // Separated BEFORE the resolver ever sees it, not instead of it:
+            // SeparateLegalCandidates decides only what is worth asking about
+            // ("does this look like a code"), never what it means. A cell
+            // with nothing code-shaped in it — ordinary prose, in whichever
+            // column wrote it — asks the resolver nothing, which is what
+            // stops that prose reappearing as a fabricated "unresolved" legal
+            // code. See SeparateLegalCandidates's own docblock for the scope
+            // decision (applied to every Measures/Resources column, not only
+            // alsoFreeText ones) and why a second run is never resumed after
+            // prose interrupts a statement.
+            $candidates = $this->separator->candidatesFor($value, $column->level);
+
+            if ($candidates === []) {
+                continue;
+            }
+
             // The EXTRACTION confidence answers "did I read this cell right"
             // — it is a property of the CELL, not of any one statement inside
             // it, so every resolution this cell produces shares it.
             $cellConfidence = $grid->confidence($rowIndex, $column->index);
 
-            foreach ($this->resolver->resolveCell($value, $column->level) as $resolution) {
+            foreach ($this->resolver->resolveCell(implode("\n", $candidates), $column->level) as $resolution) {
                 $extractionConfidence[spl_object_id($resolution)] = $cellConfidence;
 
                 match (true) {
