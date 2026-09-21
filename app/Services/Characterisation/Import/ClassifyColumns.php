@@ -58,6 +58,15 @@ class ClassifyColumns
     ];
 
     /**
+     * The SAME fragments the Characterisation role matches on above — reused
+     * here to detect when a column classified as Measures ALSO names free
+     * text in its own header, rather than defining a second list that could
+     * drift from the first. See ClassifiedColumn::$alsoFreeText for why this
+     * matters and what it changes.
+     */
+    private const FREE_TEXT_FRAGMENTS = ['caracterizacao', 'observacoes', 'observacao', 'notas', 'nota', 'descricao', 'perfil'];
+
+    /**
      * @return list<ClassifiedColumn>
      */
     public function classify(TableGrid $grid): array
@@ -72,6 +81,7 @@ class ClassifyColumns
                 header: trim($header),
                 role: $role,
                 level: $role === ColumnRole::Measures ? $this->levelFor($header) : null,
+                alsoFreeText: $role === ColumnRole::Measures && $this->namesFreeTextToo($header),
             );
         }
 
@@ -142,13 +152,41 @@ class ClassifyColumns
      * The dictionary is consulted first: a header that is bare "MU" carries no
      * word like "universa" for the text match below to find, but the confirmed
      * acronym already names its level.
+     *
+     * A MULTI-LEVEL HEADER JOINS ITS FRAGMENTS WITH A SPACE, AND THAT BREAKS
+     * THE WHOLE-HEADER DICTIONARY LOOKUP. A table whose "Medidas" top row
+     * spans MU/MS/MA (a real, common shape — see the fixture) produces a
+     * joined column header of "Medidas MU", not bare "MU" —
+     * NormaliseExtractedTable::joinHeaderLevels() concatenates every level
+     * that has text for that column, on purpose, so nothing is silently
+     * dropped. `$this->acronyms->find(trim($header))` never matches "Medidas
+     * MU" as a whole, so a bare dictionary lookup on the full header would
+     * leave the level null for exactly the tables this feature exists to
+     * read — the acronym is there, it is just not alone. Each individual word
+     * of the header is tried too, so "Medidas" (no level) and "MU" (a
+     * confirmed level) are checked separately, in header order, and the
+     * first word that names a level wins.
      */
     private function levelFor(string $header): ?SupportMeasureLevel
     {
-        $entry = $this->acronyms->find(trim($header));
+        $trimmed = trim($header);
+
+        $entry = $this->acronyms->find($trimmed);
 
         if ($entry !== null && $entry->level !== null) {
             return $entry->level;
+        }
+
+        foreach (preg_split('/\s+/u', $trimmed) ?: [] as $word) {
+            if ($word === '') {
+                continue;
+            }
+
+            $wordEntry = $this->acronyms->find($word);
+
+            if ($wordEntry !== null && $wordEntry->level !== null) {
+                return $wordEntry->level;
+            }
         }
 
         $folded = $this->fold($header);
@@ -159,6 +197,27 @@ class ClassifyColumns
             str_contains($folded, 'adicion') => SupportMeasureLevel::Additional,
             default => null,
         };
+    }
+
+    /**
+     * Whether a header already classified as Measures ALSO names free text —
+     * «Outras medidas/recursos / Observações» says "medidas" (why it is
+     * Measures at all — see PATTERNS' own comment on load-bearing order) AND
+     * "observações" in the same breath. Reuses FREE_TEXT_FRAGMENTS, the exact
+     * fragments that would have made it classify as Characterisation had
+     * Measures not been tested first, so the two lists can never drift apart.
+     */
+    private function namesFreeTextToo(string $header): bool
+    {
+        $folded = $this->fold($header);
+
+        foreach (self::FREE_TEXT_FRAGMENTS as $fragment) {
+            if (str_contains($folded, $fragment)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

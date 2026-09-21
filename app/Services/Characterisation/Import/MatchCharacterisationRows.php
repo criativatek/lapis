@@ -31,6 +31,26 @@ use App\Services\Import\Concerns\NormalisesStudentIdentifiers;
  * school_number and display_name are encrypted at rest (ADR-0004), so neither
  * can be compared in SQL. That single read is also what keeps a thirty-row
  * import from becoming thirty queries.
+ *
+ * CLASS NUMBER IS DELIBERATELY NOT A MATCHING KEY, EVEN THOUGH
+ * ColumnRole::ClassNumber->isIdentifying() IS TRUE (so FindHeaderRow will
+ * happily accept a "N.º" column as evidence of a header row). A class
+ * number is unique WITHIN this class's own roll, which is exactly what makes
+ * it dangerous to match ON: it is trivially collidible with any OTHER number
+ * that happens to sit in the same column of an imported sheet — a repeated
+ * retention year ("2R"), a school year, a process number typed in the wrong
+ * column. Matching a row to "student #7" because a stray "7" appears
+ * somewhere in it is the kind of silent wrong-child assignment this whole
+ * importer exists to prevent (nada é gravado sem decisão humana; a
+ * aplicação nunca adivinha de que criança é uma linha). Building that
+ * safely — restricted to a column the teacher has explicitly confirmed IS
+ * the class-number column, never a bare "any numeric cell" heuristic — is a
+ * real feature this hotfix does not attempt: the real table this hotfix was
+ * written against has no class-number column at all, so there is nothing to
+ * reproduce a failure against, and adding unexercised matching logic to an
+ * already-delicate matcher is a cost with no fixture to prove it right.
+ * process_number and name (exact, then subsequence) remain the only
+ * matching keys.
  */
 class MatchCharacterisationRows
 {

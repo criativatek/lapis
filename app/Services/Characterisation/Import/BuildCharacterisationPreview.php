@@ -8,6 +8,7 @@ use App\Models\Intervention;
 use App\Models\InterventionStatus;
 use App\Models\SchoolClass;
 use App\Support\Characterisation\AcronymSuggestion;
+use App\Support\Characterisation\CharacterisationSection;
 use App\Support\Characterisation\CodeResolution;
 use App\Support\Characterisation\LegalCodeResolver;
 use App\Support\Characterisation\SuggestAcronymCorrection;
@@ -148,7 +149,17 @@ class BuildCharacterisationPreview
         $sections = [];
 
         foreach ($columns as $column) {
-            $section = $column->role->section();
+            // A column classified as Measures because its header says
+            // "medidas" can ALSO say "observações" in the same header —
+            // «Outras medidas/recursos / Observações» is the real example
+            // this exists for (see ClassifiedColumn::$alsoFreeText). Such a
+            // column's text belongs in the Summary section in addition to
+            // being read for measure codes below (resolutionsFor()); it is
+            // never routed to any OTHER section, because the header only
+            // ever names free text in general, not which specific section.
+            $section = $column->alsoFreeText
+                ? CharacterisationSection::Summary
+                : $column->role->section();
 
             if ($section === null) {
                 continue;
