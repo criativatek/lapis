@@ -693,6 +693,69 @@ class InterventionTest extends TestCase
         });
     }
 
+    /**
+     * HIGH, destructive and silent (audit finding #1). An import stamps
+     * `intervention_type = Other` for a SupportMeasureCode with no
+     * same-named InterventionType, keeping the real measure name in
+     * `intervention_type_label` (see ApplyCharacterisationImport). The edit
+     * form can only round-trip `intervention_type = other`, so before the
+     * fix, saving an otherwise-unrelated edit unconditionally re-stamped
+     * `intervention_type_label` to InterventionType::Other->label() ("Outro")
+     * — permanently destroying the imported measure's real name.
+     */
+    #[Test]
+    public function editing_an_imported_intervention_does_not_rename_it_to_outro(): void
+    {
+        ['class' => $class, 'enrollments' => $enrollments, 'teacher' => $teacher] = $this->seedClass();
+
+        $ulid = $this->inTenant($teacher, function () use ($class, $enrollments, $teacher): string {
+            $intervention = Intervention::create([
+                'class_id' => $class->id,
+                'enrollment_id' => $enrollments[0],
+                'target_type' => InterventionTargetType::Student,
+                'intervention_type' => InterventionType::Other,
+                // The real measure name — no InterventionType shares it.
+                'intervention_type_label' => 'Percursos curriculares diferenciados',
+                'title' => 'Percursos curriculares diferenciados',
+                'domain_relation' => 'none',
+                'description' => 'Importado da caracterização — o ficheiro indicava: PCD',
+                'description_source' => InterventionDescriptionSource::Import,
+                'status' => InterventionStatus::New,
+                'started_on' => '2026-10-01',
+                'available_for_reports' => true,
+                'include_in_report' => true,
+                'support_measure_level' => SupportMeasureLevel::Additional,
+                'support_measure_code' => SupportMeasureCode::DifferentiatedCurricularPaths,
+                'legal_mapping_source' => LegalMappingSource::SystemSuggestedConfirmed,
+                'created_by' => $teacher->getKey(),
+            ]);
+            $intervention->participants()->sync([$enrollments[0]]);
+
+            return $intervention->ulid;
+        });
+
+        // Nothing about the type or the measure changes — only the description.
+        $this->actingAs($teacher)->putJson("/interventions/{$ulid}", [
+            'target_type' => 'student',
+            'enrollment_ids' => [$enrollments[0]],
+            'intervention_type' => 'other',
+            'domain_relation' => 'none',
+            'description' => 'Acompanhamento revisto em reunião de conselho de turma.',
+            'started_on' => '2026-10-01',
+            'available_for_reports' => true,
+        ])->assertRedirect();
+
+        $this->inTenant($teacher, function (): void {
+            $intervention = Intervention::firstOrFail();
+
+            $this->assertSame(
+                'Percursos curriculares diferenciados',
+                $intervention->intervention_type_label,
+                'A label that came from a measure, not from the type, must survive an unrelated edit.',
+            );
+        });
+    }
+
     #[Test]
     public function a_manual_framing_survives_an_edit_that_says_nothing_about_it(): void
     {

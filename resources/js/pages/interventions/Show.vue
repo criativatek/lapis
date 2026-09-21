@@ -32,6 +32,8 @@ type LibraryEntry = { code: string | null; label: string; objective: string | nu
 type Intervention = {
     ulid: string;
     created_batch_ulid: string | null;
+    /** Null for a row typed through the form — a pill is shown only when this names an import. */
+    origin_label: string | null;
     /**
      * Null when the row has no name of its own — an old record whose only
      * «title» was a label an old process generated. The list then names it by
@@ -1559,6 +1561,7 @@ function clearFilters(): void {
                             </span>
                             <span v-if="intervention.legal_framing" class="rounded-full bg-accent px-2 py-0.5 text-accent-foreground">{{ framingLabel(intervention) }}</span>
                             <span v-if="intervention.created_batch_ulid" class="rounded-full bg-muted px-2 py-0.5">Registada em conjunto</span>
+                            <span v-if="intervention.origin_label" class="rounded-full bg-muted px-2 py-0.5">{{ intervention.origin_label }}</span>
                             <span v-if="intervention.available_for_reports" class="inline-flex items-center gap-1"><FileText class="size-3.5 text-emerald-500" /> Disponível para relatórios</span>
                         </div>
                         <p v-if="intervention.description" class="mt-1 text-sm text-muted-foreground">{{ intervention.description }}</p>

@@ -24,7 +24,8 @@ use App\Services\Audit\AuditLog;
 use App\Services\Characterisation\Import\MergeCharacterisationSections;
 use App\Services\Characterisation\RecordCharacterisation;
 use App\Support\Characterisation\CharacterisationSection;
-use App\Support\Characterisation\LegalCodeResolver;
+use App\Support\Interventions\InterventionAuditProperties;
+use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -39,10 +40,17 @@ use Illuminate\Support\Facades\DB;
  * brief asks for — nothing saved before confirmation — is therefore structural
  * rather than a rule someone has to remember.
  *
- * It does hold the LegalCodeResolver, and only for one question: what level the
- * applicable framework puts a measure at. That is a lookup, not a parse — it
- * turns no text into decisions, and it is here precisely so that the level
- * written to a child's record is the law's answer rather than the client's.
+ * It resolves the applicable `InterventionLegalFramework` once per import —
+ * from `$class->organization` at the moment of confirmation, the same source
+ * `LegalFrameworkResolver` gives the manual form — and asks it, and only it,
+ * what level a measure sits at. That is a lookup, not a parse — it turns no
+ * text into decisions, and it is here precisely so that the level written to
+ * a child's record is the law's answer rather than the client's. It used to
+ * ask a `LegalCodeResolver` instead, which re-resolved the SAME question
+ * through `CurrentOrganization` + `now()` — a second source of truth that
+ * happened to agree, until `CurrentOrganization` was unresolved, at which
+ * point it silently answered "no measures" instead. Reading the framework
+ * this class already resolved removes that second source entirely.
  *
  * EVERYTHING IS RE-VERIFIED HERE. The preview is a document that lived in a
  * browser, and a browser is not a place where authorisation decisions are safe.
@@ -62,7 +70,6 @@ class ApplyCharacterisationImport
 {
     public function __construct(
         private readonly RecordCharacterisation $recorder,
-        private readonly LegalCodeResolver $resolver,
         private readonly MergeCharacterisationSections $merger,
         private readonly CreateIntervention $creator,
         private readonly LegalFrameworkResolver $frameworks,
@@ -131,7 +138,7 @@ class ApplyCharacterisationImport
                     batch: $batch,
                 );
 
-                $measures = $this->writeMeasures($characterisation, $decision, $batch, $confirmedBy);
+                $measures = $this->writeMeasures($characterisation, $decision, $batch, $confirmedBy, $framework);
 
                 $interventionsCreated = $this->createInterventions(
                     $class,
@@ -141,6 +148,7 @@ class ApplyCharacterisationImport
                     $frameworkCode,
                     $confirmedBy,
                     $batch,
+                    $framework,
                 );
 
                 if ($changed !== [] || $measures > 0 || $interventionsCreated > 0) {
@@ -249,10 +257,11 @@ class ApplyCharacterisationImport
         array $decision,
         CharacterisationImportBatch $batch,
         User $confirmedBy,
+        InterventionLegalFramework $framework,
     ): int {
         $written = 0;
 
-        foreach ($this->recognisedMeasures($decision) as [$code, $level, $rawToken]) {
+        foreach ($this->recognisedMeasures($decision, $framework) as [$code, $level, $rawToken]) {
             // Keyed on the pair, not on the code alone: when a future regime
             // puts a code at a different level, a code-only key would silently
             // discard the second one.
@@ -339,10 +348,11 @@ class ApplyCharacterisationImport
         ?string $frameworkCode,
         User $confirmedBy,
         CharacterisationImportBatch $batch,
+        InterventionLegalFramework $framework,
     ): int {
         $created = 0;
 
-        foreach ($this->recognisedMeasures($decision) as [$code, $level, $rawToken]) {
+        foreach ($this->recognisedMeasures($decision, $framework) as [$code, $level, $rawToken]) {
             if ($this->activeInterventionExists($enrollment, $code)) {
                 continue;
             }
@@ -359,14 +369,24 @@ class ApplyCharacterisationImport
                     'domain_relation' => InterventionDomainRelation::None,
                     'title' => $code->label(),
                     'description' => __('Importado da caracterização — o ficheiro indicava: :token', ['token' => $rawToken]),
-                    'description_source' => InterventionDescriptionSource::Manual,
+                    // This text is COMPOSED BY THIS CLASS, quoting the school's
+                    // paperwork — it is not the teacher's own words, so it must
+                    // never read as Manual (§4 of the intervention-creation
+                    // audit: that value is documented as "Escrita pelo
+                    // professor").
+                    'description_source' => InterventionDescriptionSource::Import,
                     'status' => InterventionStatus::New,
                     'started_on' => $startedOn->toDateString(),
                     'available_for_reports' => true,
                     'include_in_report' => true,
                     'support_measure_level' => $level,
                     'support_measure_code' => $code,
-                    'legal_mapping_source' => LegalMappingSource::Manual,
+                    // The app derived this framing from the framework and the
+                    // teacher confirmed it row-by-row in the preview — exactly
+                    // what SystemSuggestedConfirmed documents. Manual would
+                    // claim the teacher picked the measure themselves, which
+                    // is not what happened here.
+                    'legal_mapping_source' => LegalMappingSource::SystemSuggestedConfirmed,
                     'legal_framework_code' => $frameworkCode,
                     'origin' => InterventionOrigin::CharacterisationImport,
                 ],
@@ -381,7 +401,7 @@ class ApplyCharacterisationImport
                 $confirmedBy,
                 __('Intervenção criada a partir da importação da caracterização.'),
                 [
-                    'class_id' => $class->getKey(),
+                    ...InterventionAuditProperties::base($intervention),
                     'enrollment_id' => $enrollment->getKey(),
                     'import_batch_ulid' => $batch->ulid,
                     'support_measure_level' => $level->value,
@@ -395,12 +415,33 @@ class ApplyCharacterisationImport
         return $created;
     }
 
+    /**
+     * §30's dedup, both places a measure can be held.
+     *
+     * A hand-created intervention that carries several measures stores only
+     * the FIRST pair on the parent's own `support_measure_code` column — the
+     * rest live exclusively in the `intervention_support_measures` pivot (see
+     * `CreateIntervention::create()`). Checking the parent column alone missed
+     * every measure but the first on such a row, so importing a sheet naming
+     * the SECOND measure of an existing multi-measure intervention created a
+     * duplicate. Both places are checked here; the coarseness on period and
+     * context documented on `createInterventions()` above is deliberately kept
+     * — this still only asks "is there an active one at all", never "one that
+     * also matches on every other field".
+     */
     private function activeInterventionExists(Enrollment $enrollment, SupportMeasureCode $code): bool
     {
+        $activeStatuses = [InterventionStatus::New->value, InterventionStatus::InProgress->value];
+
         return Intervention::query()
             ->where('enrollment_id', $enrollment->getKey())
-            ->where('support_measure_code', $code->value)
-            ->whereIn('status', [InterventionStatus::New->value, InterventionStatus::InProgress->value])
+            ->whereIn('status', $activeStatuses)
+            ->where(function ($query) use ($code): void {
+                $query->where('support_measure_code', $code->value)
+                    ->orWhereHas('supportMeasures', function ($measures) use ($code): void {
+                        $measures->where('support_measure_code', $code->value);
+                    });
+            })
             ->exists();
     }
 
@@ -410,10 +451,22 @@ class ApplyCharacterisationImport
      * `createInterventions()` both need, kept in one place so the two
      * destinations can never quietly diverge on what counts as "recognised".
      *
+     * THE LEVEL COMES FROM THE FRAMEWORK THIS BATCH ALREADY RESOLVED
+     * (`apply()`, from `$class->organization` at `$startedOn`), passed in as
+     * `$framework` — never re-resolved through `$this->resolver`, which reads
+     * `CurrentOrganization` + `now()` instead. Those agreed as long as an
+     * import always ran inside a request for the organization it names, at
+     * the moment it was confirmed — but they are two sources of truth for the
+     * same question, and a resolver reading `CurrentOrganization` fails
+     * silently (returns null, treated exactly like "not on this framework")
+     * the moment that binding is unresolved, with the row counted `skipped`
+     * and indistinguishable from an empty one. Reading `$framework` directly
+     * removes the second source entirely.
+     *
      * @param  array<string, mixed>  $decision
      * @return list<array{0: SupportMeasureCode, 1: SupportMeasureLevel, 2: string}>
      */
-    private function recognisedMeasures(array $decision): array
+    private function recognisedMeasures(array $decision, InterventionLegalFramework $framework): array
     {
         $resolved = [];
 
@@ -427,11 +480,10 @@ class ApplyCharacterisationImport
                 continue;
             }
 
-            // THE LEVEL COMES FROM THE APPLICABLE FRAMEWORK, never from the
-            // enum and never from the client. `levelFor()` returning null means
-            // the regime does not name this measure — a real answer, and a
-            // refusal to write, not a gap to fill in locally.
-            $level = $this->resolver->levelFor($code);
+            // `levelFor()` returning null means the regime does not name this
+            // measure — a real answer, and a refusal to write, not a gap to
+            // fill in locally.
+            $level = $framework->levelFor($code);
 
             if ($level === null) {
                 continue;
