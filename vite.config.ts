@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import inertia from '@inertiajs/vite';
 import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
@@ -6,6 +7,26 @@ import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 import { tesseractAssets } from './resources/build/vite-plugin-tesseract-assets';
+
+/**
+ * config('app.version'), read straight from config/app.php rather than
+ * duplicated in package.json (which has no "version" field) or an env var
+ * (APP_VERSION does not exist — the backend hardcodes it, bumped by hand
+ * with every release per that file's own comment). Only resources/js/ssr.ts
+ * reads this, to label its structured error log; a missing/unparsable
+ * version never breaks the build, since a stopped SSR server is worse than
+ * an unlabelled log line.
+ */
+function readAppVersion(): string {
+    try {
+        const contents = readFileSync(new URL('./config/app.php', import.meta.url), 'utf8');
+        const match = contents.match(/'version'\s*=>\s*'([^']+)'/);
+
+        return match?.[1] ?? 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
 
 export default defineConfig({
     /*
@@ -17,6 +38,9 @@ export default defineConfig({
      */
     ssr: {
         noExternal: true,
+    },
+    define: {
+        __APP_VERSION__: JSON.stringify(readAppVersion()),
     },
     plugins: [
         laravel({

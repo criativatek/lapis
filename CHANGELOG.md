@@ -25,6 +25,30 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.153.0] — 2026-09-23
+
+### Corrigido
+- **O servidor SSR já não morre com um pedido malformado.** `ssr.log` mostrava
+  séries de erros seguidas de arranques limpos, sem timestamp útil nenhum — o
+  padrão de um processo a ser reiniciado, não de um erro a ser tratado. A causa:
+  o `createServer` que o `@inertiajs/vite` embrulha à volta de `ssr.ts`
+  (`@inertiajs/core/dist/server.js`) faz `JSON.parse` do corpo do pedido FORA de
+  qualquer `try/catch`; um POST `/render` com o corpo vazio ou cortado a meio
+  lança uma `SyntaxError: Unexpected end of JSON input` que o Node trata como
+  unhandled rejection — fatal desde o Node 15. O `ssr.ts` passa a definir o seu
+  próprio servidor HTTP, que lê o pedido, valida o JSON dentro de um
+  `try/catch` e responde sempre 400/500 formado — nunca deixa o processo
+  morrer a meio de uma resposta.
+- **Texto em português já não é corrompido em relatórios grandes via SSR.** O
+  mesmo `readableToString` concatenava os `Buffer` do pedido como string
+  (`data += chunk`), o que parte um carácter UTF-8 multibyte (ã, ç, é, º) que
+  caia na fronteira entre dois pedaços de rede. O servidor novo acumula
+  `Buffer`s e só descodifica uma vez, com `Buffer.concat(...).toString('utf8')`.
+- **Um erro de SSR passa a deixar rasto útil.** Uma linha JSON por falha, com
+  timestamp ISO, a versão do release (`config('app.version')`, lida em
+  build-time), o componente/rota (nunca o conteúdo da página) e o tipo de
+  erro — nada de nomes, observações pedagógicas, tokens ou cookies.
+
 ## [0.152.4] — 2026-09-22
 
 A tabela de medidas que uma professora enviou continuou a chegar errada à
