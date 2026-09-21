@@ -130,4 +130,49 @@ class BuildCharacterisationPreviewTest extends TestCase
         $this->assertSame(0, $preview->footerRowCount);
         $this->assertTrue($preview->hasRecognisedContentColumn);
     }
+
+    /**
+     * The three §A diagnostic fields (dataRowCount, footerRowCount,
+     * hasRecognisedContentColumn) exist so a real "0 de 0" — never actually
+     * reproduced in this series of hotfix sessions, see the handback report
+     * — has something structural to say about WHY, without naming a single
+     * student. Typed as int/int/bool, they cannot carry text by
+     * construction — this test proves it concretely rather than trusting
+     * the type declaration alone: serialise the preview for a grid whose
+     * cells DO contain a real name and free text, and confirm neither
+     * appears anywhere near these three keys' values in the JSON.
+     */
+    #[Test]
+    public function the_structural_diagnostic_fields_never_carry_student_text(): void
+    {
+        $studentName = 'Ana Silva';
+        $freeText = 'Texto qualquer aqui, específico deste aluno.';
+
+        $grid = new TableGrid(
+            ['Aluno', 'N.º processo', 'Coluna Estranha Que Ninguém Reconhece'],
+            [[$studentName, '12345', $freeText]],
+        );
+
+        $preview = app(BuildCharacterisationPreview::class)->build($this->class, $grid);
+        $payload = $preview->toArray();
+
+        // The fields themselves are structural facts, not copies of the row.
+        $this->assertSame(1, $payload['data_row_count']);
+        $this->assertSame(0, $payload['footer_row_count']);
+        $this->assertFalse($payload['has_recognised_content_column']);
+
+        // And the wider claim: nothing that reached these three keys is the
+        // student's name or the free text this row actually carried — the
+        // student's own content, if it appears in the payload at all, only
+        // ever does so inside `rows`, never folded into a structural count.
+        $structural = json_encode([
+            'data_row_count' => $payload['data_row_count'],
+            'footer_row_count' => $payload['footer_row_count'],
+            'has_recognised_content_column' => $payload['has_recognised_content_column'],
+        ]);
+
+        $this->assertStringNotContainsString($studentName, (string) $structural);
+        $this->assertStringNotContainsString($freeText, (string) $structural);
+        $this->assertStringNotContainsString('Ana', (string) $structural);
+    }
 }
