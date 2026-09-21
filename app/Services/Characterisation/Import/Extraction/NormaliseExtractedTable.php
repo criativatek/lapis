@@ -369,9 +369,20 @@ class NormaliseExtractedTable
             $bodyKinds[] = $kind;
         }
 
-        $headers = $headerEntries === []
+        // A row the teacher tagged 'header' can still be a full-width
+        // caption/title expanded across every column by expand() — see the
+        // class docblock's root-cause note. Excluding it here from the JOIN
+        // is not re-classifying her row: it stays kind='header' and is still
+        // shown to her in structuralRows below, exactly as she left it. It
+        // simply stops contributing its (repeated) text to every column's
+        // name, which is what made the round-trip in §39's own idempotency
+        // guarantee non-idempotent — see joinableHeaderEntries()'s own
+        // comment for the uniformity rule used to detect it.
+        $joinableHeaderEntries = $this->joinableHeaderEntries($headerEntries, $columnCount);
+
+        $headers = $joinableHeaderEntries === []
             ? $this->genericHeaders($columnCount)
-            : $this->joinCellLevels(array_map(fn (array $entry) => $entry['cells'], $headerEntries), $columnCount);
+            : $this->joinCellLevels(array_map(fn (array $entry) => $entry['cells'], $joinableHeaderEntries), $columnCount);
 
         $warnings = [];
 
@@ -398,6 +409,71 @@ class NormaliseExtractedTable
     }
 
     /**
+     * The teacher-tagged 'header' rows that may actually contribute their
+     * text to the joined column names — every one of $headerEntries EXCEPT a
+     * full-width caption/title row expanded by expand() into looking like an
+     * ordinary header level.
+     *
+     * The non-pre-classified path (headerLevels()/captionRowIndices()) can
+     * tell a caption apart from a real header level because it still has the
+     * PRE-expansion merge structure to read (see structuralCaptionRowNumbers()
+     * and the class docblock). By the time a row reaches here, on the §39
+     * round trip, that structure is long gone — the dialog resubmits plain
+     * cells, already expanded, with only a kind attached. So the test has to
+     * work on the expanded shape itself: a row whose non-empty cells are ALL
+     * the same repeated value, spanning (nearly) the full width of the table,
+     * is exactly what a full-width merged cell looks like once expand() has
+     * repeated its text into every column it covers — no ordinary header
+     * level, single- or multi-row, produces that shape, because each of its
+     * columns names a DIFFERENT thing.
+     *
+     * "Nearly" full width mirrors wideCaptionCellOf()'s own slack: a caption
+     * occasionally leaves one trailing column outside its merge. Requiring
+     * NEAR-full-width uniformity (not just "some repeated cells") is what
+     * keeps this from misfiring on a genuine header level that happens to
+     * repeat a value in a column or two (e.g. two adjacent sub-headers both
+     * reading "Ing.") — a coincidence in two columns is not the same shape as
+     * every column in the row reading identically.
+     *
+     * A row is excluded from the JOIN only — it is never removed from
+     * $headerEntries itself, so the teacher still sees it, unmodified,
+     * kind='header', in structuralRows.
+     *
+     * @param  list<array{number: int, cells: list<string>}>  $headerEntries
+     * @return list<array{number: int, cells: list<string>}>
+     */
+    private function joinableHeaderEntries(array $headerEntries, int $columnCount): array
+    {
+        return array_values(array_filter(
+            $headerEntries,
+            fn (array $entry) => ! $this->isFullWidthCaptionShape($entry['cells'], $columnCount),
+        ));
+    }
+
+    /**
+     * @param  list<string>  $cells
+     */
+    private function isFullWidthCaptionShape(array $cells, int $columnCount): bool
+    {
+        $nonEmpty = array_values(array_filter(
+            array_map('trim', $cells),
+            fn (string $cell) => $cell !== '',
+        ));
+
+        if (count($nonEmpty) < 2) {
+            return false;
+        }
+
+        // Mirrors wideCaptionCellOf()'s own "nearly all" slack: a caption may
+        // leave the very last column outside its merge.
+        if (count($nonEmpty) < $columnCount - 1) {
+            return false;
+        }
+
+        return count(array_unique($nonEmpty)) === 1;
+    }
+
+    /**
      * @param  list<list<string>>  $levels
      * @return list<string>
      */
@@ -411,9 +487,25 @@ class NormaliseExtractedTable
             foreach ($levels as $level) {
                 $text = trim($level[$column] ?? '');
 
-                if ($text !== '') {
-                    $fragments[] = $text;
+                if ($text === '') {
+                    continue;
                 }
+
+                // A rowspan-2 header cell ("RTP/PEI") is repeated by expand()
+                // into BOTH the printed row it labels and the row below it —
+                // that repetition is what keeps that column from shifting for
+                // the level below (see expand()'s own docblock), but by the
+                // time these are separate 'header' rows on the §39 round
+                // trip, joining every level verbatim would turn it into
+                // "RTP/PEI RTP/PEI". A column whose header genuinely spans
+                // two DIFFERENT levels ("Apoios" / "P") never repeats the
+                // same text twice in a row, so skipping only an IMMEDIATE
+                // repeat of the fragment just added never drops real content.
+                if ($fragments !== [] && end($fragments) === $text) {
+                    continue;
+                }
+
+                $fragments[] = $text;
             }
 
             $headers[] = implode(' ', $fragments);
