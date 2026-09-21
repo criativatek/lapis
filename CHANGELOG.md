@@ -25,6 +25,60 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.152.1] — 2026-09-21
+
+A importação multimodal que a 0.152.0 trouxe foi usada a sério, sobre a tabela
+verdadeira de uma escola, e partiu-se em sítios que nenhum teste tinha visto. A
+professora colou a tabela e leu «Nenhuma linha ficou pronta a importar — 0 de
+0», ao lado de um aviso a dizer que uma linha de agrupamento tinha sido
+ignorada. Pôs a mesma tabela num Excel e importou o ficheiro: apareceram linhas
+«Não encontrado», com texto que não correspondia a aluno nenhum, e não havia
+forma de as associar a ninguém.
+
+O que estas correções têm em comum é deixarem de perder coisas em silêncio.
+
+### Corrigido
+- **A coluna que diz duas coisas ao mesmo tempo.** «Outras medidas/recursos /
+  Observações» é o cabeçalho que as escolas escrevem, e nomeia um destino legal
+  e o caderno de observações na mesma frase. Classificava só como medidas, e a
+  prosa da professora — «RTP (12/2020)», «Redução de turma» — era entregue ao
+  resolutor de códigos legais, que a lia como uma fila de códigos que não
+  conhecia. O texto ia parar a lado nenhum. A coluna passa a alimentar os dois
+  destinos: os tokens que são medidas resolvem como medidas, e o texto chega à
+  Caracterização.
+- **Prosa deixou de ser tratada como código legal.** Entre a célula e o
+  resolutor passa a haver uma separação que distingue o que tem forma plausível
+  de código legal do que é uma frase. «Teve alta da Terapia da Fala» não é um
+  código por interpretar; «b)» continua a ser, e continua por resolver até
+  alguém dizer de que medida se trata. Nada é descartado: o que não é candidato
+  legal é texto, e o texto tem para onde ir.
+- **`MU`, `MS` e `MA` voltaram a ter nível.** Num cabeçalho a dois níveis, o
+  «Medidas» de cima junta-se ao «MU» de baixo e a coluna passa a chamar-se
+  «Medidas MU». O dicionário de siglas só era consultado contra o cabeçalho
+  inteiro, que nunca corresponde — a coluna classificava como medidas mas sem
+  nível, e as alíneas por baixo ficavam sem significado. Passa a ser consultado
+  também palavra a palavra.
+- **Escolher o aluno numa linha por emparelhar passou a incluí-la.** Escolher
+  alguém no seletor definia a inscrição mas deixava a linha por marcar, e era
+  preciso um segundo gesto que nada anunciava. Quem aponta o aluno está a dizer
+  que quer aquela linha.
+- **Uma linha de dados deixou de poder desaparecer sem explicação.** O preview
+  passa a prestar contas de todas: quantas linhas havia, quantas eram rodapé, e
+  se alguma coluna de conteúdo chegou sequer a ser reconhecida. Com zero linhas
+  prontas, o ecrã diz porquê em vez de mostrar um botão de confirmação que não
+  faz nada — e o botão deixa de aparecer. O diagnóstico é estrutural e não
+  transporta texto nem nomes de alunos.
+
+### Nota honesta sobre o «0 de 0»
+A causa exacta do «0 de 0» observado em produção com a tabela colada **não foi
+reproduzida**. As fixtures realistas construídas a partir da estrutura
+descrita — cabeçalho a dois níveis, «Apoios» fundida sobre quatro colunas,
+linhas de agrupamento, legenda no fim — atravessam correctamente o `.docx`, o
+`.xlsx` e a colagem do Word, e produzem os alunos reais. A hipótese de trabalho
+é que o que se leu como «0 de 0» era consequência da perda de conteúdo descrita
+acima, mas isso não está provado. O que esta versão garante é que, se voltar a
+acontecer, o ecrã diz o que falhou em vez de um número sem explicação.
+
 ## [0.152.0] — 2026-09-20
 
 Foi testada em produção uma tabela verdadeira, vinda do Word, com cabeçalhos a
