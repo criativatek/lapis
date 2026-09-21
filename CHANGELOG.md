@@ -88,6 +88,16 @@ a alguém que converta o documento à mão.
   aparecia em lado nenhum.
 
 ### Corrigido
+- **Os assets do OCR passam a viajar no pacote de deploy.** O worker, o núcleo
+  WASM e o modelo de português são gerados a partir do `node_modules` no build e
+  são gitignored de propósito — e o `lapis:build-package` monta a lista a partir
+  do `git ls-files`, portanto ficavam na máquina de quem empacota. Em produção,
+  o `characterisation-image-extraction.ts` pede-os por caminho absoluto: a
+  importação por imagem teria falhado num servidor onde, do ponto de vista do
+  git, não faltava ficheiro nenhum. Mesma armadilha do bundle de SSR na 0.93.0,
+  e por isso a mesma correcção — inventariados explicitamente, com um teste que
+  o afirma. Com uma diferença: aqui a ausência é erro e não aviso, porque não há
+  versão degradada desta funcionalidade para onde cair.
 - A tabela do Word deixa de chegar achatada: a área de transferência traz uma
   tabela HTML a sério ao lado do texto simples, e era o texto simples que estava
   a ser lido.
