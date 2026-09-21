@@ -164,7 +164,14 @@ class NormaliseExtractedTable
         } else {
             $plainMatrix = array_map(fn (array $entry) => $entry['cells'], $entries);
 
-            $primaryHeaderIndex = (new FindHeaderRow)->find($plainMatrix);
+            // Caption/legend rows must never be offered to FindHeaderRow as
+            // a candidate — see captionRowIndices()'s own comment for why
+            // this has to be computed here, on $entries, rather than left to
+            // FindHeaderRow itself, which only ever sees the already-
+            // expanded matrix a merged caption is indistinguishable in.
+            $captionRowIndices = $this->captionRowIndices($entries, $structuralCaptionRows);
+
+            $primaryHeaderIndex = (new FindHeaderRow)->find($plainMatrix, $captionRowIndices);
 
             $headerWarnings = [];
 
@@ -184,7 +191,7 @@ class NormaliseExtractedTable
                 $bodyEntries = $entries;
                 $headerWarnings[] = __('Não foi possível identificar a linha de títulos desta tabela — todas as linhas foram importadas como alunos. Confirme se as colunas ficaram corretas.');
             } else {
-                $headerLevels = $this->headerLevels($table, $plainMatrix, $primaryHeaderIndex, $columnCount);
+                $headerLevels = $this->headerLevels($table, $plainMatrix, $primaryHeaderIndex, $columnCount, $captionRowIndices);
                 // headerLevels() always seeds itself with the primary header row
                 // before optionally prefixing earlier levels or appending a
                 // level below — so the LAST element is always present, but is
@@ -419,29 +426,79 @@ class NormaliseExtractedTable
         $rowNumbers = [];
 
         foreach ($table->rows as $row) {
-            if (count($row->cells) !== 1) {
-                continue;
-            }
+            $caption = $this->wideCaptionCellOf($row, $columnCount);
 
-            $cell = $row->cells[0];
-
-            if (trim($cell->text) === '') {
-                continue;
-            }
-
-            // "Nearly all": a caption occasionally leaves the very last
-            // column outside its merge (a trailing decorative cell), so the
-            // width is allowed to fall one short of the full column count —
-            // but a table with only one or two columns has no room for that
-            // slack, or every ordinary single-column cell would qualify.
-            if ($columnCount >= 3 && $cell->colspan >= $columnCount - 1) {
-                $rowNumbers[$row->index] = trim($cell->text);
-            } elseif ($columnCount < 3 && $cell->colspan >= $columnCount) {
-                $rowNumbers[$row->index] = trim($cell->text);
+            if ($caption !== null) {
+                $rowNumbers[$row->index] = trim($caption->text);
             }
         }
 
         return $rowNumbers;
+    }
+
+    /**
+     * THE SPINE CASE: a caption row underneath a vertical "spine" column — a
+     * class-name cell merged down the whole sheet (e.g. `rowspan="9"` on
+     * «8.º A», anchored several rows above) — owns no cell for that column
+     * AT ALL on the caption's own row; that column is simply not among
+     * $row->cells, exactly as if the row genuinely had one fewer column (see
+     * ExtractedCell/the extractors: a rowspan continuation is never
+     * re-emitted on the covered row). The strict `count($row->cells) === 1`
+     * this method used to require breaks the moment a caption row sits under
+     * such a spine and ALSO happens to still own a narrow cell of its own
+     * there (a source that DOES re-emit a placeholder for the spanned
+     * column, unlike the ordinary HTML/.docx/.xlsx shape above) — two cells,
+     * neither of them wrong, and the caption silently stopped being
+     * recognised as one, leaking through as an ordinary Data row.
+     *
+     * So: at most ONE cell is allowed to be a spine (narrow — never wider
+     * than 2 columns, which covers a short label like «8.º A» but never a
+     * real second content column — and tall: rowspan > 1, anchored on an
+     * earlier row, not the caption's own content). Whichever remaining cell
+     * is widest is the caption candidate, and its required width is judged
+     * against the table's width MINUS whatever the spine already accounts
+     * for — a caption next to a spine only ever needs to cover the columns
+     * the spine does not.
+     */
+    private function wideCaptionCellOf(ExtractedRow $row, int $columnCount): ?ExtractedCell
+    {
+        $nonEmpty = array_values(array_filter(
+            $row->cells,
+            fn (ExtractedCell $cell) => trim($cell->text) !== '',
+        ));
+
+        if ($nonEmpty === [] || count($nonEmpty) > 2) {
+            return null;
+        }
+
+        usort($nonEmpty, fn (ExtractedCell $a, ExtractedCell $b) => $b->colspan <=> $a->colspan);
+
+        $caption = $nonEmpty[0];
+        $spine = $nonEmpty[1] ?? null;
+
+        if ($spine !== null && ($spine->colspan > 2 || $spine->rowspan <= 1)) {
+            // Two ordinary side-by-side cells, neither of them a spine — an
+            // ordinary two-column row, not a caption.
+            return null;
+        }
+
+        $spineWidth = $spine !== null ? $spine->colspan : 0;
+        $requiredWidth = $columnCount - $spineWidth;
+
+        // "Nearly all": a caption occasionally leaves the very last column
+        // outside its merge (a trailing decorative cell), so the width is
+        // allowed to fall one short of the full required count — but a row
+        // with only one or two columns of its own has no room for that
+        // slack, or every ordinary single-column cell would qualify.
+        if ($requiredWidth >= 3 && $caption->colspan >= $requiredWidth - 1) {
+            return $caption;
+        }
+
+        if ($requiredWidth < 3 && $caption->colspan >= $requiredWidth) {
+            return $caption;
+        }
+
+        return null;
     }
 
     /**
@@ -517,6 +574,45 @@ class NormaliseExtractedTable
     }
 
     /**
+     * Positions in $entries (0-based, aligned with $plainMatrix — see the
+     * caller) that must never be offered to FindHeaderRow, or joined into
+     * the header by headerLevels(), however they score or read: a row
+     * already known to be a caption or legend, either structurally (a
+     * full-width merge, read before expand() — see
+     * structuralCaptionRowNumbers()'s own docblock) or, for a merge-less
+     * source that carries no colspan to read at all, by the SAME content
+     * tests classifyBody() uses for a body row of that shape. Without this,
+     * a full-width «Alunos com RTP» caption — repeated across every column
+     * by expand() — scores as if it named the student in every one of them
+     * (roleFor() reads "aluno" out of "Alunos"), and often outscores the
+     * real header, whose own name column may print no label at all. See
+     * the class docblock's root-cause note for the concrete failure this
+     * closes.
+     *
+     * @param  list<array{number: int, cells: list<string>}>  $entries
+     * @param  array<int, string>  $structuralCaptionRows  keyed by ExtractedRow::$index — see structuralCaptionRowNumbers()
+     * @return array<int, true>
+     */
+    private function captionRowIndices(array $entries, array $structuralCaptionRows): array
+    {
+        $indices = [];
+
+        foreach ($entries as $index => $entry) {
+            if (isset($structuralCaptionRows[$entry['number']])) {
+                $indices[$index] = true;
+
+                continue;
+            }
+
+            if ($this->looksLikeGroupByContent($entry['cells']) || $this->looksLikeLegend($entry['cells'])) {
+                $indices[$index] = true;
+            }
+        }
+
+        return $indices;
+    }
+
+    /**
      * The levels making up the header, in printed order. A single level for
      * an ordinary table; several when the header spans more than one printed
      * row — «Apoio» over «Ing.» becomes column «Apoio Ing.».
@@ -528,18 +624,20 @@ class NormaliseExtractedTable
      * the second block below for why that direction needs one.
      *
      * @param  list<list<string>>  $matrix
+     * @param  array<int, true>  $captionRowIndices  see captionRowIndices() — a caption/legend row can never become a header level in either direction, walking up or looking one row down, however header-shaped its text happens to read
      * @return list<array{index: int, ownColumns: ?array<int, true>}>
      */
-    private function headerLevels(ExtractedTable $table, array $matrix, int $primary, int $columnCount): array
+    private function headerLevels(ExtractedTable $table, array $matrix, int $primary, int $columnCount, array $captionRowIndices = []): array
     {
         $levels = [['index' => $primary, 'ownColumns' => null]];
 
         // Walk upward while the row above still looks like a header level
         // rather than report preamble: short labels, more than one of them,
-        // none reading like a sentence.
+        // none reading like a sentence — and never a row already known to be
+        // a caption or legend, whatever it happens to read like.
         $index = $primary - 1;
 
-        while ($index >= 0 && $primary - $index <= 2 && $this->looksLikeHeaderLevel($matrix[$index])) {
+        while ($index >= 0 && $primary - $index <= 2 && ! isset($captionRowIndices[$index]) && $this->looksLikeHeaderLevel($matrix[$index])) {
             array_unshift($levels, ['index' => $index, 'ownColumns' => null]);
             $index--;
         }
@@ -579,6 +677,7 @@ class NormaliseExtractedTable
             && $ownColumns !== []
             && count($ownColumns) < $columnCount
             && $primary + 1 < count($matrix)
+            && ! isset($captionRowIndices[$primary + 1])
             && $this->isSubsetOf($ownColumns, $headerColspanColumns)
             && $this->looksLikeHeaderLevel($this->onlyOwnColumns($matrix[$primary + 1], $ownColumns))
         ) {
