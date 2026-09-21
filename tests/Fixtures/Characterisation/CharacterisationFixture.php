@@ -611,6 +611,21 @@ final class CharacterisationFixture
         }
 
         (new Word2007Writer($phpWord))->save($path);
+
+        // Same housekeeping writeXlsx() already does, for the same shape of
+        // reason: PhpWord's document/section/table/row/cell graph holds parent
+        // references back up the tree, so scope exit alone does not free it —
+        // only the cycle collector does. The whole suite runs in ONE PHP
+        // process, and this fixture is built once per test that uses it.
+        //
+        // HONESTY ABOUT WHAT THIS DOES AND DOES NOT FIX. The full suite
+        // exhausted phpunit.xml's 512M twice, and then completed without it on
+        // an identical test set — so the exhaustion is marginal and NOT
+        // reliably reproducible, and this is headroom rather than a proven
+        // cure. If it comes back, the thing to measure is how close the run
+        // sits to the ceiling, not this call.
+        unset($table, $section, $phpWord);
+        gc_collect_cycles();
     }
 
     /**
