@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.152.2] — 2026-09-21
+
+A hipótese de trabalho da 0.152.1 confirmou-se: a tabela real de uma escola
+tinha o mesmo cabeçalho a dois níveis descrito nas fixtures — mas a coluna do
+nome do aluno não imprime rótulo nenhum, em nenhum dos dois níveis. Sem um
+rótulo para se agarrar, o localizador do cabeçalho passava à frente da linha
+certa e ia parar à legenda de grupo «Alunos com RTP», repetida por cada coluna
+depois de as células fundidas serem expandidas — e essa linha, lida como
+cabeçalho, produzia o «0 de 0» observado em produção: nenhuma coluna de
+conteúdo por reconhecer.
+
+### Corrigido
+- **Uma linha de agrupamento ou de legenda deixou de poder tornar-se
+  cabeçalho.** O que já se sabia, antes de expandir as células fundidas, sobre
+  qual linha é uma legenda de largura total — ou, sem fusões, qual linha lê
+  como uma pelo conteúdo — passa a chegar ao localizador do cabeçalho e ao
+  encadeamento dos seus níveis, e não só à classificação do corpo da tabela
+  como acontecia até aqui.
+- **Um cabeçalho sem rótulo na coluna do nome voltou a ser encontrável.** Uma
+  linha sem nenhuma coluna identificadora só passa a ser aceite como cabeçalho
+  quando tem muitas outras colunas reconhecíveis — o suficiente para nunca
+  confundir uma legenda ou um agrupamento, que nunca têm mais do que uma ou
+  duas células preenchidas, com um cabeçalho genuíno.
+- **Uma turma com uma coluna vertical de turma («8.º A» a ocupar várias linhas
+  por fusão) deixou de duplicar alunos.** Uma linha de agrupamento ou de
+  legenda por baixo dessa coluna tinha uma célula a menos do que a largura
+  total da tabela — exactamente o número de colunas que a fusão vertical já
+  ocupava — e deixava de ser reconhecida como legenda, passando por aluno.
+
 ## [0.152.1] — 2026-09-21
 
 A importação multimodal que a 0.152.0 trouxe foi exercitada em produção sobre
