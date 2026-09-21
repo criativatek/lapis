@@ -904,6 +904,55 @@ serviço parado, `/planos` responde 200 com 13,8 KB.
 O Node do sistema continua a ser o 12 e não foi tocado; o 22 vive na conta
 `lapis` e é usado só por este serviço.
 
+### Que páginas vão ao servidor (desde 0.153.0)
+
+Só as públicas: `Welcome`, `marketing/*` e `legal/*` — a mesma regra com que
+`resolveLayout()` (resources/js/inertia.ts) decide que uma página não tem o
+shell da aplicação. A regra vive em `App\Support\Ssr\ServerRenderedPages` e é
+aplicada por `HttpGateway::disable()` no `AppServiceProvider`. Até à 0.152.0 o
+interruptor era só o global, e TODAS as respostas Inertia — painel, relatórios,
+grelhas — iam ao Node com a barra lateral e a barra de contexto, que lêem
+`page.props.nav` e `page.props.selectableAcademicYears` sem perguntar; foi daí
+que vieram os `Cannot read properties of undefined (reading 'footer' /
+'sections' / 'length')` do `ssr.log`. Uma página nova para crawlers tem de
+entrar naquela lista, ou é servida como shell de 13 KB. Uma página nova com
+shell não deve entrar nunca. O interruptor global `INERTIA_SSR_ENABLED`
+continua a mandar em tudo: a regra por página só se aplica com ele ligado.
+
+### O que fica registado quando falha (desde 0.153.0)
+
+Dos dois lados, e sempre só *onde* falhou, nunca *o que* estava a ser
+renderizado — sem props, sem nomes, sem observações, sem query string.
+
+`/home/lapis/logs/ssr.log` (Node, `resources/js/ssr/server.ts`): uma linha
+JSON por falha —
+
+```json
+{"timestamp":"2026-09-21T10:00:00.000Z","level":"error","release":"0.153.0","message":"Cannot read properties of undefined (reading 'footer')","component":"reports/Show","route":"/reports/01J…","type":"render-error"}
+```
+
+`type` é `empty-body`, `invalid-json` ou `render-error`; um `render-error`
+traz também `source`, a primeira frame da stack que é código nosso. Um corpo
+vazio ou cortado a meio responde 400 e o processo continua vivo — o
+`createServer` da `@inertiajs/core` morria aí com um unhandled rejection, e
+era isso que o log antigo mostrava como «erros seguidos de arranques limpos».
+Um componente que lança durante o render dá um `render-error` POR ERRO e um
+500 — antes o Vue (em produção) só fazia `console.error` da stack em bruto e
+devolvia 200 com um buraco no HTML; eram essas as linhas sem data do log
+antigo. O leitor não nota a diferença: 500 no `/render` é «renderiza no
+browser», que é o que já acontecia.
+
+`laravel.log` (`App\Listeners\LogSsrRenderFailure`, sobre o evento
+`SsrRenderFailed` da Inertia): `inertia.ssr.render_failed` como **error**
+quando o Node respondeu 500 a um componente; `inertia.ssr.unavailable` como
+**warning** quando o serviço não respondeu de todo — é o estado em que fica
+quando se desliga de propósito (abaixo). O contexto leva `component`, `route`,
+`error`, `type`, `source_location` e `release`, e mais nada.
+
+```bash
+ssh lapis-prod 'grep -c render-error /home/lapis/logs/ssr.log; grep inertia.ssr storage/logs/laravel.log | tail -3'
+```
+
 ### Em cada deploy, reiniciar o serviço
 
 O Node tem o bundle **em memória**. Sem reinício, continua a servir o da
@@ -955,6 +1004,12 @@ Os testes PHP correm com `INERTIA_SSR_ENABLED=false` (`phpunit.xml`). Com o
 SSR ligado, o `<title>` servido é o do `<Head>` do Vue e não o do blade — é
 por isso que as páginas de marketing recebem `seoTitle` do servidor
 (`PublicPages`) e o `<Head>` o usa: os dois dizem a mesma coisa.
+
+Os testes que afirmam o SSR ligam-no por teste e falsificam o cliente HTTP
+(`Http::fake`) em vez de precisarem de um Node a correr: `tests/Feature/Ssr/`
+(âmbito, registo, props do shell). O servidor Node em si é testado pelo
+Vitest sobre HTTP real numa porta efémera (`resources/js/ssr/server.test.ts`),
+e o shell autenticado sob `renderToString` em `AppLayout.ssr.test.ts`.
 
 ## Nota — build de assets sem Node no servidor
 

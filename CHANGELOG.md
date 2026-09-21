@@ -27,7 +27,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ## [0.153.0] — 2026-09-23
 
+O `ssr.log` de produção tinha quatro erros repetidos — `Cannot read properties
+of undefined (reading 'footer')`, `(reading 'sections')`, `(reading 'length')`
+e `SyntaxError: Unexpected end of JSON input` — seguidos de arranques limpos,
+e sem um timestamp que permitisse ligá-los a uma data ou a um release. Eram
+duas causas, não uma. Nenhuma estava num relatório.
+
 ### Corrigido
+- **O shell autenticado deixou de ser renderizado em Node.** O SSR entrou na
+  0.93.0 para as páginas públicas — as que um crawler tem de ler — mas o
+  interruptor (`INERTIA_SSR_ENABLED`) é global, e desde então TODAS as
+  respostas Inertia iam ao servidor Node, incluindo o painel, os relatórios e
+  as grelhas, com a barra lateral (`page.props.nav.sections` / `.footer`) e a
+  barra de contexto (`page.props.selectableAcademicYears.length`) que foram
+  escritas para um browser que tem sempre essas props. É daí que vêm os três
+  `reading 'footer' / 'sections' / 'length'`: um objecto de página a chegar ao
+  Node sem as props partilhadas do shell. Reproduzido em `renderToString` com
+  dados fictícios (`AppLayout.ssr.test.ts`), que fixa também o contrário — com
+  as props que o `HandleInertiaRequests` partilha, o shell renderiza em Node
+  sem lançar, com ou sem rodapé, com ou sem secções, com ou sem anos letivos.
+  O caminho concreto que em produção deixou passar uma página sem essas props
+  não é reproduzível a partir do código (todos os que existem partilham-nas, e
+  `AuthenticatedShellSharedPropsTest` passa a afirmá-lo nos três tipos de
+  página com shell); o registo abaixo é o que o há-de nomear se voltar. A
+  correcção não depende disso: o SSR fica restrito ao que sempre foi para —
+  `Welcome`, `marketing/*`, `legal/*` — pelo interruptor por resposta que o
+  próprio `HttpGateway` da Inertia expõe (`disable()`), com a regra numa só
+  classe, `ServerRenderedPages`, que espelha a de `resolveLayout()` no cliente.
+  Quem está autenticado tem JavaScript e nada ganhava com o SSR; os crawlers
+  não perdem nada. `ServerSideRenderingScopeTest` afirma-o contra o gateway
+  real, com o cliente HTTP falsificado.
 - **O servidor SSR já não morre com um pedido malformado.** `ssr.log` mostrava
   séries de erros seguidas de arranques limpos, sem timestamp útil nenhum — o
   padrão de um processo a ser reiniciado, não de um erro a ser tratado. A causa:
@@ -44,10 +73,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   (`data += chunk`), o que parte um carácter UTF-8 multibyte (ã, ç, é, º) que
   caia na fronteira entre dois pedaços de rede. O servidor novo acumula
   `Buffer`s e só descodifica uma vez, com `Buffer.concat(...).toString('utf8')`.
-- **Um erro de SSR passa a deixar rasto útil.** Uma linha JSON por falha, com
-  timestamp ISO, a versão do release (`config('app.version')`, lida em
-  build-time), o componente/rota (nunca o conteúdo da página) e o tipo de
-  erro — nada de nomes, observações pedagógicas, tokens ou cookies.
+- **Um erro de SSR passa a deixar rasto útil — dos dois lados.** As stacks em
+  bruto do `ssr.log`, sem data nem página, eram o Vue em produção: um
+  componente que lança durante o `renderToString` vai para
+  `app.config.errorHandler` se houver um — e não havia — e senão é só
+  `console.error` e segue, com um buraco no HTML e um 200 para o Laravel. O
+  `ssr.ts` passa a instalar esse handler em cada render (pelo `withApp` do
+  próprio `createInertiaApp`), recolhe TODOS os erros do render — uma prop em
+  falta rebenta em dois ramos do template, e o log de produção tinha
+  `'sections'` e `'footer'` para a mesma página por isso — e responde 500, que
+  para o leitor dá o mesmo render no cliente de sempre e para os registos dá
+  o que faltava. No Node, uma linha JSON por erro em `ssr.log`, com timestamp
+  ISO, a versão do release (`config('app.version')`, lida em build-time), o
+  componente e a rota (só o caminho; nunca a query string, nunca o conteúdo
+  da página), o tipo e a primeira frame nossa da stack.
+  No Laravel, o `HttpGateway` da Inertia já disparava `SsrRenderFailed` a cada
+  falha — com a página inteira, props incluídas — e ninguém ouvia: um
+  componente a rebentar em Node, ou um serviço em baixo, não deixava linha
+  nenhuma em `laravel.log`. `LogSsrRenderFailure` escreve agora uma
+  (`inertia.ssr.render_failed` como erro; `inertia.ssr.unavailable` como
+  aviso, porque desligar o serviço é um estado operacional documentado) só com
+  componente, caminho, erro, tipo, localização no código e release. Nada de
+  nomes, observações pedagógicas, tokens ou cookies — `SsrRenderFailureLoggingTest`
+  alimenta-o com uma página cheia de texto sensível fictício e prova que nada
+  chega ao registo. O servidor Node vive em `resources/js/ssr/server.ts`,
+  coberto por `server.test.ts` sobre HTTP real: corpo vazio, JSON truncado,
+  componente que lança, «ç» partido entre dois pedaços de rede, e o processo
+  vivo para o pedido seguinte.
 
 ## [0.152.4] — 2026-09-22
 
