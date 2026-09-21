@@ -115,6 +115,33 @@ class CharacterisationImportTest extends TestCase
         $this->assertSame(0, CharacterisationRevision::withoutGlobalScope('organization')->count());
     }
 
+    // ------------------------------------------------ 1b. "0 de 0" tem de ser explicado
+
+    /**
+     * Reproduces the reported "0 de 0" symptom: a realistic pauta-style table
+     * whose header names nobody in ClassifyColumns::PATTERNS recognises as a
+     * content column (only "Aluno" and "N.º processo" are recognised — the
+     * whole point of the header). Before the fix, BuildCharacterisationPreview
+     * silently dropped every row via PreviewRow::hasContent() and the response
+     * gave no way to tell "the file was empty" from "the header could not be
+     * read". The row must still be counted, and the reason must be nameable.
+     */
+    #[Test]
+    public function a_table_whose_content_columns_are_not_recognised_explains_why_instead_of_looking_empty(): void
+    {
+        $this->enrol($this->user, $this->class, 'Ana Silva', '12345');
+
+        $response = $this->preview(
+            "Aluno\tN.º processo\tColuna Estranha Que Ninguém Reconhece\nAna Silva\t12345\tTexto qualquer aqui.\n"
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('preview.rows', [])
+            ->assertJsonPath('preview.data_row_count', 1)
+            ->assertJsonPath('preview.footer_row_count', 0)
+            ->assertJsonPath('preview.has_recognised_content_column', false);
+    }
+
     // ------------------------------------------------ 2. correspondência
 
     #[Test]
