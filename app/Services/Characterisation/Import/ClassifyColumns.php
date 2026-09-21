@@ -60,11 +60,12 @@ class ClassifyColumns
     /**
      * The SAME fragments the Characterisation role matches on above — reused
      * here to detect when a column classified as Measures ALSO names free
-     * text in its own header, rather than defining a second list that could
-     * drift from the first. See ClassifiedColumn::$alsoFreeText for why this
+     * text in its own header. It is the SAME array element, not a copy of its
+     * contents: a second literal list would drift from the first the moment
+     * anybody taught Characterisation a new word. See ClassifiedColumn::$alsoFreeText for why this
      * matters and what it changes.
      */
-    private const FREE_TEXT_FRAGMENTS = ['caracterizacao', 'observacoes', 'observacao', 'notas', 'nota', 'descricao', 'perfil'];
+    private const FREE_TEXT_FRAGMENTS = self::PATTERNS[ColumnRole::Characterisation->value];
 
     /**
      * @return list<ClassifiedColumn>
