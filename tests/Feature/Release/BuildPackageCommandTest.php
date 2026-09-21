@@ -108,6 +108,29 @@ class BuildPackageCommandTest extends TestCase
         $this->assertContains('bootstrap/ssr/ssr.js', $entries);
     }
 
+    /**
+     * Os assets do OCR são gitignored como o bundle de SSR, mas a falha é pior:
+     * o `characterisation-image-extraction.ts` pede-os por caminho absoluto
+     * (`/vendor/tesseract/...`), portanto um pacote sem eles não degrada — a
+     * importação por imagem falha, num servidor onde nada parece faltar.
+     * Não há `markTestSkipped` aqui de propósito: ao contrário do SSR, um
+     * pacote sem estes ficheiros não é válido, e o comando recusa-se a criá-lo.
+     */
+    #[Test]
+    public function the_self_hosted_ocr_runtime_travels(): void
+    {
+        $entries = $this->build();
+
+        foreach ([
+            'public/vendor/tesseract/worker.min.js',
+            'public/vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
+            'public/vendor/tesseract/tesseract-core-simd-lstm.wasm',
+            'public/vendor/tesseract/por.traineddata.gz',
+        ] as $asset) {
+            $this->assertContains($asset, $entries, $asset.' tem de viajar no pacote.');
+        }
+    }
+
     #[Test]
     public function an_untracked_file_never_enters_the_package(): void
     {

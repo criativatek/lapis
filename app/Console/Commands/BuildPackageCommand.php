@@ -55,6 +55,7 @@ class BuildPackageCommand extends Command
         BuildStamp::FILENAME,
         'public/build',
         'bootstrap/ssr',
+        'public/vendor/tesseract',
     ];
 
     /**
@@ -66,6 +67,28 @@ class BuildPackageCommand extends Command
      * nobody, and the bundle silently stayed on the build machine.
      */
     protected const SSR_ENTRY = 'bootstrap/ssr/ssr.js';
+
+    /**
+     * The in-browser OCR runtime, self-hosted. Same shape of trap as the SSR
+     * bundle in 0.93.0, and worse in consequence: `characterisation-image-
+     * extraction.ts` asks for these by absolute path (`/vendor/tesseract/...`),
+     * so a package without them does not degrade — importing a screenshot just
+     * fails, on a server where nothing is missing as far as git is concerned.
+     *
+     * They are gitignored by design (they are copied out of node_modules by
+     * resources/build/vite-plugin-tesseract-assets.ts at build time rather than
+     * committed as 7+ MB of binaries), which is exactly why they need naming
+     * here. Unlike the SSR bundle, their absence is an ERROR and not a warning:
+     * there is no degraded-but-working version of this feature to fall back to.
+     *
+     * @var list<string>
+     */
+    protected const OCR_ASSETS = [
+        'public/vendor/tesseract/worker.min.js',
+        'public/vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
+        'public/vendor/tesseract/tesseract-core-simd-lstm.wasm',
+        'public/vendor/tesseract/por.traineddata.gz',
+    ];
 
     /**
      * Checked against the finished archive. Almost none of these can come from
@@ -221,9 +244,15 @@ class BuildPackageCommand extends Command
 
         $ssr = $this->ssrBundle();
 
-        $this->line('Lista do pacote: '.$trackedCount.' versionados + 1 carimbo + '.count($assets).' assets compilados + '.count($ssr).' de SSR');
+        $ocr = $this->ocrAssets();
 
-        return [...$paths, ...$assets, ...$ssr];
+        if ($ocr === null) {
+            return null;
+        }
+
+        $this->line('Lista do pacote: '.$trackedCount.' versionados + 1 carimbo + '.count($assets).' assets compilados + '.count($ssr).' de SSR + '.count($ocr).' de OCR');
+
+        return [...$paths, ...$assets, ...$ssr, ...$ocr];
     }
 
     /**
@@ -265,6 +294,39 @@ class BuildPackageCommand extends Command
         }
 
         return $files;
+    }
+
+    /**
+     * Inventories the self-hosted tesseract runtime. Read after the rebuild in
+     * `packageList()` for the same reason `ssrBundle()` is: the vite plugin
+     * that writes these files runs on `buildStart`, so `npm run build:ssr`
+     * refreshes them, and reading earlier would inventory the previous build's
+     * copies.
+     *
+     * Every file in OCR_ASSETS is required. Listing the directory instead would
+     * let a partial copy through — three of four files present is a package
+     * that looks fine and a feature that does not work.
+     *
+     * @return list<string>|null
+     */
+    protected function ocrAssets(): ?array
+    {
+        $missing = array_values(array_filter(
+            self::OCR_ASSETS,
+            fn (string $path): bool => ! is_file(base_path($path)),
+        ));
+
+        if ($missing !== []) {
+            $this->error('Faltam assets do OCR — corre `npm run build`. Em falta:');
+
+            foreach ($missing as $path) {
+                $this->line('  '.$path);
+            }
+
+            return null;
+        }
+
+        return self::OCR_ASSETS;
     }
 
     /**

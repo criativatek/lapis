@@ -971,7 +971,17 @@ Manter `APP_ENV=production` para o Vite servir os assets compilados, não o dev 
 `npm run build` também gera `public/vendor/tesseract/` (worker, núcleo WASM
 e traineddata de português para a importação de caracterização por imagem —
 ver `docs/characterisation-ocr.md`), copiado de `node_modules` no próprio
-build, não committed. Enviar essa pasta juntamente com `public/build/`.
+build, não committed. **No fluxo canónico não é preciso enviá-la à mão**: desde
+a 0.152.0 o `lapis:build-package` inventaria-a como inventaria `public/build` e
+`bootstrap/ssr`, e recusa-se a criar o pacote se algum dos quatro ficheiros
+faltar. Só neste fluxo alternativo por SFTP/rsync é que a pasta tem de seguir
+explicitamente, juntamente com `public/build/`.
+
+O motivo de ser um erro e não um aviso, ao contrário do bundle de SSR: o
+`characterisation-image-extraction.ts` pede estes ficheiros por caminho
+absoluto (`/vendor/tesseract/...`), portanto um pacote sem eles não degrada
+para nada — a importação por imagem falha, num servidor onde, do ponto de vista
+do git, não falta ficheiro nenhum.
 
 ## Checklist pós-deploy
 
