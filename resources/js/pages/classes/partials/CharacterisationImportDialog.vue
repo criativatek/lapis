@@ -806,7 +806,16 @@ function chooseTable(index: number): void {
 // screen.
 const dialogContentClass = computed(() => {
     if (step.value === 'structural') {
-        return 'flex max-h-[92dvh] w-[95vw] max-w-[1500px] flex-col overflow-hidden p-4 sm:p-6';
+        // `sm:max-w-[1500px]` is NOT redundant with the unprefixed
+        // `max-w-[1500px]` beside it. DialogContent's own base class ends in
+        // `sm:max-w-lg`, and tailwind-merge only replaces a class from the
+        // SAME variant group — an unprefixed `max-w-*` never displaces a
+        // `sm:`-prefixed one, so both survived and `sm:max-w-lg` won at every
+        // width >= 640px. Measured in-browser: the reviewer stayed 512px wide
+        // at 1920px and at 1440px, showing 3 of 16 columns, while reading as
+        // already fixed in the source. The unprefixed one still does the work
+        // below the `sm` breakpoint, where `sm:max-w-lg` never applies.
+        return 'flex max-h-[92dvh] w-[95vw] max-w-[1500px] flex-col overflow-hidden p-4 sm:max-w-[1500px] sm:p-6';
     }
 
     return 'max-h-[85vh] overflow-y-auto sm:max-w-3xl';
