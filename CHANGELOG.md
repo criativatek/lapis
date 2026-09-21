@@ -27,13 +27,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ## [0.152.1] — 2026-09-21
 
-A importação multimodal que a 0.152.0 trouxe foi usada a sério, sobre a tabela
-verdadeira de uma escola, e partiu-se em sítios que nenhum teste tinha visto. A
-professora colou a tabela e leu «Nenhuma linha ficou pronta a importar — 0 de
-0», ao lado de um aviso a dizer que uma linha de agrupamento tinha sido
-ignorada. Pôs a mesma tabela num Excel e importou o ficheiro: apareceram linhas
-«Não encontrado», com texto que não correspondia a aluno nenhum, e não havia
-forma de as associar a ninguém.
+A importação multimodal que a 0.152.0 trouxe foi exercitada em produção sobre
+uma tabela verdadeira de uma escola, e partiu-se em sítios que nenhum teste
+tinha visto. A tabela colada devolveu «Nenhuma linha ficou pronta a importar —
+0 de 0», ao lado de um aviso a dizer que uma linha de agrupamento tinha sido
+ignorada. A mesma tabela, metida num Excel e importada como ficheiro, devolveu
+linhas «Não encontrado» com texto que não correspondia a aluno nenhum, e não
+foi possível levá-las até à confirmação.
 
 O que estas correções têm em comum é deixarem de perder coisas em silêncio.
 
@@ -41,7 +41,7 @@ O que estas correções têm em comum é deixarem de perder coisas em silêncio.
 - **A coluna que diz duas coisas ao mesmo tempo.** «Outras medidas/recursos /
   Observações» é o cabeçalho que as escolas escrevem, e nomeia um destino legal
   e o caderno de observações na mesma frase. Classificava só como medidas, e a
-  prosa da professora — «RTP (12/2020)», «Redução de turma» — era entregue ao
+  prosa escrita pela escola — «RTP (12/2020)», «Redução de turma» — era entregue ao
   resolutor de códigos legais, que a lia como uma fila de códigos que não
   conhecia. O texto ia parar a lado nenhum. A coluna passa a alimentar os dois
   destinos: os tokens que são medidas resolvem como medidas, e o texto chega à
@@ -71,12 +71,13 @@ O que estas correções têm em comum é deixarem de perder coisas em silêncio.
 
 ### Nota honesta sobre o «0 de 0»
 A causa exacta do «0 de 0» observado em produção com a tabela colada **não foi
-reproduzida**. As fixtures realistas construídas a partir da estrutura
-descrita — cabeçalho a dois níveis, «Apoios» fundida sobre quatro colunas,
-linhas de agrupamento, legenda no fim — atravessam correctamente o `.docx`, o
-`.xlsx` e a colagem do Word, e produzem os alunos reais. A hipótese de trabalho
-é que o que se leu como «0 de 0» era consequência da perda de conteúdo descrita
-acima, mas isso não está provado. O que esta versão garante é que, se voltar a
+reproduzida**. O ficheiro real nunca chegou a ser exercitado aqui: o que existe
+são fixtures construídas a partir da estrutura *descrita* dessa tabela —
+cabeçalho a dois níveis, «Apoios» fundida sobre quatro colunas, linhas de
+agrupamento, legenda no fim. Essas fixtures atravessam correctamente o `.docx`,
+o `.xlsx` e a colagem do Word, e devolvem os alunos da turma. Que o «0 de 0»
+tenha sido consequência da perda de conteúdo descrita acima é hipótese de
+trabalho, não conclusão. O que esta versão garante é que, se voltar a
 acontecer, o ecrã diz o que falhou em vez de um número sem explicação.
 
 ## [0.152.0] — 2026-09-20
