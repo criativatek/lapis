@@ -66,9 +66,28 @@ class BuildCharacterisationPreview
         $nameColumn = $this->columnFor($columns, ColumnRole::StudentName);
         $processColumn = $this->columnFor($columns, ColumnRole::SchoolNumber);
 
+        // §A: whether the header carried AT LEAST ONE column this class can
+        // ever put content into. When it did not, every row will legitimately
+        // fail hasContent() below for the SAME reason — the header, not any
+        // one student's row — and that must reach the response as a named
+        // structural fact rather than as a silent "0 de 0".
+        $hasRecognisedContentColumn = false;
+
+        foreach ($columns as $column) {
+            if ($column->role === ColumnRole::Measures || $column->role === ColumnRole::Resources || $column->role->section() !== null) {
+                $hasRecognisedContentColumn = true;
+
+                break;
+            }
+        }
+
         $rows = [];
+        $dataRowCount = 0;
+        $footerRowCount = 0;
 
         foreach ($grid->rows as $index => $row) {
+            $dataRowCount++;
+
             $name = $nameColumn === null ? '' : $grid->cell($row, $nameColumn->index);
             $processNumber = $processColumn === null ? null : ($grid->cell($row, $processColumn->index) ?: null);
 
@@ -76,7 +95,11 @@ class BuildCharacterisationPreview
                 // A row that identifies nobody is not a student with a missing
                 // name — it is a footer, a total, or a blank. Skipped, not
                 // reported as not-found, because «Total Alunos - 27» is not a
-                // child the teacher forgot to enrol.
+                // child the teacher forgot to enrol. Counted, not merely
+                // dropped, so the response can still say how many data rows
+                // existed even when none of them survive.
+                $footerRowCount++;
+
                 continue;
             }
 
@@ -105,7 +128,14 @@ class BuildCharacterisationPreview
             }
         }
 
-        return new CharacterisationPreview($columns, $rows, $nameColumn !== null || $processColumn !== null);
+        return new CharacterisationPreview(
+            columns: $columns,
+            rows: $rows,
+            identifiable: $nameColumn !== null || $processColumn !== null,
+            dataRowCount: $dataRowCount,
+            footerRowCount: $footerRowCount,
+            hasRecognisedContentColumn: $hasRecognisedContentColumn,
+        );
     }
 
     /**
