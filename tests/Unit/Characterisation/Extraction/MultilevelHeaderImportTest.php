@@ -3,6 +3,7 @@
 namespace Tests\Unit\Characterisation\Extraction;
 
 use App\Services\Characterisation\Import\ClassifyColumns;
+use App\Services\Characterisation\Import\ColumnRole;
 use App\Services\Characterisation\Import\Extraction\ExtractedCell;
 use App\Services\Characterisation\Import\Extraction\ExtractedRow;
 use App\Services\Characterisation\Import\Extraction\ExtractedTable;
@@ -12,6 +13,7 @@ use App\Services\Characterisation\Import\Extraction\NormalisedTable;
 use App\Services\Characterisation\Import\Extraction\NormaliseExtractedTable;
 use App\Services\Characterisation\Import\Extraction\SpreadsheetTableExtractor;
 use Illuminate\Http\UploadedFile;
+use Tests\Fixtures\Characterisation\CharacterisationFixture;
 use Tests\Fixtures\Characterisation\MultilevelHeaderFixture;
 use Tests\TestCase;
 
@@ -331,5 +333,93 @@ class MultilevelHeaderImportTest extends TestCase
 
         $names = array_map(fn ($row) => $result->grid->cell($row, 1), $result->grid->rows);
         $this->assertSame(['Ana Silva', 'Bruno Costa'], $names);
+    }
+
+    // ------------------------------------------------------------------
+    // THIRD DEFECT, one stage further: column 0 of the real table prints no
+    // label in EITHER header level, so header-text classification alone
+    // never made it StudentName — every row failed the "identifies nobody"
+    // check for the SAME structural reason, and the preview still ended at
+    // "0 de 0", now one step later than the header-recognition bug above.
+    // See ClassifyColumns::inferNameColumnFromContent() for the fix.
+    // ------------------------------------------------------------------
+
+    /**
+     * RED-BEFORE-GREEN, via the REAL HtmlTableExtractor entry point: the
+     * unlabelled name column (index 0) is inferred from its content, and the
+     * real students it names come through as StudentName-classified data.
+     */
+    public function test_the_unlabelled_name_column_is_inferred_via_html_and_students_come_through(): void
+    {
+        $result = $this->normalise($this->extractHtml());
+
+        $columns = (new ClassifyColumns)->classify($result->grid);
+        $this->assertSame(ColumnRole::StudentName, $columns[0]->role, 'Column 0, which prints no title in either header level, must be inferred as the name column.');
+        $this->assertTrue($columns[0]->inferredFromContent);
+
+        $names = array_map(fn ($row) => $result->grid->cell($row, 0), $result->grid->rows);
+        $this->assertSame($this->expectedNames(), $names);
+    }
+
+    /**
+     * The same fix, via the REAL xlsx entry point — the fixture provides
+     * both from the same source of truth, so a bug that only reproduces in
+     * one format cannot hide from this test.
+     */
+    public function test_the_unlabelled_name_column_is_inferred_via_xlsx_and_students_come_through(): void
+    {
+        $result = $this->normalise($this->extractXlsx());
+
+        $columns = (new ClassifyColumns)->classify($result->grid);
+        $this->assertSame(ColumnRole::StudentName, $columns[0]->role);
+        $this->assertTrue($columns[0]->inferredFromContent);
+
+        $names = array_map(fn ($row) => $result->grid->cell($row, 0), $result->grid->rows);
+        $this->assertSame($this->expectedNames(), $names);
+    }
+
+    /**
+     * The inference is never a silent guess: NormaliseExtractedTable must
+     * surface a warning naming what happened, so a teacher reviewing the
+     * import sees it was inferred rather than discovering it only if
+     * something later goes wrong.
+     */
+    public function test_the_inferred_name_column_produces_a_warning(): void
+    {
+        $result = $this->normalise($this->extractHtml());
+
+        $hasInferenceWarning = false;
+
+        foreach ($result->warnings as $warning) {
+            if (str_contains($warning, 'nome do aluno') && str_contains($warning, 'nomes')) {
+                $hasInferenceWarning = true;
+            }
+        }
+
+        $this->assertTrue($hasInferenceWarning, 'Expected a warning about the inferred name column. Got: '.implode(' | ', $result->warnings));
+    }
+
+    /**
+     * A table that DOES label its name column — CharacterisationFixture's
+     * own realistic shape, with "Aluno" printed on the header — must behave
+     * exactly as before this fallback existed: no inference, no warning
+     * about one.
+     */
+    public function test_a_labelled_name_column_produces_no_inference_and_no_warning(): void
+    {
+        $tables = (new HtmlTableExtractor)->extract(CharacterisationFixture::toWordClipboardHtml());
+        $this->assertCount(1, $tables);
+
+        $result = $this->normalise($tables[0]);
+
+        $columns = (new ClassifyColumns)->classify($result->grid);
+        $nameColumn = collect($columns)->firstWhere('role', ColumnRole::StudentName);
+
+        $this->assertNotNull($nameColumn);
+        $this->assertFalse($nameColumn->inferredFromContent, 'The header already named the student — content inference must never run.');
+
+        foreach ($result->warnings as $warning) {
+            $this->assertStringNotContainsString('foi selecionada por conter nomes', $warning);
+        }
     }
 }
