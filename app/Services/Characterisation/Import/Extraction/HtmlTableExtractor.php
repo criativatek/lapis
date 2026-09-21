@@ -249,11 +249,22 @@ class HtmlTableExtractor implements TableExtractor
     {
         $text = $this->walk($node);
 
-        // Collapse runs of blank lines left behind by nested block elements,
-        // and trim the ends — but never collapse a single internal "\n",
-        // which is the multiline content this method exists to preserve.
+        // A CELL NEVER CONTAINS A BLANK LINE. Every "\n" inside a cell is a
+        // line of a multiline observation and is preserved; a run of them is
+        // not content, it is Office's empty-paragraph markup showing through.
+        //
+        // This is also the only way to make the result deterministic across
+        // platforms, which is not a theoretical concern: Word writes an empty
+        // paragraph as `<o:p></o:p>`, and libxml disagrees with itself about
+        // it — the Linux build parses it as an element and emits a paragraph
+        // boundary, the Windows build drops it. The same cell therefore came
+        // out as "Participa.\nFalta pouco." on one machine and
+        // "Participa.\n\nFalta pouco." on the other, and CI failed on a
+        // difference that had nothing to do with the table being read.
+        // Collapsing the run removes the disagreement at its only honest
+        // point: an empty paragraph carries nothing either way.
         $text = preg_replace('/[ \t]+/u', ' ', $text) ?? $text;
-        $text = preg_replace('/\n{3,}/u', "\n\n", $text) ?? $text;
+        $text = preg_replace('/\n{2,}/u', "\n", $text) ?? $text;
 
         return trim($text);
     }
