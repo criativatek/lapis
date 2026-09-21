@@ -119,6 +119,59 @@ class CharacterisationRealisticTableImportTest extends TestCase
         $this->assertSame($this->expectedNames(), $names);
     }
 
+    /**
+     * The .xlsx sibling of the .docx test above: CharacterisationFixture::
+     * writeXlsx() builds the SAME realistic table — two-row header merged
+     * with mergeCells(), "Medidas"/"Apoio" spanning their sub-columns, group
+     * captions and a legend — through PhpSpreadsheet instead of PhpWord. The
+     * merge-aware path here is SpreadsheetTableExtractor reading
+     * Worksheet::getMergeCells(), not DocxTableExtractor's w:gridSpan, so
+     * this proves the same joinHeaderLevels()/ClassifyColumns fix holds for
+     * a genuinely different extractor.
+     */
+    #[Test]
+    public function the_realistic_xlsx_table_produces_the_real_students(): void
+    {
+        $path = sys_get_temp_dir().'/'.uniqid('realistic_').'.xlsx';
+        CharacterisationFixture::writeXlsx($path);
+
+        try {
+            $response = $this->actingAs($this->user)->postJson($this->previewUrl(), [
+                'file' => new UploadedFile($path, 'caracterizacao.xlsx', null, null, true),
+            ]);
+        } finally {
+            @unlink($path);
+        }
+
+        $response->assertOk()->assertJsonPath('source_kind', 'xlsx');
+
+        $names = array_map(fn (array $row) => $row['raw_name'], $response->json('preview.rows'));
+
+        $this->assertSame($this->expectedNames(), $names);
+
+        $this->assertNotContains(CharacterisationFixture::groupCaptionWithRtp(), $names);
+        $this->assertNotContains(CharacterisationFixture::groupCaptionWithoutRtp(), $names);
+
+        foreach (CharacterisationFixture::legendLines() as $legendLine) {
+            $this->assertNotContains($legendLine, $names);
+        }
+
+        $columns = collect($response->json('preview.columns'))->keyBy('header');
+
+        $this->assertSame('measures', $columns['Medidas MU']['role']);
+        $this->assertSame('universal', $columns['Medidas MU']['level']);
+
+        $this->assertSame('measures', $columns['Medidas MS']['role']);
+        $this->assertSame('selective', $columns['Medidas MS']['level']);
+
+        $this->assertSame('measures', $columns['Medidas MA']['role']);
+        $this->assertSame('additional', $columns['Medidas MA']['level']);
+
+        foreach (['Apoio P', 'Apoio M', 'Apoio Ing.', 'Apoio Outros'] as $header) {
+            $this->assertSame('resources', $columns[$header]['role'], "Column \"{$header}\" should classify as resources.");
+        }
+    }
+
     #[Test]
     public function the_word_clipboard_paste_produces_the_same_students(): void
     {
