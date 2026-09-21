@@ -125,6 +125,9 @@ type PreviewResponse = {
         rows: PreviewRow[];
         identifiable: boolean;
         tally: Record<string, number>;
+        data_row_count: number;
+        footer_row_count: number;
+        has_recognised_content_column: boolean;
     };
     source_kind: string;
     original_filename: string | null;
@@ -812,9 +815,48 @@ function canConfirm(state: RowState): boolean {
     return state.enrollmentUlid !== null && state.enrollmentUlid !== '';
 }
 
+// «Não encontrado»/«Ambíguo»: escolher um aluno no seletor era um gesto que
+// destravava a checkbox sem a marcar — quem escolhia o aluno ainda tinha de
+// dar um segundo passo, sem indicação de que faltava. Escolher UM aluno
+// concreto já é a decisão que a checkbox representa, por isso o próprio
+// gesto de escolher inclui a linha; voltar a «Escolher…» desinclui-a, porque
+// deixa de haver decisão nenhuma para confirmar.
+function onManualMatchChange(state: RowState, value: string | number | null): void {
+    state.enrollmentUlid = value === null ? null : String(value);
+    state.included = state.enrollmentUlid !== null && state.enrollmentUlid !== '';
+}
+
 const confirmableCount = computed(
     () => rows.value.filter((state) => state.included && canConfirm(state)).length,
 );
+
+// F9 continued: «0 de 0» sozinho não diz se a tabela estava vazia ou se
+// tinha linhas que nenhuma sobreviveu — e, quando tinha, não diz PORQUÊ. Isto
+// lê os números que o servidor já contou (data_row_count, footer_row_count,
+// has_recognised_content_column — ver BuildCharacterisationPreview::build())
+// em vez de adivinhar a partir do que chegou ao ecrã, precisamente porque o
+// que chegou ao ecrã é o que desapareceu.
+const zeroRowsReason = computed(() => {
+    const preview = previewData.value?.preview;
+
+    if (preview === undefined) {
+        return '';
+    }
+
+    if (preview.data_row_count === 0) {
+        return 'O ficheiro não tinha linhas de dados abaixo do cabeçalho.';
+    }
+
+    if (!preview.has_recognised_content_column) {
+        return `Havia ${preview.data_row_count} linha(s) de dados, mas nenhuma coluna de conteúdo foi reconhecida (caracterização, medidas ou apoios) — reveja os cabeçalhos do ficheiro.`;
+    }
+
+    if (preview.footer_row_count === preview.data_row_count) {
+        return 'Todas as linhas foram identificadas como rodapé ou totais, sem um aluno associado.';
+    }
+
+    return 'Ou o ficheiro não tinha linhas de dados reconhecíveis, ou todas foram ignoradas — veja os avisos acima, se os houver. Pode tentar outro formato, escolher outra tabela do mesmo documento ou carregar outro ficheiro.';
+});
 
 function submitImport(): void {
     if (previewData.value === null) {
@@ -1190,11 +1232,7 @@ function closeDialog(): void {
                          terem sobrevivido. -->
                     <div v-if="rows.length === 0" class="space-y-3 rounded-md border p-4 text-center">
                         <p class="text-sm font-medium">Nenhuma linha ficou pronta a importar.</p>
-                        <p class="text-xs text-muted-foreground">
-                            Ou o ficheiro não tinha linhas de dados reconhecíveis, ou todas foram ignoradas — veja os
-                            avisos acima, se os houver. Pode tentar outro formato, escolher outra tabela do mesmo
-                            documento ou carregar outro ficheiro.
-                        </p>
+                        <p class="text-xs text-muted-foreground">{{ zeroRowsReason }}</p>
                         <Button type="button" variant="outline" @click="backToInputStep">Escolher outro ficheiro</Button>
                     </div>
 
@@ -1227,7 +1265,8 @@ function closeDialog(): void {
                                 <Label :for="`match-${state.row.row_number}`">Associar a aluno</Label>
                                 <NativeSelect
                                     :id="`match-${state.row.row_number}`"
-                                    v-model="state.enrollmentUlid"
+                                    :model-value="state.enrollmentUlid"
+                                    @update:model-value="(value) => onManualMatchChange(state, value)"
                                 >
                                     <option :value="null">Escolher…</option>
                                     <option
@@ -1392,7 +1431,15 @@ function closeDialog(): void {
                     </div>
                 </div>
 
-                <DialogFooter class="min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <!-- F9 continued: com 0 linhas, o cartão acima já mostra a
+                     razão e a única ação útil («Escolher outro ficheiro»).
+                     Repetir aqui um botão «Confirmar importação» desativado,
+                     ao lado de "0 de 0", era um botão morto sem explicação —
+                     por isto este rodapé só aparece quando há alguma linha. -->
+                <DialogFooter
+                    v-if="rows.length > 0"
+                    class="min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
                     <p class="text-xs text-muted-foreground">
                         {{ confirmableCount }} de {{ rows.length }} linhas serão importadas.
                     </p>
