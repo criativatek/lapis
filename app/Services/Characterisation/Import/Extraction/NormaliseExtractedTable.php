@@ -254,6 +254,21 @@ class NormaliseExtractedTable
             // recomputed below, uniformly for both branches, from $bodyEntries
             // + $bodyKinds — so only the warnings and the per-row kinds are
             // taken from it here.
+            // JANELA N — ONE STUDENT IS ONE ROW, HOWEVER MANY PRINTED ROWS
+            // SHE OCCUPIES. In a workbook written by a teacher, a student
+            // whose «MS» or «Observações» runs to four lines is very often
+            // typed as four printed rows, with EVERY OTHER column of hers
+            // merged vertically across all four. expand() faithfully repeats
+            // those merged values down — which is right, a hole would shift
+            // her columns — but nothing afterwards ever put the four rows
+            // back together, so one child arrived in the preview as four
+            // near-identical candidates and the class below her was pushed
+            // out of the readable rows. Collapsing happens HERE, on the body
+            // only and after the header split, because the second header
+            // level is a continuation row by exactly the same structural
+            // test and must stay a header, not be folded into the first.
+            $bodyEntries = $this->collapseContinuationRows($bodyEntries, $table, $columnCount);
+
             [, $bodyWarnings, $bodyKinds] = $this->classifyBody($bodyEntries, $structuralCaptionRows);
         }
 
@@ -564,7 +579,7 @@ class NormaliseExtractedTable
                 $fragments[] = $text;
             }
 
-            $headers[] = implode(' ', $fragments);
+            $headers[] = $this->joinHeaderFragments($fragments);
         }
 
         return $headers;
@@ -673,6 +688,156 @@ class NormaliseExtractedTable
     }
 
     /**
+     * JANELA N: the body rows folded back into the logical row they belong
+     * to — see the call site for the defect this closes.
+     *
+     * A row is a CONTINUATION of the one that anchors it when most of its
+     * columns are not its own at all: they are covered by a cell anchored
+     * further up whose rowspan reaches down this far. The few columns it
+     * DOES own are the extra printed lines of a tall cell («MS» line 3,
+     * «Observações» line 2), and those are appended to the anchor's value
+     * for that column, newline-separated, rather than thrown away — a
+     * teacher who typed four lines gets four lines back.
+     *
+     * THE MAJORITY TEST IS WHAT SEPARATES THIS FROM A SPINE. A left column
+     * merged down the whole class («Turma», «8.º A») also reaches every row
+     * below it, but it covers ONE column out of fifteen while the row owns
+     * the other fourteen: those rows are separate students and must stay
+     * separate. Requiring the covered columns to outnumber the owned ones
+     * keeps a spine a spine — see MultilevelHeaderFixture::
+     * toSpineClipboardHtml(), which exists for precisely that case.
+     *
+     * @param  list<array{number: int, cells: list<string>, confidences?: list<?float>}>  $bodyEntries
+     * @return list<array{number: int, cells: list<string>, confidences?: list<?float>}>
+     */
+    private function collapseContinuationRows(array $bodyEntries, ExtractedTable $table, int $columnCount): array
+    {
+        $present = [];
+
+        foreach ($bodyEntries as $entry) {
+            $present[$entry['number']] = true;
+        }
+
+        $collapsed = [];
+        $positionOf = [];
+
+        foreach ($bodyEntries as $entry) {
+            $anchorNumber = $this->continuationAnchorOf($table, $entry['number'], $columnCount, $present);
+
+            if ($anchorNumber === null || ! isset($positionOf[$anchorNumber])) {
+                $positionOf[$entry['number']] = count($collapsed);
+                $collapsed[] = $entry;
+
+                continue;
+            }
+
+            $position = $positionOf[$anchorNumber];
+            $anchor = $collapsed[$position];
+            $cells = $anchor['cells'];
+            $ownColumns = $this->ownColumnsOf($table, $entry['number']) ?? [];
+
+            foreach (array_keys($ownColumns) as $column) {
+                // A column outside the matrix this table was expanded into
+                // is not a column at all — see MAX_COLUMNS and expand().
+                if (! array_key_exists($column, $cells) || $column >= $columnCount) {
+                    continue;
+                }
+
+                $addition = trim($entry['cells'][$column] ?? '');
+
+                if ($addition === '') {
+                    continue;
+                }
+
+                $existing = trim($cells[$column]);
+
+                if ($existing === $addition) {
+                    continue;
+                }
+
+                $cells[$column] = $existing === '' ? $addition : $existing.'
+'.$addition;
+            }
+
+            $anchor['cells'] = $cells;
+            $collapsed[$position] = $anchor;
+
+            // A continuation row shares the anchor's identity, so it also
+            // shares its row number for §38/§39 purposes: the teacher sees
+            // ONE row, and tagging it tags the whole student.
+            $positionOf[$entry['number']] = $position;
+        }
+
+        return $collapsed;
+    }
+
+    /**
+     * The row number a body row continues, or null when it starts one of its
+     * own — see collapseContinuationRows() for the majority test and the
+     * spine it deliberately excludes. `$present` restricts anchoring to rows
+     * that are in the body at all, so a row can never be folded into a
+     * header level or a blank row that was filtered out above it.
+     *
+     * @param  array<int, true>  $present
+     */
+    private function continuationAnchorOf(ExtractedTable $table, int $rowNumber, int $columnCount, array $present): ?int
+    {
+        $own = $this->ownColumnsOf($table, $rowNumber) ?? [];
+        $covered = [];
+        $anchorNumber = null;
+
+        foreach ($table->rows as $row) {
+            if ($row->index >= $rowNumber) {
+                continue;
+            }
+
+            foreach ($row->cells as $cell) {
+                if ($cell->rowspan <= 1 || $cell->row + $cell->rowspan - 1 < $rowNumber) {
+                    continue;
+                }
+
+                for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
+                    if ($c - 1 < $columnCount) {
+                        $covered[$c - 1] = true;
+                    }
+                }
+
+                // The LOWEST anchor wins: with a spine above a tall student,
+                // the student's own merged block is the row she belongs to,
+                // not the class-name cell that reaches past both of them.
+                $anchorNumber = $anchorNumber === null ? $cell->row : max($anchorNumber, $cell->row);
+            }
+        }
+
+        if ($anchorNumber === null || ! isset($present[$anchorNumber]) || count($covered) <= count($own)) {
+            return null;
+        }
+
+        return $anchorNumber;
+    }
+
+    /**
+     * JANELA N: a cell's text with every NON-BREAKING space turned into an
+     * ordinary one, and then trimmed.
+     *
+     * A table typed in Word and saved as .xlsx carries U+00A0 at the end of
+     * almost every cell — the space Word inserts to keep a line together.
+     * `trim()` does not remove it, because it is not whitespace as PHP
+     * counts whitespace, so «MU » is not «MU» and a column a teacher
+     * plainly labelled with a measure code was recognised as nothing at
+     * all. Normalised HERE, at the one place every source's cells become
+     * the matrix, so the grid the teacher reviews and the header the
+     * columns are classified from carry the same text.
+     *
+     * Only the hard spaces go. The text itself is never otherwise touched —
+     * a teacher's double space inside a sentence is hers.
+     */
+    private function withoutHardSpaces(string $text): string
+    {
+        return trim(str_replace([' ', ' ', ' '], ' ', $text));
+    }
+
+    /**
      * Every colspan/rowspan cell repeated across the cells it covers, so no
      * column ever shifts silently for the rows underneath a merge. Repetition
      * is deliberate: a hole here would misalign every later column for that
@@ -727,7 +892,7 @@ class NormaliseExtractedTable
                 for ($r = $cell->row; $r < $cell->row + $cell->rowspan; $r++) {
                     for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
                         if ($r - 1 >= 0 && $r - 1 < $totalRows && $c - 1 >= 0 && $c - 1 < $columnCount) {
-                            $matrix[$r - 1][$c - 1] = $cell->text;
+                            $matrix[$r - 1][$c - 1] = $this->withoutHardSpaces($cell->text);
                             $confidenceMatrix[$r - 1][$c - 1] = $cell->confidence;
                         }
                     }
@@ -742,6 +907,40 @@ class NormaliseExtractedTable
             'cells' => array_map('array_values', $matrix),
             'confidences' => array_map('array_values', $confidenceMatrix),
         ];
+    }
+
+    /**
+     * JANELA N: the fragments of one column's caption, joined — with a space,
+     * except where the fragment above ENDS IN A HYPHEN, which is a word the
+     * teacher broke across the two printed rows to make it fit («Tuto-» +
+     * «ria»). Joining those with a space would name the column «Tuto- ria»,
+     * which is not a column name anybody, or anything, recognises.
+     *
+     * Only a trailing hyphen is treated this way. «Coadju»/«vação» is the
+     * same break without the hyphen, and there is nothing in the cells to
+     * say so — guessing at it would join «Apoios»/«P» into «ApoiosP» just as
+     * confidently. A visible space in a caption the teacher can read and
+     * correct is a far smaller wrong than a wrongly glued one.
+     *
+     * @param  list<string>  $fragments
+     */
+    private function joinHeaderFragments(array $fragments): string
+    {
+        $joined = '';
+
+        foreach ($fragments as $fragment) {
+            if ($joined === '') {
+                $joined = $fragment;
+
+                continue;
+            }
+
+            $joined = str_ends_with($joined, '-')
+                ? mb_substr($joined, 0, -1).$fragment
+                : $joined.' '.$fragment;
+        }
+
+        return $joined;
     }
 
     /**
@@ -843,19 +1042,112 @@ class NormaliseExtractedTable
         // that out: a plain vertical spine never has colspan>1 in the header
         // row, only rowspan, so it no longer qualifies.
         $headerColspanColumns = $this->headerColspanColumns($table, $primary + 1);
+        $headerRowspanEndingHere = $this->headerRowspanColumnsEndingAt($table, $primary + 1, $belowRowNumber);
 
         if ($ownColumns !== null
             && $ownColumns !== []
             && count($ownColumns) < $columnCount
             && $primary + 1 < count($matrix)
             && ! isset($captionRowIndices[$primary + 1])
-            && $this->isSubsetOf($ownColumns, $headerColspanColumns)
-            && $this->looksLikeHeaderLevel($this->onlyOwnColumns($matrix[$primary + 1], $ownColumns))
+            && (
+                $this->isSubsetOf($ownColumns, $headerColspanColumns)
+                // JANELA N: the OTHER shape a two-level header really takes
+                // in a school's own workbook — a label typed across two
+                // printed rows («Coadju»/«vação», «Psico»/«logia»,
+                // «Medidas»/«3.º ciclo»), so the second level owns MOST
+                // columns instead of only the few a colspan subdivides.
+                // isSubsetOf() above can never accept that row: its own
+                // columns are not a subset of anything the primary row
+                // merged across horizontally, because the primary row
+                // mostly did not merge horizontally at all. The signal that
+                // IS present, and is exactly as structural, is that the two
+                // rows together form a CLOSED RECTANGLE — every column the
+                // second row does not own is covered by a cell of the
+                // primary row whose rowspan ENDS on this very row. See
+                // headerRowspanColumnsEndingAt() for why "ends here" is the
+                // load-bearing half of that and not a detail: it is what
+                // still keeps a left spine (a class name merged down the
+                // whole sheet, whose rowspan ends far below) from folding
+                // the first real student into the header — the F2 defect
+                // the subset rule was written for.
+                || $this->closesHeaderRectangle($ownColumns, $headerRowspanEndingHere, $columnCount)
+            )
+            && $this->looksLikeHeaderLevel($this->onlyOwnColumns($matrix[$primary + 1], $ownColumns), allowDigits: true)
         ) {
             $levels[] = ['index' => $primary + 1, 'ownColumns' => $ownColumns];
         }
 
         return $levels;
+    }
+
+    /**
+     * JANELA N: the 0-based columns covered by a cell of the PRIMARY header
+     * row whose rowspan ENDS EXACTLY on $candidateRowNumber — i.e. the
+     * columns whose single label sits on the row above and reaches down to
+     * the candidate row, and no further.
+     *
+     * "And no further" is the whole point. A left spine — a class name
+     * merged A1:A9 down the entire sheet — also covers the row below the
+     * header, which is precisely how the F2 defect folded the first real
+     * student into the header. Its rowspan does not END there, it passes
+     * through, so it never appears here; a header cell merged across the two
+     * printed rows of a two-line header does end there, and does.
+     *
+     * @return array<int, true>
+     */
+    private function headerRowspanColumnsEndingAt(ExtractedTable $table, int $primaryRowNumber, int $candidateRowNumber): array
+    {
+        $columns = [];
+
+        foreach ($table->rows as $row) {
+            if ($row->index !== $primaryRowNumber) {
+                continue;
+            }
+
+            foreach ($row->cells as $cell) {
+                if ($cell->rowspan <= 1 || $cell->row + $cell->rowspan - 1 !== $candidateRowNumber) {
+                    continue;
+                }
+
+                for ($c = $cell->column; $c < $cell->column + $cell->colspan; $c++) {
+                    $columns[$c - 1] = true;
+                }
+            }
+        }
+
+        return $columns;
+    }
+
+    /**
+     * JANELA N: whether the candidate row and the primary row above it close
+     * a rectangle — every one of the table's columns is either OWNED by the
+     * candidate row or covered by a primary-row cell whose rowspan ends on
+     * it (never one that merely passes through). A genuine second header
+     * level always closes: the two printed rows ARE the header block. An
+     * ordinary data row below a spine never does, because the columns it
+     * does not own are covered by a rowspan that continues past it.
+     *
+     * At least one covered column is required, so this can never accept a
+     * row simply because it happens to own every column — that row is a
+     * full, ordinary row, which is exactly what the caller's own
+     * `count($ownColumns) < $columnCount` guard already says.
+     *
+     * @param  array<int, true>  $ownColumns
+     * @param  array<int, true>  $coveredColumns
+     */
+    private function closesHeaderRectangle(array $ownColumns, array $coveredColumns, int $columnCount): bool
+    {
+        if ($coveredColumns === []) {
+            return false;
+        }
+
+        for ($column = 0; $column < $columnCount; $column++) {
+            if (! isset($ownColumns[$column]) && ! isset($coveredColumns[$column])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1012,7 +1304,7 @@ class NormaliseExtractedTable
      *
      * @param  list<string>  $row
      */
-    private function looksLikeHeaderLevel(array $row): bool
+    private function looksLikeHeaderLevel(array $row, bool $allowDigits = false): bool
     {
         $nonEmpty = array_values(array_filter($row, fn (string $cell) => trim($cell) !== ''));
 
@@ -1025,7 +1317,19 @@ class NormaliseExtractedTable
                 return false;
             }
 
-            if (preg_match('/\d/u', $cell) === 1) {
+            // JANELA N: a digit is disqualifying only where this test is the
+            // ONLY evidence — walking upward into what might be a school
+            // letterhead («2026/2027», «N.º de alunos: 24»). A level the
+            // structure has already proved (see closesHeaderRectangle()) is
+            // allowed one: «3.º ciclo» is a column caption, and refusing it
+            // for its 3 is what sent a real workbook's second header row into
+            // the table as a student. A four-digit year stays disqualifying
+            // either way — that is a letterhead wherever it appears.
+            if (preg_match('/\d{4}/u', $cell) === 1) {
+                return false;
+            }
+
+            if (! $allowDigits && preg_match('/\d/u', $cell) === 1) {
                 return false;
             }
 
@@ -1066,7 +1370,7 @@ class NormaliseExtractedTable
                 }
             }
 
-            $headers[] = implode(' ', $fragments);
+            $headers[] = $this->joinHeaderFragments($fragments);
         }
 
         return $headers;
