@@ -484,10 +484,18 @@ class MultilevelHeaderImportTest extends TestCase
     }
 
     /**
-     * The title row survives the round trip as a header row the teacher can
-     * still see — it is excluded from the JOIN, not deleted or re-classified.
+     * The title row survives the round trip as a row the teacher can still
+     * see — it is excluded from the JOIN, not deleted.
+     *
+     * JANELA L: it is no longer tagged kind='header'. A row above the header
+     * that headerLevels() did not choose as a LEVEL is not a header level,
+     * and calling it one is exactly what let a banner be joined back into
+     * every column name on the next request (see NormaliseExtractedTable's
+     * own comment at the $levelIndices split). It is tagged Legend instead:
+     * shown, ignored, and resubmittable without contradicting the pass that
+     * produced it.
      */
-    public function test_the_title_row_survives_the_round_trip_as_a_header_row(): void
+    public function test_the_title_row_survives_the_round_trip_as_a_visible_ignored_row(): void
     {
         $firstPass = $this->normalise($this->extractHtml());
         $secondPass = $this->normalise($this->resubmitAsExtractedTable($firstPass));
@@ -500,7 +508,7 @@ class MultilevelHeaderImportTest extends TestCase
         $this->assertNotEmpty($titleRows);
 
         foreach ($titleRows as $row) {
-            $this->assertSame('header', $row['kind']);
+            $this->assertSame('legend', $row['kind']);
         }
     }
 

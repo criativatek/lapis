@@ -161,6 +161,14 @@ class NormaliseExtractedTable
         // shown. $headers itself (the joined column captions) is unaffected.
         $headerEntries = [];
 
+        // JANELA L: the rows ABOVE the header that are not header levels —
+        // a title, a "Diretor de turma: … | N.º de alunos: 24" banner split
+        // into two or three merged blocks. Kept apart from $headerEntries so
+        // they reach §38's grid as Legend (ignored) rather than as
+        // kind='header'. See the comment at the assignment below for the
+        // round-trip defect that tagging them 'header' caused.
+        $aboveHeaderEntries = [];
+
         if ($explicitKinds !== []) {
             [$headers, $headerEntries, $bodyEntries, $bodyKinds, $bodyWarnings] = $this->splitPreClassified($entries, $explicitKinds, $columnCount);
             $headerWarnings = [];
@@ -203,7 +211,43 @@ class NormaliseExtractedTable
                 $headerEndIndex = $headerLevels[count($headerLevels) - 1]['index'];
                 $headers = $this->joinHeaderLevels($plainMatrix, $headerLevels, $columnCount);
                 $bodyEntries = array_slice($entries, $headerEndIndex + 1);
-                $headerEntries = array_slice($entries, 0, $headerEndIndex + 1);
+
+                // JANELA L — THE ROUND-TRIP DEFECT THIS SPLIT EXISTS FOR.
+                // Only the rows headerLevels() actually chose as LEVELS may
+                // be handed back as kind='header'. Everything else above the
+                // header was already excluded from joinHeaderLevels() right
+                // here — but a plain array_slice() used to sweep it into
+                // $headerEntries anyway, so it reached §38's grid tagged
+                // 'header' too.
+                //
+                // On the §39 round trip that tag is ALL splitPreClassified()
+                // has to go on: it joins every teacher-tagged header row into
+                // the column names. A banner this request had correctly
+                // ignored therefore came back on the NEXT request as part of
+                // every single header ("N.º de alunos: 24 Medidas MU"), which
+                // is enough to lose the student-name column outright — and a
+                // table with no name column answers «todas as linhas foram
+                // identificadas como rodapé ou totais» for a structural
+                // review the teacher had just approved as correct.
+                //
+                // isFullWidthCaptionShape() catches only the uniform,
+                // single-merge case of this; a banner in two or three blocks
+                // is not uniform, and by the time expand() has run it is not
+                // distinguishable from a genuine header level by shape alone.
+                // So the distinction is kept where it is still KNOWN — here,
+                // from headerLevels() itself — rather than re-derived later
+                // from cells that no longer carry it.
+                $levelIndices = array_column($headerLevels, 'index');
+
+                foreach (array_slice($entries, 0, $headerEndIndex + 1, preserve_keys: true) as $index => $entry) {
+                    if (in_array($index, $levelIndices, true)) {
+                        $headerEntries[] = $entry;
+
+                        continue;
+                    }
+
+                    $aboveHeaderEntries[] = $entry;
+                }
             }
 
             // classifyBody()'s own first return value (the Data-only cells) is
@@ -273,6 +317,18 @@ class NormaliseExtractedTable
             $structuralRows[] = [
                 'number' => $entry['number'],
                 'kind' => ExtractedRowKind::Header->value,
+                'cells' => array_slice($entry['cells'], 0, $columnCount),
+            ];
+        }
+
+        // JANELA L: shown to the teacher, and ignored — which is exactly
+        // what this request already did with them. Tagged Legend rather than
+        // Header so that resubmitting the grid unchanged reproduces THIS
+        // result instead of contradicting it.
+        foreach ($aboveHeaderEntries as $entry) {
+            $structuralRows[] = [
+                'number' => $entry['number'],
+                'kind' => ExtractedRowKind::Legend->value,
                 'cells' => array_slice($entry['cells'], 0, $columnCount),
             ];
         }
