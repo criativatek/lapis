@@ -528,6 +528,25 @@ class CharacterisationImportController extends Controller
             // classifying it itself rather than trusting a garbage string.
             $kind = ExtractedRowKind::tryFrom((string) ($rawRow['kind'] ?? '')) ?? ExtractedRowKind::Unknown;
 
+            // JANELA L §7: an OCR table may legitimately arrive unclassified
+            // — NormaliseExtractedTable is what classifies it. A table coming
+            // BACK from the structural review step may not: every row there
+            // carries the classification the teacher saw and approved, and
+            // that is the entire point of the step. A corrected resubmission
+            // whose row carries none has lost the one decision it exists to
+            // deliver, and silently re-guessing it is precisely what turns
+            // approved student rows into "rodapé ou totais" with nothing on
+            // screen to explain why. Named here as a structural error
+            // instead, never resolved into a default kind.
+            if ($kind === ExtractedRowKind::Unknown
+                && in_array($sourceType, [ExtractedTableSource::CorrectedDocx, ExtractedTableSource::CorrectedPastedHtml], true)) {
+                throw ValidationException::withMessages([
+                    'extracted_table' => __('A linha :number da tabela corrigida chegou sem classificação. Volte a rever a tabela reconhecida e tente de novo.', [
+                        'number' => (int) $rowIndex + 1,
+                    ]),
+                ]);
+            }
+
             // ExtractedRow's own index is 1-indexed too (see
             // HtmlTableExtractor's $rowIndex, which starts at 1).
             $rows[] = new ExtractedRow(index: (int) $rowIndex + 1, cells: $cells, kind: $kind);

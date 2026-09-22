@@ -25,6 +25,51 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.152.3] — 2026-09-22
+
+A revisão estrutural da importação de caracterização é **dois pedidos**, não
+um: o primeiro lê a tabela e propõe uma classificação por linha; o segundo
+devolve essa classificação — corrigida ou não — e espera a pré-visualização
+por aluno. Em produção, o primeiro passava e o segundo respondia «todas as
+linhas foram identificadas como rodapé ou totais» para a mesma tabela que
+acabara de ser aprovada no ecrã.
+
+A perda estava no que a palavra «cabeçalho» transportava. Tudo o que ficava
+acima do cabeçalho — o título, e sobretudo uma faixa partida em dois ou três
+blocos fundidos («Diretor de turma: …» | «N.º de alunos: 24»), que é o topo
+habitual de uma folha de caracterização real — era devolvido ao ecrã marcado
+como `cabeçalho`, apesar de o primeiro pedido o ter correctamente excluído dos
+nomes das colunas. No segundo pedido essa marca é tudo o que existe: cada
+linha marcada como cabeçalho é juntada aos nomes das colunas. A faixa voltava
+assim a entrar em todos os títulos («N.º de alunos: 24 Medidas MU»), o que
+chega para se perder a coluna do nome do aluno — e uma tabela sem coluna de
+nome não identifica ninguém em nenhuma das suas linhas.
+
+O caso de uma faixa de uma só célula a toda a largura já era apanhado pela
+forma (0.152.1); uma faixa em dois blocos não é uniforme e, depois de as
+fusões serem expandidas, é indistinguível de um nível de cabeçalho genuíno. A
+distinção passou a ser guardada onde ainda é conhecida — na própria detecção
+dos níveis — em vez de ser readivinhada mais tarde a partir de células que já
+não a transportam.
+
+### Corrigido
+- **Uma linha acima do cabeçalho que não é um nível de cabeçalho deixou de ser
+  devolvida como tal.** Continua visível na revisão estrutural, e continua a
+  poder ser reclassificada à mão, mas chega marcada como legenda — ignorada —
+  para que reenviar a tabela sem lhe tocar reproduza exactamente o resultado
+  do pedido que a produziu, em vez de o contradizer.
+- **Uma tabela corrigida sem classificação numa linha passa a ser recusada
+  pelo nome.** A ausência da decisão que a revisão estrutural existe para
+  entregar é um erro estrutural nomeado, nunca um valor por omissão — e muito
+  menos «rodapé».
+
+### Testes
+- Uma regressão que atravessa os **dois** pedidos, com o segundo construído a
+  partir da resposta do primeiro exactamente como o diálogo o constrói ao
+  clicar «Continuar» — em HTML de Word e em .xlsx, com a reclassificação
+  manual, a coluna ignorada e a recusa por linha sem classificação. Até aqui
+  cada pedido era testado sozinho, com uma carga escrita à mão pelo meio: era
+  precisamente aí que o defeito cabia.
 ## [0.152.2] — 2026-09-21
 
 A hipótese de trabalho da 0.152.1 confirmou-se: a tabela real de uma escola
