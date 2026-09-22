@@ -9,6 +9,7 @@ use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Services\Lessons\LessonNumbering;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -29,9 +30,20 @@ class ScheduleValidityReconciliationTest extends TestCase
 {
     use BuildsLessonFixtures, RefreshDatabase;
 
+    /**
+     * As datas deste ficheiro são absolutas (14–27/09/2026) e foram escritas
+     * contra o relógio de então. O código de produção compara-as com "hoje"
+     * — o `ends_on` que trava um tempo é `now()->subDay()` —, pelo que o
+     * resultado dependia do dia em que a suite corresse: a 22/09/2026 esse
+     * `ends_on` passou a cair exactamente sobre 21/09 e a suite ficou
+     * vermelha sem que nada no produto tivesse mudado. Fixar o relógio no dia
+     * para que os casos foram escritos torna-os determinísticos, e é aqui o
+     * único ponto por onde o tempo entra.
+     */
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo(CarbonImmutable::parse('2026-09-21 09:00:00', 'Europe/Lisbon'));
         $this->bootLessonFixtures();
     }
 
