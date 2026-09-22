@@ -25,6 +25,88 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.152.4] — 2026-09-22
+
+A tabela de medidas que uma professora enviou continuou a chegar errada à
+pré-visualização, tanto colada do Word como enviada em `.xlsx`. A estrutura
+real do ficheiro — inspeccionada localmente, nunca copiada para aqui — mostrou
+duas geometrias que esta importação nunca tinha visto, e que não eram um
+problema de correspondência de nomes nenhum.
+
+**A segunda linha de cabeçalho voltava como aluna.** Um cabeçalho de dois
+níveis já era reconhecido, mas só na forma em que a linha de baixo **subdivide**
+uma célula fundida da de cima («Apoios» a abrir em «P | M | Ing. | Outros»).
+No caderno desta escola os títulos estão escritos **partidos em duas linhas**
+para caberem — «Coadju»/«vação», «Psico»/«logia», «Medidas»/«3.º ciclo» — e a
+linha de baixo é dona da maior parte das colunas, não de quatro. Não havia
+subdivisão nenhuma para reconhecer.
+
+O que havia, e é tão estrutural quanto isso, é que as duas linhas **fecham um
+rectângulo**: cada coluna que a segunda linha não escreve está coberta por uma
+célula da primeira cuja fusão **termina exactamente ali**. É esse «termina
+exactamente ali» que continua a distinguir um cabeçalho de uma coluna-espinha
+fundida ao longo de toda a folha — essa atravessa a linha de baixo, não acaba
+nela, e é por isso que a primeira aluna nunca é confundida com um cabeçalho.
+Um algarismo num título deixou de desqualificar um nível que a estrutura já
+provou: «3.º ciclo» é o nome de uma coluna. Um ano com quatro algarismos
+continua a desqualificar, em qualquer direcção.
+
+**A primeira aluna voltava quatro vezes.** As suas «MS» e as suas
+«Observações» ocupam quatro linhas impressas, escritas uma por linha, com
+todas as outras colunas dela fundidas verticalmente ao longo das quatro. A
+expansão das fusões repetia — correctamente — os valores para baixo, mas nada
+voltava a juntar as quatro linhas numa só: uma criança aparecia como quatro
+candidatas quase iguais e a turma inteira abaixo dela era empurrada para fora
+das linhas legíveis. Uma linha cujas colunas são maioritariamente cobertas por
+uma fusão de cima passou a ser dobrada na linha que a ancora, e as poucas
+células que são dela própria são acrescentadas ao valor dessa coluna, linha a
+linha — quem escreveu quatro linhas recebe quatro linhas. A maioria é o que
+distingue isto de uma coluna-espinha, que cobre uma coluna em quinze e deixa
+as outras catorze a cada aluna.
+
+**Uma aluna numerada e discreta desaparecia como legenda.** «18 - Kevin Dias |
+MU b)» tem duas células preenchidas e o seu próprio número lê-se como a chave
+de um glossário seguida de « - », que é exactamente o padrão por que uma linha
+de legenda («MU - Medidas Universais») é reconhecida. O número de ordem de uma
+lista de turma passou a ser retirado antes de se perguntar se a célula nomeia
+uma pessoa — no único sítio onde a forma de um nome está definida, e não em
+cada chamador. Pelo mesmo motivo, uma turma numerada deixou de parecer uma
+tabela sem coluna de nomes.
+
+**Um título na célula do canto não é o papel de uma coluna.** «Medidas 3.º
+ciclo» fica por cima da coluna dos nomes e lê-se como um título de medidas, o
+que excluía a única coluna com alunos da inferência por conteúdo. Quando nada
+no cabeçalho identificou ninguém e a primeira passagem não encontrou nada, uma
+segunda passagem reconsidera qualquer coluna — mas só onde **todas** as células
+preenchidas lêem como nome, nunca uma maioria.
+
+**Um espaço que não era espaço deixava colunas por reconhecer.** Uma tabela
+escrita no Word e guardada em `.xlsx` traz um espaço inquebrável no fim de
+quase todas as células, e `trim()` não o remove porque não conta como espaço:
+«MU » não era «MU», e colunas que a professora rotulou com um código de medida
+não eram reconhecidas como nada. No ficheiro real isto sozinho valia três
+colunas de medidas. Passou a ser normalizado no único sítio onde as células de
+qualquer origem se tornam a matriz, para que a grelha que ela revê e o
+cabeçalho por que as colunas são classificadas digam o mesmo.
+A geometria real foi reproduzida numa fixture anonimizada — mesmas fusões,
+mesmas dimensões, mesmos níveis de cabeçalho, nomes inteiramente inventados —
+e o `.xlsx` e o HTML do Word dessa mesma tabela têm de dar a mesma tabela
+lógica. O round-trip dos dois pedidos é afirmado para ambos.
+
+### Corrigido
+
+- Um cabeçalho de dois níveis escrito com os títulos partidos entre as duas
+  linhas deixou de mandar a segunda linha para a tabela como aluna.
+- Uma aluna impressa ao longo de várias linhas fundidas voltou a ser uma só
+  linha, com o texto das células altas junto em vez de espalhado por
+  candidatas repetidas.
+- Uma aluna numerada com poucas células preenchidas deixou de ser lida como
+  linha de legenda.
+- Uma turma cuja coluna de nomes só tem um título por cima passou a ser
+  reconhecida pelo conteúdo quando nada mais identifica ninguém.
+- Os espaços inquebráveis que o Word deixa no fim das células deixaram de
+  impedir o reconhecimento das colunas que os trazem.
+
 ## [0.152.3] — 2026-09-22
 
 A revisão estrutural da importação de caracterização é **dois pedidos**, não

@@ -51,10 +51,22 @@ class CharacterisationStructuralRoundTripTest extends TestCase
         $organization = $this->user->personalOrganization();
 
         app(CurrentOrganization::class)->runFor($organization, function () {
-            foreach (MultilevelHeaderFixture::studentNames() as $name) {
+            foreach ($this->enrolledStudentNames() as $name) {
                 app(StudentEnrollmentService::class)->enrollNew($this->class, ['name' => $name]);
             }
         });
+    }
+
+    /**
+     * The class list this case enrols before request A — overridden by a
+     * subclass whose fixture has its OWN students (JANELA N), so matching
+     * has somebody real to find in both cases.
+     *
+     * @return list<string>
+     */
+    protected function enrolledStudentNames(): array
+    {
+        return MultilevelHeaderFixture::studentNames();
     }
 
     private function createClass(User $owner, string $label = '7.º A'): SchoolClass
@@ -79,7 +91,7 @@ class CharacterisationStructuralRoundTripTest extends TestCase
             ->firstOrFail();
     }
 
-    private function previewUrl(): string
+    protected function previewUrl(): string
     {
         return '/classes/'.$this->class->ulid.'/characterisation-imports/preview';
     }
@@ -93,7 +105,7 @@ class CharacterisationStructuralRoundTripTest extends TestCase
      * @param  array<int, string>  $kindOverrides  row number => kind ('ignore' drops the row)
      * @return array<string, mixed>
      */
-    private function correctedTableFrom(array $structuralRows, string $sourceType, array $kindOverrides = []): array
+    protected function correctedTableFrom(array $structuralRows, string $sourceType, array $kindOverrides = []): array
     {
         $rows = [];
 
@@ -139,7 +151,7 @@ class CharacterisationStructuralRoundTripTest extends TestCase
      * @param  array<string, mixed>  $body
      * @return array{0: TestResponse, 1: list<array{number: int, kind: string, cells: list<string>}>}
      */
-    private function requestA(array $body): array
+    protected function requestA(array $body): array
     {
         $response = $this->actingAs($this->user)->postJson($this->previewUrl(), $body);
         $response->assertOk();

@@ -85,6 +85,14 @@ class ClassifyColumns
     private const NAME_INFERENCE_MAX_CELL_LENGTH = 40;
 
     /**
+     * JANELA N: how many cells the unanimous second pass (see
+     * inferNameColumnFromContent()) needs before it will overrule a
+     * column's own header. Three is enough to rule out a coincidence and
+     * low enough for the smallest real class list this importer accepts.
+     */
+    private const NAME_INFERENCE_MIN_UNANIMOUS_CELLS = 3;
+
+    /**
      * @return list<ClassifiedColumn>
      */
     public function classify(TableGrid $grid): array
@@ -201,6 +209,35 @@ class ClassifyColumns
             $bestIndex = $column->index;
 
             break;
+        }
+
+        // JANELA N — A TITLE IN THE CORNER CELL IS NOT A COLUMN ROLE.
+        // The pass above never looks at a column whose header matched some
+        // other role, and it is right not to. But a real workbook prints
+        // its own TITLE in the top-left cell, above the column of names:
+        // «Medidas 3.º ciclo». That reads as a Measures caption, so the
+        // one column that actually holds the students was excluded from
+        // the inference for having a title rather than a label, and the
+        // whole table came back with nobody in it.
+        //
+        // The second pass therefore reconsiders columns of ANY role — but
+        // only when the first found nothing at all, only when no header
+        // anywhere identified a student (checked above), and only on a
+        // column where EVERY non-empty cell reads like a name, not merely
+        // a majority. A «MU a) b)» column cannot clear that bar; a column
+        // of twelve students can only fail it by not being one.
+        if ($bestIndex === null) {
+            foreach ($columns as $column) {
+                [$nameLike, $total] = $this->nameLikeCellStats($grid, $column->index);
+
+                if ($total < self::NAME_INFERENCE_MIN_UNANIMOUS_CELLS || $nameLike !== $total) {
+                    continue;
+                }
+
+                $bestIndex = $column->index;
+
+                break;
+            }
         }
 
         if ($bestIndex === null) {

@@ -20,9 +20,24 @@ namespace App\Services\Characterisation\Import;
  */
 class LooksLikePersonName
 {
+    /**
+     * JANELA N: the enumerator a class list prints in front of every name is
+     * stripped FIRST — «01 - Bento Quaresma», «15 – Alda Varela», «03. Duarte
+     * Alves». The digit veto below is what keeps a year or a grade out of
+     * this check, and it was also, silently, throwing away every student in
+     * a numbered class list: the column then looked like no name column at
+     * all, so an entire real table answered «todas as linhas foram
+     * identificadas como rodapé ou totais» with twelve perfectly readable
+     * students in it. Stripped here, in the ONE place the shape of a name
+     * is defined, rather than at each caller — see the class docblock.
+     *
+     * Only a leading run of at most three digits followed by a separator
+     * goes: enough for a class number, never enough for a year («2026/2027»
+     * has no separator after the fourth digit and stays disqualified).
+     */
     public static function check(string $cell): bool
     {
-        $trimmed = trim($cell);
+        $trimmed = trim((string) preg_replace('/^\d{1,3}\s*[-\x{2013}\x{2014}.)]\s*/u', '', trim($cell)));
 
         if ($trimmed === '' || preg_match('/\d/u', $trimmed) === 1) {
             return false;
