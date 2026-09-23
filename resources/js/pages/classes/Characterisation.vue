@@ -20,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import AddMeasureDialog from '@/pages/classes/partials/AddMeasureDialog.vue';
 import CharacterisationImportDialog from '@/pages/classes/partials/CharacterisationImportDialog.vue';
 
 type Revision = {
@@ -30,12 +31,21 @@ type Revision = {
     changed_labels: string[];
 };
 
-type SourceMeasure = {
+type Measure = {
     ulid: string;
     level_label: string | null;
-    code_label: string | null;
-    raw_token: string;
-    unresolved_annotations: string[];
+    code_label: string;
+    origin: string;
+    origin_label: string;
+    status_label: string;
+    started_on: string | null;
+    raw_token: string | null;
+};
+
+type SupportMeasureLevel = {
+    value: string;
+    label: string;
+    measures: { value: string; label: string }[];
 };
 
 type StudentSections = {
@@ -70,7 +80,8 @@ type Student = {
     has_characterisation: boolean;
     last_updated_at: string | null;
     updated_by: string | null;
-    source_measures: SourceMeasure[];
+    measures: Measure[];
+    unresolved_annotations: string[];
     revisions: Revision[];
 };
 
@@ -89,7 +100,8 @@ const props = defineProps<{
     };
     students: Student[];
     sections: { key: string; label: string }[];
-    can: { update: boolean };
+    supportMeasureLevels: SupportMeasureLevel[];
+    can: { update: boolean; addMeasure: boolean };
 }>();
 
 const dateTimeFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -180,6 +192,7 @@ const savedDrafts = reactive<Record<string, DraftSections>>(
 );
 
 const savingStudent = ref<string | null>(null);
+const studentSaveErrors = reactive<Record<string, string[]>>({});
 const historyOpen = reactive<Record<string, boolean>>({});
 
 function toggleHistory(enrollmentUlid: string): void {
@@ -188,14 +201,22 @@ function toggleHistory(enrollmentUlid: string): void {
 
 function saveStudent(student: Student): void {
     savingStudent.value = student.enrollment_ulid;
+    studentSaveErrors[student.enrollment_ulid] = [];
 
     router.put(
         `/classes/${props.schoolClass.ulid}/students/${student.enrollment_ulid}/characterisation`,
         { ...drafts[student.enrollment_ulid] },
         {
             preserveScroll: true,
+            // Só em sucesso: o rascunho passa a «gravado» e o cartão
+            // recolhe-se. Em erro, o Collapsible fica aberto e o texto
+            // escrito fica exatamente como estava — não se mexe em `drafts`.
             onSuccess: () => {
                 savedDrafts[student.enrollment_ulid] = { ...drafts[student.enrollment_ulid] };
+                openEnrollmentUlid.value = null;
+            },
+            onError: (errors) => {
+                studentSaveErrors[student.enrollment_ulid] = Object.values(errors);
             },
             onFinish: () => {
                 savingStudent.value = null;
@@ -205,6 +226,20 @@ function saveStudent(student: Student): void {
 }
 
 const importDialogOpen = ref(false);
+
+// --- Adicionar medida --------------------------------------------------
+
+const addMeasureFor = ref<Student | null>(null);
+
+function openAddMeasure(student: Student): void {
+    addMeasureFor.value = student;
+}
+
+function closeAddMeasure(value: boolean): void {
+    if (!value) {
+        addMeasureFor.value = null;
+    }
+}
 
 // --- Sair sem perder o que ainda não foi guardado --------------------------
 //
@@ -376,9 +411,9 @@ onBeforeUnmount(() => {
                                     </div>
                                 </div>
                                 <div class="flex shrink-0 items-center gap-2">
-                                    <Badge v-if="student.source_measures.length > 0" variant="secondary">
-                                        {{ student.source_measures.length }}
-                                        {{ student.source_measures.length === 1 ? 'medida de origem' : 'medidas de origem' }}
+                                    <Badge v-if="student.measures.length > 0" variant="secondary">
+                                        {{ student.measures.length }}
+                                        {{ student.measures.length === 1 ? 'medida associada' : 'medidas associadas' }}
                                     </Badge>
                                     <ChevronDown
                                         class="size-4 text-muted-foreground transition-transform"
@@ -398,29 +433,47 @@ onBeforeUnmount(() => {
                                 </p>
                             </div>
 
-                            <div
-                                v-if="student.source_measures.length > 0"
-                                class="space-y-2 rounded-md border border-dashed p-3"
-                            >
-                                <p class="text-xs font-medium text-muted-foreground">Medidas de origem</p>
-                                <ul class="space-y-1.5">
-                                    <li v-for="measure in student.source_measures" :key="measure.ulid" class="text-sm">
-                                        <span>{{ [measure.level_label, measure.code_label].filter(Boolean).join(' · ') || 'Sigla por confirmar' }}</span>
-                                        <span class="block text-xs text-muted-foreground italic">
-                                            o ficheiro indicava: {{ measure.raw_token }}
+                            <div class="space-y-2 rounded-md border border-dashed p-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="text-xs font-medium text-muted-foreground">Medidas associadas</p>
+                                    <Button
+                                        v-if="can.addMeasure"
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        class="h-7 px-2 text-xs"
+                                        @click="openAddMeasure(student)"
+                                    >
+                                        + Adicionar medida
+                                    </Button>
+                                </div>
+
+                                <p v-if="student.measures.length === 0" class="text-sm text-muted-foreground">
+                                    Sem medidas registadas.
+                                </p>
+
+                                <ul v-else class="space-y-1.5">
+                                    <li v-for="measure in student.measures" :key="`${measure.ulid}-${measure.code_label}`" class="text-sm">
+                                        <span>{{ [measure.level_label, measure.code_label].filter(Boolean).join(' · ') }}</span>
+                                        <span class="block text-xs text-muted-foreground">
+                                            {{ measure.origin_label }}
                                         </span>
-                                        <span v-if="measure.unresolved_annotations.length > 0" class="mt-1 flex flex-wrap gap-1">
-                                            <Badge
-                                                v-for="annotation in measure.unresolved_annotations"
-                                                :key="annotation"
-                                                variant="outline"
-                                                class="text-muted-foreground font-normal"
-                                            >
-                                                {{ annotation }}
-                                            </Badge>
+                                        <span v-if="measure.raw_token" class="block text-xs text-muted-foreground italic">
+                                            o ficheiro indicava: {{ measure.raw_token }}
                                         </span>
                                     </li>
                                 </ul>
+
+                                <span v-if="student.unresolved_annotations.length > 0" class="mt-1 flex flex-wrap gap-1">
+                                    <Badge
+                                        v-for="annotation in student.unresolved_annotations"
+                                        :key="annotation"
+                                        variant="outline"
+                                        class="text-muted-foreground font-normal"
+                                    >
+                                        {{ annotation }}
+                                    </Badge>
+                                </span>
                             </div>
 
                             <div class="grid gap-4">
@@ -434,6 +487,10 @@ onBeforeUnmount(() => {
                                     />
                                 </div>
                             </div>
+
+                            <p v-for="message in studentSaveErrors[student.enrollment_ulid] ?? []" :key="message" class="text-sm text-destructive">
+                                {{ message }}
+                            </p>
 
                             <p class="text-xs text-muted-foreground">
                                 Evite incluir dados pessoais que não sejam necessários para o acompanhamento
@@ -495,6 +552,16 @@ onBeforeUnmount(() => {
             v-model:open="importDialogOpen"
             :class-ulid="schoolClass.ulid"
             :students="students.map((student) => ({ ulid: student.enrollment_ulid, name: student.name, class_number: student.class_number }))"
+        />
+
+        <AddMeasureDialog
+            v-if="addMeasureFor !== null"
+            :open="addMeasureFor !== null"
+            :class-ulid="schoolClass.ulid"
+            :enrollment-ulid="addMeasureFor.enrollment_ulid"
+            :student-name="addMeasureFor.name"
+            :support-measure-levels="supportMeasureLevels"
+            @update:open="closeAddMeasure"
         />
 
         <!-- Saída, não gravação: esta página já grava por ação própria (o
