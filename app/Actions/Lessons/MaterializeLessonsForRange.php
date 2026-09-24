@@ -5,6 +5,7 @@ namespace App\Actions\Lessons;
 use App\Models\AcademicCalendarException;
 use App\Models\CancelledLessonOccurrence;
 use App\Models\Lesson;
+use App\Models\LessonOrigin;
 use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
@@ -221,6 +222,7 @@ class MaterializeLessonsForRange
 
                     $lessons->push(Lesson::query()->create($identity + [
                         'class_group_id' => $slot->class_group_id,
+                        'origin' => LessonOrigin::Schedule,
                         'ends_at' => $endsAt,
                         'status' => LessonStatus::Preparation,
                         'created_by' => $actor->id,

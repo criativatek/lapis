@@ -25,6 +25,49 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.154.2] — 2026-09-24
+
+Uma atividade retirada do Horário do Professor continuava a aparecer em Aulas
+e Sumários — «Por preparar», na sexta seguinte, numa hora em que o horário já
+mostrava outra coisa. A aula não era um fantasma do frontend nem uma cópia em
+cache: era uma linha real que tinha deixado de ter dono.
+
+`LessonScheduleController::destroy()` lia `$hasLessons` FORA da transação e sem
+bloqueio, e só depois decidia entre apagar o tempo ou fechá-lo. Entre essa
+leitura e o `delete()` cabia uma materialização — e cabe com facilidade, porque
+abrir Aulas e Sumários materializa a semana automaticamente, noutro separador
+que o professor nem tem de tocar. A FK `lessons.recurring_lesson_slot_id` é
+`nullOnDelete`, pelo que o hard delete não falhava: punha a aula recém-nascida
+a NULL e seguia. A partir daí a aula era órfã, e órfã quer dizer invisível:
+`ReconcileLessonsWithSlotValidity` só percorre aulas de tempos que ainda
+existem, e `WeeklyLessonsQuery` lê `lessons` sem qualquer ligação ao horário.
+Nenhuma alteração ao horário lhe voltava a tocar, para sempre.
+
+Três mudanças, e nenhuma delas apaga história:
+
+A leitura de `$hasLessons` passa a correr DENTRO da transação, depois de
+bloquear a turma e o tempo (a ordem turma→tempo que `update()` já usava, para
+não abrir um deadlock por outro lado). Um tempo com aulas nunca é apagado:
+é fechado, e as suas aulas continuam a apontar para ele.
+
+As aulas passam a dizer de onde vieram — `lessons.origin`, `schedule` ou
+`manual`. Sem isto uma órfã por eliminação era indistinguível de uma aula
+inserida à mão, e as duas só se pareciam por acidente: ambas com a FK a NULL.
+
+A reconciliação passa a ver as órfãs da turma. Remove apenas as de origem
+`schedule`, FUTURAS e VAZIAS pelo critério que já existia (`carriesContent()`):
+sem resultado, não lecionadas, sem sumário, sem plano e sem uma única linha de
+assiduidade, nem rascunho. Sumários, faltas, preparação guardada, aulas
+lecionadas, aulas passadas e aulas manuais ficam sempre, e continuam a ser
+contadas em `preserved`.
+
+O backfill da coluna é deliberadamente conservador: as aulas que hoje já têm a
+FK a NULL nascem `manual`. Não se sabe, em retrospetiva, quais delas foram
+órfãs por este defeito e quais foram inseridas pelo professor — e a migração
+que adivinhasse errado apagaria trabalho. As órfãs que já existem continuam a
+aparecer, e o professor remove-as à mão; o que esta versão garante é que não
+nascem mais.
+
 ## [0.154.1] — 2026-09-24
 
 O servidor de SSR escutava em `0.0.0.0`. O único cliente dele é o Laravel na

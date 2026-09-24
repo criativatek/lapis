@@ -9,6 +9,7 @@ use App\Models\ClassGroupMembership;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
+use App\Models\LessonOrigin;
 use App\Models\LessonPlan;
 use App\Models\LessonSummary;
 use App\Models\Organization;
@@ -356,6 +357,7 @@ class WriteLessons
                     'ulid' => $this->writableUlid($row), 'class_id' => $classId,
                     'class_group_id' => $groupResolution['id'],
                     'recurring_lesson_slot_id' => $slotResolution['id'],
+                    'origin' => $slotResolution['id'] !== null ? LessonOrigin::Schedule : LessonOrigin::Manual,
                     'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
                     'lesson_unit_key' => $row['lesson_unit_key'],
                     'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
