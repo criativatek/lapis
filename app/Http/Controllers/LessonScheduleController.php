@@ -233,24 +233,21 @@ class LessonScheduleController extends Controller implements HasMiddleware
         $this->refuseDuringImpersonation($request);
 
         $timezone = $this->currentOrganization->get()->timezone;
-        $hasLessons = $recurringLessonSlot->lessons()->exists();
 
         if (! $recurringLessonSlot->requiresVersioning($timezone)) {
-            if (! $hasLessons) {
-                $recurringLessonSlot->delete();
-
-                return back();
-            }
-
-            // A slot that already has Lessons materialized under it — future
-            // ones materialized ahead of time, or a not-yet-started slot with
-            // no RELEVANT history but that already produced empty preparation
-            // Lessons — never hard-deletes: that would either hit the FK's
-            // nullOnDelete/restrict behaviour or, worse, silently orphan
-            // materialized data. Close it instead, and LOCK THE CLASS FIRST
-            // (same order `update()` and `reconciled()` already use) so a
-            // concurrent edit of the same slot cannot form the opposite
-            // waits-for edge and deadlock.
+            // `$hasLessons` NUNCA é lido fora da transação. Lido cedo e sem
+            // bloqueio, uma materialização concorrente da mesma turma — outro
+            // separador em "Aulas e Sumários", que materializa sozinha ao
+            // abrir a semana (LessonWeekController::index()) — podia criar a
+            // aula DEPOIS dessa leitura e ANTES do hard delete: o slot
+            // desaparecia do Horário mas a FK `nullOnDelete` deixava a aula
+            // recém-nascida órfã (`recurring_lesson_slot_id = NULL`),
+            // invisível a esta mesma ação daí em diante e presa para sempre
+            // em "Aulas e Sumários" (caso real: "AE 8.º F Experiência").
+            // A leitura corre agora DENTRO da transação, DEPOIS do bloqueio
+            // — turma primeiro, tempo depois, a mesma ordem já usada no resto
+            // do controlador — para que nada consiga materializar por baixo
+            // dela entre a leitura e o delete.
             return DB::transaction(function () use ($recurringLessonSlot, $timezone): RedirectResponse {
                 SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
 
@@ -260,6 +257,18 @@ class LessonScheduleController extends Controller implements HasMiddleware
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                if (! $locked->lessons()->exists()) {
+                    $locked->delete();
+
+                    return back();
+                }
+
+                // A slot that already has Lessons materialized under it — future
+                // ones materialized ahead of time, or a not-yet-started slot with
+                // no RELEVANT history but that already produced empty preparation
+                // Lessons — never hard-deletes: that would either hit the FK's
+                // nullOnDelete/restrict behaviour or, worse, silently orphan
+                // materialized data. Close it instead.
                 $locked->update(['ends_on' => $this->closesOnForHardStop($locked, $timezone)]);
 
                 return $this->reconciled(back(), $locked->class_id);

@@ -3,6 +3,7 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonOrigin;
 use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Services\Lessons\LessonNumbering;
@@ -99,6 +100,47 @@ class ReconcileLessonsWithSlotValidity
                     $lesson->delete();
                     $removed++;
                 }
+            }
+
+            // O PONTO CEGO DA RECONCILIAÇÃO ACIMA: o `foreach` só vê aulas
+            // com `recurring_lesson_slot_id = $slot->id` — uma aula ÓRFÃ
+            // (FK NULL) não pertence a slot nenhum e nunca é revisitada por
+            // ele, ainda que tenha nascido do horário. Isto acontecia quando
+            // `LessonScheduleController::destroy()` fazia um hard delete
+            // sobre um slot que, por uma corrida, já tinha uma Lesson
+            // materializada por baixo — a FK `nullOnDelete` orfanava-a em vez
+            // de a apagar. Esse hard delete já lê `$hasLessons` sob bloqueio
+            // (ver destroy()), por isso a corrida está fechada DAQUI PARA A
+            // FRENTE; esta passagem cobre o resto: o estado que já ficou
+            // órfão antes da correção, e qualquer outro caminho futuro que
+            // deixe a mesma marca.
+            //
+            // Só `origin = schedule`: uma órfã MANUAL nunca nasceu de um
+            // tempo do horário — apagá-la seria apagar uma aula que o
+            // professor pôs ali de propósito. Só FUTURA: uma órfã passada é
+            // história, ainda que vazia — não se reescreve o que já
+            // aconteceu só porque perdeu o ponteiro para o slot. Só VAZIA
+            // (`carriesContent()`, o MESMO critério do resto desta ação):
+            // sumário, plano, faltas ou lecionada protegem-na tal como
+            // protegem qualquer outra.
+            $orphaned = Lesson::query()
+                ->where('class_id', $classId)
+                ->whereNull('recurring_lesson_slot_id')
+                ->where('origin', LessonOrigin::Schedule)
+                ->where('starts_at', '>=', CarbonImmutable::now(self::TIMEZONE))
+                ->withExists(['summary', 'plan', 'attendances'])
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($orphaned as $lesson) {
+                if ($this->carriesContent($lesson)) {
+                    $preserved++;
+
+                    continue;
+                }
+
+                $lesson->delete();
+                $removed++;
             }
 
             if ($removed > 0) {

@@ -3,6 +3,7 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonOrigin;
 use App\Models\LessonStatus;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -214,6 +215,7 @@ class InsertLessonIntoSequence
             'class_id' => $class->getKey(),
             'class_group_id' => $classGroupId,
             'recurring_lesson_slot_id' => $plan['insertion']['slot_id'],
+            'origin' => LessonOrigin::Schedule,
             'starts_at' => $plan['insertion']['starts_at'],
             'ends_at' => $plan['insertion']['ends_at'],
             'status' => LessonStatus::Preparation,

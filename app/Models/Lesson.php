@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $class_id
  * @property int|null $class_group_id
  * @property int|null $recurring_lesson_slot_id
+ * @property LessonOrigin $origin `schedule` (nasceu de um tempo do horário — mesmo que `recurring_lesson_slot_id` esteja NULL por uma órfã) ou `manual` (nunca teve tempo do horário a produzi-la); ver 2026_11_13_000100_add_origin_to_lessons_table
  * @property Carbon $starts_at
  * @property Carbon|null $ends_at
  * @property int|null $lesson_number
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $created_by nullable desde 2026-11-10 (importação de backup — ver 2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author); nunca `null` numa aula criada pela própria aplicação
  * @property-read int|null $absent_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'origin', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -60,6 +61,7 @@ class Lesson extends Model
             'lesson_number' => 'integer',
             'status' => LessonStatus::class,
             'outcome' => LessonOutcome::class,
+            'origin' => LessonOrigin::class,
             'outcome_reason' => TeacherAbsenceReason::class,
             'outcome_recorded_at' => 'datetime',
             'attendance_recorded_at' => 'datetime',
