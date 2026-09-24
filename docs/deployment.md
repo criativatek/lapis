@@ -898,11 +898,106 @@ serviço parado, `/planos` responde 200 com 13,8 KB.
 | Bundle | `bootstrap/ssr/ssr.js` (viaja no pacote; `ssr.noExternal` no `vite.config.ts` mete as dependências lá dentro, por isso **não** é preciso `node_modules` no servidor) |
 | Serviço | `/etc/systemd/system/lapis-ssr.service`, `Restart=always`, `enabled` |
 | Registo | `/home/lapis/logs/ssr.log` |
-| Porta | 13714, só localhost — o ufw tem `deny 13714/tcp` explícito |
+| Porta | 13714, em `127.0.0.1` — o próprio processo só liga ao loopback (desde 0.154.1) |
 | Interruptor | `INERTIA_SSR_ENABLED` no `.env` |
 
 O Node do sistema continua a ser o 12 e não foi tocado; o 22 vive na conta
 `lapis` e é usado só por este serviço.
+
+### Endereço de escuta — loopback, e porquê isso é do código (desde 0.154.1)
+
+O único cliente do SSR é o Laravel na mesma máquina: `config/inertia.php`
+aponta para `http://127.0.0.1:13714` e não há outro consumidor legítimo.
+Até à 0.154.1 o processo escutava em `0.0.0.0`, ou seja em todas as
+interfaces do VPS, e `/render` e `/shutdown` não autenticam ninguém — um
+aceita JSON e corre componentes sobre ele, o outro mata o processo. O que
+estava entre isso e a Internet era só a firewall.
+
+Desde a 0.154.1 o endereço sai de `resolveListenAddress()`
+(`resources/js/ssr/server.ts`), lido do ambiente pelo ponto de entrada
+(`resources/js/ssr.ts`):
+
+| Variável | Omissão | Para quê |
+|---|---|---|
+| `INERTIA_SSR_HOST` | `127.0.0.1` | Só se o Node alguma vez tiver de correr noutra máquina. **Produção não define nenhuma das duas.** |
+| `INERTIA_SSR_PORT` | `13714` | Idem. Tem de bater certo com `config/inertia.php`. |
+
+Um valor em branco ou inválido volta ao loopback, nunca a um endereço
+genérico. Se algum dia for preciso pôr o host noutra coisa, isso passa a
+exigir uma fronteira de rede própria — deixa de haver uma camada implícita.
+
+**Arranque.** `/etc/systemd/system/lapis-ssr.service` corre
+`php artisan inertia:start-ssr`, que arranca `node bootstrap/ssr/ssr.js` — o
+build de produção deste mesmo ficheiro. A unidade NÃO está versionada neste
+repositório: vive só no VPS. O bundle tem o endereço lá dentro, por isso
+**uma release nova só passa a escutar em loopback depois de o serviço ser
+reiniciado** (o reinício por deploy já é obrigatório, pelo bundle em
+memória).
+
+**Confirmar o endereço efetivo de escuta** — depois do reinício, e é isto que
+decide, não `systemctl is-active`:
+
+```bash
+ssh lapis-prod 'ss -ltnp | grep 13714'
+# Esperado: LISTEN ... 127.0.0.1:13714 ...
+# Mau:      LISTEN ... 0.0.0.0:13714 ... (bundle antigo — o serviço não foi reiniciado)
+```
+
+E que o Laravel continua a falar com ele:
+
+```bash
+ssh lapis-prod 'curl -s -o /dev/null -w "%{http_code}
+" http://127.0.0.1:13714/health'   # 200
+curl -s https://lapispro.com/ | grep -c "<h1"                                              # >= 1
+```
+
+**A firewall continua a ser precisa.** É a segunda camada, não a primeira, e
+protege o que o loopback não cobre (outro processo na máquina, um túnel, uma
+regra de rede do fornecedor). **Nada neste repositório verifica a firewall, e
+à data desta entrada a existência da regra `ufw deny 13714/tcp` NÃO está
+confirmada** — a porta foi observada como filtrada a partir do exterior, o
+que é compatível com a regra existir e também com uma regra do fornecedor.
+Ver «Auditoria de exposição da porta 13714» abaixo.
+
+**Rollback.** A alteração é só o bundle: repor o pacote da release anterior
+(`bootstrap/ssr/`) e `sudo systemctl restart lapis-ssr` devolve o
+comportamento antigo. Para manter a release e voltar temporariamente a
+escutar em todas as interfaces — o que não deve ser preciso e não deve ficar
+— bastaria `INERTIA_SSR_HOST=0.0.0.0` no ambiente do serviço; fica aqui
+escrito para não ser descoberto à pressa.
+
+### Auditoria de exposição da porta 13714 (só leitura, para o administrador do VPS)
+
+Nenhum destes comandos altera nada. Pedem-se ao administrador porque a conta
+de deploy não tem `sudo` para o ufw — e esse limite não se contorna.
+
+```bash
+# 1. Endereço efetivo de escuta (o que decide). Esperado: 127.0.0.1:13714.
+sudo ss -ltnp | grep 13714
+
+# 2. Estado real do UFW. Esperado: "Status: active".
+sudo ufw status verbose
+
+# 3. A regra específica. Esperado: uma linha com 13714 — ou NENHUMA, e nesse
+#    caso a firewall nunca a teve e o que filtrava era outra coisa.
+sudo ufw status numbered | grep 13714
+
+# 4. A tabela real, caso o ufw e o que está aplicado divirjam.
+sudo iptables -S | grep 13714
+
+# 5. Outros processos a publicar a porta (um túnel, um proxy, um container).
+sudo ss -ltnp | grep -E '13714|node'
+sudo docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep 13714
+```
+
+Fora da máquina, há ainda a firewall do fornecedor do VPS (painel Hetzner /
+Contabo / o que estiver em uso), que não aparece em nenhum comando acima:
+**verificar no painel** se existe alguma regra de entrada que cubra a 13714 e
+registar o que lá estiver.
+
+O resultado de cada ponto deve ser registado com data. Até existir esse
+registo, a segunda camada **não** está confirmada — e a primeira (o loopback)
+passa a ser confirmável pelo ponto 1.
 
 ### Que páginas vão ao servidor (desde 0.153.0)
 

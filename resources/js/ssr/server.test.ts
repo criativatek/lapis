@@ -10,12 +10,23 @@
  * die), the answer is well-formed JSON, and the log line says where — with
  * a timestamp and the release — and never what.
  */
+import { readFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { App } from 'vue';
-import { createRenderErrorCollector, createSsrServer, readBody, routeOnly, sourceLocation } from './server';
+import {
+    SSR_DEFAULT_HOST,
+    SSR_DEFAULT_PORT,
+    createRenderErrorCollector,
+    createSsrServer,
+    readBody,
+    resolveListenAddress,
+    routeOnly,
+    sourceLocation,
+} from './server';
 import type { InertiaPage, SsrLogEntry } from './server';
 
 type Reply = { status: number; body: string };
@@ -115,6 +126,22 @@ beforeEach(async () => {
 afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
 });
+
+/** A bare GET, used to prove a socket is NOT reachable at a given address. */
+function getAt(host: string, at: number, path: string): Promise<Reply> {
+    return new Promise((resolve, reject) => {
+        const req = httpRequest({ host, port: at, path, method: 'GET', timeout: 2000 }, (res) => {
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk: string) => (body += chunk));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+        });
+
+        req.on('timeout', () => req.destroy(new Error('timed out')));
+        req.on('error', reject);
+        req.end();
+    });
+}
 
 describe('the SSR server', () => {
     it('renders a page and answers with head and body', async () => {
@@ -365,5 +392,88 @@ describe('routeOnly', () => {
         expect(routeOnly('')).toBeNull();
         expect(routeOnly(undefined)).toBeNull();
         expect(routeOnly(42)).toBeNull();
+    });
+});
+
+/**
+ * The listen address, asserted on the process that actually runs — not only
+ * on the constant. Until 0.154.1 this server bound `0.0.0.0`: an
+ * unauthenticated `/render` and `/shutdown` on every interface of the VPS,
+ * with the firewall as the only thing in front of them. The firewall is not
+ * in this repository and cannot be asserted here; the bind address can.
+ */
+describe('resolveListenAddress', () => {
+    it('is loopback and 13714 with nothing set', () => {
+        expect(resolveListenAddress({})).toEqual({ host: '127.0.0.1', port: 13714 });
+        expect(SSR_DEFAULT_HOST).toBe('127.0.0.1');
+        expect(SSR_DEFAULT_PORT).toBe(13714);
+    });
+
+    it('never falls back to a wildcard address', () => {
+        for (const env of [{}, { INERTIA_SSR_HOST: '' }, { INERTIA_SSR_HOST: '   ' }, { INERTIA_SSR_HOST: undefined }]) {
+            expect(resolveListenAddress(env).host).toBe('127.0.0.1');
+        }
+    });
+
+    it('takes an explicit host and port when one is configured', () => {
+        expect(resolveListenAddress({ INERTIA_SSR_HOST: '10.0.0.5', INERTIA_SSR_PORT: '9001' })).toEqual({ host: '10.0.0.5', port: 9001 });
+    });
+
+    it('ignores a port that is not a usable number', () => {
+        for (const value of ['', 'nonsense', '0', '-1', '65536']) {
+            expect(resolveListenAddress({ INERTIA_SSR_PORT: value }).port).toBe(13714);
+        }
+    });
+});
+
+describe('the listening socket', () => {
+    it('binds only the loopback interface and still answers there', async () => {
+        const { host } = resolveListenAddress({});
+        const loopback = createSsrServer({ renderPage, release: '0.154.1', log: () => {} });
+
+        await new Promise<void>((resolve) => loopback.listen(0, host, resolve));
+
+        const address = loopback.address() as AddressInfo;
+
+        try {
+            expect(address.address).toBe('127.0.0.1');
+            expect(address.address).not.toBe('0.0.0.0');
+
+            // The real client: Laravel, over HTTP, on this machine.
+            const previous = port;
+            port = address.port;
+
+            try {
+                const reply = await post('/render', [JSON.stringify({ ...fictitiousPage, component: 'Welcome' })]);
+
+                expect(reply.status).toBe(200);
+                expect(JSON.parse(reply.body).body).toBe('<div>Welcome</div>');
+            } finally {
+                port = previous;
+            }
+
+            // And nothing else: a socket bound to 127.0.0.1 does not accept a
+            // connection addressed to this machine's routable IP. Skipped when
+            // the runner has no non-loopback IPv4 address to try.
+            const external = Object.values(networkInterfaces())
+                .flat()
+                .find((each) => each !== undefined && each.family === 'IPv4' && !each.internal);
+
+            if (external !== undefined) {
+                await expect(getAt(external.address, address.port, '/health')).rejects.toBeTruthy();
+            }
+        } finally {
+            await new Promise<void>((resolve) => loopback.close(() => resolve()));
+        }
+    });
+
+    it('is what the production entry point asks for', () => {
+        const entry = readFileSync(new URL('../ssr.ts', import.meta.url), 'utf8');
+
+        // The bind address lives in ONE place. A literal host back in the
+        // entry point is how this regressed into production in the first
+        // place, and would not be caught by any assertion above.
+        expect(entry).toContain('resolveListenAddress(process.env)');
+        expect(entry).not.toContain('0.0.0.0');
     });
 });

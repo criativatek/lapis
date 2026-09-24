@@ -2,7 +2,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { renderToString } from 'vue/server-renderer';
 import type * as VueServerRenderer from 'vue/server-renderer';
 import { formatTitle, resolveLayout } from '@/inertia';
-import { createRenderErrorCollector, createSsrServer } from '@/ssr/server';
+import { createRenderErrorCollector, createSsrServer, resolveListenAddress } from '@/ssr/server';
 import type { InertiaPage } from '@/ssr/server';
 
 /**
@@ -17,10 +17,12 @@ import type { InertiaPage } from '@/ssr/server';
  * only those, and never the authenticated shell.
  *
  * Runs as `php artisan inertia:start-ssr` (`node bootstrap/ssr/ssr.js`, a
- * production build with `import.meta.env.PROD` true), on port 13714
- * (config/inertia.php). When that process is down Inertia falls back to
- * client rendering, so a stopped SSR server is a slower crawl, never a
- * broken page. Built by `npm run build:ssr` into bootstrap/ssr/, which is
+ * production build with `import.meta.env.PROD` true), on 127.0.0.1:13714
+ * — loopback only, because Laravel on the same machine is the only client
+ * (config/inertia.php) and `/render` and `/shutdown` ask nobody who they
+ * are; see `resolveListenAddress` in resources/js/ssr/server.ts. When that
+ * process is down Inertia falls back to client rendering, so a stopped SSR
+ * server is a slower crawl, never a broken page. Built by `npm run build:ssr` into bootstrap/ssr/, which is
  * gitignored and travels in the release package like public/build.
  *
  * This file deliberately does NOT leave a bare `createInertiaApp(...)` for the
@@ -57,10 +59,10 @@ if (import.meta.env.PROD) {
     // define is ever missing: a stopped SSR server is worse than an
     // unlabelled log line.
     const release = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'unknown';
-    const port = 13714;
+    const { host, port } = resolveListenAddress(process.env);
 
-    createSsrServer({ renderPage, release }).listen({ port, host: '0.0.0.0' }, () => {
-        console.log(`Inertia SSR server started on port ${port}.`);
+    createSsrServer({ renderPage, release }).listen({ port, host }, () => {
+        console.log(`Inertia SSR server started on ${host}:${port}.`);
     });
 }
 
