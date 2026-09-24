@@ -25,6 +25,45 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.154.3] — 2026-09-24
+
+Uma turma arquivada continuava a ter horário. O Horário do Professor deixava
+de a mostrar a partir do dia do arquivamento, mas a materialização e a vista
+semanal de Aulas e Sumários nunca souberam dessa regra: o tempo do horário
+ficava aberto, e por isso continuavam a NASCER aulas automáticas para datas
+posteriores ao arquivamento — uma delas criada onze dias depois de a turma ter
+sido arquivada —, que depois apareciam na semana como «Por preparar».
+
+A condição temporal do arquivamento estava escrita num sítio só, o Horário, e
+era por isso que só lá se aplicava. Passa a viver em `ClassArchivalWindow`, de
+onde os três sítios a leem: a partir do dia do arquivamento, inclusive, a turma
+já não tem horário. A materialização corta aí o intervalo — dentro da
+transação e depois do bloqueio da turma, para que todos os caminhos que criam
+aulas fiquem cobertos —, e a vista semanal deixa de mostrar as ocorrências que
+o defeito já tinha deixado para trás.
+
+### Corrigido
+
+- Uma turma arquivada já não materializa aulas para datas iguais ou
+  posteriores ao dia do arquivamento, por nenhum caminho. As semanas
+  ANTERIORES continuam a materializar-se: naquelas semanas a turma estava
+  viva, e arquivá-la hoje não reescreve o que ela foi.
+- As ocorrências vazias do horário que ficaram para trás — por preparar,
+  abertas, sem sumário, sem plano e sem uma única linha de assiduidade —
+  deixam de aparecer na vista semanal a partir desse dia. NENHUMA É APAGADA:
+  as linhas ficam na base de dados e a turma arquivada continua a abrir-se.
+- Aulas lecionadas, com sumário, com plano, com rascunho de faltas, e TODAS as
+  aulas introduzidas à mão continuam a aparecer, arquivada ou não a turma.
+  «Por preparar» não quer dizer vazia, e o estado sozinho nunca esconde nada.
+- Desarquivar devolve tudo — o horário volta a materializar e as ocorrências
+  escondidas reaparecem, porque nunca tinham sido apagadas.
+
+### Interno
+
+- `App\Services\Classes\ClassArchivalWindow`: a regra temporal do
+  arquivamento num sítio só, em datas locais da organização.
+  `TeacherTimetableController` passou a lê-la de lá em vez de a repetir.
+
 ## [0.154.2] — 2026-09-24
 
 Uma atividade retirada do Horário do Professor continuava a aparecer em Aulas

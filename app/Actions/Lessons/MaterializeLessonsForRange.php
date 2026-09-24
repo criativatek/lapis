@@ -10,6 +10,7 @@ use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Classes\ClassArchivalWindow;
 use App\Services\Lessons\LessonConflicts;
 use App\Services\Lessons\LessonNumbering;
 use Carbon\CarbonImmutable;
@@ -33,6 +34,7 @@ class MaterializeLessonsForRange
         private readonly LessonConflicts $conflicts,
         private readonly LessonNumbering $numbering,
         private readonly ReconcileLessonsWithSlotValidity $reconcile,
+        private readonly ClassArchivalWindow $archivalWindow,
     ) {}
 
     /**
@@ -62,6 +64,39 @@ class MaterializeLessonsForRange
                 throw ValidationException::withMessages([
                     'range' => __('O intervalo tem de ficar dentro do ano letivo da turma.'),
                 ]);
+            }
+
+            // UMA TURMA ARQUIVADA JÁ NÃO TEM HORÁRIO (0.154.3). A regra é a
+            // mesma que o Horário do Professor sempre aplicou e vive agora em
+            // ClassArchivalWindow: a partir do dia do arquivamento, inclusive,
+            // não nasce mais nenhuma aula automática. Era esta a falta que
+            // fazia a turma 23 — arquivada a 13/09 — ganhar uma aula nova a
+            // 24/09 para o dia 25.
+            //
+            // AQUI DENTRO, DEPOIS DO `lockForUpdate` E NÃO À ENTRADA. Filtrar
+            // as turmas em MaterializeLessonsForWeek deixaria de fora todos os
+            // outros caminhos (o editor do horário, ShiftLessonPlanning) e,
+            // pior, leria `archived_at` fora do bloqueio: uma turma arquivada
+            // entre a leitura e a transação voltaria a materializar. É dentro
+            // do lock que a resposta é verdadeira.
+            //
+            // E É UM CORTE DO INTERVALO, NÃO UMA RECUSA. O passado da turma
+            // continua a materializar-se normalmente — abrir uma semana de
+            // setembro de uma turma arquivada em outubro mostra as aulas dessa
+            // semana —; o que não acontece é o que vem do dia do arquivamento
+            // em diante. Nada é apagado: as aulas que já existem ficam.
+            $lastScheduledDay = $this->archivalWindow->lastScheduledDay($lockedClass);
+
+            if ($lastScheduledDay !== null) {
+                if ($from->greaterThan($lastScheduledDay)) {
+                    // O intervalo inteiro é posterior ao arquivamento: não há
+                    // nada a materializar, e nada a reconciliar tão-pouco —
+                    // reconciliar aqui mexeria em aulas de uma turma que já
+                    // não tem horário nenhum para as validar contra.
+                    return collect();
+                }
+
+                $to = $to->lessThan($lastScheduledDay) ? $to : $lastScheduledDay;
             }
 
             // AULAS QUE JÁ NÃO PERTENCEM AO HORÁRIO SAEM ANTES DE NASCEREM AS
