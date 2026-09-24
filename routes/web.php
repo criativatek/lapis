@@ -462,6 +462,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/characterisation', [ClassCharacterisationController::class, 'show'])->name('classes.characterisation.show');
         Route::put('classes/{class}/characterisation', [ClassCharacterisationController::class, 'update'])->name('classes.characterisation.update');
         Route::put('classes/{class}/students/{enrollment}/characterisation', [ClassCharacterisationController::class, 'updateStudent'])->name('classes.characterisation.student.update');
+        // Uma medida registada à mão a partir deste cartão — escreve a mesma
+        // Intervention estruturada que Estratégias e Medidas lê, através da
+        // mesma ação CreateIntervention que a importação e o
+        // InterventionController já usam. Ver
+        // ClassCharacterisationController::storeMeasure().
+        Route::post('classes/{class}/students/{enrollment}/characterisation/measures', [ClassCharacterisationController::class, 'storeMeasure'])->name('classes.characterisation.measures.store');
         // Dois pedidos, e o primeiro não sabe escrever: `preview` lê o ficheiro
         // no pedido que o trouxe e esquece-o; `store` só aceita decisões
         // explícitas, revalidadas contra a turma. Não há token nem pasta

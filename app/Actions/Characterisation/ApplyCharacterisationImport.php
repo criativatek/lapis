@@ -8,7 +8,6 @@ use App\Models\CharacterisationSource;
 use App\Models\Enrollment;
 use App\Models\EnrollmentCharacterisation;
 use App\Models\EnrollmentCharacterisationSourceMeasure;
-use App\Models\Intervention;
 use App\Models\InterventionDescriptionSource;
 use App\Models\InterventionDomainRelation;
 use App\Models\InterventionOrigin;
@@ -24,6 +23,7 @@ use App\Services\Audit\AuditLog;
 use App\Services\Characterisation\Import\MergeCharacterisationSections;
 use App\Services\Characterisation\RecordCharacterisation;
 use App\Support\Characterisation\CharacterisationSection;
+use App\Support\Interventions\ActiveSupportMeasures;
 use App\Support\Interventions\InterventionAuditProperties;
 use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
@@ -353,7 +353,7 @@ class ApplyCharacterisationImport
         $created = 0;
 
         foreach ($this->recognisedMeasures($decision, $framework) as [$code, $level, $rawToken]) {
-            if ($this->activeInterventionExists($enrollment, $code)) {
+            if (ActiveSupportMeasures::exists($enrollment, $code)) {
                 continue;
             }
 
@@ -413,36 +413,6 @@ class ApplyCharacterisationImport
         }
 
         return $created;
-    }
-
-    /**
-     * §30's dedup, both places a measure can be held.
-     *
-     * A hand-created intervention that carries several measures stores only
-     * the FIRST pair on the parent's own `support_measure_code` column — the
-     * rest live exclusively in the `intervention_support_measures` pivot (see
-     * `CreateIntervention::create()`). Checking the parent column alone missed
-     * every measure but the first on such a row, so importing a sheet naming
-     * the SECOND measure of an existing multi-measure intervention created a
-     * duplicate. Both places are checked here; the coarseness on period and
-     * context documented on `createInterventions()` above is deliberately kept
-     * — this still only asks "is there an active one at all", never "one that
-     * also matches on every other field".
-     */
-    private function activeInterventionExists(Enrollment $enrollment, SupportMeasureCode $code): bool
-    {
-        $activeStatuses = [InterventionStatus::New->value, InterventionStatus::InProgress->value];
-
-        return Intervention::query()
-            ->where('enrollment_id', $enrollment->getKey())
-            ->whereIn('status', $activeStatuses)
-            ->where(function ($query) use ($code): void {
-                $query->where('support_measure_code', $code->value)
-                    ->orWhereHas('supportMeasures', function ($measures) use ($code): void {
-                        $measures->where('support_measure_code', $code->value);
-                    });
-            })
-            ->exists();
     }
 
     /**

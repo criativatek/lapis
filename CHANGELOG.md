@@ -25,6 +25,40 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.154.0] — 2026-09-23
+
+O cartão de cada aluno em Caracterização pedagógica mostrava, até aqui, um
+bloco «Medidas de origem» que só falava com uma importação: as medidas que um
+ficheiro da escola trazia. Uma medida registada à mão em Estratégias e
+Medidas não aparecia ali — a mesma informação vivia, sem ninguém ter
+decidido isso de propósito, em dois lugares que podiam divergir.
+
+Passa a existir um único conjunto de medidas associadas por aluno, lido das
+mesmas `Intervention` estruturadas que Estratégias e Medidas já lê — nunca
+uma segunda tabela. Uma medida importada e uma medida registada à mão
+aparecem lado a lado, cada uma com a sua proveniência visível («Importação
+da caracterização» ou «Registo manual», os dois rótulos que
+`InterventionOrigin` já tinha), e a que veio de um ficheiro continua a
+mostrar o texto exato que esse ficheiro indicava. Adicionar uma medida a
+partir deste cartão passa a ser possível sem sair da Caracterização —
+«Adicionar medida» abre um diálogo cujo catálogo vem sempre do enquadramento
+legal em vigor, nunca de uma cópia local dele, e o nível de cada medida
+continua a ser uma resposta da lei, nunca um campo que se preenche à mão. A
+mesma regra de dedução que a importação já usava — não duplicar uma medida
+que já está ativa para o aluno — foi extraída para um lugar só,
+`ActiveSupportMeasures`, e passa a valer também para este registo manual.
+
+Aproveitou-se para fechar um descuido pequeno no formulário da
+caracterização: o cartão de um aluno só recolhe e confirma a gravação quando
+o pedido tem mesmo sucesso — antes, nada distinguia esse caso de um erro, e
+um pedido que falhasse podia dar a entender que o texto escrito se tinha
+perdido.
+
+Este release não altera `DecreeLaw54CodeResolver` nem o importador: uma
+sigla como CRI continua um recurso, PLNM continua um percurso curricular, e
+nenhuma das duas se torna uma medida por este trabalho — os testes que
+cobrem isso passam pelo resolvedor existente, não por uma garantia nova.
+
 ## [0.153.0] — 2026-09-23
 
 O `ssr.log` de produção tinha quatro erros repetidos — `Cannot read properties
