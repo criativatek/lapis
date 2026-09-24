@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Classes\ClassArchivalWindow;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -34,7 +35,10 @@ use Inertia\Response;
  */
 class TeacherTimetableController extends Controller implements HasMiddleware
 {
-    public function __construct(protected CurrentOrganization $currentOrganization) {}
+    public function __construct(
+        protected CurrentOrganization $currentOrganization,
+        protected ClassArchivalWindow $archivalWindow,
+    ) {}
 
     /**
      * Gated by module:lessons, like classes.schedule-setup and the
@@ -168,10 +172,11 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             return false;
         }
 
-        $archivedAt = $slot->schoolClass->archived_at;
-
-        return $archivedAt === null
-            || CarbonImmutable::instance($archivedAt)->setTimezone($timezone)->toDateString() > $occurrence;
+        // A MESMA regra, e já não uma cópia dela: a condição temporal do
+        // arquivamento vive em ClassArchivalWindow, e é de lá que a
+        // materialização e a vista semanal a leem também (0.154.3). Era por
+        // estarem escritas em três sítios que só este sítio a aplicava.
+        return $this->archivalWindow->coversDate($slot->schoolClass, $occurrence, $timezone);
     }
 
     protected function occurrenceInWeek(RecurringLessonSlot $slot, CarbonImmutable $weekStart): string
