@@ -19,6 +19,16 @@ declare module 'vite/client' {
     }
 }
 
+declare global {
+    /**
+     * config('app.version'), baked in at build time by the `define` in
+     * vite.config.ts — read directly from config/app.php so it never drifts
+     * from the value the backend reports. Only used by resources/js/ssr.ts,
+     * to label its structured error log without a second source of truth.
+     */
+    const __APP_VERSION__: string;
+}
+
 declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {

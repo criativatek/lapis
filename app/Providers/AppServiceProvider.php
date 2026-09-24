@@ -20,6 +20,7 @@ use App\Support\Limits\Limits;
 use App\Support\Release\BuildsSsrBundle;
 use App\Support\Release\BuildStamp;
 use App\Support\Release\NpmSsrBundleBuilder;
+use App\Support\Ssr\ServerRenderedPages;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -35,6 +36,8 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Inertia\Ssr\HttpGateway;
+use Inertia\Ssr\SsrState;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -139,7 +142,31 @@ class AppServiceProvider extends ServiceProvider
         $this->applyPlatformMailSettings();
         $this->applyPlatformAiSettings();
         $this->describeRelease();
+        $this->scopeServerSideRendering();
         $this->limitWritingAssistant();
+    }
+
+    /**
+     * SSR only for the pages that need a crawler to read them.
+     *
+     * `HttpGateway` is the singleton Inertia binds its `Gateway` contract to,
+     * and `DisablesSsr::disable()` is its own switch for exactly this. Set once
+     * here, it holds for the whole process and is evaluated once per response,
+     * against the page the `@inertia` directive has just handed to the
+     * request-scoped `SsrState`. The rule itself, and why it exists, lives in
+     * {@see ServerRenderedPages}.
+     *
+     * Once a condition is set, the gateway consults IT instead of
+     * `config('inertia.ssr.enabled')` — so the config has to be read here, or
+     * `INERTIA_SSR_ENABLED=false` (the documented off switch, and what
+     * phpunit.xml sets for the whole suite) would stop meaning anything.
+     */
+    protected function scopeServerSideRendering(): void
+    {
+        $this->app->make(HttpGateway::class)->disable(
+            static fn (SsrState $state): bool => ! config('inertia.ssr.enabled', true)
+                || ! ServerRenderedPages::wants($state->page['component'] ?? null),
+        );
     }
 
     protected function registerOrganizationMembershipAbilities(): void
