@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.154.1] — 2026-09-24
+
+O servidor de SSR escutava em `0.0.0.0`. O único cliente dele é o Laravel na
+mesma máquina (`http://127.0.0.1:13714`, `config/inertia.php`), mas o processo
+aceitava ligações em todas as interfaces do VPS — e `/render` (que corre os
+componentes sobre o JSON que lhe derem) e `/shutdown` (que mata o processo)
+não perguntam a ninguém quem é. A única coisa entre esses dois pontos e a
+Internet era a firewall: uma regra que vive fora do repositório, que nenhum
+teste afirma, e que uma regra do fornecedor ou uma tabela de ufw reconstruída
+podem deixar cair sem que a aplicação dê por isso.
+
+Passa a escutar só em `127.0.0.1`. O endereço deixa de ser um literal no ponto
+de entrada e passa a sair de `resolveListenAddress()`
+(`resources/js/ssr/server.ts`), com `INERTIA_SSR_HOST` e `INERTIA_SSR_PORT`
+para o caso — que hoje não existe — de o Node ter de correr noutra máquina;
+um valor em branco ou inválido volta sempre ao loopback, nunca a um endereço
+genérico. Os testes afirmam o endereço do socket que arranca de facto, não só
+a constante: a ligação por 127.0.0.1 responde, a ligação pelo IP encaminhável
+da máquina é recusada, e o ponto de entrada não pode voltar a trazer um
+`0.0.0.0` escrito à mão.
+
+Sem alterações de comportamento para quem usa a aplicação. A firewall
+mantém-se como segunda camada — e continua por verificar (ver
+`docs/deployment.md`).
+
 ## [0.154.0] — 2026-09-23
 
 O cartão de cada aluno em Caracterização pedagógica mostrava, até aqui, um

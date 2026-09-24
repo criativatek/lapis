@@ -46,6 +46,46 @@ import type { App } from 'vue';
  * only wires the Inertia render function into this.
  */
 
+/**
+ * Where the SSR server listens, by default: the loopback interface only.
+ *
+ * The only client is Laravel on the same machine (`config/inertia.php`,
+ * `http://127.0.0.1:13714`), so binding `0.0.0.0` — as this did until
+ * 0.154.1 — published an unauthenticated render endpoint on every interface
+ * of the VPS and left the firewall as the ONLY thing between it and the
+ * internet. `/render` takes a JSON body and runs the page components on it;
+ * `/shutdown` kills the process. Neither asks who is calling. A firewall
+ * rule is a second layer, not the first one: it lives outside the repo, it
+ * is not asserted by any test here, and a provider-level rule or a rebuilt
+ * ufw table can drop it without anything in the application noticing.
+ *
+ * `INERTIA_SSR_HOST` and `INERTIA_SSR_PORT` exist for the case where the
+ * Node process ever has to run somewhere other than the web server (a
+ * container, a second host). Setting the host to anything but a loopback
+ * address is a deliberate act that has to be paired with a network boundary
+ * of its own — it is never the default, and production sets neither.
+ */
+export const SSR_DEFAULT_HOST = '127.0.0.1';
+export const SSR_DEFAULT_PORT = 13714;
+
+export type SsrListenAddress = { host: string; port: number };
+
+/**
+ * Reads the listen address from the environment, falling back to loopback.
+ *
+ * A blank or unparseable value is the fallback, not an error: a typo in a
+ * systemd unit must not leave the server listening somewhere unintended, and
+ * a stopped SSR server would itself be a (smaller) regression — Inertia
+ * falls back to client rendering, the page still opens.
+ */
+export function resolveListenAddress(env: Record<string, string | undefined> = {}): SsrListenAddress {
+    const host = typeof env.INERTIA_SSR_HOST === 'string' && env.INERTIA_SSR_HOST.trim() !== '' ? env.INERTIA_SSR_HOST.trim() : SSR_DEFAULT_HOST;
+
+    const port = Number.parseInt(env.INERTIA_SSR_PORT ?? '', 10);
+
+    return { host, port: Number.isInteger(port) && port > 0 && port < 65536 ? port : SSR_DEFAULT_PORT };
+}
+
 export type InertiaPage = { component: string; url: string; version: string | null; props: Record<string, unknown> };
 
 export type RenderPage = (page: InertiaPage) => Promise<{ head: string[]; body: string }>;
