@@ -277,7 +277,7 @@ class InstrumentEligibilityTest extends TestCase
             StudentItemScore::query()
                 ->where('instrument_id', $ineligible->id)
                 ->where('enrollment_id', $enrollment->id)
-                ->update(['result_state' => ResultState::UnderReview->value]);
+                ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
 
             $blockedIds = app(EvaluationSheetReadiness::class);
             $reflection = new ReflectionMethod($blockedIds, 'enrollmentsWithElementsUnderReview');
@@ -308,7 +308,7 @@ class InstrumentEligibilityTest extends TestCase
             StudentItemScore::query()
                 ->where('instrument_id', $eligible->id)
                 ->where('enrollment_id', $enrollment->id)
-                ->update(['result_state' => ResultState::UnderReview->value]);
+                ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
 
             $readiness = app(EvaluationSheetReadiness::class);
             $reflection = new ReflectionMethod($readiness, 'enrollmentsWithElementsUnderReview');
@@ -449,7 +449,7 @@ class InstrumentEligibilityTest extends TestCase
             StudentItemScore::query()
                 ->where('instrument_id', $eligible->id)
                 ->where('enrollment_id', $carolina->id)
-                ->update(['result_state' => ResultState::UnderReview->value]);
+                ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
 
             // An ineligible instrument (diagnostic, forced counts=true directly
             // in the DB — R2 must still exclude it) with Diogo's cell under
@@ -461,7 +461,7 @@ class InstrumentEligibilityTest extends TestCase
             StudentItemScore::query()
                 ->where('instrument_id', $ineligible->id)
                 ->where('enrollment_id', $diogo->id)
-                ->update(['result_state' => ResultState::UnderReview->value]);
+                ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
 
             // PublishClassifications::forPeriod() recalculates nothing — it only
             // reads Confirmed classifications and scans the counting
@@ -598,7 +598,9 @@ class InstrumentEligibilityTest extends TestCase
                 $period,
                 Carbon::now(),
                 $teacher,
-            );
+            )->refresh();
+            // Relido da base: o MySQL normaliza a ordem das chaves de uma
+            // coluna JSON, e o «depois» também vem da base.
 
             $before = [
                 'final_value' => $published->final_value,
