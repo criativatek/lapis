@@ -984,6 +984,17 @@ function revertCancellation(): void {
                 <Link v-else :href="`/classes/${instrument.class_ulid}`" class="text-sm text-muted-foreground hover:underline">
                     ← Voltar à turma
                 </Link>
+                <nav class="flex gap-1 border-b border-border" aria-label="Secções do elemento de avaliação">
+                    <span class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground" aria-current="page">
+                        Grelha de correção
+                    </span>
+                    <Link
+                        :href="`/instruments/${instrument.ulid}/resultados`"
+                        class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        Resultados
+                    </Link>
+                </nav>
             </div>
             <div v-if="!isCancelled" class="flex flex-wrap items-center justify-end gap-3">
                 <div class="flex flex-wrap items-center justify-end gap-3">
