@@ -42,7 +42,7 @@ function analysis(overrides: Partial<ResultsAnalysisProps['dimensions'][number][
         median: '70.0',
         min: '20.0',
         max: '98.0',
-        threshold: { value: '49.5', below: { count: 4, percent: '22.2' }, at_or_above: { count: 14, percent: '77.8' } },
+        threshold: { value: '49.5', available: true, below: { count: 4, percent: '22.2' }, at_or_above: { count: 14, percent: '77.8' } },
         quantitative: {
             total: 18,
             classes: [
@@ -67,6 +67,7 @@ function analysis(overrides: Partial<ResultsAnalysisProps['dimensions'][number][
 
 function baseProps(overrides: Partial<ResultsAnalysisProps> = {}): ResultsAnalysisProps {
     return {
+        availability: { official: true, status: 'official', status_label: 'Oficial', message: null },
         context: {
             kind: 'instrument',
             is_diagnostic: false,
@@ -81,7 +82,7 @@ function baseProps(overrides: Partial<ResultsAnalysisProps> = {}): ResultsAnalys
             class: { ulid: 'class-a', label: '7.º C' },
             period: { label: '1.º Período' },
             absence_mode: 'zero_all', absence_mode_label: 'Ausências contam zero',
-            threshold: { value: '49.5', label: '49,5 %' },
+            threshold: { value: '49.5', label: '49,5 %', explanation: 'A escala 1-5 define 49,5 % como o início de «Suficiente».' },
             scale: {
                 name: 'Escala 1-5', has_bands: true,
                 bands: [
@@ -97,12 +98,12 @@ function baseProps(overrides: Partial<ResultsAnalysisProps> = {}): ResultsAnalys
         students: [
             {
                 enrollment_id: 1, class_number: 1, name: 'Ana Martins', status: 'classified', status_label: 'Classificado',
-                global: { value: '72.4', exact: '72.399123', band: { key: 'bom', code: 'Bom', label: 'Bom', sequence: 3, is_negative: false }, below_threshold: false, is_partial: false },
-                domains: { d1: { value: '72.4', exact: '72.399123', band: null, below_threshold: false, is_partial: false } },
+                global: { value: '72.4', value_precise: null, exact: '72.399123', band: { key: 'bom', code: 'Bom', label: 'Bom', sequence: 3, is_negative: false }, below_threshold: false, is_partial: false },
+                domains: { d1: { value: '72.4', value_precise: null, exact: '72.399123', band: null, below_threshold: false, is_partial: false } },
             },
             {
                 enrollment_id: 2, class_number: 2, name: 'Rui Santos', status: 'out_of_scope', status_label: 'Não abrangido',
-                global: { value: null, exact: null, band: null, below_threshold: null, is_partial: false },
+                global: { value: null, value_precise: null, exact: null, band: null, below_threshold: null, is_partial: false },
                 domains: {},
             },
         ],
@@ -166,12 +167,21 @@ describe('Results.vue', () => {
     });
 
     it('mostra o aviso de diagnóstico quando is_diagnostic é verdadeiro', () => {
-        const wrapper = mount(Results, {
-            props: baseProps({ context: { ...baseProps().context, is_diagnostic: true } }),
+        const notCounting = mount(Results, {
+            props: baseProps({ context: { ...baseProps().context, is_diagnostic: true, counts_toward_classification: false } }),
         });
 
-        expect(wrapper.text()).toContain('Avaliação diagnóstica');
-        expect(wrapper.text()).toContain('não contribui para médias classificativas');
+        expect(notCounting.text()).toContain('Avaliação diagnóstica');
+        expect(notCounting.text()).toContain('não entra nas médias');
+        // Nunca uma garantia sem ressalva: a exclusão depende hoje da configuração.
+        expect(notCounting.text()).not.toContain('não contribui para médias');
+
+        const counting = mount(Results, {
+            props: baseProps({ context: { ...baseProps().context, is_diagnostic: true, counts_toward_classification: true } }),
+        });
+
+        expect(counting.text()).toContain('Avaliação diagnóstica');
+        expect(counting.text()).not.toContain('não entra nas médias');
     });
 
     it('mostra o aviso de diagnóstico a contar para a classificação quando diagnostic_counts_warning é verdadeiro', () => {
@@ -190,16 +200,52 @@ describe('Results.vue', () => {
         expect(wrapper.text()).not.toContain('Avaliação diagnóstica');
     });
 
-    it('marca com asterisco e nota o caso em que o arredondamento esconde estar abaixo do limiar', () => {
+    it('mostra o valor preciso a duas casas e a nota quando o servidor envia value_precise', () => {
         const props = baseProps();
         props.students[0].global = {
-            value: '49.5', exact: '49.449999', band: null, below_threshold: true, is_partial: false,
+            value: '49.5', value_precise: '49.46', exact: '49.459999', band: null, below_threshold: true, is_partial: false,
         };
 
         const wrapper = mount(Results, { props });
 
         expect(wrapper.find('sup').exists()).toBe(true);
-        expect(wrapper.text()).toContain('Valor exato abaixo de 49,5 %; o limiar aplica-se antes do arredondamento.');
+        expect(wrapper.text()).toContain('49,46 %');
+        expect(wrapper.text()).toContain(
+            'Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato.',
+        );
+    });
+
+    it('quando o instrumento não tem resultados oficiais, mostra só o estado, a nota do professor e nenhum número', () => {
+        const props = baseProps({
+            availability: { official: false, status: 'under_correction', status_label: 'Em correção', message: 'A correção ainda não está concluída.' },
+            dimensions: [],
+            students: [],
+            report: null,
+        });
+
+        const wrapper = mount(Results, { props });
+
+        expect(wrapper.text()).toContain('Estado: Em correção');
+        expect(wrapper.text()).toContain('A correção ainda não está concluída.');
+        expect(wrapper.text()).toContain('Observações do professor');
+        expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Observação inicial.');
+        expect(wrapper.text()).not.toContain('Resultados por aluno');
+        expect(wrapper.text()).not.toContain('Indicadores da turma');
+        expect(wrapper.text()).not.toContain('68,4');
+    });
+
+    it('quando a escala não define limiar, mostra a explicação em vez do KPI «Inferiores a»', () => {
+        const props = baseProps();
+        props.context.threshold = { value: null, label: null, explanation: 'A escala não define um limiar inequívoco.' };
+
+        for (const dimension of props.dimensions) {
+            dimension.analysis.threshold = { value: null, available: false, below: null, at_or_above: null };
+        }
+
+        const wrapper = mount(Results, { props });
+
+        expect(wrapper.text()).toContain('A escala não define um limiar inequívoco.');
+        expect(wrapper.text()).not.toContain('Inferiores a');
     });
 
     it('mostra o textarea só de leitura quando can_edit é falso', () => {

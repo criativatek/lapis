@@ -5,6 +5,7 @@ namespace App\Services\Assessment\Analysis;
 use App\Domain\Assessment\Analysis\AnalysisBand;
 use App\Domain\Assessment\Analysis\Observation;
 use App\Domain\Assessment\Analysis\ObservationStatus;
+use App\Domain\Assessment\Analysis\ScaleThreshold;
 use App\Domain\Assessment\CalculationOutcome;
 use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
@@ -187,6 +188,16 @@ class InstrumentResultsContext implements ResultsContext
     }
 
     /**
+     * The scale's own negative/non-negative boundary (design addendum, Q3) —
+     * never a universal constant. See `ScaleThreshold` for the derivation
+     * rule; null when the scale does not define one unambiguously.
+     */
+    public function threshold(): ?string
+    {
+        return ScaleThreshold::from($this->bands());
+    }
+
+    /**
      * @return list<array{key: string, label: string, observations: list<Observation>}>
      */
     public function dimensions(): array
@@ -264,7 +275,12 @@ class InstrumentResultsContext implements ResultsContext
 
         $notes[] = 'Regra de ausências desta turma: '.$this->absenceModeLabel().'.';
 
-        $notes[] = 'O limiar de 49,5 % é aplicado ao valor exato do resultado, antes do arredondamento usado para apresentação.';
+        $threshold = $this->threshold();
+        $notes[] = $threshold === null
+            ? 'A escala configurada não define uma fronteira quantitativa inequívoca entre apreciações negativas e não '
+                .'negativas; não é apresentado um limiar.'
+            : 'O limiar de '.str_replace('.', ',', $threshold).' % é aplicado ao valor exato do resultado, antes do '
+                .'arredondamento usado para apresentação.';
 
         if ($this->itemsWithoutDomain() > 0) {
             $count = $this->itemsWithoutDomain();
@@ -273,14 +289,20 @@ class InstrumentResultsContext implements ResultsContext
                 : "{$count} itens deste instrumento não têm domínio atribuído e não entram no cálculo.";
         }
 
-        if ($this->isDiagnostic()) {
-            $notes[] = 'Este é um instrumento diagnóstico: os resultados destinam-se a identificar potencialidades, '
-                .'dificuldades e necessidades de acompanhamento, e não contribuem para médias classificativas.';
+        if ($this->isDiagnostic() && ! $this->countsTowardClassification()) {
+            $notes[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
+                .'necessidades de acompanhamento. Este instrumento está configurado para não contar para a classificação, '
+                .'e por isso não entra nas médias classificativas do período.';
         }
 
         if ($this->isDiagnostic() && $this->countsTowardClassification()) {
             $notes[] = 'Atenção: este instrumento diagnóstico está configurado para contar para a classificação — '
-                .'os seus resultados entram no cálculo do período apesar da finalidade diagnóstica.';
+                .'os seus resultados ENTRAM atualmente no cálculo do período, apesar da finalidade diagnóstica.';
+        }
+
+        if ($this->isDiagnostic()) {
+            $notes[] = 'A exclusão dos instrumentos diagnósticos depende hoje dessa configuração; a garantia no motor de '
+                .'classificação, independente dela, ainda não está implementada.';
         }
 
         return $notes;

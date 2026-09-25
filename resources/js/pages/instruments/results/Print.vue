@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import DataTable from '@/components/analysis/DataTable.vue';
 import LabelledBarChart from '@/components/analysis/LabelledBarChart.vue';
 import TableShell from '@/components/TableShell.vue';
@@ -26,6 +26,19 @@ function pct(value: string | null): string {
 
     return `${Number(value).toFixed(1).replace('.', ',')} %`;
 }
+
+function pctPrecise(value: string): string {
+    return `${Number(value).toFixed(2).replace('.', ',')} %`;
+}
+
+function displayValue(cell: Cell): string {
+    return cell.value_precise !== null ? pctPrecise(cell.value_precise) : pct(cell.value);
+}
+
+const thresholdColumnsAvailable = computed(() => props.context.threshold.value !== null);
+
+/** Incluir as observações do professor na impressão — cliente apenas, por defeito ativo. */
+const includeNotes = ref(true);
 
 function toneClassFor(band: Cell['band']): string {
     if (band === null) {
@@ -111,7 +124,7 @@ function printPage(): void {
 </script>
 
 <template>
-    <Head :title="`${report.title} — ${context.instrument.title}`" />
+    <Head :title="report ? `${report.title} — ${context.instrument.title}` : context.instrument.title" />
 
     <div class="mx-auto max-w-4xl space-y-6 p-6 print:p-0">
         <div class="flex items-center justify-between print:hidden">
@@ -120,39 +133,58 @@ function printPage(): void {
         </div>
 
         <header class="space-y-1 border-b border-border pb-4">
-            <h1 class="text-xl font-semibold">{{ report.title }}</h1>
+            <h1 class="text-xl font-semibold">{{ report ? report.title : context.instrument.title }}</h1>
             <p class="text-sm text-muted-foreground">
                 {{ context.instrument.title }} · {{ context.class.label }} · {{ context.period.label }} · {{ appliedOnLabel }}
             </p>
-            <p class="text-xs text-muted-foreground">
+            <p v-if="report" class="text-xs text-muted-foreground">
                 {{ context.instrument.type ?? 'Sem tipo' }} · {{ context.instrument.purpose_label }} · gerado em
                 {{ new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(report.generated_at)) }}
             </p>
         </header>
 
-        <p
-            v-if="!include_individual"
-            class="rounded-md border border-border bg-muted/20 px-4 py-2 text-sm text-muted-foreground"
+        <!-- Estado não oficial: página informativa, sem números -->
+        <div
+            v-if="!availability.official"
+            class="rounded-md border border-border bg-muted/20 px-4 py-3 text-sm"
+            role="status"
         >
-            Relatório agregado: não inclui nomes nem classificações individuais.
-        </p>
-
-        <div v-if="context.is_diagnostic" class="rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-sm text-sky-950">
-            Avaliação diagnóstica — não contribui para médias classificativas.
+            <p class="font-medium">Estado: {{ availability.status_label }}</p>
+            <p v-if="availability.message" class="mt-1 text-muted-foreground">{{ availability.message }}</p>
         </div>
 
+        <template v-if="availability.official">
+            <p
+                v-if="!include_individual"
+                class="rounded-md border border-border bg-muted/20 px-4 py-2 text-sm text-muted-foreground"
+            >
+                Relatório agregado: não inclui nomes nem classificações individuais.
+            </p>
+
+            <div v-if="context.is_diagnostic" class="rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-sm text-sky-950">
+                Avaliação diagnóstica: identifica potencialidades, dificuldades e necessidades de acompanhamento.
+                <template v-if="!context.counts_toward_classification">Está configurada para não contar para a classificação.</template>
+                <template v-else>Atenção: está configurada para contar para a classificação do período.</template>
+            </div>
+        </template>
+
         <!-- Indicadores e distribuição: Global e cada domínio -->
-        <section v-for="dimension in dimensions" :key="dimension.key" class="space-y-3 print:break-inside-avoid">
+        <section
+            v-for="dimension in (availability.official ? dimensions : [])"
+            :key="dimension.key"
+            class="space-y-3 print:break-inside-avoid"
+        >
             <h2 class="text-base font-semibold">{{ dimension.key === 'global' ? 'Global' : dimension.label }}</h2>
 
             <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
                 <div><span class="text-muted-foreground">Avaliados:</span> {{ dimension.analysis.classified }} de {{ dimension.analysis.universe }}</div>
                 <div><span class="text-muted-foreground">Média:</span> {{ pct(dimension.analysis.mean) }}</div>
                 <div><span class="text-muted-foreground">Mediana:</span> {{ pct(dimension.analysis.median) }}</div>
-                <div>
+                <div v-if="thresholdColumnsAvailable">
                     <span class="text-muted-foreground">&lt; {{ context.threshold.label }}:</span>
-                    {{ dimension.analysis.threshold.below.count }} ({{ pct(dimension.analysis.threshold.below.percent) }})
+                    {{ dimension.analysis.threshold.below!.count }} ({{ pct(dimension.analysis.threshold.below!.percent) }})
                 </div>
+                <div v-else class="text-muted-foreground">{{ context.threshold.explanation }}</div>
             </div>
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -181,7 +213,11 @@ function printPage(): void {
         </section>
 
         <!-- Secções do relatório -->
-        <article v-for="section in report.sections" :key="section.key" class="space-y-2 print:break-inside-avoid">
+        <article
+            v-for="section in (availability.official ? (report?.sections ?? []) : [])"
+            :key="section.key"
+            class="space-y-2 print:break-inside-avoid"
+        >
             <h3 class="text-sm font-semibold">{{ section.title }}</h3>
             <p v-for="(paragraph, index) in section.paragraphs" :key="index" class="text-sm text-muted-foreground">
                 {{ paragraph }}
@@ -205,12 +241,22 @@ function printPage(): void {
         <!-- Observações do professor (só leitura) -->
         <section class="space-y-1 print:break-inside-avoid">
             <h3 class="text-sm font-semibold">Observações do professor</h3>
-            <p v-if="note.body" class="whitespace-pre-line text-sm text-muted-foreground">{{ note.body }}</p>
-            <p v-else class="text-sm text-muted-foreground">Sem observações registadas.</p>
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+                As observações são texto livre e podem conter informação identificável. Reveja-as antes de
+                partilhar o relatório.
+            </p>
+            <label class="flex items-center gap-2 text-xs text-muted-foreground print:hidden">
+                <input v-model="includeNotes" type="checkbox" class="size-3.5" />
+                Incluir as observações do professor na impressão
+            </label>
+            <template v-if="includeNotes">
+                <p v-if="note.body" class="whitespace-pre-line text-sm text-muted-foreground">{{ note.body }}</p>
+                <p v-else class="text-sm text-muted-foreground">Sem observações registadas.</p>
+            </template>
         </section>
 
         <!-- Resultados individuais — só quando include_individual -->
-        <section v-if="include_individual" class="space-y-3 print:break-inside-avoid">
+        <section v-if="availability.official && include_individual" class="space-y-3 print:break-inside-avoid">
             <h2 class="text-base font-semibold">Resultados individuais</h2>
             <TableShell>
                 <template #head>
@@ -242,7 +288,7 @@ function printPage(): void {
                             <td class="px-3 py-1.5" :colspan="1 + context.domains.length">—</td>
                         </template>
                         <template v-else>
-                            <td class="px-3 py-1.5 text-right tabular-nums">{{ pct(student.global.value) }}</td>
+                            <td class="px-3 py-1.5 text-right tabular-nums">{{ displayValue(student.global) }}</td>
                             <td class="px-3 py-1.5">
                                 <Badge v-if="student.global.band" :class="toneClassFor(student.global.band)" class="text-[10px]">
                                     {{ student.global.band.label }}
@@ -251,7 +297,7 @@ function printPage(): void {
                             </td>
                             <td v-for="domain in context.domains" :key="domain.key" class="px-3 py-1.5">
                                 <template v-if="student.domains[domain.key] && student.domains[domain.key]!.value !== null">
-                                    {{ pct(student.domains[domain.key]!.value) }}
+                                    {{ displayValue(student.domains[domain.key]!) }}
                                 </template>
                                 <span v-else class="text-xs text-muted-foreground">—</span>
                             </td>

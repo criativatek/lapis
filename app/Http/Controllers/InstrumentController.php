@@ -14,6 +14,7 @@ use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
+use App\Services\Assessment\Analysis\BuildResultsAnalysis;
 use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
@@ -36,7 +37,12 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class InstrumentController extends Controller
 {
-    public function __construct(protected InstrumentBuilder $builder, protected HelpCenter $helpCenter, protected AuditLog $audit) {}
+    public function __construct(
+        protected InstrumentBuilder $builder,
+        protected HelpCenter $helpCenter,
+        protected AuditLog $audit,
+        protected BuildResultsAnalysis $resultsAnalysis,
+    ) {}
 
     public function index(): Response
     {
@@ -501,6 +507,22 @@ class InstrumentController extends Controller
             ])
             ->all() ?? [];
 
+        // Additive to the grid: the SAME cells Results computes, through the
+        // same InstrumentResultsContext + cell() path (BuildResultsAnalysis::
+        // officialCells()), so the grid's «Classificação oficial/provisória»
+        // column can never disagree with the Resultados tab for this
+        // instrument. Computed for any non-draft instrument (draft already
+        // redirected above), including in_correction — the grid needs the
+        // working values while correcting; "official" only labels whether the
+        // correction is concluded.
+        $isConcluded = $instrument->status->isConcluded();
+        $official = [
+            'status' => $isConcluded ? 'official' : 'provisional',
+            'label' => $isConcluded ? 'Classificação oficial' : 'Classificação provisória',
+            'threshold' => $this->resultsAnalysis->officialThreshold($instrument),
+            ...$this->resultsAnalysis->officialCells($instrument),
+        ];
+
         return Inertia::render('instruments/Grid', [
             'instrument' => [
                 'ulid' => $instrument->ulid,
@@ -558,6 +580,7 @@ class InstrumentController extends Controller
                 ResultState::cases(),
             ),
             'scaleBands' => $scaleBands,
+            'official' => $official,
         ]);
     }
 

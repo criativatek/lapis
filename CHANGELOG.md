@@ -28,59 +28,61 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 ## [0.155.0] — 2026-09-25
 
 Cada instrumento de avaliação ganha um separador **Resultados**, ao lado da
-grelha de correção: a classificação global de cada aluno em percentagem e a
-apreciação qualitativa correspondente, os resultados e as apreciações por
-domínio, os indicadores da turma, as distribuições e um primeiro relatório
-estatístico descritivo. É a primeira fase de um sistema de análise pensado para
-servir também as avaliações intercalares, as avaliações finais de período e de
-semestre e os instrumentos diagnósticos. Nesta entrega só os instrumentos o
-usam.
+grelha de correção. Mostra a classificação global de cada aluno e a apreciação
+correspondente, os resultados e as apreciações por domínio, os indicadores da
+turma, as distribuições e um primeiro relatório estatístico descritivo. É a
+primeira fase de um sistema de análise pensado para servir também as
+avaliações intercalares, as avaliações finais e os instrumentos diagnósticos;
+nesta entrega só os instrumentos o usam.
 
 **Não há um segundo motor.** Os valores por aluno são os que o motor de
-classificação já produz para um instrumento (`ClassResultsCalculator::forInstruments`,
-o mesmo que a Evolução do Aluno lê): pesos dos domínios do perfil, regra de
-ausências do perfil, elegibilidade por data. A análise só conta, faz médias e
-agrupa. Nada é escrito: nenhuma classificação, snapshot ou perfil muda por se
-abrir esta vista.
+classificação já produz para um instrumento
+(`ClassResultsCalculator::forInstruments`, o mesmo que a Evolução do Aluno lê).
+A análise só conta, faz médias e agrupa. Abrir a vista não escreve nada.
 
+- **Só instrumentos concluídos têm resultados oficiais.** Antes de a correção
+  estar concluída, o separador explica que os resultados oficiais ficam
+  disponíveis depois e não calcula nada. Reabrir a correção retira-os outra
+  vez, sem apagar notas nem observações.
+- **Grelha e Resultados deixam de se contradizer.** A grelha passa a separar a
+  **pontuação bruta** (pontos obtidos / cotação, sem apreciação) da
+  **classificação oficial**, que é a mesma de Resultados, pelo mesmo caminho
+  de código. Enquanto a correção não termina, esta aparece como
+  «provisória». A apreciação sai sempre do valor exato. Um 49,46 % deixa de
+  aparecer como «Suficiente» por ser mostrado como 49,5 %: é mostrado com duas
+  casas.
+- **O limiar vem da escala.** É a fronteira entre as apreciações negativas e
+  não negativas da escala configurada (49,5 % na escala 1–5 de sistema). Uma
+  escala sem fronteira inequívoca não recebe um limiar inventado, e a página
+  di-lo. O limiar aplica-se ao valor exato.
 - **Indicadores**, globais e por domínio: alunos avaliados, média, mediana,
-  classificações inferiores a 49,5 % e iguais ou superiores (número e
-  percentagem). O limiar aplica-se ao valor **exato**, antes do arredondamento
-  de apresentação. O denominador é sempre o número de alunos avaliados, e é
-  dito.
-- **Classificações em falta com tratamento próprio**: por classificar, em
-  revisão, ausentes, ausências justificadas, dispensados, não aplicáveis e
-  anulados ficam fora dos indicadores e são contados à parte. Os alunos que não
-  frequentavam a turma na data do instrumento ficam fora do universo.
-- **Distribuições** quantitativa (classes de 10 pontos percentuais) e
-  qualitativa, pelos níveis da escala efetivamente configurada, nunca por
-  intervalos fixos. Uma escala sem bandas di-lo, em vez de as inventar.
-- **Gráficos legíveis sem tooltips**: cada barra escreve categoria, número de
-  alunos e percentagem, e cada gráfico escreve o total considerado. As
-  categorias abaixo do limiar têm padrão e etiqueta, além da cor. Por baixo de
-  cada gráfico fica uma tabela com os mesmos dados.
-- **Relatório descritivo determinístico**, sem IA: identificação, síntese,
-  distribuições, resultados por domínio e principais diferenças estatísticas,
-  sem atribuir causas. As **observações do professor** ficam guardadas à parte
-  (`results_analysis_notes`, com controlo de versão) e não se perdem quando os
-  indicadores são recalculados. A versão para impressão destinada ao diretor de
-  turma não inclui nomes nem classificações individuais, a menos que isso seja
-  pedido explicitamente.
-- **Avaliação diagnóstica**: usa a mesma escala e os mesmos cálculos, é
-  apresentada como identificação de potencialidades, dificuldades e
-  necessidades de acompanhamento, e é declarada como não contribuindo para
-  médias classificativas.
+  abaixo e acima do limiar. O denominador (alunos avaliados) é sempre dito. Os
+  alunos ausentes, dispensados, por classificar, anulados ou não abrangidos são
+  contados à parte e nunca como zero, salvo quando a regra de ausências do
+  perfil o determina.
+- **Distribuições** quantitativa e qualitativa (pela escala configurada), em
+  gráficos que escrevem números e percentagens e com a tabela correspondente.
+- **Relatório descritivo determinístico**, sem IA e sem atribuir causas. As
+  **observações do professor** ficam guardadas à parte
+  (`results_analysis_notes`) e sobrevivem a recálculos. Duas janelas a gravar
+  ao mesmo tempo nunca perdem texto em silêncio. A versão para impressão
+  destinada ao diretor de turma é agregada por defeito e avisa que as
+  observações são texto livre a rever antes de partilhar.
+- **Avaliação diagnóstica** com a mesma linguagem de avaliação. A página diz o
+  que a configuração do instrumento determina, sem prometer uma garantia que
+  ainda não existe.
 
-**Problema conhecido, documentado e não corrigido aqui.** A exclusão dos
-instrumentos diagnósticos da classificação não está garantida:
-`counts_toward_classification` é o único critério do motor, e para diagnósticos
-é apenas um valor pré-definido que o professor pode alterar. Um diagnóstico
-marcado como «conta» entra no cálculo do período. A vista Resultados avisa
-nesse caso, e um teste fixa o comportamento atual. A correção fica para uma
-intervenção própria.
+**Ainda por fazer antes de publicar** (ver
+`docs/superpowers/specs/2026-09-25-assessment-results-analysis-design.md` §10):
 
-Migração: `2026_11_14_000100_create_results_analysis_notes_table` (tabela nova;
-não altera nenhuma existente).
+- O motor continua a admitir instrumentos em correção e diagnósticos marcados
+  como «conta» nas médias de período. Corrigir isto muda valores de períodos
+  passados e precisa de decisões próprias.
+- As observações ainda não entram na exportação de dados nem no backup
+  (`docs/backup-schema.md`).
+
+Migração: `2026_11_14_000100_create_results_analysis_notes_table` (tabela nova,
+validada em MySQL 8.0.43 com aplicação e rollback).
 
 ## [0.154.3] — 2026-09-24
 

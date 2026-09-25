@@ -12,7 +12,9 @@ use App\Domain\Assessment\Bc;
  * Rules (design spec §3):
  *  - denominators are the CLASSIFIED observations of the dimension;
  *  - out_of_scope observations are outside the universe entirely;
- *  - the 49,5 % threshold is applied to the EXACT value, never the rounded one;
+ *  - the threshold (derived from the scale by `ScaleThreshold`, never a fixed
+ *    constant) is applied to the EXACT value, never the rounded one, and may
+ *    be null when the scale does not define one;
  *  - mean/median are computed on exact values (bcmath) and rounded only for
  *    display (1 decimal, half_up — the app's one rounding rule for display);
  *  - the quantitative distribution has 10 fixed classes over the exact value;
@@ -21,8 +23,6 @@ use App\Domain\Assessment\Bc;
  */
 final class ResultsAnalyzer
 {
-    public const DEFAULT_THRESHOLD = '49.5';
-
     public const DISPLAY_SCALE = 1;
 
     public const DISPLAY_ROUNDING = 'half_up';
@@ -30,9 +30,12 @@ final class ResultsAnalyzer
     /**
      * @param  list<Observation>  $observations
      * @param  list<AnalysisBand>  $bands
+     * @param  string|null  $threshold  derived from the scale (`ScaleThreshold::from()`); null when the
+     *                                  scale does not define an unambiguous negative/non-negative boundary —
+     *                                  never a fallback constant.
      * @return array<string, mixed>
      */
-    public function analyse(array $observations, array $bands, string $threshold = self::DEFAULT_THRESHOLD): array
+    public function analyse(array $observations, array $bands, ?string $threshold): array
     {
         $universe = 0;
         $classified = [];
@@ -173,8 +176,12 @@ final class ResultsAnalyzer
      * @param  list<string>  $values
      * @return array<string, mixed>
      */
-    protected function thresholdBlock(array $values, string $threshold): array
+    protected function thresholdBlock(array $values, ?string $threshold): array
     {
+        if ($threshold === null) {
+            return ['value' => null, 'available' => false, 'below' => null, 'at_or_above' => null];
+        }
+
         $denominator = count($values);
         $below = 0;
         $atOrAbove = 0;
@@ -189,6 +196,7 @@ final class ResultsAnalyzer
 
         return [
             'value' => $threshold,
+            'available' => true,
             'below' => ['count' => $below, 'percent' => $this->percent($below, $denominator)],
             'at_or_above' => ['count' => $atOrAbove, 'percent' => $this->percent($atOrAbove, $denominator)],
         ];
@@ -203,7 +211,7 @@ final class ResultsAnalyzer
      * @param  list<string>  $values
      * @return array<string, mixed>
      */
-    protected function quantitative(array $values, string $threshold): array
+    protected function quantitative(array $values, ?string $threshold): array
     {
         $bounds = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
         $counts = array_fill(0, 10, 0);
@@ -229,8 +237,9 @@ final class ResultsAnalyzer
                 // threshold (its upper bound is at or under it). A class that
                 // straddles the threshold (e.g. [40,50[ against 49,5) is not
                 // flagged — its members are a mix, and the threshold block
-                // above is the correct place to read the split.
-                'below_threshold' => Bc::compare((string) $upper, Bc::of($threshold)) <= 0,
+                // above is the correct place to read the split. No threshold
+                // defined by the scale: never flagged.
+                'below_threshold' => $threshold !== null && Bc::compare((string) $upper, Bc::of($threshold)) <= 0,
             ];
         }
 

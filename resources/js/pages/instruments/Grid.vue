@@ -17,14 +17,10 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { computeStructuralFingerprint, useGridDraft } from '@/composables/useGridDraft';
-import {
-    domainResultsFor as computeDomainResultsFor,
-    percentFor as computePercentFor,
-    qualitativeLabelFor as computeQualitativeLabelFor,
-    scaleBandFor,
-} from '@/lib/instrumentQualitativeRating';
+import { percentFor as computePercentFor } from '@/lib/instrumentQualitativeRating';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { statusToneClasses } from '@/lib/statusTone';
+import type { Cell as OfficialCell } from '@/types/resultsAnalysis';
 
 // Preserves where the teacher came from without a general-purpose breadcrumb:
 // arriving from assessments/Show.vue (via ?from=assessments) returns there;
@@ -103,6 +99,13 @@ const props = defineProps<{
     scores: Score[];
     states: StateOption[];
     scaleBands: { label: string; band_min: string; band_max: string; sequence: number; is_negative: boolean }[];
+    official: {
+        status: 'official' | 'provisional';
+        label: string;
+        threshold: string | null;
+        domains: Array<{ key: string; id: number; name: string }>;
+        students: Record<string, { status: string; status_label: string; global: OfficialCell; domains: Record<string, OfficialCell | null> }>;
+    };
 }>();
 
 /**
@@ -463,87 +466,40 @@ function percentFor(student: Student): number | null {
     return computePercentFor(props.items, (itemId) => cells[cellKey(student.enrollment_id, itemId)]);
 }
 
-/**
- * The qualitative label for the student's current percentage, from the
- * class's assessment-profile scale bands (scaleBands prop). A band match is
- * inclusive on both ends, mirroring only the inclusive-boundary convention
- * of CalculationEngine::combine()'s band-matching loop — not its domain
- * weighting, eligibility, or absence handling (see percentFor() above).
- * Returns null when nothing is graded yet, or when scaleBands is empty (no
- * profile assigned to the class, or its scale has no bands configured) —
- * the caller renders "—" in that case, never a guessed label.
- */
-function qualitativeLabelFor(student: Student): string | null {
-    return computeQualitativeLabelFor(percentFor(student), props.scaleBands);
+// ------------------------------------------------- classificação oficial
+
+/** O resultado oficial (ou provisório) deste aluno, tal como o motor o calculou — nunca recalculado no cliente. */
+function officialFor(student: Student) {
+    return props.official.students[String(student.enrollment_id)] ?? null;
 }
 
-/**
- * The Tailwind classes for the scale band a percentage falls into —
- * structural (sequence/is_negative), never a match on the band's own label
- * text, so a custom or translated scale keeps its colour coding. Neutral
- * when nothing is graded yet or no band matches, matching qualitativeLabelFor()'s
- * own "—" fallback.
- */
-function toneClassFor(percent: number | null): string {
-    const band = scaleBandFor(percent, props.scaleBands);
+function officialCellDisplay(cell: OfficialCell): string {
+    const raw = cell.value_precise ?? cell.value;
 
-    return qualitativeToneClasses[band ? qualitativeToneFor(band, props.scaleBands) : 'neutral'];
-}
-
-/** domain_id -> its display name, from whichever item first mentions it. */
-const domainNames = computed(() => {
-    const names = new Map<number, string>();
-
-    for (const item of props.items) {
-        for (const allocation of item.domains) {
-            if (!names.has(allocation.domain_id)) {
-                names.set(allocation.domain_id, allocation.name);
-            }
-        }
+    if (raw === null) {
+        return '—';
     }
 
-    return names;
-});
+    const decimals = cell.value_precise !== null ? 2 : 1;
 
-type DomainSummary = {
-    domain_id: number;
-    name: string;
-    earned: number;
-    possible: number;
-    percent: number | null;
-    isPartial: boolean;
-    label: string | null;
-    toneClass: string;
-};
+    return `${Number(raw).toFixed(decimals).replace('.', ',')} %`;
+}
+
+function officialToneClass(cell: OfficialCell): string {
+    if (cell.band === null) {
+        return qualitativeToneClasses.neutral;
+    }
+
+    return qualitativeToneClasses[qualitativeToneFor(cell.band, props.scaleBands)];
+}
 
 /**
- * One summary row per domain this instrument's items are allocated to, for
- * the student's current cells — aggregated across every item that touches
- * the domain (item_domain_allocations), never a single item's own score
- * read as the domain's result. See domainResultsFor() for the aggregation
- * itself; this only attaches the domain's name and its qualitative
- * label/tone, reusing the exact same scale bands as the global figure.
- *
- * A partial domain (some items still pending/under_review/etc.) still shows
- * its percentage, label and tone — never invented, always the real
- * aggregate of what IS graded — with isPartial exposed so the template can
- * mark it "parcial", the same convention the existing Total column already
- * uses for the instrument-wide figure. Nothing here is ever hidden just for
- * being provisional; it is only ever labelled as such.
+ * O valor oficial só reflete o que está guardado: uma célula alterada mas
+ * ainda não guardada (dirty) não mudou o cálculo do servidor, por isso o
+ * aluno precisa de saber que aquele número ainda não é o de agora.
  */
-function domainSummariesFor(student: Student): DomainSummary[] {
-    const results = computeDomainResultsFor(props.items, (itemId) => cells[cellKey(student.enrollment_id, itemId)]);
-
-    return results.map((result) => ({
-        domain_id: result.domain_id,
-        name: domainNames.value.get(result.domain_id) ?? '—',
-        earned: result.earned,
-        possible: result.possible,
-        percent: result.percent,
-        isPartial: result.isPartial,
-        label: computeQualitativeLabelFor(result.percent, props.scaleBands),
-        toneClass: toneClassFor(result.percent),
-    }));
+function studentIsDirty(student: Student): boolean {
+    return props.items.some((item) => dirty.has(cellKey(student.enrollment_id, item.id)));
 }
 
 /** True while some cells are marked and others are still pending. */
@@ -1146,11 +1102,19 @@ function revertCancellation(): void {
                                 {{ item.domains.map((d) => `${d.name} ${d.percent}%`).join(' · ') }}
                             </div>
                         </th>
-                        <th class="px-3 py-2 text-right font-medium">Total</th>
-                        <th
-                            class="min-w-40 px-3 py-2 text-left font-medium"
-                            title="Indicador só deste elemento de avaliação — não é a classificação oficial da turma/período, que pondera domínios e outras regras."
-                        >Apreciação Qualitativa</th>
+                        <th class="px-3 py-2 text-right font-medium">
+                            <div>Pontuação bruta</div>
+                            <div class="text-[10px] font-normal text-muted-foreground">pontos obtidos / cotação</div>
+                        </th>
+                        <th class="min-w-40 px-3 py-2 text-left font-medium">
+                            <div class="flex items-center gap-1.5">
+                                <span>{{ official.label }}</span>
+                                <span
+                                    v-if="official.status === 'provisional'"
+                                    class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-900"
+                                >provisória</span>
+                            </div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -1316,20 +1280,31 @@ function revertCancellation(): void {
                             <div class="flex flex-col gap-1">
                                 <div class="flex flex-wrap items-center gap-1.5 border-b border-border/40 pb-1">
                                     <span class="w-16 shrink-0 text-xs font-medium text-muted-foreground">Global</span>
-                                    <template v-if="percentFor(student) !== null">
-                                        <Badge v-if="qualitativeLabelFor(student)" :class="toneClassFor(percentFor(student))" class="text-[10px]">
-                                            {{ qualitativeLabelFor(student) }}
-                                        </Badge>
-                                        <span v-if="isPartial(student)" class="text-[10px] text-amber-600">parcial</span>
+                                    <template v-if="officialFor(student)">
+                                        <template v-if="officialFor(student)!.global.value !== null || officialFor(student)!.global.value_precise !== null">
+                                            <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.global) }}</span>
+                                            <Badge v-if="officialFor(student)!.global.band" :class="officialToneClass(officialFor(student)!.global)" class="text-[10px]">
+                                                {{ officialFor(student)!.global.band!.label }}
+                                            </Badge>
+                                        </template>
+                                        <span v-else class="text-xs text-muted-foreground">{{ officialFor(student)!.status_label }}</span>
                                     </template>
                                     <span v-else class="text-xs text-muted-foreground">—</span>
+                                    <span
+                                        v-if="studentIsDirty(student)"
+                                        class="text-[10px] text-amber-600"
+                                        title="Os valores oficiais só refletem o que está guardado."
+                                    >guarde para recalcular</span>
                                 </div>
-                                <div v-for="domain in domainSummariesFor(student)" :key="domain.domain_id" class="flex flex-wrap items-center gap-1.5">
+                                <div v-for="domain in official.domains" :key="domain.key" class="flex flex-wrap items-center gap-1.5">
                                     <span class="w-16 shrink-0 truncate text-xs text-muted-foreground" :title="domain.name">{{ domain.name }}</span>
-                                    <template v-if="domain.percent !== null">
-                                        <span class="text-xs tabular-nums text-muted-foreground">{{ domain.earned }}/{{ domain.possible }} · {{ domain.percent }}%</span>
-                                        <Badge v-if="domain.label" :class="domain.toneClass" class="text-[10px]">{{ domain.label }}</Badge>
-                                        <span v-if="domain.isPartial" class="text-[10px] text-amber-600">parcial</span>
+                                    <template v-if="officialFor(student)?.domains[domain.key]">
+                                        <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                        <Badge
+                                            v-if="officialFor(student)!.domains[domain.key]!.band"
+                                            :class="officialToneClass(officialFor(student)!.domains[domain.key]!)"
+                                            class="text-[10px]"
+                                        >{{ officialFor(student)!.domains[domain.key]!.band!.label }}</Badge>
                                     </template>
                                     <span v-else class="text-xs text-muted-foreground">—</span>
                                 </div>
@@ -1339,6 +1314,14 @@ function revertCancellation(): void {
                 </tbody>
             </table>
         </div>
+
+        <p
+            v-if="official.status === 'provisional'"
+            class="text-xs text-muted-foreground"
+        >
+            Valores provisórios: a correção ainda não está concluída. Os resultados oficiais e as
+            estatísticas ficam disponíveis no separador Resultados depois de concluir a correção.
+        </p>
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />

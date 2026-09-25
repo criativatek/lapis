@@ -216,3 +216,135 @@ type Props = {
 `students` só é enviado à página de impressão quando `include_individual` é
 verdadeiro; caso contrário é `[]` (o agregado não carrega nomes nem valores
 individuais, nem sequer escondidos no HTML).
+
+---
+
+## 9. Revisão pré-integração — regras definitivas A–D (2026-09-25)
+
+As questões Q1–Q3 da §8 foram decididas pelo proprietário do produto. Esta
+secção prevalece sobre o que acima a contradiga (em particular §3.4, o limiar
+fixo, e o Anexo A).
+
+### Regra A — só instrumentos concluídos têm resultados oficiais
+- `InstrumentStatus::isConcluded()` = `completed` ou `published` (`published`
+  só chega por restauro de backup e é posterior à conclusão). `archived` **não**
+  conta como concluído: nunca é escrito pelo código e não se sabe em que estado
+  da correção um instrumento restaurado assim ficou.
+- Resultados e a versão para impressão só calculam e mostram estatísticas,
+  gráficos e relatório para um instrumento concluído. Antes disso mostram o
+  estado e uma explicação e nada calculam (o motor nem é chamado). As
+  observações do professor continuam visíveis e editáveis.
+- Reabrir a correção retira o instrumento dos resultados oficiais. Não apaga
+  notas, observações nem classificações: a transição só muda o estado.
+- **O que ainda NÃO cumpre a regra:** o motor continua a admitir instrumentos
+  `prepared`/`in_correction` nas médias de período e acumuladas
+  (`InstrumentStatus::entersCalculation`). Ver §10, PR B.
+
+### Regra B — diagnósticos nunca contam
+- A interface deixa de afirmar a exclusão como garantida: diz o que a
+  configuração do instrumento determina. Se o instrumento não conta, diz que
+  não entra nas médias do período. Se conta, mostra um aviso explícito.
+- **A garantia no motor não está implementada nesta PR** (§10, PR B).
+
+### Regra C — grelha e Resultados coerentes
+- A grelha passa a mostrar duas grandezas com nome próprio. A **pontuação
+  bruta** (pontos/cotação, ao vivo, sem apreciação) e a **classificação
+  oficial** (ou **provisória**, enquanto a correção não estiver concluída),
+  calculada pelo mesmo caminho que Resultados
+  (`BuildResultsAnalysis::officialCells`). A apreciação sai sempre do valor
+  exato. Quando o arredondamento a uma casa sugeriria outra banda ou o outro
+  lado do limiar, o valor é mostrado truncado a duas casas
+  (`value_precise`).
+- Uma linha com alterações por guardar é marcada «guarde para recalcular»: o
+  valor oficial reflete só o que está gravado.
+
+### Regra D — limiar da escala
+- `ScaleThreshold::from()` devolve a fronteira entre bandas negativas e não
+  negativas (`is_negative`): o `band_min` da primeira não negativa, **só** se
+  todas as negativas estiverem inteiramente abaixo de todas as não negativas.
+  Caso contrário (sem marcas, intercaladas, sobrepostas, sem bandas) devolve
+  `null`. Nesse caso nenhum limiar é apresentado e a página di-lo. Na escala
+  1–5 de sistema dá 49,5.
+
+### Alterações ao Anexo A
+- Topo: `availability: { official, status, status_label, message }`. Quando
+  `official` é falso: `dimensions = []`, `students = []`, `report = null`.
+- `context.threshold: { value: string|null; label: string|null; explanation }`.
+- `Analysis.threshold: { value: string|null; available; below: Count|null; at_or_above: Count|null }`.
+- `Cell.value_precise: string|null`. `below_threshold` é `null` sem limiar.
+- Grelha: prop `official: { status: 'official'|'provisional'; label; threshold; domains; students }`.
+
+## 10. Impacto no motor e divisão do trabalho
+
+### Consumidores do cálculo (auditoria de 2026-09-25)
+`instrumentsInScope` (período e acumulado) alimenta:
+- Resultados (Média Ponderada, ⚠, evolução) e a análise IA de Resultados;
+- `BuildResultsProgression` e, a partir dele, Estatística, Evolução do Aluno e
+  relatórios não intercalares;
+- `FormalProposalBasis`, `ProposeClassifications` e a verificação de proposta
+  desatualizada em `ConfirmClassification`;
+- Pauta (`BuildEvaluationSheet`, CSV) e Quadro Síntese (+ XLSX);
+- `AccumulatedBreakdown` e `ContinuousAssessment`;
+- a captura de intercalares (congelada depois);
+- a exportação Inovar do período corrente e as colunas «Média Ponderada» da
+  exportação de dados;
+- a pré-visualização de migração de perfil.
+
+`PublishClassifications` e `EvaluationSheetReadiness` **repetem** o filtro em
+vez de o chamarem. `forInstruments` e `BuildClassElements` não filtram nada.
+
+### Proteção histórica existente
+- Congelados: `final_*`/`proposed_*` de classificações confirmadas/publicadas,
+  `CalculationSnapshot`, `InterimAssessment`, `EvaluationSheetExport` e
+  relatórios finalizados.
+- Recalculados ao vivo, para qualquer período, incluindo passados: tudo o
+  resto. O estado «Encerrado» de um período existe, mas **nada o consulta**, e
+  não há ação que o aplique. Os snapshots de cálculo nunca são relidos.
+
+**Consequência.** Mudar a elegibilidade no motor alteraria retroativamente
+valores já vistos por professores, para períodos passados. Faria ainda com
+que classificações confirmadas aparecessem como «proposta desatualizada» e
+que propostas por confirmar fossem recusadas. Isto cai no critério de paragem
+(regras já usadas em produção; períodos passados), por isso não entra na PR #42.
+
+### PR B — elegibilidade no motor (obrigatória antes da publicação)
+Âmbito:
+- regra única de elegibilidade num só sítio: concluído **e** não diagnóstico
+  **e** `counts_toward_classification`, em `ClassResultsCalculator` e nos dois
+  guardas que repetem o filtro;
+- validação no servidor (formulário, criação rápida, importação de grelhas)
+  que recusa um diagnóstico que conte;
+- o restauro de backup preserva os dados, mas não os torna elegíveis.
+
+Critérios de aceitação:
+1. Um instrumento não concluído não entra em médias de período ou acumuladas.
+2. Um diagnóstico nunca entra, seja qual for a opção guardada.
+3. As classificações confirmadas/publicadas, os snapshots, as intercalares e as
+   pautas guardadas não mudam (testes de byte a byte).
+4. Os dois guardas usam a mesma regra.
+5. Um relatório de impacto sobre dados fictícios mostra o que muda nos
+   períodos abertos.
+
+Decisões necessárias antes de a abrir:
+- (a) se a regra se aplica também a períodos passados ou só daqui em diante, o
+  que exige introduzir o fecho de período, hoje inexistente;
+- (b) o que fazer às propostas `Proposed` que ficariam desatualizadas;
+- (c) como regularizar os diagnósticos já gravados como «conta». Proposta:
+  listar e não reescrever; os que estão em curso passam a não contar; os de
+  períodos com classificações confirmadas ficam como estão e são sinalizados.
+
+Também é preciso saber quantos instrumentos isto afeta em produção: uma
+contagem só de leitura, a autorizar.
+
+### PR C — observações na exportação e no backup (obrigatória antes da publicação)
+Incluir `results_analysis_notes` na exportação de dados (XLSX/JSON) e no
+backup/restauro, com uma nova versão do esquema.
+
+Critérios de aceitação:
+1. A exportação contém as observações.
+2. Um restauro reproduz-as, com autoria.
+3. Um backup antigo continua a restaurar.
+
+### Evoluções posteriores
+Relatórios de intercalares e finais (com a mesma Regra A); comparação entre
+diagnóstico e avaliações posteriores; PDF/DOCX; IA.

@@ -39,6 +39,11 @@ function pct(value: string | null): string {
     return `${Number(value).toFixed(1).replace('.', ',')} %`;
 }
 
+/** «72,42 %» — o valor truncado a 2 casas, vírgula decimal pt-PT. */
+function pctPrecise(value: string): string {
+    return `${Number(value).toFixed(2).replace('.', ',')} %`;
+}
+
 function toneClassFor(band: Cell['band']): string {
     if (band === null) {
         return qualitativeToneClasses.neutral;
@@ -48,16 +53,16 @@ function toneClassFor(band: Cell['band']): string {
 }
 
 /**
- * Uma célula cujo valor exato está abaixo do limiar mas cuja apresentação
- * (arredondada a 1 casa) sugere o contrário — a única situação em que o
- * arredondamento pode enganar sobre o lado do limiar (§Anexo A, regra 4).
+ * O servidor só envia `value_precise` quando o arredondamento a 1 casa
+ * sugeriria outra banda ou o outro lado do limiar (§Anexo A) — nunca
+ * recalculado aqui.
  */
-function isRoundingEdgeCase(cell: Cell): boolean {
-    if (cell.below_threshold !== true || cell.value === null) {
-        return false;
-    }
+function displayValue(cell: Cell): string {
+    return cell.value_precise !== null ? pctPrecise(cell.value_precise) : pct(cell.value);
+}
 
-    return Number(cell.value) >= Number(props.context.threshold.value);
+function hasPreciseFootnote(cell: Cell): boolean {
+    return cell.value_precise !== null;
 }
 
 // ------------------------------------------------------------- dimensão selecionada
@@ -69,6 +74,8 @@ const selectedDimension = computed(() =>
 );
 
 const selectedAnalysis = computed<Analysis>(() => selectedDimension.value.analysis);
+
+const thresholdColumnsAvailable = computed(() => props.context.threshold.value !== null);
 
 // ------------------------------------------------------------- missing breakdown
 
@@ -239,19 +246,36 @@ const noteUpdatedLabel = computed(() => {
             </span>
         </nav>
 
+        <!-- Estado não oficial: nada de indicadores, gráficos, tabelas ou números -->
+        <div
+            v-if="!availability.official"
+            class="rounded-md border border-border bg-muted/20 px-4 py-3 text-sm"
+            role="status"
+        >
+            <p class="font-medium">Estado: {{ availability.status_label }}</p>
+            <p v-if="availability.message" class="mt-1 text-muted-foreground">{{ availability.message }}</p>
+            <a :href="links.grid" class="mt-2 inline-block text-sm text-muted-foreground hover:underline">
+                ← Voltar à grelha de correção
+            </a>
+        </div>
+
         <!-- Avisos de diagnóstico -->
         <div
-            v-if="context.is_diagnostic"
+            v-if="availability.official && context.is_diagnostic"
             class="rounded-md border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
             role="status"
         >
-            Avaliação diagnóstica — utiliza a mesma escala, mas não contribui para médias
-            classificativas. Serve para identificar potencialidades, dificuldades e necessidades de
-            acompanhamento.
+            Avaliação diagnóstica — utiliza a mesma escala e a mesma linguagem de avaliação dos
+            restantes instrumentos. Serve para identificar potencialidades, dificuldades e necessidades
+            de acompanhamento.
+            <template v-if="!context.counts_toward_classification">
+                Está configurada para não contar para a classificação e, por isso, não entra nas médias
+                classificativas do período.
+            </template>
         </div>
 
         <div
-            v-if="context.diagnostic_counts_warning"
+            v-if="availability.official && context.diagnostic_counts_warning"
             class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
             role="alert"
         >
@@ -261,7 +285,7 @@ const noteUpdatedLabel = computed(() => {
         </div>
 
         <!-- a) Resultados por aluno -->
-        <section aria-labelledby="section-students" class="space-y-3">
+        <section v-if="availability.official" aria-labelledby="section-students" class="space-y-3">
             <h2 id="section-students" class="text-base font-semibold">Resultados por aluno</h2>
 
             <TableShell v-if="orderedStudents.length > 0">
@@ -300,12 +324,12 @@ const noteUpdatedLabel = computed(() => {
                         </template>
                         <template v-else>
                             <td class="px-3 py-1.5 text-right tabular-nums">
-                                {{ pct(student.global.value) }}
+                                {{ displayValue(student.global) }}
                                 <sup
-                                    v-if="isRoundingEdgeCase(student.global)"
+                                    v-if="hasPreciseFootnote(student.global)"
                                     class="cursor-help text-amber-600"
-                                    :title="'Valor exato abaixo de 49,5 %; o limiar aplica-se antes do arredondamento.'"
-                                    aria-describedby="rounding-footnote"
+                                    title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
+                                    aria-describedby="precise-footnote"
                                 >*</sup>
                                 <span v-if="student.global.is_partial" class="ml-1 text-xs font-normal text-amber-600">parcial</span>
                             </td>
@@ -317,11 +341,11 @@ const noteUpdatedLabel = computed(() => {
                             </td>
                             <td v-for="domain in context.domains" :key="domain.key" class="px-3 py-1.5">
                                 <template v-if="student.domains[domain.key] && student.domains[domain.key]!.value !== null">
-                                    <span class="tabular-nums">{{ pct(student.domains[domain.key]!.value) }}</span>
+                                    <span class="tabular-nums">{{ displayValue(student.domains[domain.key]!) }}</span>
                                     <sup
-                                        v-if="isRoundingEdgeCase(student.domains[domain.key]!)"
+                                        v-if="hasPreciseFootnote(student.domains[domain.key]!)"
                                         class="cursor-help text-amber-600"
-                                        title="Valor exato abaixo de 49,5 %; o limiar aplica-se antes do arredondamento."
+                                        title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
                                     >*</sup>
                                     <Badge
                                         v-if="student.domains[domain.key]!.band"
@@ -340,14 +364,14 @@ const noteUpdatedLabel = computed(() => {
             </TableShell>
             <p v-else class="text-sm text-muted-foreground">Esta turma não tem alunos abrangidos.</p>
 
-            <p id="rounding-footnote" class="flex items-start gap-1 text-xs text-muted-foreground">
+            <p v-if="students.some((student) => student.global.value_precise !== null || Object.values(student.domains).some((cell) => cell?.value_precise))" id="precise-footnote" class="flex items-start gap-1 text-xs text-muted-foreground">
                 <span aria-hidden="true">*</span>
-                Valor exato abaixo de 49,5 %; o limiar aplica-se antes do arredondamento.
+                Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato.
             </p>
         </section>
 
         <!-- b) Indicadores da turma -->
-        <section aria-labelledby="section-indicators" class="space-y-3">
+        <section v-if="availability.official" aria-labelledby="section-indicators" class="space-y-3">
             <h2 id="section-indicators" class="text-base font-semibold">Indicadores da turma</h2>
 
             <div class="flex flex-wrap gap-1.5" role="group" aria-label="Selecionar dimensão">
@@ -384,19 +408,25 @@ const noteUpdatedLabel = computed(() => {
                     <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mediana</p>
                     <p class="mt-1 text-2xl font-semibold tabular-nums">{{ pct(selectedAnalysis.median) }}</p>
                 </div>
-                <div class="rounded-lg border border-border bg-card p-4">
-                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Inferiores a {{ context.threshold.label }}</p>
-                    <p class="mt-1 text-2xl font-semibold tabular-nums">
-                        {{ selectedAnalysis.threshold.below.count }}
-                        <span class="text-sm font-normal text-muted-foreground">({{ pct(selectedAnalysis.threshold.below.percent) }})</span>
-                    </p>
-                </div>
-                <div class="rounded-lg border border-border bg-card p-4">
-                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Iguais ou superiores a {{ context.threshold.label }}</p>
-                    <p class="mt-1 text-2xl font-semibold tabular-nums">
-                        {{ selectedAnalysis.threshold.at_or_above.count }}
-                        <span class="text-sm font-normal text-muted-foreground">({{ pct(selectedAnalysis.threshold.at_or_above.percent) }})</span>
-                    </p>
+                <template v-if="selectedAnalysis.threshold.available && context.threshold.value !== null">
+                    <div class="rounded-lg border border-border bg-card p-4">
+                        <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Inferiores a {{ context.threshold.label }}</p>
+                        <p class="mt-1 text-2xl font-semibold tabular-nums">
+                            {{ selectedAnalysis.threshold.below!.count }}
+                            <span class="text-sm font-normal text-muted-foreground">({{ pct(selectedAnalysis.threshold.below!.percent) }})</span>
+                        </p>
+                    </div>
+                    <div class="rounded-lg border border-border bg-card p-4">
+                        <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Iguais ou superiores a {{ context.threshold.label }}</p>
+                        <p class="mt-1 text-2xl font-semibold tabular-nums">
+                            {{ selectedAnalysis.threshold.at_or_above!.count }}
+                            <span class="text-sm font-normal text-muted-foreground">({{ pct(selectedAnalysis.threshold.at_or_above!.percent) }})</span>
+                        </p>
+                    </div>
+                </template>
+                <div v-else class="rounded-lg border border-border bg-card p-4 sm:col-span-2 lg:col-span-2">
+                    <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Limiar</p>
+                    <p class="mt-1 text-sm text-muted-foreground">{{ context.threshold.explanation }}</p>
                 </div>
             </div>
 
@@ -414,7 +444,7 @@ const noteUpdatedLabel = computed(() => {
         </section>
 
         <!-- c) Distribuição -->
-        <section aria-labelledby="section-distribution" class="space-y-6">
+        <section v-if="availability.official" aria-labelledby="section-distribution" class="space-y-6">
             <h2 id="section-distribution" class="text-base font-semibold">Distribuição</h2>
 
             <div class="space-y-3">
@@ -442,7 +472,7 @@ const noteUpdatedLabel = computed(() => {
         </section>
 
         <!-- d) Resultados por domínio -->
-        <section v-if="context.domains.length > 0" aria-labelledby="section-domains" class="space-y-3">
+        <section v-if="availability.official && context.domains.length > 0" aria-labelledby="section-domains" class="space-y-3">
             <h2 id="section-domains" class="text-base font-semibold">Resultados por domínio</h2>
 
             <TableShell>
@@ -453,8 +483,10 @@ const noteUpdatedLabel = computed(() => {
                         <th scope="col" class="px-3 py-2 text-right font-medium">Avaliados</th>
                         <th scope="col" class="px-3 py-2 text-right font-medium">Média</th>
                         <th scope="col" class="px-3 py-2 text-right font-medium">Mediana</th>
-                        <th scope="col" class="px-3 py-2 text-right font-medium">&lt; {{ context.threshold.label }}</th>
-                        <th scope="col" class="px-3 py-2 text-right font-medium">&ge; {{ context.threshold.label }}</th>
+                        <template v-if="thresholdColumnsAvailable">
+                            <th scope="col" class="px-3 py-2 text-right font-medium">&lt; {{ context.threshold.label }}</th>
+                            <th scope="col" class="px-3 py-2 text-right font-medium">&ge; {{ context.threshold.label }}</th>
+                        </template>
                     </tr>
                 </template>
                 <template #body>
@@ -471,34 +503,41 @@ const noteUpdatedLabel = computed(() => {
                             <td class="px-3 py-1.5 text-right tabular-nums">
                                 {{ pct(dimensions.find((dimension) => dimension.key === domain.key)!.analysis.median) }}
                             </td>
-                            <td class="px-3 py-1.5 text-right tabular-nums">
-                                {{ dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.below.count }}
-                                ({{ pct(dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.below.percent) }})
-                            </td>
-                            <td class="px-3 py-1.5 text-right tabular-nums">
-                                {{ dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.at_or_above.count }}
-                                ({{ pct(dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.at_or_above.percent) }})
-                            </td>
+                            <template v-if="thresholdColumnsAvailable">
+                                <td class="px-3 py-1.5 text-right tabular-nums">
+                                    {{ dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.below!.count }}
+                                    ({{ pct(dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.below!.percent) }})
+                                </td>
+                                <td class="px-3 py-1.5 text-right tabular-nums">
+                                    {{ dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.at_or_above!.count }}
+                                    ({{ pct(dimensions.find((dimension) => dimension.key === domain.key)!.analysis.threshold.at_or_above!.percent) }})
+                                </td>
+                            </template>
                         </template>
-                        <td v-else class="px-3 py-1.5 text-right text-muted-foreground" colspan="5">—</td>
+                        <td v-else class="px-3 py-1.5 text-right text-muted-foreground" :colspan="thresholdColumnsAvailable ? 5 : 3">—</td>
                     </tr>
                 </template>
             </TableShell>
         </section>
 
         <!-- e) Notas metodológicas -->
-        <section v-if="context.notes.length > 0" aria-labelledby="section-notes" class="space-y-1">
+        <section
+            v-if="availability.official && (context.notes.length > 0 || context.threshold.value === null)"
+            aria-labelledby="section-notes"
+            class="space-y-1"
+        >
             <h2 id="section-notes" class="text-sm font-semibold text-muted-foreground">Notas metodológicas</h2>
             <ul class="list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+                <li v-if="context.threshold.value === null">{{ context.threshold.explanation }}</li>
                 <li v-for="(note, index) in context.notes" :key="index">{{ note }}</li>
             </ul>
         </section>
 
         <!-- f) Relatório descritivo -->
-        <section aria-labelledby="section-report" class="space-y-4 border-t border-border pt-6">
+        <section v-if="availability.official" aria-labelledby="section-report" class="space-y-4 border-t border-border pt-6">
             <h2 id="section-report" class="text-base font-semibold">Relatório descritivo</h2>
 
-            <article v-for="section in report.sections" :key="section.key" class="space-y-2">
+            <article v-for="section in report?.sections ?? []" :key="section.key" class="space-y-2">
                 <h3 class="text-sm font-semibold">{{ section.title }}</h3>
                 <p v-for="(paragraph, index) in section.paragraphs" :key="index" class="text-sm text-muted-foreground">
                     {{ paragraph }}
@@ -519,6 +558,11 @@ const noteUpdatedLabel = computed(() => {
                 </TableShell>
             </article>
 
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+                As observações são texto livre e podem conter informação identificável. Reveja-as antes de
+                partilhar o relatório.
+            </p>
+
             <div class="flex flex-wrap gap-3 print:hidden">
                 <a :href="links.report" class="text-sm text-muted-foreground hover:underline">
                     Versão para impressão (sem nomes)
@@ -527,28 +571,29 @@ const noteUpdatedLabel = computed(() => {
                     Versão para impressão com resultados individuais
                 </a>
             </div>
+        </section>
 
-            <div class="space-y-2 rounded-lg border border-border bg-muted/10 p-4">
-                <h3 class="text-sm font-semibold">Observações do professor</h3>
-                <Textarea
-                    v-model="noteForm.body"
-                    :disabled="!can_edit"
-                    :readonly="!can_edit"
-                    rows="5"
-                    aria-label="Observações do professor"
-                    placeholder="Escreva aqui as suas observações sobre este instrumento."
-                />
-                <InputError :message="noteForm.errors.body" />
-                <p class="text-xs text-muted-foreground">
-                    As observações ficam guardadas à parte e não se perdem quando os indicadores são recalculados.
-                </p>
-                <p v-if="noteUpdatedLabel" class="text-xs text-muted-foreground">
-                    Última alteração: {{ noteUpdatedLabel }}
-                </p>
-                <Button v-if="can_edit" type="button" size="sm" :disabled="noteForm.processing" @click="submitNote">
-                    Guardar observações
-                </Button>
-            </div>
+        <!-- Observações do professor: sempre visível, mesmo sem resultados oficiais -->
+        <section aria-labelledby="section-notes-teacher" class="space-y-2 rounded-lg border border-border bg-muted/10 p-4">
+            <h3 id="section-notes-teacher" class="text-sm font-semibold">Observações do professor</h3>
+            <Textarea
+                v-model="noteForm.body"
+                :disabled="!can_edit"
+                :readonly="!can_edit"
+                rows="5"
+                aria-label="Observações do professor"
+                placeholder="Escreva aqui as suas observações sobre este instrumento."
+            />
+            <InputError :message="noteForm.errors.body" />
+            <p class="text-xs text-muted-foreground">
+                As observações ficam guardadas à parte e não se perdem quando os indicadores são recalculados.
+            </p>
+            <p v-if="noteUpdatedLabel" class="text-xs text-muted-foreground">
+                Última alteração: {{ noteUpdatedLabel }}
+            </p>
+            <Button v-if="can_edit" type="button" size="sm" :disabled="noteForm.processing" @click="submitNote">
+                Guardar observações
+            </Button>
         </section>
     </div>
 </template>

@@ -24,7 +24,7 @@ class ResultsAnalyzerTest extends TestCase
     #[Test]
     public function empty_input_produces_a_clean_zero_analysis(): void
     {
-        $analysis = (new ResultsAnalyzer)->analyse([], []);
+        $analysis = (new ResultsAnalyzer)->analyse([], [], '49.5');
 
         $this->assertSame(0, $analysis['universe']);
         $this->assertSame(0, $analysis['classified']);
@@ -45,7 +45,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('3', '90'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertSame('40.0', $analysis['mean']);
         $this->assertSame('20.0', $analysis['median']);
@@ -61,7 +61,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('4', '40'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertSame('25.0', $analysis['mean']);
         // (20 + 30) / 2 = 25
@@ -83,7 +83,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->missing('9', ObservationStatus::OutOfScope),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertSame(8, $analysis['universe'], 'Out of scope must not enter the universe.');
         $this->assertSame(1, $analysis['classified']);
@@ -108,7 +108,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('at', '49.5'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertSame(2, $analysis['threshold']['below']['count'], '49,46 displays as 49,5 but is still below the threshold.');
         $this->assertSame(1, $analysis['threshold']['at_or_above']['count']);
@@ -123,7 +123,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('c', '105'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
         $classes = $analysis['quantitative']['classes'];
 
         $this->assertSame(1, $classes[1]['count'], '10.0 goes to [10, 20[.');
@@ -155,7 +155,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('f', '89.5'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, $bands);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, $bands, '49.5');
 
         $this->assertTrue($analysis['qualitative']['available']);
         $categoriesByKey = collect($analysis['qualitative']['categories'])->keyBy('key');
@@ -183,7 +183,7 @@ class ResultsAnalyzerTest extends TestCase
             $this->observation('z', '90'),
         ];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, $bands);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, $bands, '49.5');
         $categoriesByKey = collect($analysis['qualitative']['categories'])->keyBy('key');
 
         $this->assertSame(1, $categoriesByKey['a']['count']);
@@ -197,7 +197,7 @@ class ResultsAnalyzerTest extends TestCase
     {
         $observations = [$this->observation('a', '50')];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertFalse($analysis['qualitative']['available']);
         $this->assertSame([], $analysis['qualitative']['categories']);
@@ -208,10 +208,46 @@ class ResultsAnalyzerTest extends TestCase
     {
         $observations = [$this->missing('1', ObservationStatus::Pending)];
 
-        $analysis = (new ResultsAnalyzer)->analyse($observations, []);
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '49.5');
 
         $this->assertSame(0, $analysis['classified']);
         $this->assertNull($analysis['threshold']['below']['percent']);
         $this->assertNull($analysis['threshold']['at_or_above']['percent']);
+    }
+
+    #[Test]
+    public function a_null_threshold_leaves_every_threshold_indicator_unavailable(): void
+    {
+        $observations = [
+            $this->observation('a', '10'),
+            $this->observation('b', '90'),
+        ];
+
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], null);
+
+        $this->assertFalse($analysis['threshold']['available']);
+        $this->assertNull($analysis['threshold']['value']);
+        $this->assertNull($analysis['threshold']['below']);
+        $this->assertNull($analysis['threshold']['at_or_above']);
+
+        foreach ($analysis['quantitative']['classes'] as $class) {
+            $this->assertFalse($class['below_threshold'], 'No threshold — no class can be flagged below it.');
+        }
+    }
+
+    #[Test]
+    public function a_custom_threshold_is_applied_on_exact_values(): void
+    {
+        $observations = [
+            $this->observation('below', '49.9'),
+            $this->observation('at', '50'),
+            $this->observation('above', '50.1'),
+        ];
+
+        $analysis = (new ResultsAnalyzer)->analyse($observations, [], '50');
+
+        $this->assertSame('50', $analysis['threshold']['value']);
+        $this->assertSame(1, $analysis['threshold']['below']['count']);
+        $this->assertSame(2, $analysis['threshold']['at_or_above']['count']);
     }
 }

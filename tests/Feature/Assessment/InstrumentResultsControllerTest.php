@@ -20,6 +20,7 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\RecordScores;
@@ -28,14 +29,17 @@ use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\InstrumentTypesSeeder;
 use Database\Seeders\SystemScalesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * The Resultados tab (design spec, Annex A): built through the real product
- * path — ProfileBuilder, InstrumentBuilder, RecordScores — never a hand-rolled
- * database fixture. A profile with two domains at unequal weights (60/40) so
- * a global figure can never coincidentally equal a single domain's.
+ * The Resultados tab (design spec, Annex A + addendum): built through the
+ * real product path — ProfileBuilder, InstrumentBuilder, RecordScores,
+ * CompleteCorrection — never a hand-rolled database fixture. A profile with
+ * two domains at unequal weights (60/40) so a global figure can never
+ * coincidentally equal a single domain's.
  */
 class InstrumentResultsControllerTest extends TestCase
 {
@@ -70,7 +74,7 @@ class InstrumentResultsControllerTest extends TestCase
     }
 
     /**
-     * Two domains, 60/40. Six students:
+     * Two domains, 60/40. Six students, instrument left `in_correction`:
      *  #1 fully classified (both domains marked);
      *  #2 fully classified, lower marks (for mean/median spread);
      *  #3 absent (state=absent under exclude_all_warn — excluded, not zero);
@@ -78,6 +82,12 @@ class InstrumentResultsControllerTest extends TestCase
      *  #5 never marked at all (pending — no score rows);
      *  #6 enrolled AFTER the instrument's applied_on (out_of_scope);
      *  #7 partial: one domain's item marked, the other's item left pending.
+     *
+     * `official`-statistics tests resolve #5/#7's remaining pending cells and
+     * call `CompleteCorrection` themselves — the correction cannot close
+     * while any applicable student is still `pending` (`InstrumentCompleteness`),
+     * and this base scenario is deliberately left that way so an
+     * availability test can assert "not concluded" against it as-is.
      */
     private function scenario(): void
     {
@@ -177,10 +187,86 @@ class InstrumentResultsControllerTest extends TestCase
         return $this->class()->enrollments()->where('class_number', $number)->firstOrFail();
     }
 
+    /**
+     * Resolves #5's and #7's remaining pending cells (the only two blocking
+     * `InstrumentCompleteness`) and completes the correction — the scenario
+     * this file's "official statistics" tests build on.
+     */
+    private function completeScenario(): void
+    {
+        $this->asTenant(function (): void {
+            $instrument = $this->instrument();
+            $byCode = $instrument->items->keyBy('code');
+
+            app(RecordScores::class)->save($instrument, [
+                ['enrollment_id' => $this->enrollmentByNumber(5)->id, 'instrument_item_id' => $byCode['Q1']->id, 'result_state' => ResultState::Absent->value],
+                ['enrollment_id' => $this->enrollmentByNumber(5)->id, 'instrument_item_id' => $byCode['Q2']->id, 'result_state' => ResultState::Absent->value],
+                ['enrollment_id' => $this->enrollmentByNumber(7)->id, 'instrument_item_id' => $byCode['Q2']->id, 'result_state' => ResultState::Assessed->value, 'points_earned' => 7.0],
+            ], $this->teacher);
+
+            app(CompleteCorrection::class)->complete($this->instrument(), $this->teacher);
+        });
+    }
+
+    // ======================================================= disponibilidade
+
+    #[Test]
+    public function results_are_unavailable_and_nothing_is_computed_while_in_correction(): void
+    {
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+
+        $response = $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados");
+        $response->assertOk();
+
+        $response->assertInertia(function ($page): void {
+            $page->component('instruments/Results')
+                ->where('availability.official', false)
+                ->where('availability.status', 'in_correction')
+                ->where('dimensions', [])
+                ->where('students', [])
+                ->where('report', null);
+
+            $message = $page->toArray()['props']['availability']['message'];
+            $this->assertIsString($message);
+            $this->assertStringContainsString('correção deste instrumento estiver concluída', $message);
+        });
+    }
+
+    #[Test]
+    public function the_print_route_mirrors_availability_while_in_correction(): void
+    {
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+
+        $this->actingAs($this->teacher)
+            ->get("/instruments/{$ulid}/resultados/relatorio?individual=1")
+            ->assertInertia(fn ($page) => $page
+                ->component('instruments/results/Print')
+                ->where('availability.official', false)
+                ->where('students', [])
+                ->where('report', null));
+    }
+
+    #[Test]
+    public function a_cancelled_instrument_gets_the_cancellation_message(): void
+    {
+        $ulid = $this->asTenant(function (): string {
+            $instrument = $this->instrument();
+            $instrument->update(['status' => 'cancelled', 'cancellation_reason' => 'Erro no enunciado.']);
+
+            return $instrument->ulid;
+        });
+
+        $this->actingAs($this->teacher)
+            ->get("/instruments/{$ulid}/resultados")
+            ->assertInertia(fn ($page) => $page
+                ->where('availability.official', false)
+                ->where('availability.message', 'Este instrumento foi anulado: não tem resultados oficiais.'));
+    }
+
     // ============================================================ o número
 
     #[Test]
-    public function the_global_value_matches_the_engine_exactly_and_no_second_engine_runs(): void
+    public function the_grid_computes_official_cells_for_any_non_draft_instrument_matching_the_engine(): void
     {
         [$expected, $instrumentUlid] = $this->asTenant(function (): array {
             $class = $this->class();
@@ -191,81 +277,159 @@ class InstrumentResultsControllerTest extends TestCase
             foreach ([1, 2, 3, 4, 7] as $number) {
                 $enrollment = $this->enrollmentByNumber($number);
                 $outcome = $calculator->forInstruments($class, $enrollment, collect([$instrument]))[$instrument->id];
-                $expected[$number] = $outcome->normalizedValue;
+                $expected[$enrollment->id] = $outcome->normalizedValue;
             }
 
             return [$expected, $instrument->ulid];
         });
 
-        $response = $this->actingAs($this->teacher)->get("/instruments/{$instrumentUlid}/resultados");
+        $response = $this->actingAs($this->teacher)->get("/instruments/{$instrumentUlid}");
         $response->assertOk();
 
         $response->assertInertia(function ($page) use ($expected): void {
-            $page->component('instruments/Results');
-            $students = collect($page->toArray()['props']['students']);
+            $page->component('instruments/Grid')
+                ->where('official.status', 'provisional')
+                ->where('official.label', 'Classificação provisória');
 
-            foreach ($expected as $number => $exact) {
-                $student = $students->firstWhere('class_number', $number);
-                $this->assertNotNull($student, "Student #{$number} missing from payload.");
-                $this->assertSame($exact, $student['global']['exact'], "Student #{$number}'s global exact value diverges from the engine.");
+            $students = $page->toArray()['props']['official']['students'];
+
+            foreach ($expected as $enrollmentId => $exact) {
+                $this->assertArrayHasKey($enrollmentId, $students, "Enrollment {$enrollmentId} missing from official.students.");
+                $this->assertSame($exact, $students[$enrollmentId]['global']['exact'], "Enrollment {$enrollmentId}'s official value diverges from the engine.");
             }
         });
     }
 
     #[Test]
-    public function statuses_are_derived_correctly_for_every_scenario(): void
+    public function statuses_are_derived_correctly_in_the_official_grid_cells(): void
     {
-        $response = $this->actingAs($this->teacher)->get('/instruments/'.$this->asTenant(fn () => $this->instrument()->ulid).'/resultados');
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+        $ids = $this->asTenant(fn () => [
+            1 => $this->enrollmentByNumber(1)->id, 2 => $this->enrollmentByNumber(2)->id,
+            3 => $this->enrollmentByNumber(3)->id, 4 => $this->enrollmentByNumber(4)->id,
+            5 => $this->enrollmentByNumber(5)->id, 6 => $this->enrollmentByNumber(6)->id,
+            7 => $this->enrollmentByNumber(7)->id,
+        ]);
 
-        $response->assertInertia(function ($page): void {
-            $students = collect($page->toArray()['props']['students'])->keyBy('class_number');
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}")->assertInertia(function ($page) use ($ids): void {
+            $students = $page->toArray()['props']['official']['students'];
 
-            $this->assertSame('classified', $students[1]['status']);
-            $this->assertSame('classified', $students[2]['status']);
-            $this->assertSame('absent', $students[3]['status']);
-            $this->assertSame('exempt', $students[4]['status']);
-            $this->assertSame('pending', $students[5]['status']);
-            $this->assertSame('out_of_scope', $students[6]['status']);
-            $this->assertSame('classified', $students[7]['status']);
-            $this->assertTrue($students[7]['global']['is_partial'], 'Student #7 has one item still pending.');
+            $this->assertSame('classified', $students[$ids[1]]['status']);
+            $this->assertSame('classified', $students[$ids[2]]['status']);
+            $this->assertSame('absent', $students[$ids[3]]['status']);
+            $this->assertSame('exempt', $students[$ids[4]]['status']);
+            $this->assertSame('pending', $students[$ids[5]]['status']);
+            $this->assertSame('out_of_scope', $students[$ids[6]]['status']);
+            $this->assertSame('classified', $students[$ids[7]]['status']);
+            $this->assertTrue($students[$ids[7]]['global']['is_partial'], 'Student #7 has one item still pending.');
         });
     }
 
+    // ==================================================== conclusão/reabertura
+
     #[Test]
-    public function n_mean_median_and_threshold_counts_are_correct(): void
+    public function official_statistics_appear_on_completion_and_disappear_on_reopen(): void
     {
-        [$class, $instrument] = $this->asTenant(fn () => [$this->class(), $this->instrument()]);
-        $calculator = app(ClassResultsCalculator::class);
+        $this->completeScenario();
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
 
-        [$v1, $v2, $v7] = $this->asTenant(function () use ($class, $instrument, $calculator): array {
-            return [
-                $calculator->forInstruments($class, $this->enrollmentByNumber(1), collect([$instrument]))[$instrument->id]->normalizedValue,
-                $calculator->forInstruments($class, $this->enrollmentByNumber(2), collect([$instrument]))[$instrument->id]->normalizedValue,
-                $calculator->forInstruments($class, $this->enrollmentByNumber(7), collect([$instrument]))[$instrument->id]->normalizedValue,
-            ];
-        });
+        // Baseline captured right AFTER completion (which itself legitimately
+        // records the 3 resolving cells): the invariant under test is that
+        // COMPLETING/REOPENING the correction — as opposed to marking cells —
+        // never itself writes a classification, snapshot, or score.
+        $afterComplete = $this->asTenant(fn () => [
+            Classification::count(), CalculationSnapshot::count(), StudentItemScore::count(),
+        ]);
 
-        $response = $this->actingAs($this->teacher)->get("/instruments/{$instrument->ulid}/resultados");
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(function ($page): void {
+            $page->component('instruments/Results')
+                ->where('availability.official', true)
+                ->where('availability.status', 'completed');
 
-        $response->assertInertia(function ($page): void {
-            $global = collect($page->toArray()['props']['dimensions'])->firstWhere('key', 'global')['analysis'];
+            $props = $page->toArray()['props'];
+            $this->assertNotSame([], $props['dimensions']);
+            $this->assertNotSame([], $props['students']);
+            $this->assertNotNull($props['report']);
 
-            // Universe excludes #6 (out of scope): 6 students. Classified: #1,#2,#7 = 3.
+            $global = collect($props['dimensions'])->firstWhere('key', 'global')['analysis'];
+            // Universe excludes #6: 6 students. Classified: #1, #2, #7 (now fully resolved).
             $this->assertSame(6, $global['universe']);
             $this->assertSame(3, $global['classified']);
-            $this->assertSame(1, $global['partial']);
+            $this->assertSame(0, $global['partial'], '#7 is fully resolved once completed.');
             $this->assertSame(1, $global['out_of_scope']);
-            $this->assertSame(1, $global['missing']['absent']);
+            $this->assertSame(2, $global['missing']['absent'], '#3 and now #5.');
             $this->assertSame(1, $global['missing']['exempt']);
-            $this->assertSame(1, $global['missing']['pending']);
-            $this->assertSame(3, $global['missing']['total']);
+            $this->assertSame(0, $global['missing']['pending']);
         });
+
+        // Reopen: back to provisional/unavailable, and the note is untouched
+        // (§ notes live in their own table, never touched by recalculation).
+        $this->asTenant(function (): void {
+            $this->actingAs($this->teacher)
+                ->put('/instruments/'.$this->instrument()->ulid.'/resultados/observacoes', ['body' => 'Nota antes de reabrir.', 'lock_version' => 0])
+                ->assertRedirect();
+        });
+
+        $this->asTenant(fn () => app(CompleteCorrection::class)->reopen($this->instrument(), $this->teacher));
+
+        $afterReopen = $this->asTenant(fn () => [
+            Classification::count(), CalculationSnapshot::count(), StudentItemScore::count(),
+        ]);
+
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(fn ($page) => $page
+            ->where('availability.official', false)
+            ->where('availability.status', 'in_correction')
+            ->where('dimensions', [])
+            ->where('students', [])
+            ->where('note.body', 'Nota antes de reabrir.'));
+
+        // Complete again: the numbers come back, byte for byte.
+        $this->asTenant(fn () => app(CompleteCorrection::class)->complete($this->instrument(), $this->teacher));
+
+        $afterRecomplete = $this->asTenant(fn () => [
+            Classification::count(), CalculationSnapshot::count(), StudentItemScore::count(),
+        ]);
+
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(fn ($page) => $page
+            ->where('availability.official', true)
+            ->where('note.body', 'Nota antes de reabrir.'));
+
+        $this->assertSame($afterComplete, $afterReopen, 'Reopening must never write a classification, snapshot, or score.');
+        $this->assertSame($afterComplete, $afterRecomplete, 'Re-completing must never write a classification, snapshot, or score.');
+    }
+
+    #[Test]
+    public function the_official_grid_cells_are_identical_to_results_students_once_concluded(): void
+    {
+        $this->completeScenario();
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+
+        $gridStudents = null;
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}")->assertInertia(function ($page) use (&$gridStudents): void {
+            $page->where('official.status', 'official')->where('official.label', 'Classificação oficial');
+            $gridStudents = $page->toArray()['props']['official']['students'];
+        });
+
+        $resultsStudents = null;
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(function ($page) use (&$resultsStudents): void {
+            $resultsStudents = collect($page->toArray()['props']['students'])->keyBy('enrollment_id');
+        });
+
+        $this->assertNotNull($gridStudents);
+        $this->assertNotNull($resultsStudents);
+
+        foreach ($resultsStudents as $enrollmentId => $student) {
+            $this->assertArrayHasKey($enrollmentId, $gridStudents);
+            $this->assertSame($student['status'], $gridStudents[$enrollmentId]['status']);
+            $this->assertSame($student['global'], $gridStudents[$enrollmentId]['global']);
+            $this->assertSame($student['domains'], $gridStudents[$enrollmentId]['domains']);
+        }
     }
 
     // ========================================================= diagnóstico
 
     #[Test]
-    public function a_diagnostic_instrument_is_analysed_but_stays_out_of_the_period_scope(): void
+    public function a_diagnostic_instrument_reports_its_context_even_before_being_concluded(): void
     {
         $ulid = $this->asTenant(function (): string {
             $class = $this->class();
@@ -301,7 +465,8 @@ class InstrumentResultsControllerTest extends TestCase
             $page->component('instruments/Results')
                 ->where('context.is_diagnostic', true)
                 ->where('context.classificatory', false)
-                ->where('context.diagnostic_counts_warning', false);
+                ->where('context.diagnostic_counts_warning', false)
+                ->where('availability.official', false);
         });
     }
 
@@ -345,11 +510,61 @@ class InstrumentResultsControllerTest extends TestCase
                 ->where('context.diagnostic_counts_warning', true));
     }
 
+    #[Test]
+    public function a_concluded_diagnostic_shows_official_statistics_and_a_diagnostic_report_title(): void
+    {
+        $ulid = $this->asTenant(function (): string {
+            $class = $this->class();
+            $period = $class->academicYear->periods()->firstOrFail();
+            $domain = Domain::where('name', 'Números e Operações')->firstOrFail();
+
+            // A dedicated early-enrolled student and an instrument applied
+            // before every other scenario student enrolled: it is the ONLY
+            // applicable enrollment, so one cell is enough to complete it.
+            $enrollment = app(StudentEnrollmentService::class)->enrollNew($class, [
+                'name' => 'Aluno Diagnóstico', 'class_number' => 8, 'enrolled_on' => '2026-09-01',
+            ]);
+
+            $diagnostic = app(InstrumentBuilder::class)->create($class, [
+                'academic_period_id' => $period->id,
+                'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+                'title' => 'Diagnóstico Concluído',
+                'applied_on' => '2026-09-10',
+                'status' => 'in_correction',
+                'counts_toward_classification' => false,
+                'purpose' => 'diagnostic',
+                'total_points' => 10,
+            ], [
+                ['code' => 'D1', 'label' => 'D1', 'points_possible' => 10, 'domains' => [['domain_id' => $domain->id, 'allocation_percent' => 100]]],
+            ]);
+
+            app(RecordScores::class)->save($diagnostic, [
+                ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $diagnostic->items->first()->id, 'result_state' => ResultState::Assessed->value, 'points_earned' => 6.0],
+            ], $this->teacher);
+
+            $inScope = app(ClassResultsCalculator::class)->instrumentsInScope($class, $period, ClassificationScope::Period);
+            $this->assertFalse($inScope->contains('id', $diagnostic->id));
+
+            app(CompleteCorrection::class)->complete($diagnostic, $this->teacher);
+
+            return $diagnostic->ulid;
+        });
+
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(function ($page): void {
+            $page->component('instruments/Results')
+                ->where('availability.official', true)
+                ->where('report.title', 'Relatório da avaliação diagnóstica');
+
+            $this->assertNotSame([], $page->toArray()['props']['dimensions']);
+        });
+    }
+
     // ============================================================= leitura
 
     #[Test]
     public function viewing_the_results_never_writes_anything(): void
     {
+        $this->completeScenario();
         $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
 
         $before = $this->asTenant(fn () => [
@@ -375,6 +590,7 @@ class InstrumentResultsControllerTest extends TestCase
     #[Test]
     public function the_report_without_individual_never_carries_students_or_names(): void
     {
+        $this->completeScenario();
         $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
 
         $response = $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados/relatorio");
@@ -393,6 +609,7 @@ class InstrumentResultsControllerTest extends TestCase
     #[Test]
     public function the_report_with_individual_includes_students(): void
     {
+        $this->completeScenario();
         $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
 
         $this->actingAs($this->teacher)
@@ -446,6 +663,47 @@ class InstrumentResultsControllerTest extends TestCase
     }
 
     #[Test]
+    public function concurrent_first_note_creation_is_refused_without_data_loss(): void
+    {
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+        $instrumentId = $this->asTenant(fn () => $this->instrument()->id);
+
+        // Simulate two tabs racing to create the FIRST note at once: a
+        // `creating` listener inserts the competing row — as another
+        // request's transaction would have just committed — immediately
+        // before this request's own INSERT, reproducing the interleaving a
+        // literal concurrent HTTP request would produce.
+        $raced = false;
+        ResultsAnalysisNote::creating(function () use (&$raced, $instrumentId): void {
+            if ($raced) {
+                return;
+            }
+            $raced = true;
+
+            DB::table('results_analysis_notes')->insert([
+                'ulid' => (string) Str::ulid(),
+                'organization_id' => $this->organization->id,
+                'context_kind' => 'instrument',
+                'instrument_id' => $instrumentId,
+                'body' => 'Nota da outra janela.',
+                'lock_version' => 1,
+                'created_by' => $this->teacher->id,
+                'updated_by' => $this->teacher->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        $this->actingAs($this->teacher)
+            ->put("/instruments/{$ulid}/resultados/observacoes", ['body' => 'A minha nota.', 'lock_version' => 0])
+            ->assertSessionHasErrors('body');
+
+        $note = $this->asTenant(fn () => ResultsAnalysisNote::where('instrument_id', $instrumentId)->first());
+        $this->assertNotNull($note);
+        $this->assertSame('Nota da outra janela.', $note->body, 'The competing row must survive untouched — no 500, no silent overwrite.');
+    }
+
+    #[Test]
     public function the_note_survives_when_scores_change_afterwards(): void
     {
         $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
@@ -466,10 +724,13 @@ class InstrumentResultsControllerTest extends TestCase
         $note = $this->asTenant(fn () => ResultsAnalysisNote::where('instrument_id', $this->instrument()->id)->first());
         $this->assertSame('Observação estável.', $note->body);
 
-        // And the indicators DID move — the recalculation is real.
-        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(function ($page): void {
-            $students = collect($page->toArray()['props']['students'])->keyBy('class_number');
-            $this->assertNotSame('35.000000', $students[2]['global']['exact']);
+        // And the indicators DID move — the recalculation is real (read via
+        // the grid's official cells, which are computed regardless of
+        // whether the correction is concluded).
+        $enrollmentId = $this->asTenant(fn () => $this->enrollmentByNumber(2)->id);
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}")->assertInertia(function ($page) use ($enrollmentId): void {
+            $students = $page->toArray()['props']['official']['students'];
+            $this->assertNotSame('35.000000', $students[$enrollmentId]['global']['exact']);
         });
     }
 
@@ -480,7 +741,7 @@ class InstrumentResultsControllerTest extends TestCase
         // «Q1» of Gramática are different items. Keying exclusions by code let
         // one state overwrite the other — a pending cell hidden behind an
         // absence, and a partial result reported as complete.
-        $ulid = $this->asTenant(function (): string {
+        [$ulid, $eid1, $eid2] = $this->asTenant(function (): array {
             $class = $this->class();
             $period = $class->academicYear->periods()->firstOrFail();
             $domain = Domain::where('name', 'Números e Operações')->firstOrFail();
@@ -509,14 +770,15 @@ class InstrumentResultsControllerTest extends TestCase
                 ['enrollment_id' => $this->enrollmentByNumber(2)->id, 'instrument_item_id' => $second->id, 'result_state' => ResultState::Absent->value],
             ], $this->teacher);
 
-            return $instrument->ulid;
+            return [$instrument->ulid, $this->enrollmentByNumber(1)->id, $this->enrollmentByNumber(2)->id];
         });
 
-        $this->actingAs($this->teacher)->get("/instruments/{$ulid}/resultados")->assertInertia(function ($page): void {
-            $page->component('instruments/Results')
-                ->where('students.0.status', 'classified')
-                ->where('students.0.global.is_partial', true)
-                ->where('students.1.status', 'pending');
+        $this->actingAs($this->teacher)->get("/instruments/{$ulid}")->assertInertia(function ($page) use ($eid1, $eid2): void {
+            $students = $page->toArray()['props']['official']['students'];
+
+            $this->assertSame('classified', $students[$eid1]['status']);
+            $this->assertTrue($students[$eid1]['global']['is_partial']);
+            $this->assertSame('pending', $students[$eid2]['status']);
         });
     }
 }

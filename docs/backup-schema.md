@@ -309,6 +309,13 @@ plataforma — esta fatia também nunca escreve:
 
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
+- `results_analysis_notes` (0.155.0) — as observações do professor sobre os
+  Resultados de um instrumento **não são exportadas nem restauradas**: não
+  aparecem na exportação de dados (XLSX/JSON) nem no backup, e um restauro
+  perde-as. São texto livre do professor e podem conter informação
+  identificável; a cobertura exige uma versão nova do esquema de backup
+  (exportação, validação, plano e escrita) e fica para uma intervenção
+  própria, obrigatória antes de a funcionalidade ser publicada
 - Restauro de `ReportTemplate`/`ReportLibraryEntry` — hoje um relatório
   finalizado é autossuficiente (`template_snapshot`), pelo que isto só
   importaria para permitir gerar **novos** relatórios a partir de um modelo

@@ -85,7 +85,26 @@ function props(overrides: Record<string, unknown> = {}) {
             { value: 'assessed', label: 'Avaliado', carries_value: true, resolves: true },
             { value: 'absent', label: 'Faltou', carries_value: false, resolves: true },
         ],
-        scaleBands: [],
+        scaleBands: [
+            { label: 'Insuficiente', band_min: '0', band_max: '49.4', sequence: 1, is_negative: true },
+            { label: 'Suficiente', band_min: '49.5', band_max: '100', sequence: 2, is_negative: false },
+        ],
+        official: {
+            status: 'official' as 'official' | 'provisional',
+            label: 'Classificação oficial',
+            threshold: '49.5' as string | null,
+            domains: [{ key: 'd4', id: 4, name: 'Conhecimento' }],
+            students: {
+                11: {
+                    status: 'classified',
+                    status_label: 'Classificado',
+                    global: { value: '72.4', value_precise: null as string | null, exact: '72.399123', band: { key: 'suf', code: 'Suf', label: 'Suficiente', sequence: 2, is_negative: false }, below_threshold: false, is_partial: false },
+                    domains: {
+                        d4: { value: '72.4', value_precise: null as string | null, exact: '72.399123', band: { key: 'suf', code: 'Suf', label: 'Suficiente', sequence: 2, is_negative: false }, below_threshold: false, is_partial: false } as { value: string | null; value_precise: string | null; exact: string | null; band: { key: string; code: string; label: string; sequence: number; is_negative: boolean } | null; below_threshold: boolean | null; is_partial: boolean } | null,
+                    },
+                },
+            },
+        },
     };
 }
 
@@ -221,6 +240,64 @@ describe('instruments/Grid — o cabeçalho', () => {
  * `readonly`/`disabled` e o cabeçalho di-lo por extenso — nunca por cor
  * sozinha (§WCAG).
  */
+describe('instruments/Grid — coerência dos resultados com o motor', () => {
+    it('a coluna «Pontuação bruta» mostra só pontos/percentagem, sem banda qualitativa', () => {
+        const wrapper = mount(Grid, { props: props() });
+
+        const rawColumnHeader = wrapper.findAll('th').find((th) => th.text().includes('Pontuação bruta'));
+        expect(rawColumnHeader).toBeTruthy();
+        expect(rawColumnHeader?.text()).toContain('pontos obtidos / cotação');
+
+        const rawCell = wrapper.find('td.font-semibold.tabular-nums');
+        expect(rawCell.find('.badge, [class*="bg-emerald"], [class*="bg-amber"], [class*="bg-red"]').exists()).toBe(false);
+    });
+
+    it('mostra o valor e a banda do servidor na coluna oficial', () => {
+        const wrapper = mount(Grid, { props: props() });
+
+        expect(wrapper.text()).toContain('Classificação oficial');
+        expect(wrapper.text()).toContain('72,4 %');
+        expect(wrapper.text()).toContain('Suficiente');
+    });
+
+    it('mostra o valor preciso a duas casas quando o servidor o envia — caso 49,46 %', () => {
+        const overrides = props();
+        overrides.official.students[11].global = {
+            value: '49.5', value_precise: '49.46', exact: '49.459999',
+            band: { key: 'insuf', code: 'Insuf', label: 'Insuficiente', sequence: 1, is_negative: true },
+            below_threshold: true, is_partial: false,
+        };
+
+        const wrapper = mount(Grid, { props: overrides });
+
+        expect(wrapper.text()).toContain('49,46 %');
+        expect(wrapper.text()).toContain('Insuficiente');
+    });
+
+    it('mostra a etiqueta «provisória» quando os resultados ainda não são oficiais', () => {
+        const overrides = props();
+        overrides.official.status = 'provisional';
+        overrides.official.label = 'Classificação provisória';
+
+        const wrapper = mount(Grid, { props: overrides });
+
+        expect(wrapper.text()).toContain('provisória');
+        expect(wrapper.text()).toContain('Classificação provisória');
+        expect(wrapper.text()).toContain('Valores provisórios: a correção ainda não está concluída.');
+    });
+
+    it('mostra «guarde para recalcular» junto ao valor oficial depois de editar uma célula por guardar', async () => {
+        const wrapper = mount(Grid, { props: props() });
+
+        expect(wrapper.text()).not.toContain('guarde para recalcular');
+
+        const input = wrapper.find('input[type="number"]');
+        await input.setValue('15');
+
+        expect(wrapper.text()).toContain('guarde para recalcular');
+    });
+});
+
 describe('instruments/Grid — correção concluída', () => {
     it('mostra a grelha em modo de consulta: pontos readonly, estado disabled, aviso presente', () => {
         const wrapper = mount(Grid, {

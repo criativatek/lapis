@@ -128,7 +128,26 @@ function props(instrumentUlid = 'instrument-a') {
             { value: 'assessed', label: 'Avaliado', carries_value: true, resolves: true },
             { value: 'absent', label: 'Faltou', carries_value: false, resolves: true },
         ],
-        scaleBands: [],
+        scaleBands: [
+            { label: 'Insuficiente', band_min: '0', band_max: '49.4', sequence: 1, is_negative: true },
+            { label: 'Suficiente', band_min: '49.5', band_max: '100', sequence: 2, is_negative: false },
+        ],
+        official: {
+            status: 'official' as 'official' | 'provisional',
+            label: 'Classificação oficial',
+            threshold: '49.5' as string | null,
+            domains: [{ key: 'd4', id: 4, name: 'Conhecimento' }],
+            students: {
+                11: {
+                    status: 'classified',
+                    status_label: 'Classificado',
+                    global: { value: '72.4', value_precise: null as string | null, exact: '72.399123', band: { key: 'suf', code: 'Suf', label: 'Suficiente', sequence: 2, is_negative: false }, below_threshold: false, is_partial: false },
+                    domains: {
+                        d4: { value: '72.4', value_precise: null as string | null, exact: '72.399123', band: { key: 'suf', code: 'Suf', label: 'Suficiente', sequence: 2, is_negative: false }, below_threshold: false, is_partial: false },
+                    },
+                },
+            },
+        },
     };
 }
 

@@ -71,14 +71,20 @@ final class DescriptiveReport
             sprintf('Período: %s. Finalidade: %s.', $context['period']['label'], $context['instrument']['purpose_label']),
         ];
 
-        if ($context['is_diagnostic']) {
-            $paragraphs[] = 'Os resultados desta avaliação diagnóstica identificam potencialidades, dificuldades e necessidades '
-                .'de acompanhamento e não contribuem para médias classificativas.';
+        if ($context['is_diagnostic'] && ! $context['counts_toward_classification']) {
+            $paragraphs[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
+                .'necessidades de acompanhamento. Este instrumento está configurado para não contar para a classificação, '
+                .'e por isso não entra nas médias classificativas do período.';
         }
 
         if ($context['is_diagnostic'] && $context['counts_toward_classification']) {
             $paragraphs[] = 'Aviso: este instrumento diagnóstico está configurado para contar para a classificação — '
-                .'os seus resultados entram no cálculo do período, apesar de a finalidade ser diagnóstica.';
+                .'os seus resultados ENTRAM atualmente no cálculo do período, apesar de a finalidade ser diagnóstica.';
+        }
+
+        if ($context['is_diagnostic']) {
+            $paragraphs[] = 'A exclusão dos instrumentos diagnósticos depende hoje dessa configuração; a garantia no motor '
+                .'de classificação, independente dela, ainda não está implementada.';
         }
 
         return self::section('identification', 'Identificação', $paragraphs);
@@ -111,15 +117,21 @@ final class DescriptiveReport
                 self::percent($analysis['mean']),
                 self::percent($analysis['median']),
             );
-            $paragraphs[] = sprintf(
-                'Classificações inferiores a %s: %s (%s). Iguais ou superiores a %s: %s (%s). Percentagens sobre os alunos avaliados.',
-                self::percent($analysis['threshold']['value']),
-                self::plural($analysis['threshold']['below']['count'], 'aluno', 'alunos'),
-                self::percent($analysis['threshold']['below']['percent']),
-                self::percent($analysis['threshold']['value']),
-                self::plural($analysis['threshold']['at_or_above']['count'], 'aluno', 'alunos'),
-                self::percent($analysis['threshold']['at_or_above']['percent']),
-            );
+
+            if ($analysis['threshold']['available']) {
+                $paragraphs[] = sprintf(
+                    'Classificações inferiores a %s: %s (%s). Iguais ou superiores a %s: %s (%s). Percentagens sobre os alunos avaliados.',
+                    self::percent($analysis['threshold']['value']),
+                    self::plural($analysis['threshold']['below']['count'], 'aluno', 'alunos'),
+                    self::percent($analysis['threshold']['below']['percent']),
+                    self::percent($analysis['threshold']['value']),
+                    self::plural($analysis['threshold']['at_or_above']['count'], 'aluno', 'alunos'),
+                    self::percent($analysis['threshold']['at_or_above']['percent']),
+                );
+            } else {
+                $paragraphs[] = 'A escala configurada não define uma fronteira quantitativa inequívoca entre apreciações '
+                    .'negativas e não negativas; não é apresentada uma repartição por limiar.';
+            }
         }
 
         if ($analysis['missing']['total'] > 0) {
@@ -207,23 +219,40 @@ final class DescriptiveReport
             return self::section('domains', 'Resultados por domínio', ['Este instrumento não toca nenhum domínio do perfil da turma.'], null);
         }
 
+        // The «% abaixo do limiar» column only makes sense when the scale
+        // defines one — checked once, on any domain's analysis, since the
+        // threshold is the same scale for every dimension of one instrument.
+        $thresholdAvailable = (bool) ($domains[0]['analysis']['threshold']['available'] ?? false);
+
+        $columns = ['Domínio', 'N', 'Média', 'Mediana'];
+        if ($thresholdAvailable) {
+            $columns[] = '% abaixo do limiar';
+        }
+
         $rows = [];
         foreach ($domains as $domain) {
             $analysis = $domain['analysis'];
-            $rows[] = [
+            $row = [
                 $domain['label'],
                 (string) $analysis['classified'],
                 $analysis['mean'] !== null ? self::percent($analysis['mean']) : '—',
                 $analysis['median'] !== null ? self::percent($analysis['median']) : '—',
-                $analysis['classified'] > 0 ? self::percent($analysis['threshold']['below']['percent']) : '—',
             ];
+
+            if ($thresholdAvailable) {
+                $row[] = $analysis['classified'] > 0 && $analysis['threshold']['available']
+                    ? self::percent($analysis['threshold']['below']['percent'])
+                    : '—';
+            }
+
+            $rows[] = $row;
         }
 
         return self::section(
             'domains',
             'Resultados por domínio',
             ['Estatística descritiva por domínio tocado por este instrumento.'],
-            ['columns' => ['Domínio', 'N', 'Média', 'Mediana', '% abaixo do limiar'], 'rows' => $rows],
+            ['columns' => $columns, 'rows' => $rows],
         );
     }
 
@@ -267,6 +296,10 @@ final class DescriptiveReport
 
             $largestBelow = null;
             foreach ($withValues as $domain) {
+                if (! $domain['analysis']['threshold']['available']) {
+                    continue;
+                }
+
                 $share = $domain['analysis']['threshold']['below']['percent'];
                 if ($share === null) {
                     continue;

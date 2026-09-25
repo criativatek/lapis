@@ -33,11 +33,11 @@ class DescriptiveReportTest extends TestCase
         $analyzer = new ResultsAnalyzer;
 
         $dimensions = [
-            ['key' => 'global', 'label' => 'Global', 'analysis' => $analyzer->analyse($globalObservations, $bands)],
+            ['key' => 'global', 'label' => 'Global', 'analysis' => $analyzer->analyse($globalObservations, $bands, '49.5')],
         ];
 
         foreach ($domainObservations as $key => $observations) {
-            $dimensions[] = ['key' => $key, 'label' => $key, 'analysis' => $analyzer->analyse($observations, $bands)];
+            $dimensions[] = ['key' => $key, 'label' => $key, 'analysis' => $analyzer->analyse($observations, $bands, '49.5')];
         }
 
         return $dimensions;
@@ -80,15 +80,29 @@ class DescriptiveReportTest extends TestCase
     #[Test]
     public function diagnostic_title_and_sentence(): void
     {
-        $report = DescriptiveReport::compose($this->context(isDiagnostic: true), $this->dimensions([]));
+        $report = DescriptiveReport::compose($this->context(isDiagnostic: true, counts: false), $this->dimensions([]));
 
         $this->assertSame('Relatório da avaliação diagnóstica', $report['title']);
 
         $identification = $report['sections'][0];
         $this->assertStringContainsString(
-            'não contribuem para médias classificativas',
+            'não entra nas médias classificativas do período',
             implode(' ', $identification['paragraphs']),
         );
+    }
+
+    #[Test]
+    public function a_diagnostic_marked_as_counting_gets_a_warning_it_currently_does_count(): void
+    {
+        $report = DescriptiveReport::compose($this->context(isDiagnostic: true, counts: true), $this->dimensions([]));
+
+        $identification = $report['sections'][0];
+        $text = implode(' ', $identification['paragraphs']);
+
+        $this->assertStringContainsString('ENTRAM atualmente no cálculo do período', $text);
+        // The methodological gap is stated honestly — never a guarantee.
+        $this->assertStringContainsString('a garantia no motor de classificação, independente dela, ainda não está implementada', $text);
+        $this->assertStringNotContainsString('não contribuem para médias classificativas', $text);
     }
 
     #[Test]

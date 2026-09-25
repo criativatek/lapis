@@ -7,6 +7,7 @@ use App\Models\InstrumentStatus;
 use App\Models\ResultsAnalysisNote;
 use App\Models\User;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -78,14 +79,26 @@ class InstrumentResultsController extends Controller
         $user = $this->user();
 
         if ($note === null) {
-            ResultsAnalysisNote::create([
-                'context_kind' => 'instrument',
-                'instrument_id' => $instrument->getKey(),
-                'body' => $data['body'] ?? null,
-                'lock_version' => 1,
-                'created_by' => $user->id,
-                'updated_by' => $user->id,
-            ]);
+            try {
+                ResultsAnalysisNote::create([
+                    'context_kind' => 'instrument',
+                    'instrument_id' => $instrument->getKey(),
+                    'body' => $data['body'] ?? null,
+                    'lock_version' => 1,
+                    'created_by' => $user->id,
+                    'updated_by' => $user->id,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // Two tabs both creating the first note at once: the read
+                // above saw no row, but another request's INSERT won the
+                // race. Refuse rather than 500 or silently overwrite — the
+                // same «alteradas noutra janela» message a stale version
+                // gets, since from this request's point of view that is
+                // exactly what happened.
+                return back()->withErrors([
+                    'body' => 'As observações foram alteradas noutra janela. Recarregue a página para ver a versão mais recente.',
+                ]);
+            }
         } else {
             // Conditional on the version the teacher read, in the same
             // statement: two tabs saving at once cannot both pass the check
