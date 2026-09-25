@@ -174,30 +174,19 @@ const creationMode = ref<CreationMode>(
     props.initial ? 'detailed' : (props.defaultCreationMode ?? 'quick'),
 );
 
-// Tracks an explicit professor decision on "Contabiliza para classificação",
-// separately from whatever value the checkbox currently shows — the checkbox
-// alone can't tell a suggested default apart from a deliberate choice, since
-// both are just a boolean. Only ever set true by the checkbox's own @change
-// (a real click), never by the purpose-driven suggestion below, and never
-// reset back to false once true — "explicit, once, forever" for this form's
-// lifetime, matching the create/edit split already given by `props.initial`.
-const countsToggledByUser = ref(false);
-
-// Suggests "Não" the moment the teacher picks "Diagnóstica" on a NEW
-// instrument — never on edit (props.initial), and never once the teacher has
-// explicitly set the checkbox themselves. One-directional on purpose: picking
-// a different purpose afterwards does not try to re-suggest anything, so a
-// professor who already saw and accepted (or overrode) the diagnostic
-// default never gets silently overwritten again.
-function onPurposeChange(): void {
-    if (props.initial || countsToggledByUser.value) {
-        return;
-    }
-
-    if (form.purpose === 'diagnostic') {
-        form.counts_toward_classification = false;
-    }
-}
+// A diagnostic instrument never counts toward the classification (R2), on
+// CREATE and on EDIT alike — the checkbox is not even shown for it (see the
+// template below). Whenever purpose becomes "diagnostic" the flag is forced
+// to false; leaving "diagnostic" for another purpose never restores it to
+// true — the teacher has to tick it again, deliberately.
+watch(
+    () => form.purpose,
+    (purpose) => {
+        if (purpose === 'diagnostic') {
+            form.counts_toward_classification = false;
+        }
+    },
+);
 
 function onQuickTypeChange(): void {
     const selectedType = props.types.find((type) => type.id === form.instrument_type_id);
@@ -206,8 +195,12 @@ function onQuickTypeChange(): void {
         return;
     }
 
+    const wasDiagnostic = form.purpose === 'diagnostic';
     form.purpose = selectedType.default_purpose;
-    form.counts_toward_classification = selectedType.default_purpose !== 'diagnostic';
+
+    // A new purpose of diagnostic, or leaving a diagnostic purpose, never
+    // sets the flag to true on its own — only the teacher ticking it does.
+    form.counts_toward_classification = selectedType.default_purpose !== 'diagnostic' && !wasDiagnostic;
 }
 
 /**
@@ -1180,7 +1173,6 @@ function submit(intent: 'save' | 'prepare'): void {
                     id="purpose"
                     v-model="form.purpose"
                     class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                    @change="onPurposeChange"
                 >
                     <option value="diagnostic">Diagnóstica</option>
                     <option value="formative">Formativa</option>
@@ -1206,18 +1198,20 @@ function submit(intent: 'save' | 'prepare'): void {
                 />
                 <InputError :message="form.errors.total_points" />
             </div>
-            <label class="flex items-center gap-2 text-sm sm:col-span-2">
+            <label
+                v-if="form.purpose !== 'diagnostic'"
+                class="flex items-center gap-2 text-sm sm:col-span-2"
+            >
                 <input
                     v-model="form.counts_toward_classification"
                     type="checkbox"
                     class="size-4"
-                    @change="countsToggledByUser = true"
                 />
                 Conta para a classificação
-                <span class="text-xs text-muted-foreground"
-                    >(independente de ser diagnóstico ou sumativo)</span
-                >
             </label>
+            <p v-else class="text-sm text-muted-foreground sm:col-span-2">
+                Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.
+            </p>
             <label class="flex items-center gap-2 text-sm sm:col-span-2">
                 <input
                     v-model="form.allow_bonus"

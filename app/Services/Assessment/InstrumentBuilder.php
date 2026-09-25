@@ -43,23 +43,24 @@ class InstrumentBuilder
     }
 
     /**
-     * A diagnostic instrument the teacher never made an explicit choice for
-     * defaults to not counting toward the classification — never a persisted
-     * zero, never applied to formative/summative. array_key_exists(), not a
-     * falsy check: `counts_toward_classification` genuinely absent from the
-     * request is what "never made a choice" means here, and is exactly what
-     * InstrumentRequest's 'sometimes' rule leaves out of validated() —
-     * indistinguishable from an explicit `false`, which this must respect
-     * exactly rather than overwrite. create() only: an existing instrument's
-     * purpose changing on update never silently rewrites its own
-     * already-persisted counts_toward_classification.
+     * A diagnostic instrument NEVER counts toward the classification (R2 —
+     * see InstrumentEligibility). Whatever the request sent for
+     * `counts_toward_classification`, an instrument whose purpose is
+     * diagnostic is forced to `false` here — on create AND on update, so
+     * changing purpose to diagnostic on an existing instrument also clears
+     * the flag. `Instrument::booted()`'s `saving` hook is the server-side
+     * guarantee that covers every other write path (import, restore); this
+     * keeps the builder's own attributes consistent with that guarantee
+     * before they ever reach the model.
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
      */
-    protected function applyDiagnosticDefault(array $attributes): array
+    protected function applyDiagnosticDefault(array $attributes, ?Instrument $instrument = null): array
     {
-        if (($attributes['purpose'] ?? null) === 'diagnostic' && ! array_key_exists('counts_toward_classification', $attributes)) {
+        $effectivePurpose = $attributes['purpose'] ?? $instrument?->purpose;
+
+        if ($effectivePurpose === InstrumentEligibility::DIAGNOSTIC) {
             $attributes['counts_toward_classification'] = false;
         }
 
@@ -84,6 +85,8 @@ class InstrumentBuilder
     public function update(Instrument $instrument, array $attributes, array $items, array $groups = []): Instrument
     {
         $this->guard($attributes, $items, $groups);
+
+        $attributes = $this->applyDiagnosticDefault($attributes, $instrument);
 
         $existingItems = $instrument->items()->get()->keyBy('ulid');
         $submittedUlids = collect($items)->pluck('ulid')->filter()->all();

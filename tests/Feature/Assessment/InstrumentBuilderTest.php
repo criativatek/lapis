@@ -194,13 +194,14 @@ class InstrumentBuilderTest extends TestCase
     }
 
     #[Test]
-    public function a_diagnostic_instrument_can_still_count_if_the_teacher_says_so(): void
+    public function a_diagnostic_instrument_never_counts_even_when_the_teacher_asks_it_to(): void
     {
         $this->inTenant(function (): void {
             $class = $this->schoolClass();
 
-            // The three axes are independent: purpose is a label, and it must not
-            // decide whether the instrument counts (menus §6).
+            // R2: a diagnostic instrument NEVER feeds averages, whatever
+            // counts_toward_classification is sent as — no longer a default,
+            // an unconditional override (InstrumentEligibility).
             $instrument = app(InstrumentBuilder::class)->create(
                 $class,
                 $this->attributes($class, ['purpose' => 'diagnostic', 'counts_toward_classification' => true]),
@@ -208,7 +209,8 @@ class InstrumentBuilderTest extends TestCase
             );
 
             $this->assertSame('diagnostic', $instrument->purpose);
-            $this->assertTrue($instrument->entersCalculation());
+            $this->assertFalse($instrument->counts_toward_classification);
+            $this->assertFalse($instrument->entersCalculation());
         });
     }
 
@@ -266,7 +268,7 @@ class InstrumentBuilderTest extends TestCase
     }
 
     #[Test]
-    public function updating_to_diagnostic_purpose_never_silently_changes_an_already_persisted_counts_value(): void
+    public function updating_to_diagnostic_purpose_forces_counts_toward_classification_to_false(): void
     {
         $this->inTenant(function (): void {
             $class = $this->schoolClass();
@@ -277,15 +279,20 @@ class InstrumentBuilderTest extends TestCase
             );
             $existing = $instrument->items()->firstOrFail();
 
-            // The diagnostic default (create() only) must never reach here —
-            // update() always respects exactly what it is given.
+            // R2 now applies on update too: changing purpose to diagnostic
+            // clears counts_toward_classification, whatever the request sent,
+            // and does not touch the instrument's items/groups/scores.
             app(InstrumentBuilder::class)->update(
                 $instrument,
                 $this->attributes($class, ['purpose' => 'diagnostic', 'counts_toward_classification' => true]),
                 [['ulid' => $existing->ulid, 'code' => 'Q1', 'points_possible' => 100]],
             );
 
-            $this->assertTrue($instrument->fresh()->counts_toward_classification);
+            $instrument->refresh();
+            $this->assertSame('diagnostic', $instrument->purpose);
+            $this->assertFalse($instrument->counts_toward_classification);
+            $this->assertSame(1, $instrument->items()->count());
+            $this->assertSame($existing->id, $instrument->items()->firstOrFail()->id);
         });
     }
 

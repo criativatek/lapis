@@ -30,7 +30,10 @@ use Illuminate\Support\Collection;
  */
 class ClassResultsCalculator
 {
-    public function __construct(protected CalculationEngine $engine) {}
+    public function __construct(
+        protected CalculationEngine $engine,
+        protected InstrumentEligibility $eligibility = new InstrumentEligibility,
+    ) {}
 
     /**
      * @return list<array{enrollment: Enrollment, outcome: CalculationOutcome}>
@@ -195,14 +198,16 @@ class ClassResultsCalculator
      * IT WAS ALREADY THIS QUERY, inline in `forScope`. It has a name now because
      * a second reader appeared: the breakdown that explains an accumulated
      * figure to the teacher has to walk exactly the evidence the engine walked,
-     * and a copy of these three conditions — the periods in scope, the «counts
-     * toward classification» flag, the statuses the engine reads — would be a
-     * second answer to «what counted» that could one day disagree with the
-     * first. Nothing about the selection changed.
+     * and a copy of the eligibility rule — the periods in scope plus
+     * InstrumentEligibility::constrain() — would be a second answer to «what
+     * counted» that could one day disagree with the first. Nothing about the
+     * selection changed; it is now expressed through the one shared policy.
      *
-     * Instruments that may count: flagged as counting, in a state the engine
-     * reads. A period result sees only its period; an accumulated result sees
-     * every contributing period up to it (the union of raw elements, Q4).
+     * Instruments that may count: InstrumentEligibility::constrain() (R1–R3 —
+     * configured to count, not diagnostic, and in a status that contributes,
+     * per the switch). A period result sees only its period; an accumulated
+     * result sees every contributing period up to it (the union of raw
+     * elements, Q4).
      *
      * THE ONE PLACE A CUTOFF IS APPLIED. It narrows the evidence before the
      * engine ever sees it, on `applied_on` — the day the element was given,
@@ -225,17 +230,35 @@ class ClassResultsCalculator
             return new EloquentCollection;
         }
 
-        $instrumentQuery = $class->instruments()
-            ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version))
-            ->where('counts_toward_classification', true)
-            ->with(['items.domainAllocations']);
+        $instrumentQuery = $this->eligibility->constrain(
+            Instrument::query()
+                ->where('class_id', $class->getKey())
+                ->whereIn('academic_period_id', $this->periodIdsFor($class, $period, $scope, $version)),
+        )->with(['items.domainAllocations']);
 
         ($cutoff ?? AssessmentCutoff::none())->applyTo($instrumentQuery, 'applied_on');
 
-        return $instrumentQuery
-            ->get()
-            ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation())
-            ->values();
+        return $instrumentQuery->get()->values();
+    }
+
+    /**
+     * The public counterpart of instrumentsInScope(), without the cutoff or
+     * eager loading — the set of instrument ids that contribute to averages
+     * for this scope, for callers (publication's under-review guard,
+     * readiness) that only need the ids and must agree with the engine on
+     * exactly which instruments those are.
+     *
+     * @return Collection<int, int>
+     */
+    public function contributingInstrumentIds(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope): Collection
+    {
+        $periodIds = $this->periodIdsInScope($class, $period, $scope);
+
+        return $this->eligibility->constrain(
+            Instrument::query()
+                ->where('class_id', $class->getKey())
+                ->whereIn('academic_period_id', $periodIds),
+        )->pluck('id');
     }
 
     /**

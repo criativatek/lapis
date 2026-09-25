@@ -118,17 +118,19 @@ class InstrumentDiagnosticDefaultRequestTest extends TestCase
     }
 
     #[Test]
-    public function creating_with_the_field_explicitly_true_is_respected(): void
+    public function creating_with_the_field_explicitly_true_is_overridden_to_false_for_a_diagnostic_purpose(): void
     {
         $this->inTenant(function (): void {
             ['class' => $class, 'period' => $period] = $this->scenario();
 
+            // R2: a diagnostic instrument never counts, whatever was sent —
+            // this used to be respected (the old "independent axes" rule).
             $this->actingAs($this->user)
                 ->post("/classes/{$class->ulid}/instruments", $this->payload($period, ['counts_toward_classification' => true]))
                 ->assertRedirect();
 
             $instrument = Instrument::where('title', 'Ficha diagnóstica')->firstOrFail();
-            $this->assertTrue($instrument->counts_toward_classification);
+            $this->assertFalse($instrument->counts_toward_classification);
         });
     }
 

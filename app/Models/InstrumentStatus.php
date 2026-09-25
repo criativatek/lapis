@@ -39,4 +39,24 @@ enum InstrumentStatus: string
             self::Prepared, self::InCorrection, self::Completed, self::Published, self::Archived => true,
         };
     }
+
+    /**
+     * Whether this instrument's correction is DONE — the gate for official
+     * statistics in the Results tab: only a finished correction gets official
+     * numbers, everything else is provisional or absent.
+     *
+     * `Completed` is the normal way to get here. `Published` is only reachable
+     * through a backup restore and is itself post-completion, so it counts too.
+     * `Archived` is deliberately NOT treated as concluded — archiving is a
+     * retention/visibility state, not a statement that the correction was ever
+     * finished, and nothing guarantees an archived instrument was ever
+     * completed. Conservative: when in doubt, no official statistics.
+     */
+    public function isConcluded(): bool
+    {
+        return match ($this) {
+            self::Completed, self::Published => true,
+            self::Draft, self::Prepared, self::InCorrection, self::Cancelled, self::Archived => false,
+        };
+    }
 }

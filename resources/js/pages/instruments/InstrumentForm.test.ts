@@ -197,3 +197,67 @@ describe('InstrumentForm creation modes', () => {
         expect(inertia.submit).not.toHaveBeenCalled();
     });
 });
+
+describe('InstrumentForm diagnostic purpose never counts (R2)', () => {
+    beforeEach(() => {
+        inertia.submit.mockReset();
+    });
+
+    it('hides the "Conta para a classificação" checkbox and shows the message for a diagnostic purpose', async () => {
+        const wrapper = mountForm();
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        await wrapper.get('#purpose').setValue('diagnostic');
+
+        expect(wrapper.text()).toContain(
+            'Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.',
+        );
+        expect(wrapper.text()).not.toContain('Conta para a classificação');
+    });
+
+    it('shows the checkbox for a non-diagnostic purpose', async () => {
+        const wrapper = mountForm();
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        await wrapper.get('#purpose').setValue('formative');
+
+        expect(wrapper.text()).toContain('Conta para a classificação');
+        expect(wrapper.text()).not.toContain(
+            'Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.',
+        );
+    });
+
+    function countsCheckbox(wrapper: ReturnType<typeof mountForm>) {
+        return wrapper
+            .findAll('input[type="checkbox"]')
+            .find((input) => input.element.closest('label')?.textContent?.includes('Conta para a classificação'));
+    }
+
+    it('unticks counts_toward_classification when purpose becomes diagnostic', async () => {
+        const wrapper = mountForm();
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        await wrapper.get('#purpose').setValue('formative');
+        await countsCheckbox(wrapper)!.setValue(true);
+        expect((countsCheckbox(wrapper)!.element as HTMLInputElement).checked).toBe(true);
+
+        await wrapper.get('#purpose').setValue('diagnostic');
+
+        // The checkbox is no longer rendered for a diagnostic purpose; going
+        // back to a countable purpose must show it unticked, never restored.
+        await wrapper.get('#purpose').setValue('formative');
+        expect((countsCheckbox(wrapper)!.element as HTMLInputElement).checked).toBe(false);
+    });
+
+    it('does not restore counts_toward_classification to true when leaving diagnostic', async () => {
+        const wrapper = mountForm();
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        await wrapper.get('#purpose').setValue('diagnostic');
+        expect(countsCheckbox(wrapper)).toBeUndefined();
+
+        await wrapper.get('#purpose').setValue('summative');
+
+        expect((countsCheckbox(wrapper)!.element as HTMLInputElement).checked).toBe(false);
+    });
+});
