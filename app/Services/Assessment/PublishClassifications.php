@@ -44,7 +44,7 @@ class PublishClassifications
             ->pluck('id');
 
         // The instruments whose elements a review can block: exactly the
-        // calculation universe (InstrumentEligibility — R1-R3), so this guard
+        // calculation universe (InstrumentEligibility), so this guard
         // never disagrees with the engine on what counted (§570).
         $countingInstrumentIds = $this->calculator->contributingInstrumentIds($class, $period, $scope);
 

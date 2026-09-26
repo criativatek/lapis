@@ -334,7 +334,7 @@ function stateFor(): WizardState {
                 (props.preview.instrument_attributes.purpose as string) ??
                 'formative',
             // A diagnostic instrument never counts toward the classification
-            // (R2) — initialised to false when the preview already carries a
+            // — initialised to false when the preview already carries a
             // diagnostic purpose, matching what the server will end up
             // persisting either way.
             counts_toward_classification:
@@ -352,7 +352,7 @@ function stateFor(): WizardState {
 
 const form = useForm(stateFor());
 
-// A diagnostic instrument never counts toward the classification (R2).
+// A diagnostic instrument never counts toward the classification.
 // Selecting "Diagnóstica" forces the flag to false; leaving it for another
 // purpose never restores it to true — the teacher has to tick it again.
 watch(

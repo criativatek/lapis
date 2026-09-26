@@ -271,7 +271,7 @@ class ImportCorrectionGrid
     /**
      * Whether the mapping's instrument will actually count once created — the
      * raw `counts_toward_classification` attribute, overridden to false for a
-     * diagnostic purpose (R2), mirroring InstrumentEligibility and what
+     * diagnostic purpose, mirroring InstrumentEligibility and what
      * InstrumentBuilder/Instrument::booted() will end up persisting.
      */
     protected function effectiveCounts(ImportMapping $mapping): bool

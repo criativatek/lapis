@@ -553,7 +553,7 @@ class EvaluationSheetReadiness
             return [];
         }
 
-        // Exactly the calculation universe (InstrumentEligibility — R1-R3), so
+        // Exactly the calculation universe (InstrumentEligibility), so
         // this guard never disagrees with the engine on what counted.
         $countingInstrumentIds = $this->calculator->contributingInstrumentIds($class, $period, $scope);
 

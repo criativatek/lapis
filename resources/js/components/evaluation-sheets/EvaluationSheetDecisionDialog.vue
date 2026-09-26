@@ -281,7 +281,7 @@ function onOpenChange(open: boolean): void {
                 v-if="isStale"
                 class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
             >
-                <strong>Proposta desatualizada.</strong> As avaliações que a fundamentam mudaram desde que a proposta foi gerada.
+                <strong>Proposta desatualizada.</strong> As pontuações mudaram desde que a proposta foi gerada.
                 Acima está a proposta para os dados atuais; gere-a novamente em Classificações antes de decidir.
             </p>
 

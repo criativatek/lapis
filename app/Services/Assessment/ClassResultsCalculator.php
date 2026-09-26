@@ -203,9 +203,9 @@ class ClassResultsCalculator
      * counted» that could one day disagree with the first. Nothing about the
      * selection changed; it is now expressed through the one shared policy.
      *
-     * Instruments that may count: InstrumentEligibility::constrain() (R1–R3 —
-     * configured to count, not diagnostic, and in a status that contributes,
-     * per the switch). A period result sees only its period; an accumulated
+     * Instruments that may count: InstrumentEligibility::constrain() —
+     * configured to count, not diagnostic, and in a state the engine reads.
+     * A period result sees only its period; an accumulated
      * result sees every contributing period up to it (the union of raw
      * elements, Q4).
      *

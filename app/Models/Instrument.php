@@ -20,14 +20,13 @@ use Illuminate\Support\Carbon;
  * Three axes (§4.1, menus §6), no longer fully independent:
  *  - purpose: a pedagogical label for most values — EXCEPT `diagnostic`,
  *    which is load-bearing: a diagnostic instrument NEVER counts toward the
- *    classification, whatever counts_toward_classification stores (R2).
+ *    classification, whatever counts_toward_classification stores.
  *  - counts_toward_classification: what the teacher configured, subject to
  *    the diagnostic override above.
  *  - weight: how much it counts, once it does.
  * Whether an instrument actually contributes to averages/classifications —
  * configuration AND status together — is decided in ONE place:
- * App\Services\Assessment\InstrumentEligibility. See that class for the full
- * rule (including the status gate and its retroactivity switch).
+ * App\Services\Assessment\InstrumentEligibility.
  *
  * @property int $id
  * @property string $ulid
@@ -59,7 +58,7 @@ class Instrument extends Model
     use BelongsToOrganization, HasFactory, HasUlids, SoftDeletes;
 
     /**
-     * The server-side guarantee for R2: a diagnostic instrument NEVER
+     * The server-side guarantee: a diagnostic instrument NEVER
      * persists as counting toward the classification, whatever the caller
      * sent. `saving` runs on every write path — create, update, the
      * correction-grid import, the assessment-data import, and a backup
@@ -150,7 +149,7 @@ class Instrument extends Model
     /**
      * The single gate into the calculation. Delegates to InstrumentEligibility
      * — the one place that resolves configuration, the diagnostic override
-     * (R2) and the status gate (R1, with its retroactivity switch) together.
+     * and the status gate together.
      */
     public function entersCalculation(): bool
     {

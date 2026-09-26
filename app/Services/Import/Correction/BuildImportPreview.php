@@ -585,7 +585,7 @@ class BuildImportPreview
             // Only when it counts. An item with no allocation enters no domain,
             // which the model allows (§4.3) and which is harmless for an
             // instrument that does not enter the calculation at all. A
-            // diagnostic instrument never counts (R2), whatever the mapping
+            // diagnostic instrument never counts, whatever the mapping
             // carries — this mirrors the effective flag InstrumentEligibility
             // resolves, so the preview never asks for a domain the import
             // itself will end up storing as not counting.

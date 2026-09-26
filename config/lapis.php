@@ -463,24 +463,4 @@ return [
 
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Avaliação — elegibilidade de instrumentos para médias
-    |--------------------------------------------------------------------------
-    |
-    | DESLIGADO POR DEFEITO, DELIBERADAMENTE. A regra "só um instrumento com a
-    | correção CONCLUÍDA (Completed/Published) entra nas médias" está construída
-    | e testada, mas tudo o que é calculado ao vivo (resultados de períodos
-    | passados) mudaria de valor no dia em que se ligasse — e essa é uma decisão
-    | de retroatividade que ainda não foi tomada pelo dono do produto. Enquanto
-    | estiver a false, o portão de estado mantém-se o comportamento legado
-    | (`InstrumentStatus::entersCalculation()`); a true, passa a exigir
-    | `isConcluded()`.
-    |
-    */
-
-    'assessment' => [
-        'averages_require_concluded_instruments' => (bool) env('LAPIS_AVERAGES_REQUIRE_CONCLUDED_INSTRUMENTS', false),
-    ],
-
 ];

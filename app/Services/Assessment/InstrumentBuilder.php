@@ -43,8 +43,8 @@ class InstrumentBuilder
     }
 
     /**
-     * A diagnostic instrument NEVER counts toward the classification (R2 —
-     * see InstrumentEligibility). Whatever the request sent for
+     * A diagnostic instrument NEVER counts toward the classification (see
+     * InstrumentEligibility). Whatever the request sent for
      * `counts_toward_classification`, an instrument whose purpose is
      * diagnostic is forced to `false` here — on create AND on update, so
      * changing purpose to diagnostic on an existing instrument also clears

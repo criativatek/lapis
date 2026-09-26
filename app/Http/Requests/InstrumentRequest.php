@@ -91,7 +91,7 @@ class InstrumentRequest extends FormRequest
             // 'sometimes' means "validate as boolean if present, skip
             // silently if absent". Whatever value is sent, a diagnostic
             // purpose ALWAYS overrides it to false — on create AND on update
-            // (R2, InstrumentEligibility) — via InstrumentBuilder's
+            // (InstrumentEligibility) — via InstrumentBuilder's
             // applyDiagnosticDefault() and, as the last-resort guarantee,
             // Instrument::booted()'s `saving` hook.
             'counts_toward_classification' => [$this->route('instrument') instanceof Instrument ? 'required' : 'sometimes', 'boolean'],

@@ -174,7 +174,7 @@ const creationMode = ref<CreationMode>(
     props.initial ? 'detailed' : (props.defaultCreationMode ?? 'quick'),
 );
 
-// A diagnostic instrument never counts toward the classification (R2), on
+// A diagnostic instrument never counts toward the classification, on
 // CREATE and on EDIT alike — the checkbox is not even shown for it (see the
 // template below). Whenever purpose becomes "diagnostic" the flag is forced
 // to false; leaving "diagnostic" for another purpose never restores it to

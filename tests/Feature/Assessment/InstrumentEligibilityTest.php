@@ -25,7 +25,6 @@ use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\RecordScores;
-use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,11 +35,11 @@ use ReflectionMethod;
 use Tests\TestCase;
 
 /**
- * The eligibility rule (R1-R3, fix/instrument-classification-eligibility): only
- * a CONCLUDED, non-diagnostic, counting instrument feeds averages,
- * classifications, publication's under-review guard and readiness. R1 (the
- * status gate) is behind a switch, off by default; R2 (diagnostic never
- * counts) and R3 (the combination) are always on.
+ * The eligibility rule (InstrumentEligibility, JANELA AG): an instrument feeds
+ * averages, classifications, publication's under-review guard and readiness
+ * when it is marked as counting, is NOT diagnostic, and is in a state the
+ * engine reads — the status rule is unchanged (an instrument in correction
+ * still counts). A diagnostic never counts, whatever is stored.
  *
  * Built on the demonstration scenario (7.º A) rather than a bespoke profile,
  * so every test gets a working AssessmentProfileVersion/scale for free.
@@ -126,10 +125,10 @@ class InstrumentEligibilityTest extends TestCase
         app(RecordScores::class)->save($instrument, $cells, $teacher);
     }
 
-    // --------------------------------------------------- 1/2. legacy behaviour (switch OFF)
+    // --------------------------------------------------- regular instruments: unchanged behaviour
 
     #[Test]
-    public function switch_off_a_completed_counting_instrument_enters_the_average(): void
+    public function a_completed_counting_instrument_enters_the_average(): void
     {
         $teacher = $this->seedDemo();
 
@@ -144,7 +143,7 @@ class InstrumentEligibilityTest extends TestCase
     }
 
     #[Test]
-    public function switch_off_a_not_counting_instrument_never_enters(): void
+    public function a_not_counting_instrument_never_enters(): void
     {
         $teacher = $this->seedDemo();
 
@@ -158,60 +157,28 @@ class InstrumentEligibilityTest extends TestCase
         });
     }
 
-    // --------------------------------------------------- 3/4/5. switch ON, status gate
-
     #[Test]
-    public function switch_on_an_in_correction_instrument_is_out_even_fully_marked(): void
+    public function in_correction_and_archived_counting_instruments_still_count_exactly_as_before(): void
     {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
         $teacher = $this->seedDemo();
 
         $this->asTenant($teacher, function () use ($teacher): void {
             [$class, $period] = $this->demoClass();
-            $instrument = $this->makeInstrument($class, $period);
-            $this->markAllStudents($instrument, $teacher);
 
-            $this->assertSame(InstrumentStatus::InCorrection, $instrument->fresh()->status);
-            $this->assertFalse($instrument->fresh()->entersCalculation());
+            $inCorrection = $this->makeInstrument($class, $period, ['title' => 'Em correção']);
+            $this->markAllStudents($inCorrection, $teacher);
+            $this->assertTrue($inCorrection->fresh()->entersCalculation());
+
+            $completed = $this->makeInstrument($class, $period, ['title' => 'Arquivada depois de concluída']);
+            $this->markAllStudents($completed, $teacher);
+            app(CompleteCorrection::class)->complete($completed, $teacher);
+            $completed->fresh()->forceFill(['status' => InstrumentStatus::Archived])->save();
+
+            $this->assertTrue($completed->fresh()->entersCalculation());
         });
     }
 
-    #[Test]
-    public function switch_on_completing_the_correction_makes_it_eligible(): void
-    {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-            $instrument = $this->makeInstrument($class, $period);
-            $this->markAllStudents($instrument, $teacher);
-            app(CompleteCorrection::class)->complete($instrument, $teacher);
-
-            $this->assertTrue($instrument->fresh()->entersCalculation());
-        });
-    }
-
-    #[Test]
-    public function switch_on_reopening_removes_it_from_new_calculations(): void
-    {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-            $instrument = $this->makeInstrument($class, $period);
-            $this->markAllStudents($instrument, $teacher);
-            app(CompleteCorrection::class)->complete($instrument, $teacher);
-            $this->assertTrue($instrument->fresh()->entersCalculation());
-
-            app(CompleteCorrection::class)->reopen($instrument->fresh(), $teacher);
-
-            $this->assertFalse($instrument->fresh()->entersCalculation());
-        });
-    }
-
-    // --------------------------------------------------- 6/7. diagnostic never counts (R2)
+    // --------------------------------------------------- a diagnostic never counts
 
     #[Test]
     public function a_completed_diagnostic_instrument_never_enters_the_average(): void
@@ -258,20 +225,40 @@ class InstrumentEligibilityTest extends TestCase
         });
     }
 
-    // --------------------------------------------------- 13. readiness + publication share the same eligibility
+    #[Test]
+    public function a_completed_diagnostics_own_outcome_still_appears_in_for_instruments(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $this->asTenant($teacher, function () use ($teacher): void {
+            [$class, $period] = $this->demoClass();
+            $instrument = $this->makeInstrument($class, $period, ['purpose' => 'diagnostic', 'counts_toward_classification' => false]);
+            $this->markAllStudents($instrument, $teacher);
+            app(CompleteCorrection::class)->complete($instrument, $teacher);
+
+            $enrollment = $class->enrollments()->firstOrFail();
+            $calculator = app(ClassResultsCalculator::class);
+            $outcomes = $calculator->forInstruments($class, $enrollment, collect([$instrument->fresh()]));
+
+            $this->assertNotEmpty($outcomes, 'A diagnostic instrument still reports its own per-instrument outcome.');
+        });
+    }
+
+    // --------------------------------------------------- readiness + publication share the same eligibility
 
     #[Test]
     public function an_under_review_score_blocks_neither_publication_nor_readiness_when_the_instrument_is_ineligible(): void
     {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
         $teacher = $this->seedDemo();
 
         $this->asTenant($teacher, function () use ($teacher): void {
             [$class, $period] = $this->demoClass();
 
-            // In correction with the switch ON: ineligible.
-            $ineligible = $this->makeInstrument($class, $period);
+            // A diagnostic stored as counting (bypassing the model hook, like
+            // a stray legacy row): ineligible all the same.
+            $ineligible = $this->makeInstrument($class, $period, ['purpose' => 'diagnostic']);
             $this->markAllStudents($ineligible, $teacher);
+            DB::table('instruments')->where('id', $ineligible->id)->update(['counts_toward_classification' => true]);
 
             $enrollment = $class->enrollments()->firstOrFail();
             StudentItemScore::query()
@@ -294,7 +281,6 @@ class InstrumentEligibilityTest extends TestCase
     #[Test]
     public function an_under_review_score_on_an_eligible_instrument_blocks_both(): void
     {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
         $teacher = $this->seedDemo();
 
         $this->asTenant($teacher, function () use ($teacher): void {
@@ -319,120 +305,11 @@ class InstrumentEligibilityTest extends TestCase
         });
     }
 
-    // --------------------------------------------------- switch off preserves legacy behaviour
-
-    #[Test]
-    public function switch_off_in_correction_and_archived_still_count_exactly_as_before(): void
-    {
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-
-            $inCorrection = $this->makeInstrument($class, $period, ['title' => 'Em correção']);
-            $this->markAllStudents($inCorrection, $teacher);
-            $this->assertTrue($inCorrection->fresh()->entersCalculation());
-
-            $completed = $this->makeInstrument($class, $period, ['title' => 'Arquivada depois de concluída']);
-            $this->markAllStudents($completed, $teacher);
-            app(CompleteCorrection::class)->complete($completed, $teacher);
-            $completed->fresh()->forceFill(['status' => InstrumentStatus::Archived])->save();
-
-            $this->assertTrue($completed->fresh()->entersCalculation());
-        });
-    }
-
-    // --------------------------------------------------- status boundary cases (switch ON)
-
-    #[Test]
-    public function switch_on_archived_is_not_eligible_but_published_is(): void
-    {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-
-            $archived = $this->makeInstrument($class, $period, ['title' => 'Arquivada']);
-            $this->markAllStudents($archived, $teacher);
-            app(CompleteCorrection::class)->complete($archived, $teacher);
-            $archived->fresh()->forceFill(['status' => InstrumentStatus::Archived])->save();
-            $this->assertFalse($archived->fresh()->entersCalculation());
-
-            $published = $this->makeInstrument($class, $period, ['title' => 'Publicada']);
-            $this->markAllStudents($published, $teacher);
-            app(CompleteCorrection::class)->complete($published, $teacher);
-            $published->fresh()->forceFill(['status' => InstrumentStatus::Published])->save();
-            $this->assertTrue($published->fresh()->entersCalculation());
-        });
-    }
-
-    #[Test]
-    public function a_completed_diagnostics_own_outcome_still_appears_in_for_instruments(): void
-    {
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-            $instrument = $this->makeInstrument($class, $period, ['purpose' => 'diagnostic', 'counts_toward_classification' => false]);
-            $this->markAllStudents($instrument, $teacher);
-            app(CompleteCorrection::class)->complete($instrument, $teacher);
-
-            $enrollment = $class->enrollments()->firstOrFail();
-            $calculator = app(ClassResultsCalculator::class);
-            $outcomes = $calculator->forInstruments($class, $enrollment, collect([$instrument->fresh()]));
-
-            $this->assertNotEmpty($outcomes, 'A diagnostic instrument still reports its own per-instrument outcome.');
-        });
-    }
-
-    // --------------------------------------------------- 16. a stale Proposed classification cannot be confirmed once the switch flips
-
-    #[Test]
-    public function confirming_a_stale_proposal_after_the_switch_turns_on_is_refused_and_the_row_is_unchanged(): void
-    {
-        $teacher = $this->seedDemo();
-
-        [$class, $period, $classificationId, $originalValue] = $this->asTenant($teacher, function () use ($teacher) {
-            [$class, $period] = $this->demoClass();
-
-            // Switch OFF while this in-correction instrument still counts.
-            $instrument = $this->makeInstrument($class, $period);
-            $this->markAllStudents($instrument, $teacher);
-
-            app(ProposeClassifications::class)->forPeriod($class, $period);
-            $classification = Classification::query()
-                ->where('academic_period_id', $period->id)
-                ->where('scope', ClassificationScope::Period)
-                ->where('status', ClassificationStatus::Proposed)
-                ->firstOrFail();
-
-            return [$class, $period, $classification->id, $classification->proposed_value];
-        });
-
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-
-        $this->asTenant($teacher, function () use ($teacher, $classificationId, $originalValue): void {
-            $classification = Classification::findOrFail($classificationId);
-
-            $this->expectException(ClassificationDecisionException::class);
-
-            try {
-                app(ConfirmClassification::class)->confirm($classification, $teacher, null, '3');
-            } finally {
-                $fresh = Classification::findOrFail($classificationId);
-                $this->assertSame(ClassificationStatus::Proposed, $fresh->status);
-                $this->assertSame($originalValue, $fresh->proposed_value);
-            }
-        });
-    }
-
-    // --------------------------------------------------- 13 (extended). the REAL PublishClassifications
+    // --------------------------------------------------- the REAL PublishClassifications
 
     #[Test]
     public function real_publication_is_not_blocked_by_an_ineligible_instrument_but_is_blocked_by_an_eligible_one(): void
     {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
         $teacher = $this->seedDemo();
 
         $this->asTenant($teacher, function () use ($teacher): void {
@@ -452,7 +329,7 @@ class InstrumentEligibilityTest extends TestCase
                 ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
 
             // An ineligible instrument (diagnostic, forced counts=true directly
-            // in the DB — R2 must still exclude it) with Diogo's cell under
+            // in the DB — it must still be excluded) with Diogo's cell under
             // review — must NOT block his publication.
             $ineligible = $this->makeInstrument($class, $period, ['title' => 'Inelegível', 'purpose' => 'diagnostic']);
             $this->markAllStudents($ineligible, $teacher);
@@ -511,47 +388,7 @@ class InstrumentEligibilityTest extends TestCase
         });
     }
 
-    // --------------------------------------------------- 14. the grid keeps working with the switch ON
-
-    #[Test]
-    public function switch_on_the_grid_still_shows_and_saves_scores_for_an_in_correction_instrument(): void
-    {
-        config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-        $teacher = $this->seedDemo();
-
-        $this->asTenant($teacher, function () use ($teacher): void {
-            [$class, $period] = $this->demoClass();
-            $instrument = $this->makeInstrument($class, $period);
-            $enrollment = $class->enrollments()->firstOrFail();
-            $item = $instrument->items()->firstOrFail();
-
-            $this->actingAs($teacher)
-                ->get("/instruments/{$instrument->ulid}")
-                ->assertOk();
-
-            $this->actingAs($teacher)
-                ->post("/instruments/{$instrument->ulid}/scores", [
-                    'cells' => [[
-                        'enrollment_id' => $enrollment->id,
-                        'instrument_item_id' => $item->id,
-                        'result_state' => 'assessed',
-                        'lock_version' => 0,
-                        'points_earned' => 100,
-                    ]],
-                ])
-                ->assertSessionHasNoErrors();
-
-            $this->assertSame(
-                1,
-                StudentItemScore::where('instrument_id', $instrument->id)->where('enrollment_id', $enrollment->id)->count(),
-                'The grid keeps saving scores for an in_correction instrument regardless of the eligibility switch.',
-            );
-            $this->assertSame(InstrumentStatus::InCorrection, $instrument->fresh()->status);
-            $this->assertFalse($instrument->fresh()->entersCalculation(), 'Still not eligible for averages, but the grid is unaffected.');
-        });
-    }
-
-    // --------------------------------------------------- 15. protected history is frozen
+    // --------------------------------------------------- protected history is frozen
 
     #[Test]
     public function confirmed_published_and_interim_records_are_byte_identical_after_an_instrument_becomes_ineligible(): void
@@ -568,10 +405,9 @@ class InstrumentEligibilityTest extends TestCase
             $this->markAllStudents($flippable, $teacher);
             app(CompleteCorrection::class)->complete($flippable, $teacher);
 
-            // Stays eligible even after the switch turns on and everything
-            // above becomes ineligible — otherwise Carolina's outcome would
-            // simply stop having a value, and the frozen-row guard being
-            // tested here would never be exercised at all.
+            // Stays eligible after the other one becomes diagnostic —
+            // otherwise Carolina's outcome would simply stop having a value,
+            // and the frozen-row guard tested here would never be exercised.
             $persistent = $this->makeInstrument($class, $period, ['title' => 'Fica sempre elegível']);
             $this->markAllStudents($persistent, $teacher);
             app(CompleteCorrection::class)->complete($persistent, $teacher);
@@ -617,14 +453,9 @@ class InstrumentEligibilityTest extends TestCase
             return [$class, $period, $enrollment->id, $before];
         });
 
-        // Make two instruments ineligible: one via the switch (in_correction),
-        // one via the diagnostic override (through the builder, on update).
-        $this->asTenant($teacher, function () use ($teacher, $class, $period): void {
-            config(['lapis.assessment.averages_require_concluded_instruments' => true]);
-
-            $stillInCorrection = $this->makeInstrument($class, $period, ['title' => 'Fica em correção']);
-            $this->markAllStudents($stillInCorrection, $teacher);
-
+        // Make the first instrument ineligible by turning it into a
+        // diagnostic through the builder, on update.
+        $this->asTenant($teacher, function () use ($class): void {
             $flippable = Instrument::where('class_id', $class->id)->where('title', 'A tornar diagnóstica')->firstOrFail();
             app(InstrumentBuilder::class)->update(
                 $flippable,

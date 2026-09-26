@@ -198,7 +198,7 @@ describe('InstrumentForm creation modes', () => {
     });
 });
 
-describe('InstrumentForm diagnostic purpose never counts (R2)', () => {
+describe('InstrumentForm diagnostic purpose never counts', () => {
     beforeEach(() => {
         inertia.submit.mockReset();
     });
