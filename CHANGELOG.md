@@ -25,6 +25,78 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.155.0] — 2026-09-25
+
+Cada instrumento de avaliação ganha um separador **Resultados**, ao lado da
+grelha de correção. Mostra a classificação global de cada aluno e a apreciação
+correspondente, os resultados e as apreciações por domínio, os indicadores da
+turma, as distribuições e um primeiro relatório estatístico descritivo. É a
+primeira fase de um sistema de análise pensado para servir também as
+avaliações intercalares, as avaliações finais e os instrumentos diagnósticos;
+nesta entrega só os instrumentos o usam.
+
+**Não há um segundo motor.** Os valores por aluno são os que o motor de
+classificação já produz para um instrumento
+(`ClassResultsCalculator::forInstruments`, o mesmo que a Evolução do Aluno lê).
+A análise só conta, faz médias e agrupa. Abrir a vista não escreve nada.
+
+- **Só instrumentos concluídos têm resultados oficiais.** Antes de a correção
+  estar concluída, o separador explica que os resultados oficiais ficam
+  disponíveis depois e não calcula nada. Reabrir a correção retira-os outra
+  vez, sem apagar notas nem observações.
+- **Grelha e Resultados deixam de se contradizer.** A grelha passa a separar a
+  **pontuação bruta** (pontos obtidos / cotação, sem apreciação) da
+  **classificação oficial**, que é a mesma de Resultados, pelo mesmo caminho
+  de código. Enquanto a correção não termina, esta aparece como
+  «provisória». A apreciação sai sempre do valor exato. Um 49,46 % deixa de
+  aparecer como «Suficiente» por ser mostrado como 49,5 %: é mostrado com duas
+  casas.
+- **O limiar vem da escala.** É a fronteira entre as apreciações negativas e
+  não negativas da escala configurada (49,5 % na escala 1–5 de sistema). Uma
+  escala sem fronteira inequívoca não recebe um limiar inventado, e a página
+  di-lo. O limiar aplica-se ao valor exato.
+- **Indicadores**, globais e por domínio: alunos avaliados, média, mediana,
+  abaixo e acima do limiar. O denominador (alunos avaliados) é sempre dito. Os
+  alunos ausentes, dispensados, por classificar, anulados ou não abrangidos são
+  contados à parte e nunca como zero, salvo quando a regra de ausências do
+  perfil o determina.
+- **Distribuições** quantitativa e qualitativa (pela escala configurada), em
+  gráficos que escrevem números e percentagens e com a tabela correspondente.
+- **Relatório descritivo determinístico**, sem IA e sem atribuir causas. As
+  **observações do professor** ficam guardadas à parte
+  (`results_analysis_notes`) e sobrevivem a recálculos. Duas janelas a gravar
+  ao mesmo tempo nunca perdem texto em silêncio. A versão para impressão
+  destinada ao diretor de turma é agregada por defeito e avisa que as
+  observações são texto livre a rever antes de partilhar.
+- **Avaliação diagnóstica** com a mesma linguagem de avaliação, as mesmas
+  estatísticas e o mesmo relatório.
+- **Um diagnóstico nunca conta para as médias.** A regra passa a ser garantida
+  no servidor, numa política única (`InstrumentEligibility`) que o motor, a
+  publicação e a prontidão da pauta leem. Aplica-se seja qual for o estado do
+  instrumento e seja qual for o valor gravado, incluindo o que chegar por
+  importação de grelhas, importação de dados ou restauro. Os formulários de
+  criação e edição e o assistente de importação deixam de mostrar a opção
+  «Conta para a classificação» num diagnóstico e dizem, em vez disso, que os
+  instrumentos de avaliação diagnóstica não contribuem para as médias
+  classificativas. Passar um instrumento a diagnóstico desliga a contribuição,
+  sem apagar questões, cotações nem resultados. Voltar a outra finalidade não
+  a religa: é o professor que a volta a marcar. Os resultados individuais e as
+  classificações já guardadas não mudam.
+
+Os instrumentos que não são diagnósticos contam como sempre contaram: basta
+estarem marcados «Conta para a classificação», estejam ou não com a correção
+concluída. O separador Resultados continua a só mostrar resultados oficiais
+depois de a correção estar concluída.
+
+**Ainda por fazer** (ver
+`docs/superpowers/specs/2026-09-25-assessment-results-analysis-design.md` §10):
+
+- As observações ainda não entram na exportação de dados nem no backup
+  (`docs/backup-schema.md`).
+
+Migração: `2026_11_14_000100_create_results_analysis_notes_table` (tabela nova,
+validada em MySQL 8.0.43 com aplicação e rollback).
+
 ## [0.154.3] — 2026-09-24
 
 Uma turma arquivada continuava a ter horário. O Horário do Professor deixava

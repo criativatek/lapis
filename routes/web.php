@@ -43,6 +43,7 @@ use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstitutionAdminController;
 use App\Http\Controllers\InstitutionAiController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\InstrumentResultsController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
@@ -630,6 +631,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/instruments/create', [InstrumentController::class, 'create'])->name('instruments.create');
         Route::post('classes/{class}/instruments', [InstrumentController::class, 'store'])->name('instruments.store');
         Route::get('instruments/{instrument}', [InstrumentController::class, 'show'])->name('instruments.show');
+        // The Resultados tab next to the grid (design spec §6): statistical
+        // analysis of one instrument's results, and its printable report.
+        Route::get('instruments/{instrument}/resultados', [InstrumentResultsController::class, 'show'])->name('instruments.results');
+        Route::get('instruments/{instrument}/resultados/relatorio', [InstrumentResultsController::class, 'report'])->name('instruments.results.report');
+        Route::put('instruments/{instrument}/resultados/observacoes', [InstrumentResultsController::class, 'updateNote'])->name('instruments.results.note');
         // The grid a teacher fills in offline and brings back. Deliberately on
         // the instrument: it is generated FROM one, and there is nothing to ask
         // when the answer is the evaluation already on screen (§11).
