@@ -4,6 +4,7 @@ namespace App\Actions\DataImports;
 
 use App\Actions\DataImports\Concerns\ResolvesWrittenReferences;
 use App\Models\ResultsAnalysisNote;
+use Illuminate\Support\Carbon;
 
 /**
  * Writes the `results_analysis_notes` tier a validated backup's plan already
@@ -41,8 +42,8 @@ class WriteResultsAnalysisNotes
 
             $note = new ResultsAnalysisNote;
             $note->timestamps = false;
-            $createdAt = $row['created_at'] ?? now();
-            $updatedAt = $row['updated_at'] ?? $createdAt;
+            $createdAt = $this->databaseDateTime($row['created_at'] ?? null) ?? $this->databaseDateTime(now());
+            $updatedAt = $this->databaseDateTime($row['updated_at'] ?? null) ?? $createdAt;
 
             $note->forceFill([
                 'ulid' => $this->writableUlid($row),
@@ -60,5 +61,24 @@ class WriteResultsAnalysisNotes
         }
 
         return $created;
+    }
+
+    /**
+     * With `timestamps = false`, `created_at`/`updated_at` stop being date
+     * attributes for Eloquent, so nothing formats them on the way in. An
+     * ISO 8601 string with an offset would then reach MySQL as-is — and
+     * MySQL 8.0.19+ honours the offset, converting it to the SESSION time
+     * zone: on a UTC server the restored note was an hour off. SQLite stores
+     * the string untouched, which is why only CI saw it. So the value is
+     * always handed over as a plain wall-clock time in the app's time zone,
+     * exactly what Eloquent writes for every other timestamp.
+     */
+    private function databaseDateTime(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return Carbon::parse($value)->setTimezone((string) config('app.timezone'))->format('Y-m-d H:i:s');
     }
 }
