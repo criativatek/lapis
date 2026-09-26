@@ -83,6 +83,10 @@ const domainGroups: {
             { key: 'instruments', label: 'Elementos de avaliação' },
             { key: 'instrument_items', label: 'Itens' },
             { key: 'student_item_scores', label: 'Pontuações' },
+            {
+                key: 'results_analysis_notes',
+                label: 'Observações dos resultados',
+            },
             { key: 'classifications', label: 'Classificações' },
             {
                 key: 'self_assessment_templates',
@@ -152,6 +156,10 @@ const summaryGroups: {
             { key: 'instruments_created', label: 'Elementos de avaliação' },
             { key: 'instrument_items_created', label: 'Itens' },
             { key: 'student_item_scores_created', label: 'Pontuações' },
+            {
+                key: 'results_analysis_notes_created',
+                label: 'Observações dos resultados',
+            },
             { key: 'classifications_created', label: 'Classificações' },
             { key: 'self_assessments_created', label: 'Autoavaliações' },
         ],

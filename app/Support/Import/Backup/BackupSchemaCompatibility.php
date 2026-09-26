@@ -7,7 +7,13 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (12) is what GenerateDataExport writes today. Version 12 adds the
+ * CURRENT (13) is what GenerateDataExport writes today. Version 13 adds the
+ * `results_analysis_notes` collection — a teacher's own qualitative
+ * observations for an instrument's Resultados tab (`ResultsAnalysisNote`,
+ * `context_kind = 'instrument'` today). Absent in a backup ≤12 (read as an
+ * empty list, the same `?? []` fallback every other optional collection
+ * gets): zero observations are restored, never an error, and nothing at the
+ * destination is ever deleted because of it. Version 12 adds the
  * legal-framework stamp — `interventions[].legal_framework_code` and
  * `interventions[].support_measures[].legal_framework_code` — the version of
  * the law a legal framing was decided under. Absent in older backups, read as
@@ -56,7 +62,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 12;
+    public const int CURRENT = 13;
 
     public const int MINIMUM_SUPPORTED = 2;
 

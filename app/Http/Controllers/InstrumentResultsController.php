@@ -59,7 +59,7 @@ class InstrumentResultsController extends Controller
         Gate::authorize('update', $instrument->schoolClass);
 
         $data = $request->validate([
-            'body' => ['nullable', 'string', 'max:20000'],
+            'body' => ['nullable', 'string', 'max:'.ResultsAnalysisNote::BODY_MAX_LENGTH],
             'lock_version' => ['required', 'integer', 'min:0'],
         ]);
 

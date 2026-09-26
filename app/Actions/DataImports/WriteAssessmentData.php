@@ -52,7 +52,7 @@ class WriteAssessmentData
      * @param  array<string, int>  $scalesByRef
      * @param  array<string, int>  $scaleLevelsByRef
      * @param  array<string, int>  $instrumentTypesByRef
-     * @return array<string, int>
+     * @return array{counts: array<string, int>, instrumentsByUlid: array<string, int>}
      */
     public function write(
         array $instrumentRows,
@@ -87,15 +87,18 @@ class WriteAssessmentData
         $responsesCreated = $this->writeSelfAssessmentResponses($selfAssessmentResponseRows, $selfAssessmentsByUlid, $templatesByUlid, $questionsByKey, $scalesByRef, $scaleLevelsByRef);
 
         return [
-            'instruments' => $instrumentsCreated,
-            'instrument_groups' => $groupsCreated,
-            'instrument_items' => $itemsCreated,
-            'item_domain_allocations' => $allocationsCreated,
-            'student_item_scores' => $scoresCreated,
-            'classifications' => $classificationsCreated,
-            'self_assessment_templates' => $templatesCreated,
-            'self_assessments' => $selfAssessmentsCreated,
-            'self_assessment_responses' => $responsesCreated,
+            'counts' => [
+                'instruments' => $instrumentsCreated,
+                'instrument_groups' => $groupsCreated,
+                'instrument_items' => $itemsCreated,
+                'item_domain_allocations' => $allocationsCreated,
+                'student_item_scores' => $scoresCreated,
+                'classifications' => $classificationsCreated,
+                'self_assessment_templates' => $templatesCreated,
+                'self_assessments' => $selfAssessmentsCreated,
+                'self_assessment_responses' => $responsesCreated,
+            ],
+            'instrumentsByUlid' => $instrumentsByUlid,
         ];
     }
 

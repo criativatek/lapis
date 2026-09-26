@@ -90,6 +90,7 @@ class BuildImportPlan
         private readonly BuildAssessmentDataPlan $dataPlan,
         private readonly BuildPedagogicalRecordsPlan $recordsPlan,
         private readonly BuildLessonsPlan $lessonsPlan,
+        private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
     ) {}
 
     /**
@@ -173,6 +174,15 @@ class BuildImportPlan
             $academicYears['byLabel'],
         );
 
+        $instrumentsByUlid = collect($data['rows']['instruments'])->keyBy('ulid');
+
+        $resultsAnalysisNotes = $this->resultsAnalysisNotesPlan->build(
+            $canonical['results_analysis_notes'] ?? [],
+            $destination,
+            $actor,
+            $instrumentsByUlid,
+        );
+
         $lessons = $this->lessonsPlan->build(
             $canonical['class_groups'] ?? [],
             $canonical['class_group_memberships'] ?? [],
@@ -202,6 +212,7 @@ class BuildImportPlan
             $data['rows'],
             $records['rows'],
             $lessons['rows'],
+            $resultsAnalysisNotes['rows'],
         );
 
         $noIssueDomains = ['profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses', 'cancelled_lesson_occurrences'];

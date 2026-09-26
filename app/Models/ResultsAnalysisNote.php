@@ -30,6 +30,13 @@ class ResultsAnalysisNote extends Model
     use BelongsToOrganization, HasUlids;
 
     /**
+     * Same limit the controller (`InstrumentResultsController::updateNote()`)
+     * and the backup importer (`ValidateBackupPayload`) both enforce — kept
+     * as one constant so the two never drift apart.
+     */
+    public const int BODY_MAX_LENGTH = 20000;
+
+    /**
      * @return list<string>
      */
     public function uniqueIds(): array

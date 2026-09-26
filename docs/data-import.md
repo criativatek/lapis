@@ -106,7 +106,9 @@ itens, pontuações, classificações, autoavaliações, registos pedagógicos,
 estratégias e medidas, e relatórios finalizados. Desde a v9 (schema_version
 9), também aulas e assiduidade — grupos da turma, pertenças, o horário
 recorrente, ocorrências canceladas, aulas, sumários, planificações e
-assiduidade lançada. A referência coleção a coleção — o que cada uma
+assiduidade lançada. Desde a v13 (schema_version 13), também as observações
+do professor no separador Resultados de um elemento de avaliação
+(`results_analysis_notes`). A referência coleção a coleção — o que cada uma
 transporta e as regras de correspondência — está em
 [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.
