@@ -14,6 +14,7 @@ use App\Models\Scale;
 use App\Services\Assessment\AssessmentSummaryQuery;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\InstrumentEligibility;
 
 /**
  * Context A (design spec §2/§4): one instrument's results, read entirely
@@ -83,9 +84,13 @@ class InstrumentResultsContext implements ResultsContext
         return ! $this->isDiagnostic();
     }
 
+    /**
+     * A configuração EFETIVA — um diagnóstico nunca conta, seja qual for o
+     * valor gravado (InstrumentEligibility, a mesma regra do motor).
+     */
     public function countsTowardClassification(): bool
     {
-        return $this->instrument->counts_toward_classification;
+        return app(InstrumentEligibility::class)->isConfiguredToCount($this->instrument);
     }
 
     public function absenceMode(): string
@@ -289,20 +294,10 @@ class InstrumentResultsContext implements ResultsContext
                 : "{$count} itens deste instrumento não têm domínio atribuído e não entram no cálculo.";
         }
 
-        if ($this->isDiagnostic() && ! $this->countsTowardClassification()) {
-            $notes[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
-                .'necessidades de acompanhamento. Este instrumento está configurado para não contar para a classificação, '
-                .'e por isso não entra nas médias classificativas do período.';
-        }
-
-        if ($this->isDiagnostic() && $this->countsTowardClassification()) {
-            $notes[] = 'Atenção: este instrumento diagnóstico está configurado para contar para a classificação — '
-                .'os seus resultados ENTRAM atualmente no cálculo do período, apesar da finalidade diagnóstica.';
-        }
-
         if ($this->isDiagnostic()) {
-            $notes[] = 'A exclusão dos instrumentos diagnósticos depende hoje dessa configuração; a garantia no motor de '
-                .'classificação, independente dela, ainda não está implementada.';
+            $notes[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
+                .'necessidades de acompanhamento. Os instrumentos de avaliação diagnóstica não contribuem para as médias '
+                .'classificativas.';
         }
 
         return $notes;

@@ -100,6 +100,13 @@ no relatório. **Nesta fase só existe `InstrumentResultsContext`.**
   período. A vista Resultados mostra um aviso nesse caso; um teste de
   caracterização fixa o comportamento atual. Corrigir exige decidir o que fazer
   aos instrumentos já gravados assim (Q1) — intervenção própria.
+- **Resolvido pela PR B (#43, JANELA AG), integrada nesta branch.** Um
+  diagnóstico nunca conta: `InstrumentEligibility` exclui-o no motor, na
+  publicação e na prontidão, seja qual for o valor gravado, e o modelo grava-o
+  sempre como «não conta» (criação, edição, importações, restauro). O aviso e o
+  teste de caracterização foram retirados. Q1 ficou decidida pelo proprietário:
+  os diagnósticos já gravados estavam todos como «não conta», por isso não há
+  regularização a fazer.
 
 ## 5. Relatório descritivo
 
@@ -187,7 +194,6 @@ type Props = {
     is_diagnostic: boolean;
     classificatory: boolean;                 // !is_diagnostic
     counts_toward_classification: boolean;
-    diagnostic_counts_warning: boolean;      // is_diagnostic && counts_toward_classification
     instrument: { ulid: string; title: string; applied_on: string; status: string; status_label: string;
                   type: string | null; purpose: string; purpose_label: string };
     class: { ulid: string; label: string };
@@ -308,6 +314,13 @@ que propostas por confirmar fossem recusadas. Isto cai no critério de paragem
 (regras já usadas em produção; períodos passados), por isso não entra na PR #42.
 
 ### PR B — elegibilidade no motor (obrigatória antes da publicação)
+
+> **Estado (2026-09-26) — decisão definitiva do proprietário:** PR #43,
+> integrada nesta branch, garante só que **um diagnóstico nunca conta**. A
+> exigência de correção concluída (critério 1 abaixo) foi **abandonada**: os
+> instrumentos normais contam como sempre, com «Conta para a classificação»
+> ativada, estejam ou não concluídos. Sem migrações, colunas nem transição
+> histórica. O que se segue neste bloco fica como registo da análise.
 Âmbito:
 - regra única de elegibilidade num só sítio: concluído **e** não diagnóstico
   **e** `counts_toward_classification`, em `ClassResultsCalculator` e nos dois

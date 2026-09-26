@@ -69,7 +69,6 @@ export type ResultsContext = {
     is_diagnostic: boolean;
     classificatory: boolean;
     counts_toward_classification: boolean;
-    diagnostic_counts_warning: boolean;
     instrument: {
         ulid: string;
         title: string;

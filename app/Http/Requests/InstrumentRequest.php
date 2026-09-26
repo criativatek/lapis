@@ -87,12 +87,13 @@ class InstrumentRequest extends FormRequest
             'purpose' => ['required', Rule::in(['diagnostic', 'formative', 'summative', 'other'])],
             // Required on update — an existing instrument's own value must
             // always be explicit. Optional on create only: leaving it out of
-            // the request entirely (as opposed to sending an explicit
-            // `false`) is what lets InstrumentBuilder::create() tell
-            // "the teacher never touched this" apart from "the teacher chose
-            // false", and apply its diagnostic-purpose default only to the
-            // former. 'sometimes' means "validate as boolean if present, skip
-            // silently if absent" — never coerces a missing key into false.
+            // the request entirely just means it is not validated here.
+            // 'sometimes' means "validate as boolean if present, skip
+            // silently if absent". Whatever value is sent, a diagnostic
+            // purpose ALWAYS overrides it to false — on create AND on update
+            // (InstrumentEligibility) — via InstrumentBuilder's
+            // applyDiagnosticDefault() and, as the last-resort guarantee,
+            // Instrument::booted()'s `saving` hook.
             'counts_toward_classification' => [$this->route('instrument') instanceof Instrument ? 'required' : 'sometimes', 'boolean'],
             // multiple_of runs on BigDecimal (brick/math), not float — the
             // 0.25 grain every points input in the form already declares via

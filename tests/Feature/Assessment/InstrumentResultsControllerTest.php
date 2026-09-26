@@ -465,19 +465,19 @@ class InstrumentResultsControllerTest extends TestCase
             $page->component('instruments/Results')
                 ->where('context.is_diagnostic', true)
                 ->where('context.classificatory', false)
-                ->where('context.diagnostic_counts_warning', false)
+                ->missing('context.diagnostic_counts_warning')
                 ->where('availability.official', false);
         });
     }
 
     /**
-     * Characterisation test (design spec §4): the exclusion is a DEFAULT, not
-     * a guarantee. A diagnostic explicitly marked as counting DOES enter
-     * `instrumentsInScope` — an existing gap, fixed by the payload's warning
-     * flag, not by the engine.
+     * The gap this test used to pin is closed (JANELA AG): a diagnostic never
+     * enters `instrumentsInScope`, even when the request asks for it to count
+     * — the builder stores it as not counting and the engine excludes it
+     * regardless. No warning is needed any more, so none is sent.
      */
     #[Test]
-    public function a_diagnostic_marked_as_counting_still_enters_the_period_scope(): void
+    public function a_diagnostic_marked_as_counting_never_enters_the_period_scope(): void
     {
         $ulid = $this->asTenant(function (): string {
             $class = $this->class();
@@ -498,7 +498,8 @@ class InstrumentResultsControllerTest extends TestCase
             ]);
 
             $inScope = app(ClassResultsCalculator::class)->instrumentsInScope($class, $period, ClassificationScope::Period);
-            $this->assertTrue($inScope->contains('id', $diagnostic->id), 'The known gap: a diagnostic marked as counting IS in scope.');
+            $this->assertFalse($diagnostic->fresh()->counts_toward_classification);
+            $this->assertFalse($inScope->contains('id', $diagnostic->id), 'A diagnostic never enters the period scope.');
 
             return $diagnostic->ulid;
         });
@@ -507,7 +508,8 @@ class InstrumentResultsControllerTest extends TestCase
             ->get("/instruments/{$ulid}/resultados")
             ->assertInertia(fn ($page) => $page
                 ->component('instruments/Results')
-                ->where('context.diagnostic_counts_warning', true));
+                ->where('context.counts_toward_classification', false)
+                ->missing('context.diagnostic_counts_warning'));
     }
 
     #[Test]

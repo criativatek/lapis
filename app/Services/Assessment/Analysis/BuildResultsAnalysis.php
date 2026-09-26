@@ -177,7 +177,6 @@ class BuildResultsAnalysis
             'is_diagnostic' => $context->isDiagnostic(),
             'classificatory' => $context->classificatory(),
             'counts_toward_classification' => $context->countsTowardClassification(),
-            'diagnostic_counts_warning' => $context->isDiagnostic() && $context->countsTowardClassification(),
             'instrument' => $context->identification(),
             'class' => ['ulid' => $class->ulid, 'label' => $class->label],
             'period' => ['label' => $instrument->academicPeriod->label],

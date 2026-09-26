@@ -163,8 +163,7 @@ function printPage(): void {
 
             <div v-if="context.is_diagnostic" class="rounded-md border border-sky-300 bg-sky-50 px-4 py-2 text-sm text-sky-950">
                 Avaliação diagnóstica: identifica potencialidades, dificuldades e necessidades de acompanhamento.
-                <template v-if="!context.counts_toward_classification">Está configurada para não contar para a classificação.</template>
-                <template v-else>Atenção: está configurada para contar para a classificação do período.</template>
+                Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.
             </div>
         </template>
 

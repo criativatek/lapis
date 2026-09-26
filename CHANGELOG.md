@@ -68,16 +68,29 @@ A análise só conta, faz médias e agrupa. Abrir a vista não escreve nada.
   ao mesmo tempo nunca perdem texto em silêncio. A versão para impressão
   destinada ao diretor de turma é agregada por defeito e avisa que as
   observações são texto livre a rever antes de partilhar.
-- **Avaliação diagnóstica** com a mesma linguagem de avaliação. A página diz o
-  que a configuração do instrumento determina, sem prometer uma garantia que
-  ainda não existe.
+- **Avaliação diagnóstica** com a mesma linguagem de avaliação, as mesmas
+  estatísticas e o mesmo relatório.
+- **Um diagnóstico nunca conta para as médias.** A regra passa a ser garantida
+  no servidor, numa política única (`InstrumentEligibility`) que o motor, a
+  publicação e a prontidão da pauta leem. Aplica-se seja qual for o estado do
+  instrumento e seja qual for o valor gravado, incluindo o que chegar por
+  importação de grelhas, importação de dados ou restauro. Os formulários de
+  criação e edição e o assistente de importação deixam de mostrar a opção
+  «Conta para a classificação» num diagnóstico e dizem, em vez disso, que os
+  instrumentos de avaliação diagnóstica não contribuem para as médias
+  classificativas. Passar um instrumento a diagnóstico desliga a contribuição,
+  sem apagar questões, cotações nem resultados. Voltar a outra finalidade não
+  a religa: é o professor que a volta a marcar. Os resultados individuais e as
+  classificações já guardadas não mudam.
 
-**Ainda por fazer antes de publicar** (ver
+Os instrumentos que não são diagnósticos contam como sempre contaram: basta
+estarem marcados «Conta para a classificação», estejam ou não com a correção
+concluída. O separador Resultados continua a só mostrar resultados oficiais
+depois de a correção estar concluída.
+
+**Ainda por fazer** (ver
 `docs/superpowers/specs/2026-09-25-assessment-results-analysis-design.md` §10):
 
-- O motor continua a admitir instrumentos em correção e diagnósticos marcados
-  como «conta» nas médias de período. Corrigir isto muda valores de períodos
-  passados e precisa de decisões próprias.
 - As observações ainda não entram na exportação de dados nem no backup
   (`docs/backup-schema.md`).
 

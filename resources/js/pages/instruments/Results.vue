@@ -268,21 +268,9 @@ const noteUpdatedLabel = computed(() => {
             Avaliação diagnóstica — utiliza a mesma escala e a mesma linguagem de avaliação dos
             restantes instrumentos. Serve para identificar potencialidades, dificuldades e necessidades
             de acompanhamento.
-            <template v-if="!context.counts_toward_classification">
-                Está configurada para não contar para a classificação e, por isso, não entra nas médias
-                classificativas do período.
-            </template>
+            Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.
         </div>
 
-        <div
-            v-if="availability.official && context.diagnostic_counts_warning"
-            class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-            role="alert"
-        >
-            Este instrumento é diagnóstico, mas está atualmente configurado para contar para a
-            classificação do período — contrário à regra do produto. Reveja esta opção em «Editar
-            elemento de avaliação».
-        </div>
 
         <!-- a) Resultados por aluno -->
         <section v-if="availability.official" aria-labelledby="section-students" class="space-y-3">

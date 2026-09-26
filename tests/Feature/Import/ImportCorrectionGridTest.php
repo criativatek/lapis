@@ -456,6 +456,48 @@ class ImportCorrectionGridTest extends TestCase
     }
 
     #[Test]
+    public function a_diagnostic_import_creates_an_instrument_that_never_counts_and_still_imports_the_scores(): void
+    {
+        $this->enrol();
+
+        $mapping = $this->inTenant(function (): ImportMapping {
+            $domainId = Domain::query()->firstOrFail()->id;
+
+            return $this->buildMapping([
+                // Old-style mapping data, as a stale client or a copy/pasted
+                // preview could still send: purpose diagnostic together with
+                // counts_toward_classification true. R2 must still win.
+                'instrument' => [
+                    'title' => 'Diagnóstico importado',
+                    'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+                    'applied_on' => now()->subDays(3)->toDateString(),
+                    'academic_period_id' => $this->period->id,
+                    'purpose' => 'diagnostic',
+                    'counts_toward_classification' => true,
+                    'total_points' => 6,
+                ],
+            ], $domainId);
+        });
+
+        $instrument = $this->confirm($this->makeImport($mapping));
+
+        $this->inTenant(function () use ($instrument): void {
+            $fresh = $instrument->fresh();
+            $this->assertSame('diagnostic', $fresh->purpose);
+            $this->assertFalse($fresh->counts_toward_classification, 'R2: a diagnostic instrument imported as counting is still stored as not counting.');
+            $this->assertFalse($fresh->entersCalculation());
+
+            // The marks themselves are untouched by the diagnostic override —
+            // only the classification flag is affected.
+            $this->assertSame(
+                6,
+                StudentItemScore::where('instrument_id', $fresh->id)->count(),
+                'A diagnostic import still records every mark the file carried.',
+            );
+        });
+    }
+
+    #[Test]
     public function an_import_that_is_not_ready_writes_nothing(): void
     {
         $this->enrol();

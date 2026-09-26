@@ -27,7 +27,6 @@ function baseProps(overrides: Partial<ResultsAnalysisProps> = {}): ResultsAnalys
         availability: { official: true, status: 'official', status_label: 'Oficial', message: null },
         context: {
             kind: 'instrument', is_diagnostic: false, classificatory: true, counts_toward_classification: true,
-            diagnostic_counts_warning: false,
             instrument: {
                 ulid: 'instrument-a', title: 'Teste de Frações', applied_on: '2026-09-13',
                 status: 'completed', status_label: 'Concluído', type: 'Teste', purpose: 'summative', purpose_label: 'Sumativa',

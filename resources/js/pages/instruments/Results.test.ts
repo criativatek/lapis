@@ -73,7 +73,6 @@ function baseProps(overrides: Partial<ResultsAnalysisProps> = {}): ResultsAnalys
             is_diagnostic: false,
             classificatory: true,
             counts_toward_classification: true,
-            diagnostic_counts_warning: false,
             instrument: {
                 ulid: 'instrument-a', title: 'Teste de Frações', applied_on: '2026-09-13',
                 status: 'completed', status_label: 'Concluído', type: 'Teste', purpose: 'summative',
@@ -166,32 +165,20 @@ describe('Results.vue', () => {
         expect(wrapper.text()).not.toContain('Dispensados');
     });
 
-    it('mostra o aviso de diagnóstico quando is_diagnostic é verdadeiro', () => {
-        const notCounting = mount(Results, {
-            props: baseProps({ context: { ...baseProps().context, is_diagnostic: true, counts_toward_classification: false } }),
-        });
+    it('diz sempre que um diagnóstico não contribui para as médias, sem aviso de configuração', () => {
+        // A exclusão é garantida pelo motor, seja qual for o valor gravado —
+        // por isso a frase não depende de counts_toward_classification.
+        for (const counts of [false, true]) {
+            const wrapper = mount(Results, {
+                props: baseProps({ context: { ...baseProps().context, is_diagnostic: true, counts_toward_classification: counts } }),
+            });
 
-        expect(notCounting.text()).toContain('Avaliação diagnóstica');
-        expect(notCounting.text()).toContain('não entra nas médias');
-        // Nunca uma garantia sem ressalva: a exclusão depende hoje da configuração.
-        expect(notCounting.text()).not.toContain('não contribui para médias');
-
-        const counting = mount(Results, {
-            props: baseProps({ context: { ...baseProps().context, is_diagnostic: true, counts_toward_classification: true } }),
-        });
-
-        expect(counting.text()).toContain('Avaliação diagnóstica');
-        expect(counting.text()).not.toContain('não entra nas médias');
-    });
-
-    it('mostra o aviso de diagnóstico a contar para a classificação quando diagnostic_counts_warning é verdadeiro', () => {
-        const wrapper = mount(Results, {
-            props: baseProps({
-                context: { ...baseProps().context, is_diagnostic: true, diagnostic_counts_warning: true },
-            }),
-        });
-
-        expect(wrapper.text()).toContain('contrário à regra do produto');
+            expect(wrapper.text()).toContain('Avaliação diagnóstica');
+            expect(wrapper.text()).toContain(
+                'Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.',
+            );
+            expect(wrapper.text()).not.toContain('contrário à regra do produto');
+        }
     });
 
     it('não mostra avisos de diagnóstico quando não é diagnóstico', () => {

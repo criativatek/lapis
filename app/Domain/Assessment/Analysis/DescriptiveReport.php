@@ -71,20 +71,12 @@ final class DescriptiveReport
             sprintf('Período: %s. Finalidade: %s.', $context['period']['label'], $context['instrument']['purpose_label']),
         ];
 
-        if ($context['is_diagnostic'] && ! $context['counts_toward_classification']) {
-            $paragraphs[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
-                .'necessidades de acompanhamento. Este instrumento está configurado para não contar para a classificação, '
-                .'e por isso não entra nas médias classificativas do período.';
-        }
-
-        if ($context['is_diagnostic'] && $context['counts_toward_classification']) {
-            $paragraphs[] = 'Aviso: este instrumento diagnóstico está configurado para contar para a classificação — '
-                .'os seus resultados ENTRAM atualmente no cálculo do período, apesar de a finalidade ser diagnóstica.';
-        }
-
+        // Um diagnóstico nunca entra nas médias — garantido pelo motor
+        // (InstrumentEligibility), seja qual for a configuração gravada.
         if ($context['is_diagnostic']) {
-            $paragraphs[] = 'A exclusão dos instrumentos diagnósticos depende hoje dessa configuração; a garantia no motor '
-                .'de classificação, independente dela, ainda não está implementada.';
+            $paragraphs[] = 'Finalidade diagnóstica: os resultados servem para identificar potencialidades, dificuldades e '
+                .'necessidades de acompanhamento. Os instrumentos de avaliação diagnóstica não contribuem para as médias '
+                .'classificativas.';
         }
 
         return self::section('identification', 'Identificação', $paragraphs);

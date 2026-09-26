@@ -86,23 +86,23 @@ class DescriptiveReportTest extends TestCase
 
         $identification = $report['sections'][0];
         $this->assertStringContainsString(
-            'não entra nas médias classificativas do período',
+            'Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.',
             implode(' ', $identification['paragraphs']),
         );
     }
 
     #[Test]
-    public function a_diagnostic_marked_as_counting_gets_a_warning_it_currently_does_count(): void
+    public function a_diagnostic_never_gets_a_counting_warning_whatever_its_stored_flag(): void
     {
+        // The engine excludes every diagnostic (InstrumentEligibility), so the
+        // report states the rule — never a configuration-dependent caveat.
         $report = DescriptiveReport::compose($this->context(isDiagnostic: true, counts: true), $this->dimensions([]));
 
-        $identification = $report['sections'][0];
-        $text = implode(' ', $identification['paragraphs']);
+        $text = implode(' ', $report['sections'][0]['paragraphs']);
 
-        $this->assertStringContainsString('ENTRAM atualmente no cálculo do período', $text);
-        // The methodological gap is stated honestly — never a guarantee.
-        $this->assertStringContainsString('a garantia no motor de classificação, independente dela, ainda não está implementada', $text);
-        $this->assertStringNotContainsString('não contribuem para médias classificativas', $text);
+        $this->assertStringContainsString('Os instrumentos de avaliação diagnóstica não contribuem para as médias classificativas.', $text);
+        $this->assertStringNotContainsString('ENTRAM atualmente', $text);
+        $this->assertStringNotContainsString('ainda não está implementada', $text);
     }
 
     #[Test]
