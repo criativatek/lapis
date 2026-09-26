@@ -48,6 +48,7 @@ class BuildClassElements
     public function __construct(
         protected CalculationEngine $engine,
         protected ScaleProposalResolver $proposals,
+        protected InstrumentEligibility $eligibility = new InstrumentEligibility,
     ) {}
 
     /**
@@ -157,7 +158,7 @@ class BuildClassElements
             'applied_on' => $instrument->applied_on->toDateString(),
             'academic_period_id' => (int) $instrument->academic_period_id,
             'status_label' => AssessmentSummaryQuery::stateLabel($instrument),
-            'counts_toward_classification' => (bool) $instrument->counts_toward_classification,
+            'counts_toward_classification' => $this->eligibility->isConfiguredToCount($instrument),
             // O peso do próprio elemento, quando a escola lhe deu um. Null é
             // «não foi declarado», e não «pesa zero» — a diferença importa.
             'weight' => $instrument->weight === null ? null : (string) $instrument->weight,

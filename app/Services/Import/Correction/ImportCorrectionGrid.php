@@ -17,6 +17,7 @@ use App\Models\ResultState;
 use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\InstrumentBuilder;
+use App\Services\Assessment\InstrumentEligibility;
 use App\Services\Assessment\RecordScores;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Import\CorrectionImportException;
@@ -262,10 +263,24 @@ class ImportCorrectionGrid
             return;
         }
 
-        if ((bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false)
-            && ! $mapping->overallDomainIsDecided()) {
+        if ($this->effectiveCounts($mapping) && ! $mapping->overallDomainIsDecided()) {
             throw CorrectionImportException::overallDomainNotChosen();
         }
+    }
+
+    /**
+     * Whether the mapping's instrument will actually count once created — the
+     * raw `counts_toward_classification` attribute, overridden to false for a
+     * diagnostic purpose, mirroring InstrumentEligibility and what
+     * InstrumentBuilder/Instrument::booted() will end up persisting.
+     */
+    protected function effectiveCounts(ImportMapping $mapping): bool
+    {
+        if (($mapping->instrumentAttributes['purpose'] ?? null) === InstrumentEligibility::DIAGNOSTIC) {
+            return false;
+        }
+
+        return (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
     }
 
     /**
@@ -288,7 +303,7 @@ class ImportCorrectionGrid
             throw CorrectionImportException::noGroupsInSource();
         }
 
-        if (! (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false)) {
+        if (! $this->effectiveCounts($mapping)) {
             return;
         }
 

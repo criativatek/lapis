@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use App\Services\Assessment\InstrumentEligibility;
 use Database\Factories\InstrumentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -16,11 +17,16 @@ use Illuminate\Support\Carbon;
 /**
  * An assessment instrument — a test, a question-aula, an oral observation (§12).
  *
- * Three independent axes, by requirement (§4.1, menus §6):
- *  - purpose: a pedagogical LABEL. The engine never reads it.
- *  - counts_toward_classification: the ONLY gate into the calculation.
- *  - weight: how much it counts, independent of both.
- * A diagnostic instrument may still count if the teacher decides so.
+ * Three axes (§4.1, menus §6), no longer fully independent:
+ *  - purpose: a pedagogical label for most values — EXCEPT `diagnostic`,
+ *    which is load-bearing: a diagnostic instrument NEVER counts toward the
+ *    classification, whatever counts_toward_classification stores.
+ *  - counts_toward_classification: what the teacher configured, subject to
+ *    the diagnostic override above.
+ *  - weight: how much it counts, once it does.
+ * Whether an instrument actually contributes to averages/classifications —
+ * configuration AND status together — is decided in ONE place:
+ * App\Services\Assessment\InstrumentEligibility.
  *
  * @property int $id
  * @property string $ulid
@@ -50,6 +56,24 @@ class Instrument extends Model
 {
     /** @use HasFactory<InstrumentFactory> */
     use BelongsToOrganization, HasFactory, HasUlids, SoftDeletes;
+
+    /**
+     * The server-side guarantee: a diagnostic instrument NEVER
+     * persists as counting toward the classification, whatever the caller
+     * sent. `saving` runs on every write path — create, update, the
+     * correction-grid import, the assessment-data import, and a backup
+     * restore's forceFill()+save() — so none of them can bypass this by not
+     * going through InstrumentBuilder. It only acts on writes; existing rows
+     * are not migrated by this hook.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $instrument): void {
+            if ($instrument->purpose === InstrumentEligibility::DIAGNOSTIC) {
+                $instrument->counts_toward_classification = false;
+            }
+        });
+    }
 
     /**
      * @return list<string>
@@ -123,12 +147,13 @@ class Instrument extends Model
     }
 
     /**
-     * The single gate into the calculation: it must be flagged as counting AND
-     * be in a state the engine reads (§4.1).
+     * The single gate into the calculation. Delegates to InstrumentEligibility
+     * — the one place that resolves configuration, the diagnostic override
+     * and the status gate together.
      */
     public function entersCalculation(): bool
     {
-        return $this->counts_toward_classification && $this->status->entersCalculation();
+        return app(InstrumentEligibility::class)->contributesToAverages($this);
     }
 
     /**

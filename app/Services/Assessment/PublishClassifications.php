@@ -6,7 +6,6 @@ use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
-use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
@@ -33,8 +32,6 @@ class PublishClassifications
      */
     public function forPeriod(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope): array
     {
-        $periodIds = $this->calculator->periodIdsInScope($class, $period, $scope);
-
         // Scoped to THIS class's enrollments — periods belong to the academic year,
         // not the class, so two classes share academic_period_id. Without this
         // filter, publishing one class would publish another's grades (and skip its
@@ -46,15 +43,10 @@ class PublishClassifications
             ->where('status', ClassificationStatus::Confirmed)
             ->pluck('id');
 
-        // The instruments whose elements a review can block: only those that count
-        // and are in a state the engine reads (the calculation universe, §570).
-        $countingInstrumentIds = Instrument::query()
-            ->where('class_id', $class->id)
-            ->whereIn('academic_period_id', $periodIds)
-            ->where('counts_toward_classification', true)
-            ->get()
-            ->filter(fn (Instrument $instrument) => $instrument->status->entersCalculation())
-            ->pluck('id');
+        // The instruments whose elements a review can block: exactly the
+        // calculation universe (InstrumentEligibility), so this guard
+        // never disagrees with the engine on what counted (§570).
+        $countingInstrumentIds = $this->calculator->contributingInstrumentIds($class, $period, $scope);
 
         $counts = ['published' => 0, 'blocked_under_review' => 0];
 

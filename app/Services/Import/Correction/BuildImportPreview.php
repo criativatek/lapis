@@ -17,6 +17,7 @@ use App\Models\InstrumentStatus;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Services\Assessment\InstrumentCompleteness;
+use App\Services\Assessment\InstrumentEligibility;
 use Illuminate\Support\Carbon;
 
 /**
@@ -583,8 +584,13 @@ class BuildImportPreview
 
             // Only when it counts. An item with no allocation enters no domain,
             // which the model allows (§4.3) and which is harmless for an
-            // instrument that does not enter the calculation at all.
-            $counts = (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
+            // instrument that does not enter the calculation at all. A
+            // diagnostic instrument never counts, whatever the mapping
+            // carries — this mirrors the effective flag InstrumentEligibility
+            // resolves, so the preview never asks for a domain the import
+            // itself will end up storing as not counting.
+            $counts = ($mapping->instrumentAttributes['purpose'] ?? null) !== InstrumentEligibility::DIAGNOSTIC
+                && (bool) ($mapping->instrumentAttributes['counts_toward_classification'] ?? false);
 
             if ($overall) {
                 if ($counts && ! $mapping->overallDomainIsDecided()) {

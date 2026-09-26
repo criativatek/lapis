@@ -14,6 +14,7 @@ use App\Models\SchoolClass;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
+use App\Services\Assessment\InstrumentEligibility;
 use App\Services\Assessment\PrimaryResultScope;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\DecisionScale;
@@ -68,6 +69,7 @@ class BuildStudentProgress
         protected PrimaryResultScope $scope,
         protected ClassResultsCalculator $calculator,
         protected ScaleProposalResolver $proposals,
+        protected InstrumentEligibility $eligibility = new InstrumentEligibility,
     ) {}
 
     /**
@@ -1035,7 +1037,7 @@ class BuildStudentProgress
                 'type' => $instrument->type?->name,
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'status' => $instrument->status->label(),
-                'counts_toward_classification' => (bool) $instrument->counts_toward_classification,
+                'counts_toward_classification' => $this->eligibility->isConfiguredToCount($instrument),
                 ...($byInstrument[(int) $instrument->getKey()] ?? [
                     'result' => null,
                     'scale_label' => null,

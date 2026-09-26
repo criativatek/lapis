@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
+use App\Services\Assessment\InstrumentEligibility;
 use App\Services\Assessment\RecordScores;
 use App\Services\Audit\AuditLog;
 use App\Services\Import\Correction\WriteLapisGrid;
@@ -36,7 +37,12 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class InstrumentController extends Controller
 {
-    public function __construct(protected InstrumentBuilder $builder, protected HelpCenter $helpCenter, protected AuditLog $audit) {}
+    public function __construct(
+        protected InstrumentBuilder $builder,
+        protected HelpCenter $helpCenter,
+        protected AuditLog $audit,
+        protected InstrumentEligibility $eligibility,
+    ) {}
 
     public function index(): Response
     {
@@ -55,7 +61,7 @@ class InstrumentController extends Controller
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'status_label' => $instrument->status->label(),
                 'status' => $instrument->status->value,
-                'counts' => $instrument->counts_toward_classification,
+                'counts' => $this->eligibility->isConfiguredToCount($instrument),
                 'items_count' => $instrument->items_count,
             ]);
 
@@ -200,7 +206,7 @@ class InstrumentController extends Controller
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'status' => $instrument->status->value,
                 'purpose' => $instrument->purpose,
-                'counts_toward_classification' => $instrument->counts_toward_classification,
+                'counts_toward_classification' => $this->eligibility->isConfiguredToCount($instrument),
                 'total_points' => $instrument->total_points === null ? null : (float) $instrument->total_points,
                 'allow_bonus' => $instrument->allow_bonus,
                 'groups' => $groups->map(fn (InstrumentGroup $group) => [

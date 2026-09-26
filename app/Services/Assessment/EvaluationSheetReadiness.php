@@ -5,7 +5,6 @@ namespace App\Services\Assessment;
 use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
-use App\Models\Instrument;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
@@ -554,13 +553,9 @@ class EvaluationSheetReadiness
             return [];
         }
 
-        $countingInstrumentIds = Instrument::query()
-            ->where('class_id', $class->getKey())
-            ->whereIn('academic_period_id', $this->calculator->periodIdsInScope($class, $period, $scope))
-            ->where('counts_toward_classification', true)
-            ->get()
-            ->filter(fn (Instrument $instrument): bool => $instrument->status->entersCalculation())
-            ->pluck('id');
+        // Exactly the calculation universe (InstrumentEligibility), so
+        // this guard never disagrees with the engine on what counted.
+        $countingInstrumentIds = $this->calculator->contributingInstrumentIds($class, $period, $scope);
 
         if ($countingInstrumentIds->isEmpty()) {
             return [];

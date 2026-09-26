@@ -333,9 +333,16 @@ function stateFor(): WizardState {
             purpose:
                 (props.preview.instrument_attributes.purpose as string) ??
                 'formative',
+            // A diagnostic instrument never counts toward the classification
+            // — initialised to false when the preview already carries a
+            // diagnostic purpose, matching what the server will end up
+            // persisting either way.
             counts_toward_classification:
-                (props.preview.instrument_attributes
-                    .counts_toward_classification as boolean) ?? true,
+                (props.preview.instrument_attributes.purpose as string) ===
+                'diagnostic'
+                    ? false
+                    : ((props.preview.instrument_attributes
+                          .counts_toward_classification as boolean) ?? true),
             total_points:
                 (props.preview.instrument_attributes.total_points as number) ??
                 null,
@@ -344,6 +351,18 @@ function stateFor(): WizardState {
 }
 
 const form = useForm(stateFor());
+
+// A diagnostic instrument never counts toward the classification.
+// Selecting "Diagnóstica" forces the flag to false; leaving it for another
+// purpose never restores it to true — the teacher has to tick it again.
+watch(
+    () => form.instrument.purpose,
+    (purpose) => {
+        if (purpose === 'diagnostic') {
+            form.instrument.counts_toward_classification = false;
+        }
+    },
+);
 
 const errors = computed(() =>
     props.preview.issues.filter((issue) => issue.severity === 'error'),
@@ -2021,13 +2040,20 @@ const typeName = computed(
                     </p>
                 </div>
 
-                <label class="flex items-center gap-2 text-sm">
+                <label
+                    v-if="form.instrument.purpose !== 'diagnostic'"
+                    class="flex items-center gap-2 text-sm"
+                >
                     <input
                         v-model="form.instrument.counts_toward_classification"
                         type="checkbox"
                     />
                     Conta para a classificação
                 </label>
+                <p v-else class="text-sm text-muted-foreground sm:col-span-2">
+                    Os instrumentos de avaliação diagnóstica não contribuem
+                    para as médias classificativas.
+                </p>
 
                 <!-- The one pedagogical decision the simple path asks for: what
                      this result is evidence of. Never inferred from the text of

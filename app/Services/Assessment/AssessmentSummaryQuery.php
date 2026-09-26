@@ -22,6 +22,8 @@ use Illuminate\Support\Collection;
  */
 class AssessmentSummaryQuery
 {
+    public function __construct(protected InstrumentEligibility $eligibility = new InstrumentEligibility) {}
+
     /**
      * The teacher's own instruments, across every class, most recent first —
      * mirrors InstrumentController::index()'s own scoping so the two lists
@@ -157,7 +159,7 @@ class AssessmentSummaryQuery
                 'period' => $instrument->academicPeriod->label,
                 'applied_on' => $instrument->applied_on->toDateString(),
                 'purpose_label' => self::purposeLabel($instrument->purpose),
-                'counts_toward_classification' => $instrument->counts_toward_classification,
+                'counts_toward_classification' => $this->eligibility->isConfiguredToCount($instrument),
                 'state_label' => self::stateLabel($instrument),
             ],
             'summary' => [
