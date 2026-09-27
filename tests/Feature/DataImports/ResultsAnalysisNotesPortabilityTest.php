@@ -808,6 +808,93 @@ class ResultsAnalysisNotesPortabilityTest extends TestCase
         $this->assertSame($note->id, $row['existing_id']);
     }
 
+    #[Test]
+    public function the_preview_lists_every_refused_observation_with_its_reason_on_every_visit_and_the_valid_one_still_restores(): void
+    {
+        ['instrument' => $instrument, 'note' => $note] = $this->scenario();
+        $source = $this->teacher->personalOrganization();
+
+        $marker = 'MARCADOR-FICTICIO-NAO-MOSTRAR';
+
+        $mutated = $this->rewriteBackup($this->backupUpload($this->teacher, $source), function (array $json) use ($instrument, $marker): array {
+            $good = collect($this->notesOf($json))->firstWhere('instrument_ulid', $instrument->ulid);
+
+            $tooManyBytes = $good;
+            $tooManyBytes['ulid'] = (string) Str::ulid();
+            $tooManyBytes['body'] = $marker.str_repeat('📘', 16380);
+
+            $badDate = $good;
+            $badDate['ulid'] = (string) Str::ulid();
+            $badDate['body'] = $marker.' data má';
+            $badDate['updated_at'] = 'ontem à tarde';
+
+            $badContext = $good;
+            $badContext['ulid'] = (string) Str::ulid();
+            $badContext['body'] = $marker.' contexto mau';
+            $badContext['context_kind'] = 'turma';
+
+            $json['results_analysis_notes'] = [$good, $tooManyBytes, $badDate, $badContext];
+
+            return $json;
+        });
+
+        // A different account: the valid note is `new` there.
+        $newAccount = User::factory()->create();
+        $destination = $newAccount->personalOrganization();
+        $import = $this->uploadInto($mutated, $newAccount, $destination);
+
+        $this->assertStringNotContainsString($marker, (string) json_encode($import->canonical_snapshot), 'Nada recusado volta ao conteúdo canónico.');
+
+        $expectedReasons = [
+            'O texto desta observação ultrapassa o limite de 20 000 caracteres ou o espaço máximo de armazenamento.',
+            'Observação com data de criação ou de alteração inválida.',
+            'Observação com identificação, contexto ou elemento de avaliação em falta ou inválidos.',
+        ];
+
+        // Twice: the refused rows must not vanish on a plain reload.
+        foreach ([1, 2] as $visit) {
+            $response = $this->actingAs($newAccount)->withSession(['organization_id' => $destination->id])
+                ->get("/data-imports/{$import->ulid}")
+                ->assertOk();
+
+            $page = $response->viewData('page');
+            $counts = data_get($page, 'props.plan.counts.results_analysis_notes');
+            $this->assertSame(1, $counts['new'], "visita {$visit}");
+            $this->assertSame(3, $counts['invalid'], "visita {$visit}");
+
+            $reasons = collect(data_get($page, 'props.plan.rows.results_analysis_notes'))
+                ->where('classification', 'invalid')->pluck('reason')->sort()->values()->all();
+            $this->assertSame(collect($expectedReasons)->sort()->values()->all(), $reasons, "visita {$visit}");
+            $this->assertStringNotContainsString($marker, (string) $response->getContent(), 'O texto recusado nunca aparece na pré-visualização.');
+        }
+
+        $this->confirm($import, $newAccount, $destination);
+
+        $this->assertSame('imported', $import->fresh()->status->value);
+        $this->assertSame(1, $import->fresh()->summary['results_analysis_notes_created']);
+        $this->inTenant($destination, function () use ($note): void {
+            $this->assertSame(1, ResultsAnalysisNote::count());
+            $this->assertSame($note->body, ResultsAnalysisNote::firstOrFail()->body);
+        });
+    }
+
+    #[Test]
+    public function an_import_uploaded_before_issues_were_stored_still_previews(): void
+    {
+        $this->scenario();
+        $organization = $this->teacher->personalOrganization();
+        $import = $this->uploadInto($this->backupUpload($this->teacher, $organization), $this->teacher, $organization);
+
+        $snapshot = $import->canonical_snapshot;
+        unset($snapshot['validation_issues']);
+        $import->forceFill(['canonical_snapshot' => $snapshot])->save();
+
+        $page = $this->actingAs($this->teacher)->withSession(['organization_id' => $organization->id])
+            ->get("/data-imports/{$import->ulid}")->assertOk()->viewData('page');
+
+        $this->assertSame(0, data_get($page, 'props.plan.counts.results_analysis_notes.invalid'));
+    }
+
     /** @return array{Organization, User} */
     private function institutionalOrganization(): array
     {

@@ -1815,27 +1815,35 @@ class ValidateBackupPayload
         $instrumentUlid = $row['instrument_ulid'] ?? null;
         $body = $row['body'] ?? null;
 
-        if (! $this->isUlid($ulid) || ! $this->isUlid($instrumentUlid)
-            || ($row['context_kind'] ?? null) !== 'instrument'
-            || ! is_string($body) || trim($body) === '' || mb_strlen($body) > ResultsAnalysisNote::BODY_MAX_LENGTH
-            // The column is TEXT (65 535 BYTES). 20 000 characters of 4-byte
-            // UTF-8 do not fit: the INSERT would fail inside the import
-            // transaction, losing the whole file, and the driver's error
-            // (with the note's text in it) would reach the log.
-            || strlen($body) > 65535
-        ) {
-            $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+        // Each refusal names its reason — the preview shows it to the teacher
+        // (never the text itself: a reason is a fixed sentence, and the
+        // issue carries only the ulid, never the body).
+        $issue = function (string $reason) use ($ulid, &$rowIssues): null {
+            $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t($reason)];
 
             return null;
+        };
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($instrumentUlid) || ($row['context_kind'] ?? null) !== 'instrument') {
+            return $issue('Observação com identificação, contexto ou elemento de avaliação em falta ou inválidos.');
+        }
+
+        if (! is_string($body) || trim($body) === '') {
+            return $issue('Observação sem texto.');
+        }
+
+        // The same two limits the form enforces (characters AND bytes — the
+        // column is TEXT). A body past either would fail the INSERT inside
+        // the import transaction, losing the whole file.
+        if (ResultsAnalysisNote::bodyLimitViolation($body) !== null) {
+            return $issue('O texto desta observação ultrapassa o limite de 20 000 caracteres ou o espaço máximo de armazenamento.');
         }
 
         $createdAt = $this->optionalDateTimeOrInvalidate($row['created_at'] ?? null);
         $updatedAt = $this->optionalDateTimeOrInvalidate($row['updated_at'] ?? null);
 
         if (! $createdAt['ok'] || ! $updatedAt['ok']) {
-            $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
-
-            return null;
+            return $issue('Observação com data de criação ou de alteração inválida.');
         }
 
         return [

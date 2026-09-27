@@ -55,6 +55,14 @@ terceira:
    importação **de novo, a cada visita**, contra o estado atual da base de
    dados — nunca contra uma versão em cache. Mostra, por domínio, quantas
    linhas são novas / existentes / em conflito / inválidas / não suportadas.
+   As linhas que o validador recusou no upload (e que por isso nunca entram
+   no conteúdo canónico) também contam como inválidas e aparecem em «Pontos
+   a rever» com o motivo, em todas as visitas. Desde a 0.155.1 ficam
+   guardadas em `canonical_snapshot.validation_issues`, só como descritor:
+   domínio, o `ulid` quando é um ULID válido, e a frase fixa do validador.
+   A linha recusada em si nunca é guardada, e o seu texto nunca aparece.
+   Antes disso, `edit()` reconstruía o plano sem elas e as recusas
+   desapareciam da pré-visualização.
 3. **Confirmação** (`POST /data-imports/{ulid}/confirm`) — reconstrói o
    plano **outra vez**, agora dentro de uma transação com a linha
    `data_imports` e a organização de destino bloqueadas (`lockForUpdate`), e

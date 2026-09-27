@@ -66,6 +66,21 @@ funcionalidade ser publicada. A 0.155.0 nunca chegou a produção.
   contador desta instalação e não o da origem.
 - Um backup v12 ou anterior continua a restaurar-se. Não traz observações e
   não apaga as que já existem no destino.
+- As linhas que o validador recusa passam a aparecer na pré-visualização, em
+  «Pontos a rever», com o motivo de cada uma, e continuam lá quando a página é
+  recarregada. Antes desapareciam sem aviso, em todos os domínios. Fica guardado
+  só o motivo, nunca a linha recusada nem o seu texto.
+
+### Guardar observações
+
+- Guardar um texto com muitos emojis podia dar **erro 500**. O limite era de
+  20 000 caracteres, mas a coluna só comporta 65 535 bytes, e um emoji ocupa
+  quatro. O servidor passa a verificar os dois limites antes de escrever e
+  responde com uma mensagem que o professor entende. O texto que tentou
+  guardar fica no formulário para o poder encurtar, e a observação que já
+  estava guardada não muda.
+- O formulário e o restauro de backups usam a mesma definição dos dois
+  limites.
 
 ### Sem migrations
 

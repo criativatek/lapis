@@ -355,7 +355,12 @@ separador Resultados.
 
 - o texto também não pode passar de 65 535 **bytes** (a coluna é `TEXT`):
   20 000 carateres de 4 bytes (emoji) não cabem, e um `INSERT` falhado
-  derrubaria a transação inteira do restauro;
+  derrubaria a transação inteira do restauro. Os dois limites vivem num só
+  sítio, `ResultsAnalysisNote::bodyLimitViolation()`, que o formulário
+  (regra `ResultsAnalysisNoteBody`) e este validador usam;
+- cada recusa leva um motivo próprio (identificação ou contexto, texto em
+  falta, texto acima dos limites, data inválida, duplicado), mostrado na
+  pré-visualização sem o texto da observação;
 - as datas têm de ser ISO 8601 e são normalizadas para o fuso da aplicação;
 - duas linhas com o mesmo `ulid`, ou para o mesmo `(instrument_ulid,
   context_kind)`, no mesmo ficheiro: fica a primeira, as seguintes são
@@ -370,12 +375,11 @@ ainda não existe nunca é criada sobre um instrumento em conflito: é
 
 **Limitações que ficam**:
 
-- As linhas que o validador recusa (ulid, contexto, texto ou datas
-  malformados, duplicados) saem do `canonical_snapshot` mas **não aparecem
-  na pré-visualização**: `DataImportController::edit()` reconstrói o plano
-  sem os `rowIssues` do validador. É assim em todos os domínios desde a
-  Fatia 6. Só as recusas do plano (instrumento que não resolve) são
-  mostradas linha a linha.
+- As recusas de domínios que a pré-visualização trata como linhas filhas
+  sem identidade própria (`student_item_scores`, `item_domain_allocations`,
+  …) continuam fora de «Pontos a rever», como sempre estiveram
+  (`BuildImportPlan::$noIssueDomains`). As observações não estão nesse
+  grupo: cada recusa aparece.
 - Enquanto a importação não for podada, o texto das observações fica em
   `data_imports.canonical_snapshot`, como o de qualquer outra coleção de
   texto livre. A retenção é a de `PruneDataImports`.

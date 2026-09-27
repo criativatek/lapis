@@ -311,20 +311,40 @@ const totalNew = computed(() => {
     return Object.values(props.plan.counts).reduce((sum, c) => sum + c.new, 0);
 });
 
-const allIssueRows = computed(() => {
+const domainLabels = new Map(
+    domainGroups.flatMap((group) =>
+        group.domains.map((domain) => [domain.key, domain.label] as const),
+    ),
+);
+
+/**
+ * Each issue keeps the domain it came from: a row the backup validator
+ * refused has no label of its own (only its reason is kept — never its
+ * content), so the domain name is what tells the teacher which kind of
+ * record it was.
+ */
+const allIssueRows = computed<{ domain: string; row: PlanRow }[]>(() => {
     if (props.plan === null) {
         return [];
     }
 
-    return Object.values(props.plan.rows)
-        .flat()
-        .filter(
-            (row) =>
-                row.classification === 'conflict' ||
-                row.classification === 'invalid' ||
-                row.classification === 'unsupported',
-        );
+    return Object.entries(props.plan.rows).flatMap(([domain, rows]) =>
+        rows
+            .filter(
+                (row) =>
+                    row.classification === 'conflict' ||
+                    row.classification === 'invalid' ||
+                    row.classification === 'unsupported',
+            )
+            .map((row) => ({ domain, row })),
+    );
 });
+
+function issueLabel(entry: { domain: string; row: PlanRow }): string {
+    const own = rowLabel(entry.row);
+
+    return own !== '—' ? own : (domainLabels.get(entry.domain) ?? '—');
+}
 
 /**
  * Rows that WILL be imported and carry something the teacher should read
@@ -674,10 +694,11 @@ const needingReassignment = computed(() => {
                     class="list-inside list-disc space-y-1 text-amber-900 dark:text-amber-200"
                 >
                     <li
-                        v-for="(row, index) in allIssueRows.slice(0, 20)"
+                        v-for="(entry, index) in allIssueRows.slice(0, 20)"
                         :key="index"
                     >
-                        <strong>{{ rowLabel(row) }}</strong> — {{ row.reason }}
+                        <strong>{{ issueLabel(entry) }}</strong> —
+                        {{ entry.row.reason }}
                     </li>
                 </ul>
                 <p

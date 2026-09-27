@@ -384,14 +384,12 @@ class LessonAttendanceRoundTripTest extends TestCase
      * rejected at `ValidateBackupPayload` and never reaches the canonical
      * snapshot at all — the SAME behaviour every other domain in this
      * importer already has (`whitelistRows()` drops the row and records a
-     * `rowIssue`). NOTE: `rowIssue`s are computed but never persisted or
-     * threaded back into `DataImportController::edit()`/`confirm()` (both
-     * always call `BuildImportPlan::build()` with an empty `$rowIssues`
-     * array) — a pre-existing gap in the whole importer, not something this
-     * fatia introduced, so a validation-rejected row surfaces here as "one
-     * row fewer restored", never as a visible `invalid` count. What this
-     * test pins is the part that IS this fatia's to get right: the bad row
-     * does not block or corrupt the three good ones.
+     * `rowIssue`). Since 0.155.1 those issues are kept (as descriptors
+     * only, in `canonical_snapshot.validation_issues`) and handed back to
+     * the plan by `DataImportController::edit()`, so the refused row is a
+     * visible `invalid` in the preview instead of silently "one row fewer
+     * restored". The bad row still never blocks or corrupts the three good
+     * ones.
      */
     #[Test]
     public function an_invalid_attendance_row_is_dropped_without_blocking_the_others(): void
@@ -411,9 +409,9 @@ class LessonAttendanceRoundTripTest extends TestCase
 
         // Same organization as the source (never deleted), so the three
         // untouched rows match their own ulid and are `existing` — the
-        // dropped fourth row simply is not counted anywhere.
+        // refused fourth row is reported as `invalid`, never written.
         $this->assertSame(3, data_get($preview->viewData('page'), 'props.plan.counts.lesson_attendances.existing', 0));
-        $this->assertSame(0, data_get($preview->viewData('page'), 'props.plan.counts.lesson_attendances.invalid', -1));
+        $this->assertSame(1, data_get($preview->viewData('page'), 'props.plan.counts.lesson_attendances.invalid', -1));
     }
 
     /**

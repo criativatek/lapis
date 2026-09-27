@@ -6,6 +6,7 @@ use App\Models\Instrument;
 use App\Models\InstrumentStatus;
 use App\Models\ResultsAnalysisNote;
 use App\Models\User;
+use App\Rules\ResultsAnalysisNoteBody;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -59,7 +60,7 @@ class InstrumentResultsController extends Controller
         Gate::authorize('update', $instrument->schoolClass);
 
         $data = $request->validate([
-            'body' => ['nullable', 'string', 'max:'.ResultsAnalysisNote::BODY_MAX_LENGTH],
+            'body' => ['nullable', 'string', new ResultsAnalysisNoteBody],
             'lock_version' => ['required', 'integer', 'min:0'],
         ]);
 
