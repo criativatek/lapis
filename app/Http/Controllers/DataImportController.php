@@ -18,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Throwable;
@@ -44,6 +45,22 @@ use Throwable;
 class DataImportController extends Controller
 {
     use RefusesDuringImpersonation;
+
+    /**
+     * Where the rows `ValidateBackupPayload` refused are remembered between
+     * the upload and the preview. Until 0.155.1 they were dropped on the
+     * floor: `edit()` rebuilt the plan with an empty list, so a refused row
+     * simply vanished from what the teacher was asked to confirm.
+     *
+     * Kept inside `canonical_snapshot` (no migration) under a key no backup
+     * collection uses, and holding only DESCRIPTORS — domain, the row's ulid
+     * when it is a real ULID, and the validator's fixed sentence. Never the
+     * refused row itself: nothing invalid re-enters the canonical data, and
+     * no free text (an observation's body, a description) is repeated on
+     * screen or anywhere else. `BuildImportPlan` never reads this key, and
+     * `ExecuteDataImport` never writes a refused row either way.
+     */
+    public const string VALIDATION_ISSUES_KEY = 'validation_issues';
 
     public function __construct(
         protected DataImportTempStorage $storage,
@@ -116,7 +133,9 @@ class DataImportController extends Controller
             'source_app_version' => $validated['canonical']['app_version'],
             'source_generated_at' => $validated['canonical']['generated_at'],
             'source_organization' => $validated['canonical']['organization'],
-            'canonical_snapshot' => $validated['canonical'],
+            'canonical_snapshot' => $validated['canonical'] + [
+                self::VALIDATION_ISSUES_KEY => $this->storableIssues($validated['rowIssues']),
+            ],
             'requested_by' => $request->user()->getKey(),
             'expires_at' => now()->addHours($this->retentionPolicy->dataExportAvailabilityHours()),
         ]);
@@ -144,7 +163,7 @@ class DataImportController extends Controller
 
         $organization = $this->currentOrganization->get();
         $plan = $dataImport->status === DataImportStatus::Validated
-            ? $this->planner->build($dataImport->canonical_snapshot ?? [], $organization, $request->user(), [])
+            ? $this->planner->build($dataImport->canonical_snapshot ?? [], $organization, $request->user(), $this->storedIssues($dataImport))
             : null;
 
         return Inertia::render('imports/data/Preview', [
@@ -242,5 +261,51 @@ class DataImportController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Importação cancelada.')]);
 
         return to_route('data-imports.create');
+    }
+
+    /**
+     * Only the descriptor survives: a known domain name, a real ULID (a
+     * malformed "ulid" is a value from the file and is dropped), and the
+     * validator's own sentence. See {@see VALIDATION_ISSUES_KEY}.
+     *
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array{domain: string, ulid: string|null, reason: string}>
+     */
+    protected function storableIssues(array $rowIssues): array
+    {
+        return array_map(fn (array $issue): array => [
+            'domain' => $issue['domain'],
+            'ulid' => is_string($issue['ulid']) && Str::isUlid($issue['ulid']) ? $issue['ulid'] : null,
+            'reason' => $issue['reason'],
+        ], $rowIssues);
+    }
+
+    /**
+     * An import uploaded before 0.155.1 has no stored issues — read as none,
+     * which is exactly what its preview always showed.
+     *
+     * @return list<array{domain: string, ulid: string|null, reason: string}>
+     */
+    protected function storedIssues(DataImport $dataImport): array
+    {
+        $stored = $dataImport->canonical_snapshot[self::VALIDATION_ISSUES_KEY] ?? [];
+
+        if (! is_array($stored)) {
+            return [];
+        }
+
+        $issues = [];
+
+        foreach ($stored as $issue) {
+            if (is_array($issue) && is_string($issue['domain'] ?? null) && is_string($issue['reason'] ?? null)) {
+                $issues[] = [
+                    'domain' => $issue['domain'],
+                    'ulid' => is_string($issue['ulid'] ?? null) ? $issue['ulid'] : null,
+                    'reason' => $issue['reason'],
+                ];
+            }
+        }
+
+        return $issues;
     }
 }

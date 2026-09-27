@@ -52,6 +52,7 @@ class ExecuteDataImport
         private readonly WriteAssessmentData $dataWriter,
         private readonly WritePedagogicalRecords $recordsWriter,
         private readonly WriteLessons $lessonsWriter,
+        private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
     ) {}
@@ -82,7 +83,7 @@ class ExecuteDataImport
             $studentModels = $this->writeStudents($rows['students'], $organization);
             $enrollmentSummary = $this->writeEnrollments($rows['enrollments'], $classModels, $studentModels);
 
-            $dataCounts = $this->dataWriter->write(
+            $dataResult = $this->dataWriter->write(
                 $rows['instruments'], $rows['instrument_groups'], $rows['instrument_items'], $rows['item_domain_allocations'],
                 $rows['student_item_scores'], $rows['classifications'], $rows['self_assessment_templates'],
                 $rows['self_assessment_questions'], $rows['self_assessments'], $rows['self_assessment_responses'],
@@ -90,6 +91,7 @@ class ExecuteDataImport
                 $structure['domainsByUlid'], $structure['profileVersionsByUlid'], $structure['scalesByRef'],
                 $structure['scaleLevelsByRef'], $structure['instrumentTypesByRef'],
             );
+            $dataCounts = $dataResult['counts'];
 
             $recordCounts = $this->recordsWriter->write(
                 $rows['interim_assessments'], $rows['evidence_records'], $rows['interventions'],
@@ -118,6 +120,16 @@ class ExecuteDataImport
                 $rows['cancelled_lesson_occurrences'], $rows['lessons'], $rows['lesson_summaries'],
                 $rows['lesson_plans'], $rows['lesson_attendances'], $organization, $classModels['byUlid'],
                 $enrollmentsForLessons,
+            );
+
+            // Schema v13 — depends on the instrument map `writeInstruments()`
+            // has just built (new ∪ existing ∪ conflict). A `conflict`
+            // instrument is in that map for its other children, but the plan
+            // never classifies a note against one as `new` — see
+            // BuildResultsAnalysisNotesPlan. Runs after the data writer for
+            // exactly that reason.
+            $resultsAnalysisNotesCreated = $this->resultsAnalysisNotesWriter->write(
+                $rows['results_analysis_notes'], $dataResult['instrumentsByUlid'],
             );
 
             $summary = [
@@ -150,9 +162,10 @@ class ExecuteDataImport
                 'lesson_summaries_created' => $lessonCounts['lesson_summaries'],
                 'lesson_plans_created' => $lessonCounts['lesson_plans'],
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
+                'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
                 'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
                     'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
-                    'lessons', 'lesson_plans', 'cancelled_lesson_occurrences',
+                    'lessons', 'lesson_plans', 'cancelled_lesson_occurrences', 'results_analysis_notes',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
             ];

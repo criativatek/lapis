@@ -24,13 +24,16 @@ use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\RecordScores;
+use App\Services\Import\Backup\ValidateBackupPayload;
 use App\Services\StudentEnrollmentService;
+use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\InstrumentTypesSeeder;
 use Database\Seeders\SystemScalesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -782,5 +785,122 @@ class InstrumentResultsControllerTest extends TestCase
             $this->assertTrue($students[$eid1]['global']['is_partial']);
             $this->assertSame('pending', $students[$eid2]['status']);
         });
+    }
+
+    // ---------------------------------------------------------------
+    // Limits of the observations text (0.155.1): 20 000 characters AND
+    // 65 535 bytes — the TEXT column. Boundaries tested on both sides.
+    // ---------------------------------------------------------------
+
+    private function saveNote(string $body, int $lockVersion = 0): TestResponse
+    {
+        $ulid = $this->asTenant(fn () => $this->instrument()->ulid);
+
+        return $this->actingAs($this->teacher)
+            ->from("/instruments/{$ulid}/resultados")
+            ->put("/instruments/{$ulid}/resultados/observacoes", ['body' => $body, 'lock_version' => $lockVersion]);
+    }
+
+    private function storedNote(): ?ResultsAnalysisNote
+    {
+        return $this->asTenant(fn () => ResultsAnalysisNote::where('instrument_id', $this->instrument()->id)->first());
+    }
+
+    #[Test]
+    public function a_normal_note_is_saved(): void
+    {
+        $this->saveNote('Observação fictícia: a turma evoluiu bem.')->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame('Observação fictícia: a turma evoluiu bem.', $this->storedNote()?->body);
+    }
+
+    #[Test]
+    public function portuguese_characters_and_emoji_within_both_limits_are_saved(): void
+    {
+        $body = "Avaliação «ótima» — ç, ã, é, ü 📘📈✅ e quebras\nde linha.";
+
+        $this->saveNote($body)->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame($body, $this->storedNote()?->body);
+    }
+
+    #[Test]
+    public function exactly_20000_characters_is_saved_and_20001_is_refused(): void
+    {
+        $this->saveNote(str_repeat('a', 20000))->assertSessionHasNoErrors();
+        $this->assertSame(20000, mb_strlen((string) $this->storedNote()?->body));
+
+        $this->saveNote(str_repeat('a', 20001), 1)
+            ->assertRedirect()
+            ->assertSessionHasErrors(['body' => 'As observações não podem ter mais de 20 000 caracteres. Reduza o texto e volte a guardar.']);
+        $this->assertSame(20000, mb_strlen((string) $this->storedNote()?->body));
+    }
+
+    #[Test]
+    public function exactly_65535_bytes_is_saved_and_one_byte_more_is_refused_well_below_20000_characters(): void
+    {
+        // 16 383 four-byte emoji + 3 ASCII = 65 535 bytes, 16 386 characters.
+        $atLimit = str_repeat('📘', 16383).'abc';
+        $this->assertSame(65535, strlen($atLimit));
+
+        $this->saveNote($atLimit)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($atLimit, $this->storedNote()?->body);
+
+        // One byte more: 65 536 bytes, still only 16 387 characters.
+        $overLimit = $atLimit.'d';
+        $this->assertSame(65536, strlen($overLimit));
+        $this->assertLessThan(20000, mb_strlen($overLimit));
+
+        $this->saveNote($overLimit, 1)->assertRedirect()->assertSessionHasErrors('body');
+        $this->assertSame($atLimit, $this->storedNote()?->body);
+    }
+
+    #[Test]
+    public function an_invalid_save_is_a_validation_error_never_a_500_and_keeps_the_stored_note(): void
+    {
+        $this->saveNote('Nota guardada antes.')->assertSessionHasNoErrors();
+        $before = $this->storedNote();
+
+        $tooLong = str_repeat('📘', 20000);
+        $response = $this->saveNote($tooLong, 1);
+
+        $response->assertStatus(302)->assertRedirect()->assertSessionHasErrors('body');
+        // The attempted text travels back with the error, so the form keeps
+        // it for the teacher to shorten (useForm also keeps it client-side).
+        $response->assertSessionHasInput('body', $tooLong);
+
+        $after = $this->storedNote();
+        $this->assertSame('Nota guardada antes.', $after?->body);
+        $this->assertSame($before?->lock_version, $after?->lock_version);
+        $this->assertSame($before?->updated_at?->toIso8601String(), $after?->updated_at?->toIso8601String());
+    }
+
+    #[Test]
+    public function the_form_and_the_backup_importer_share_one_definition_of_the_limits(): void
+    {
+        $atCharacters = str_repeat('a', ResultsAnalysisNote::BODY_MAX_LENGTH);
+        $atBytes = str_repeat('📘', 16383).'abc';
+
+        $this->assertSame(ResultsAnalysisNote::BODY_MAX_BYTES, strlen($atBytes));
+        $this->assertNull(ResultsAnalysisNote::bodyLimitViolation($atCharacters));
+        $this->assertNull(ResultsAnalysisNote::bodyLimitViolation($atBytes));
+        $this->assertSame('characters', ResultsAnalysisNote::bodyLimitViolation($atCharacters.'a'));
+        $this->assertSame('bytes', ResultsAnalysisNote::bodyLimitViolation($atBytes.'d'));
+
+        // The importer refuses exactly what the form refuses, and keeps
+        // exactly what the form keeps.
+        $payload = [
+            'schema_version' => BackupSchemaCompatibility::CURRENT,
+            'organization' => ['ulid' => (string) Str::ulid(), 'name' => 'Organização fictícia', 'type' => 'personal'],
+            'results_analysis_notes' => collect([$atCharacters, $atBytes, $atCharacters.'a', $atBytes.'d'])
+                ->map(fn (string $body): array => [
+                    'ulid' => (string) Str::ulid(), 'context_kind' => 'instrument', 'instrument_ulid' => (string) Str::ulid(), 'body' => $body,
+                ])->all(),
+        ];
+
+        $validated = app(ValidateBackupPayload::class)->validate((string) json_encode($payload));
+
+        $this->assertSame([$atCharacters, $atBytes], array_column($validated['canonical']['results_analysis_notes'], 'body'));
+        $this->assertCount(2, array_filter($validated['rowIssues'], fn (array $issue): bool => $issue['domain'] === 'results_analysis_notes'));
     }
 }

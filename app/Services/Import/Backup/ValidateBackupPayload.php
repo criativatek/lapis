@@ -25,6 +25,7 @@ use App\Models\ProfileVersionStatus;
 use App\Models\ReportScopeKind;
 use App\Models\ReportTone;
 use App\Models\ReportType;
+use App\Models\ResultsAnalysisNote;
 use App\Models\ResultState;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
@@ -34,7 +35,9 @@ use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
 use App\Support\Import\Backup\SecretScanner;
 use Closure;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * Turns raw JSON text into a whitelisted, structurally sound
@@ -246,6 +249,8 @@ class ValidateBackupPayload
             'lesson_attendances' => $this->whitelistRows($decoded, 'lesson_attendances', ['ulid', 'lesson_ulid', 'enrollment_ulid', 'status', 'updated_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonAttendanceRow($row, $rowIssues);
             }),
+
+            'results_analysis_notes' => $this->validResultsAnalysisNoteRows($decoded, $rowIssues),
         ];
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
@@ -1728,5 +1733,162 @@ class ValidateBackupPayload
             'status' => $row['status'],
             'updated_by_email' => $this->nullableString($row['updated_by_email'] ?? null),
         ];
+    }
+
+    /**
+     * Schema v13 — a teacher's own observations for an instrument's
+     * Resultados tab (`ResultsAnalysisNote`, `context_kind = 'instrument'`
+     * today, the only value this importer currently accepts). Never carries
+     * `id`/`organization_id`/`instrument_id`(numeric)/`lock_version` — the
+     * export never writes them (§ GenerateDataExport::resultsAnalysisNoteRow)
+     * and this whitelist would drop them anyway.
+     *
+     * Duplicated within the SAME file — a second row with the same `ulid`,
+     * or a second row for the same `(instrument_ulid, context_kind)` (the
+     * unique index the destination table itself enforces) — is caught here,
+     * not left for the plan/database to discover. The first row is kept and
+     * every later one is reported and dropped — never one silently winning
+     * at write time, and never a unique-index violation that would roll
+     * back the whole import.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validResultsAnalysisNoteRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['results_analysis_notes'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'context_kind', 'instrument_ulid', 'body', 'created_at', 'updated_at', 'created_by_email', 'updated_by_email'];
+        $seenUlids = [];
+        $seenBusinessKeys = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $whitelisted = array_intersect_key($row, array_flip($allowedKeys));
+            $result = $this->validResultsAnalysisNoteRow($whitelisted, $rowIssues);
+
+            if ($result === null) {
+                continue;
+            }
+
+            $resultUlid = is_string($result['ulid']) ? $result['ulid'] : null;
+
+            if ($resultUlid !== null && isset($seenUlids[$resultUlid])) {
+                $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => $resultUlid, 'reason' => $this->t('Observação duplicada neste ficheiro.')];
+
+                continue;
+            }
+
+            $businessKey = "{$result['instrument_ulid']}:{$result['context_kind']}";
+
+            if (isset($seenBusinessKeys[$businessKey])) {
+                $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => $resultUlid, 'reason' => $this->t('Observação duplicada neste ficheiro.')];
+
+                continue;
+            }
+
+            $seenUlids[(string) $resultUlid] = true;
+            $seenBusinessKeys[$businessKey] = true;
+            $validated[] = $result;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validResultsAnalysisNoteRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $instrumentUlid = $row['instrument_ulid'] ?? null;
+        $body = $row['body'] ?? null;
+
+        // Each refusal names its reason — the preview shows it to the teacher
+        // (never the text itself: a reason is a fixed sentence, and the
+        // issue carries only the ulid, never the body).
+        $issue = function (string $reason) use ($ulid, &$rowIssues): null {
+            $rowIssues[] = ['domain' => 'results_analysis_notes', 'ulid' => $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t($reason)];
+
+            return null;
+        };
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($instrumentUlid) || ($row['context_kind'] ?? null) !== 'instrument') {
+            return $issue('Observação com identificação, contexto ou elemento de avaliação em falta ou inválidos.');
+        }
+
+        if (! is_string($body) || trim($body) === '') {
+            return $issue('Observação sem texto.');
+        }
+
+        // The same two limits the form enforces (characters AND bytes — the
+        // column is TEXT). A body past either would fail the INSERT inside
+        // the import transaction, losing the whole file.
+        if (ResultsAnalysisNote::bodyLimitViolation($body) !== null) {
+            return $issue('O texto desta observação ultrapassa o limite de 20 000 caracteres ou o espaço máximo de armazenamento.');
+        }
+
+        $createdAt = $this->optionalDateTimeOrInvalidate($row['created_at'] ?? null);
+        $updatedAt = $this->optionalDateTimeOrInvalidate($row['updated_at'] ?? null);
+
+        if (! $createdAt['ok'] || ! $updatedAt['ok']) {
+            return $issue('Observação com data de criação ou de alteração inválida.');
+        }
+
+        return [
+            'ulid' => $ulid,
+            'context_kind' => 'instrument',
+            'instrument_ulid' => $instrumentUlid,
+            'body' => $body,
+            'created_at' => $createdAt['value'],
+            'updated_at' => $updatedAt['value'],
+            'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
+            'updated_by_email' => $this->nullableString($row['updated_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * The same discipline as `optionalUlidOrInvalidate()`, for a datetime
+     * field: absent or explicit `null` is a real absence (`value: null`);
+     * present but not a parseable datetime string is unsafe and invalidates
+     * the whole row, never silently coerced to null.
+     *
+     * Stricter than `nullableDateTime()` on purpose: that helper only checks
+     * for a non-empty string, and a value like "ontem" would then reach the
+     * writer and throw inside the import transaction — losing the whole file
+     * over one note. The accepted value is normalised to the application's
+     * timezone, so the writer stores the same instant the export described,
+     * whatever offset the file carried.
+     *
+     * @return array{ok: true, value: string|null}|array{ok: false}
+     */
+    private function optionalDateTimeOrInvalidate(mixed $value): array
+    {
+        if ($value === null) {
+            return ['ok' => true, 'value' => null];
+        }
+
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/', $value) !== 1) {
+            return ['ok' => false];
+        }
+
+        try {
+            $parsed = Carbon::parse($value);
+        } catch (Throwable) {
+            return ['ok' => false];
+        }
+
+        return ['ok' => true, 'value' => $parsed->setTimezone((string) config('app.timezone'))->toIso8601String()];
     }
 }

@@ -35,6 +35,7 @@ use App\Models\ProfileVersionPeriod;
 use App\Models\RecurringLessonSlot;
 use App\Models\Report;
 use App\Models\ReportStatus;
+use App\Models\ResultsAnalysisNote;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
@@ -174,6 +175,22 @@ class GenerateDataExport
         $students = $enrollments->pluck('student')->filter()->unique('id')->values();
 
         $instruments = Instrument::query()->whereIn('class_id', $classIds)->with('type')->get();
+
+        // Schema v13 — the teacher's own observations for an instrument's
+        // Resultados tab. Scoped by the SAME instruments already loaded
+        // above (§83 data minimization: same classes, `class_teachers`
+        // already granted). Empty notes carry no fact worth exporting —
+        // filtered in PHP too, not just by the query, in case the column
+        // ever holds whitespace-only content.
+        $resultsAnalysisNotes = ResultsAnalysisNote::query()
+            ->where('context_kind', 'instrument')
+            ->whereIn('instrument_id', $instruments->pluck('id'))
+            ->whereNotNull('body')
+            ->where('body', '!=', '')
+            ->get()
+            ->filter(fn (ResultsAnalysisNote $note): bool => trim((string) $note->body) !== '')
+            ->values();
+
         $evidenceRecords = EvidenceRecord::query()->whereIn('class_id', $classIds)->with('enrollment.student')->get();
         $classifications = Classification::query()
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
@@ -262,7 +279,7 @@ class GenerateDataExport
         $authors = $this->loadReferencedAuthors(
             $instruments, $itemScores, $classifications, $selfAssessments, $evidenceRecords, $interventions,
             $interventionReviews, $interimAssessments, $reports, $lessons, $lessonPlans,
-            $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances,
+            $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances, $resultsAnalysisNotes,
         );
 
         // Called ONCE per class — never inside a per-student/per-row loop —
@@ -279,7 +296,7 @@ class GenerateDataExport
         try {
             $spreadsheet->removeSheetByIndex(0);
 
-            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports);
+            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes);
 
             if ($classes->isNotEmpty()) {
                 $this->addTurmasSheet($spreadsheet, $classes);
@@ -295,6 +312,10 @@ class GenerateDataExport
 
             if ($itemScores->isNotEmpty()) {
                 $this->addAvaliacoesSheet($spreadsheet, $itemScores, $classes, $instruments);
+            }
+
+            if ($resultsAnalysisNotes->isNotEmpty()) {
+                $this->addObservacoesResultadosSheet($spreadsheet, $resultsAnalysisNotes, $classes, $instruments);
             }
 
             if ($classifications->isNotEmpty()) {
@@ -366,6 +387,7 @@ class GenerateDataExport
             $lessonSummaries,
             $lessonPlans,
             $lessonAttendances,
+            $resultsAnalysisNotes,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
 
@@ -387,6 +409,7 @@ class GenerateDataExport
      * @param  Collection<int, Classification>  $classifications
      * @param  Collection<int, EvidenceRecord>  $evidenceRecords
      * @param  Collection<int, Report>  $reports
+     * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      */
     protected function addResumoSheet(
         Spreadsheet $spreadsheet,
@@ -398,6 +421,7 @@ class GenerateDataExport
         Collection $classifications,
         Collection $evidenceRecords,
         Collection $reports,
+        Collection $resultsAnalysisNotes,
     ): void {
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle('Resumo');
@@ -414,6 +438,7 @@ class GenerateDataExport
             ['Nº de turmas', $classes->count()],
             ['Nº de alunos', $students->count()],
             ['Nº de elementos de avaliação', $instruments->count()],
+            ['Nº de observações de resultados', $resultsAnalysisNotes->count()],
             ['Nº de classificações', $classifications->count()],
             ['Nº de registos', $evidenceRecords->count()],
             ['Nº de relatórios', $reports->count()],
@@ -540,6 +565,49 @@ class GenerateDataExport
             $sheet->setCellValue("E{$row}", $this->studentDisplayName($score->enrollment));
             $sheet->setCellValue("F{$row}", $score->points_earned !== null ? (float) $score->points_earned : null);
             $sheet->setCellValue("G{$row}", $score->result_state->label());
+            $row++;
+        }
+
+        $this->finishSheet($sheet, count($headers), $row - 1);
+    }
+
+    /**
+     * The teacher's own qualitative observations for an instrument's
+     * Resultados tab (schema v13) — text only, never a statistic or an
+     * average; those are always recalculated on read, exactly as the
+     * Resultados screen itself does.
+     *
+     * @param  Collection<int, ResultsAnalysisNote>  $notes
+     * @param  Collection<int, SchoolClass>  $classes
+     * @param  Collection<int, Instrument>  $instruments
+     */
+    protected function addObservacoesResultadosSheet(Spreadsheet $spreadsheet, Collection $notes, Collection $classes, Collection $instruments): void
+    {
+        $headers = ['Ano letivo', 'Turma', 'Elemento de avaliação', 'Data do elemento', 'Observações', 'Última alteração'];
+        $sheet = $this->newSheet($spreadsheet, 'Observações dos Resultados', $headers);
+
+        $row = 2;
+
+        foreach ($notes as $note) {
+            /** @var ResultsAnalysisNote $note */
+            $instrument = $instruments->firstWhere('id', $note->instrument_id);
+            $class = $instrument === null ? null : $classes->firstWhere('id', $instrument->class_id);
+
+            $sheet->setCellValue("A{$row}", $class === null ? '—' : $class->academicYear->label);
+            $sheet->setCellValue("B{$row}", $class === null ? '—' : $class->label);
+            $sheet->setCellValue("C{$row}", $instrument === null ? '—' : $instrument->title);
+
+            if ($instrument !== null) {
+                $this->writeDate($sheet, "D{$row}", $instrument->applied_on);
+            }
+
+            $sheet->setCellValueExplicit("E{$row}", (string) $note->body, 's');
+            $sheet->getStyle("E{$row}")->getAlignment()->setWrapText(true);
+
+            if ($note->updated_at !== null) {
+                $this->writeDate($sheet, "F{$row}", $note->updated_at, withTime: true);
+            }
+
             $row++;
         }
 
@@ -953,6 +1021,7 @@ class GenerateDataExport
      * @param  Collection<int, CancelledLessonOccurrence>  $cancelledLessonOccurrences
      * @param  Collection<int, LessonSummary>  $lessonSummaries
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
+     * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      * @return Collection<int, User>
      */
     protected function loadReferencedAuthors(
@@ -970,6 +1039,7 @@ class GenerateDataExport
         Collection $cancelledLessonOccurrences,
         Collection $lessonSummaries,
         Collection $lessonAttendances,
+        Collection $resultsAnalysisNotes,
     ): Collection {
         $ids = $instruments->pluck('completed_by')
             ->merge($instruments->pluck('cancelled_by'))
@@ -989,6 +1059,8 @@ class GenerateDataExport
             ->merge($cancelledLessonOccurrences->pluck('cancelled_by'))
             ->merge($lessonSummaries->pluck('reviewed_by'))
             ->merge($lessonAttendances->pluck('updated_by'))
+            ->merge($resultsAnalysisNotes->pluck('created_by'))
+            ->merge($resultsAnalysisNotes->pluck('updated_by'))
             ->filter()->unique();
 
         return User::query()->withoutGlobalScopes()->whereIn('id', $ids)->get();
@@ -1448,6 +1520,30 @@ class GenerateDataExport
             'scale' => $this->scaleRefById($item->scale_id, $refs),
             'is_bonus' => $item->is_bonus,
             'source_group_label' => $item->source_group_label,
+        ];
+    }
+
+    /**
+     * Schema v13 — never carries `id`, `organization_id`, `instrument_id`
+     * or `lock_version`: only the destination's own install may assign
+     * those, and `lock_version` in particular is this table's own
+     * optimistic-lock counter, never something a backup transports (see
+     * `ResultsAnalysisNote` docblock).
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function resultsAnalysisNoteRow(ResultsAnalysisNote $note, array $refs): array
+    {
+        return [
+            'ulid' => $note->ulid,
+            'context_kind' => $note->context_kind,
+            'instrument_ulid' => $refs['instrumentsById']->get($note->instrument_id)?->ulid,
+            'body' => $note->body,
+            'created_at' => $note->created_at?->toIso8601String(),
+            'updated_at' => $note->updated_at?->toIso8601String(),
+            'created_by_email' => $this->authorEmail($note->created_by, $refs),
+            'updated_by_email' => $this->authorEmail($note->updated_by, $refs),
         ];
     }
 
@@ -1921,6 +2017,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonSummary>  $lessonSummaries
      * @param  Collection<int, LessonPlan>  $lessonPlans
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
+     * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      */
     protected function technicalBackup(
         Organization $organization,
@@ -1959,6 +2056,7 @@ class GenerateDataExport
         Collection $lessonSummaries,
         Collection $lessonPlans,
         Collection $lessonAttendances,
+        Collection $resultsAnalysisNotes,
     ): string {
         $refs = $this->buildBackupRefs(
             $classes, $academicPeriods, $domains, $scales, $profiles, $profileVersions,
@@ -1982,6 +2080,7 @@ class GenerateDataExport
                 'intervention_reviews', 'reports',
                 'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'cancelled_lesson_occurrences',
                 'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances',
+                'results_analysis_notes',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -2050,6 +2149,8 @@ class GenerateDataExport
             'lesson_summaries' => $lessonSummaries->map(fn (LessonSummary $summary): array => $this->lessonSummaryRow($summary, $refs))->values(),
             'lesson_plans' => $lessonPlans->map(fn (LessonPlan $plan): array => $this->lessonPlanRow($plan, $refs))->values(),
             'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),
+
+            'results_analysis_notes' => $resultsAnalysisNotes->map(fn (ResultsAnalysisNote $note): array => $this->resultsAnalysisNoteRow($note, $refs))->values(),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 

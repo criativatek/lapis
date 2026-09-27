@@ -25,6 +25,74 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.155.1] — 2026-09-26
+
+As observações que o professor escreve no separador **Resultados** passam a
+entrar na exportação de dados e no backup, e a ser recuperadas no restauro.
+Até aqui, um backup técnico preservava tudo menos esse texto, e um restauro
+perdia-o. É a dívida que a 0.155.0 deixou registada, e fecha-se antes de a
+funcionalidade ser publicada. A 0.155.0 nunca chegou a produção.
+
+### Exportação
+
+- O `backup-lapis.json` passa ao **`schema_version` 13**, com a coleção nova
+  `results_analysis_notes`. Cada observação leva o ulid, o contexto
+  (`instrument`), o ulid do elemento de avaliação, o texto, as datas de criação
+  e de alteração e os emails de autoria. Nunca leva ids internos nem o
+  `lock_version`.
+- O `Exportacao-Lapispro.xlsx` ganha a folha **«Observações dos Resultados»**
+  e uma linha no Resumo.
+- Só saem as observações dos elementos de avaliação das turmas do próprio
+  professor, os mesmos que a exportação já incluía. Observações vazias não
+  saem.
+
+### Restauro
+
+- A validação aceita a coleção nova. Uma linha malformada, duplicada no
+  ficheiro ou com mais texto do que a coluna comporta é recusada sozinha; o
+  resto do backup continua a importar.
+- O plano de importação mostra as observações novas, existentes, em conflito e
+  inválidas. Uma observação só é criada se o seu elemento de avaliação vier no
+  mesmo backup e for restaurável. Nunca se liga a outro elemento, nem a um de
+  outra organização.
+- Um texto diferente do que já existe no destino é **conflito**. Nunca é
+  sobrescrito, quer a observação coincida pelo ulid, quer pelo par
+  (elemento, contexto) do índice único. Reimportar o mesmo ficheiro não cria
+  duplicados.
+- A autoria segue a regra de sempre: fica ligada quando o email é o de quem
+  importa. Se não for, a observação é importada sem autor e o pré-visualizador
+  mostra um aviso. Nunca é atribuída a quem importa.
+- As datas são preservadas. O `lock_version` recomeça em 1, porque é o
+  contador desta instalação e não o da origem.
+- Um backup v12 ou anterior continua a restaurar-se. Não traz observações e
+  não apaga as que já existem no destino.
+- As linhas que o validador recusa passam a aparecer na pré-visualização, em
+  «Pontos a rever», com o motivo de cada uma, e continuam lá quando a página é
+  recarregada. Antes desapareciam sem aviso, em todos os domínios. Fica guardado
+  só o motivo, nunca a linha recusada nem o seu texto.
+
+### Guardar observações
+
+- Guardar um texto com muitos emojis podia dar **erro 500**. O limite era de
+  20 000 caracteres, mas a coluna só comporta 65 535 bytes, e um emoji ocupa
+  quatro. O servidor passa a verificar os dois limites antes de escrever e
+  responde com uma mensagem que o professor entende. O texto que tentou
+  guardar fica no formulário para o poder encurtar, e a observação que já
+  estava guardada não muda.
+- O formulário e o restauro de backups usam a mesma definição dos dois
+  limites.
+
+### Sem migrations
+
+A tabela `results_analysis_notes` é a da 0.155.0. Esta versão não altera o
+esquema da base de dados.
+
+### Pacote
+
+O pacote preparado para a 0.155.0 (`058689e4…`) deixa de servir. A publicação
+precisa de um pacote reconstruído a partir do SHA de main que integrar esta
+versão.
+
 ## [0.155.0] — 2026-09-25
 
 Cada instrumento de avaliação ganha um separador **Resultados**, ao lado da

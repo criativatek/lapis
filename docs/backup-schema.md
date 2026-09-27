@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 12 (atual) | `Supported` | Como a v11, acrescentando a estampa do enquadramento legal: `interventions[].legal_framework_code` e `interventions[].support_measures[].legal_framework_code` — a versão da lei sob a qual o enquadramento foi decidido. Ausentes num backup v≤11 ⇒ `null`, que significa o mesmo que significava antes de a estampa existir: o regime aplicável resolve-se pelo `started_on` da intervenção. Copiada tal como está, nunca recalculada no restauro |
+| 13 (atual) | `Supported` | Como a v12, acrescentando `results_analysis_notes` — as observações do professor no separador Resultados de um elemento de avaliação (`context_kind = 'instrument'`, a única forma que existe hoje). Texto livre até 20 000 carateres; uma observação vazia nunca é exportada. Ausente num backup v≤12 ⇒ zero observações restauradas, nunca um erro, e nada é apagado no destino |
+| 12 | `LegacyCompatible` | Como a v11, acrescentando a estampa do enquadramento legal: `interventions[].legal_framework_code` e `interventions[].support_measures[].legal_framework_code` — a versão da lei sob a qual o enquadramento foi decidido. Ausentes num backup v≤11 ⇒ `null`, que significa o mesmo que significava antes de a estampa existir: o regime aplicável resolve-se pelo `started_on` da intervenção. Copiada tal como está, nunca recalculada no restauro |
 | 11 | `LegacyCompatible` | Como a v10, acrescentando o resultado real da aula (0.146.0): `lessons[].outcome` (`taught`, `teacher_absent`, `class_external_activity` ou `null` = ainda não fechada), `outcome_reason` (só categoria — `training`, `official_duty`, `other` — e só numa ausência do professor), `outcome_note` (≤160 caracteres, só numa atividade da turma), `outcome_recorded_at` e `outcome_recorded_by_email`. Ausentes num backup v≤10 ⇒ uma aula `status = taught` fecha como `taught` e as restantes ficam em aberto (o mesmo backfill da migração). Motivo em texto livre, motivo fora de uma ausência, nota fora de uma atividade ou assiduidade consolidada numa ocorrência sem assiduidade aplicável ⇒ a linha é `invalid` |
 | 10 | `LegacyCompatible` | Como a v9, acrescentando `recurring_lesson_slots[].split_lesson_key` e `lessons[].lesson_unit_key` — chaves opacas (ULID, não são dados pessoais) que ligam tempos T1/T2 que são a mesma lição e aulas que são a mesma lição. Ausentes num backup mais antigo ⇒ `null`; presentes mas malformadas ⇒ a linha é `invalid` (nunca desligada em silêncio). Copiadas tal como estão |
 | 9 | `LegacyCompatible` | Como a v8, acrescentando aulas e assiduidade — `class_groups`, `class_group_memberships`, `recurring_lesson_slots`, `cancelled_lesson_occurrences`, `lessons`, `lesson_summaries`, `lesson_plans`, `lesson_attendances`. Ausentes num backup mais antigo ⇒ zero aulas restauradas, nunca um erro |
@@ -36,10 +37,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 12 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 13 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 12`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 13`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -202,6 +203,11 @@ linha é literalmente quem está a confirmar esta importação" — o email do
 **Nunca por nome** — dois utilizadores com o mesmo nome e emails diferentes
 são, para este efeito, duas pessoas diferentes.
 
+`results_analysis_notes.created_by`/`updated_by` seguem exatamente esta
+mesma regra (`created_by_email`/`updated_by_email`) — as duas colunas já
+eram nullable antes desta fatia, o que é o que torna possível deixá-las
+vazias em vez de bloquear a linha quando o email não resolve.
+
 ### A autoria é metadado histórico, não condição de importação (0.101.4)
 
 Até à 0.101.4 um email que não resolvia tornava a linha inteira `invalid`
@@ -307,15 +313,82 @@ plataforma — esta fatia também nunca escreve:
 - Chamadas a IA — não existem em nenhum ponto deste pipeline
 - `ReportSection`, `ReportTemplate`, `ReportLibraryEntry`
 
+## Observações dos Resultados (schema v13)
+
+As observações do professor no separador Resultados de um elemento de
+avaliação (`App\Models\ResultsAnalysisNote`) são exportadas e restauradas
+desde a v13.
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade da observação |
+| `context_kind` | string | só `'instrument'` hoje; qualquer outro valor invalida a linha |
+| `instrument_ulid` | ULID | obrigatório; o elemento de avaliação tem de ser restaurável NESTE MESMO backup — nunca uma referência a um instrumento de outra organização, nem a um instrumento fora do backup |
+| `body` | texto | até 20 000 carateres (`ResultsAnalysisNote::BODY_MAX_LENGTH`, a mesma constante que o controlador usa); vazio ⇒ nunca exportada (minimização de dados) |
+| `created_at` / `updated_at` | ISO 8601 ou `null` | preservadas tal como estavam; ausentes/`null` são aceites, presentes mas malformadas invalidam a linha |
+| `created_by_email` / `updated_by_email` | email ou `null` | mesma regra de autoria de todo o resto do backup (ver secção Autoria) |
+
+**Nunca transportado**: `id`, `organization_id`, `instrument_id` numérico,
+`lock_version`. `lock_version` é o contador de bloqueio otimista **desta
+instalação** — uma observação criada pela importação nasce sempre com
+`lock_version = 1`, nunca o contador da instalação de origem.
+
+**Chave e conflito**: o índice único `(instrument_id, context_kind)` do
+destino é respeitado sempre, não só quando o ulid já existe noutro sítio —
+uma observação restaurada nunca REASSOCIA a outro elemento de avaliação
+(um ulid que já existe no destino associado a outro instrumento é
+`conflict`, nunca repontado), e um texto que diverge do que já existe no
+destino (por ulid OU por `(instrument_id, context_kind)`) é sempre
+`conflict`, nunca sobrescrito.
+
+**Âmbito da exportação**: só as observações dos elementos de avaliação que a
+própria exportação já inclui — as turmas de que o utilizador é professor
+(`class_teachers`), dentro da organização atual. Uma observação de um colega
+noutra turma da mesma organização, ou de outra organização, nunca sai.
+Também aparecem no `Exportacao-Lapispro.xlsx`, na folha «Observações dos
+Resultados» (ano letivo, turma, elemento, data do elemento, texto, última
+alteração) e numa linha do «Resumo». Nenhuma média, estatística ou
+indicador acompanha o texto — esses recalculam-se sempre ao abrir o
+separador Resultados.
+
+**Validação**, além dos campos acima:
+
+- o texto também não pode passar de 65 535 **bytes** (a coluna é `TEXT`):
+  20 000 carateres de 4 bytes (emoji) não cabem, e um `INSERT` falhado
+  derrubaria a transação inteira do restauro. Os dois limites vivem num só
+  sítio, `ResultsAnalysisNote::bodyLimitViolation()`, que o formulário
+  (regra `ResultsAnalysisNoteBody`) e este validador usam;
+- cada recusa leva um motivo próprio (identificação ou contexto, texto em
+  falta, texto acima dos limites, data inválida, duplicado), mostrado na
+  pré-visualização sem o texto da observação;
+- as datas têm de ser ISO 8601 e são normalizadas para o fuso da aplicação;
+- duas linhas com o mesmo `ulid`, ou para o mesmo `(instrument_ulid,
+  context_kind)`, no mesmo ficheiro: fica a primeira, as seguintes são
+  recusadas.
+
+**Instrumento em conflito**: se o elemento de avaliação mudou no destino
+desde a exportação (p. ex. foi concluído ou renomeado), o instrumento é
+`conflict`. Uma observação que já existe no destino, com o mesmo ulid e o
+mesmo texto, ligada a esse instrumento, é `existing`. Uma observação que
+ainda não existe nunca é criada sobre um instrumento em conflito: é
+`invalid`, como os grupos e os itens desse instrumento.
+
+**Limitações que ficam**:
+
+- As recusas de domínios que a pré-visualização trata como linhas filhas
+  sem identidade própria (`student_item_scores`, `item_domain_allocations`,
+  …) continuam fora de «Pontos a rever», como sempre estiveram
+  (`BuildImportPlan::$noIssueDomains`). As observações não estão nesse
+  grupo: cada recusa aparece.
+- Enquanto a importação não for podada, o texto das observações fica em
+  `data_imports.canonical_snapshot`, como o de qualquer outra coleção de
+  texto livre. A retenção é a de `PruneDataImports`.
+- Só existe o contexto `instrument`. Contextos futuros (intercalar, período,
+  semestre) exigem uma nova versão do esquema, porque não têm instrumento
+  a que se ligar.
+
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
-- `results_analysis_notes` (0.155.0) — as observações do professor sobre os
-  Resultados de um instrumento **não são exportadas nem restauradas**: não
-  aparecem na exportação de dados (XLSX/JSON) nem no backup, e um restauro
-  perde-as. São texto livre do professor e podem conter informação
-  identificável; a cobertura exige uma versão nova do esquema de backup
-  (exportação, validação, plano e escrita) e fica para uma intervenção
-  própria, obrigatória antes de a funcionalidade ser publicada
 - Restauro de `ReportTemplate`/`ReportLibraryEntry` — hoje um relatório
   finalizado é autossuficiente (`template_snapshot`), pelo que isto só
   importaria para permitir gerar **novos** relatórios a partir de um modelo

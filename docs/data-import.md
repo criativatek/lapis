@@ -55,6 +55,14 @@ terceira:
    importação **de novo, a cada visita**, contra o estado atual da base de
    dados — nunca contra uma versão em cache. Mostra, por domínio, quantas
    linhas são novas / existentes / em conflito / inválidas / não suportadas.
+   As linhas que o validador recusou no upload (e que por isso nunca entram
+   no conteúdo canónico) também contam como inválidas e aparecem em «Pontos
+   a rever» com o motivo, em todas as visitas. Desde a 0.155.1 ficam
+   guardadas em `canonical_snapshot.validation_issues`, só como descritor:
+   domínio, o `ulid` quando é um ULID válido, e a frase fixa do validador.
+   A linha recusada em si nunca é guardada, e o seu texto nunca aparece.
+   Antes disso, `edit()` reconstruía o plano sem elas e as recusas
+   desapareciam da pré-visualização.
 3. **Confirmação** (`POST /data-imports/{ulid}/confirm`) — reconstrói o
    plano **outra vez**, agora dentro de uma transação com a linha
    `data_imports` e a organização de destino bloqueadas (`lockForUpdate`), e
@@ -106,7 +114,9 @@ itens, pontuações, classificações, autoavaliações, registos pedagógicos,
 estratégias e medidas, e relatórios finalizados. Desde a v9 (schema_version
 9), também aulas e assiduidade — grupos da turma, pertenças, o horário
 recorrente, ocorrências canceladas, aulas, sumários, planificações e
-assiduidade lançada. A referência coleção a coleção — o que cada uma
+assiduidade lançada. Desde a v13 (schema_version 13), também as observações
+do professor no separador Resultados de um elemento de avaliação
+(`results_analysis_notes`). A referência coleção a coleção — o que cada uma
 transporta e as regras de correspondência — está em
 [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.
