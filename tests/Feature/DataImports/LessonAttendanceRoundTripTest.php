@@ -372,7 +372,7 @@ class LessonAttendanceRoundTripTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasNoErrors();
 
-        $restoredClass = $this->inTenant(fn (): SchoolClass => SchoolClass::where('label', 'like', '7.º A%')->firstOrFail());
+        $restoredClass = $this->inTenant(fn (): SchoolClass => SchoolClass::where('label', '7.º A lições')->sole());
         $this->inTenant(function () use ($restoredClass): void {
             $this->assertSame(0, Lesson::where('class_id', $restoredClass->id)->count());
             $this->assertSame(0, ClassGroup::where('class_id', $restoredClass->id)->count());
@@ -588,7 +588,7 @@ class LessonAttendanceRoundTripTest extends TestCase
             // The destination organization also has the dummy class the
             // local conflicting `ClassGroup` factory created for itself —
             // never mistake it for the restored one.
-            $restoredClass = SchoolClass::where('label', 'like', '7.º A%')->firstOrFail();
+            $restoredClass = SchoolClass::where('label', '7.º A lições')->sole();
 
             // The T1 lesson never lands — neither under the conflicting
             // group nor, worse, silently degraded into a whole-class

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Classes;
 
 use App\Models\AcademicYear;
+use App\Models\ClassStatus;
 use App\Models\Organization;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
@@ -120,6 +121,38 @@ class ClassScheduleSetupTest extends TestCase
                 ->component('classes/ScheduleSetup')
                 ->has('classes', 1)
                 ->where('classes.0.ulid', $ownClass->ulid));
+    }
+
+    /**
+     * A mesma regra que TeacherTimetableTest prova para «Configurar
+     * manualmente»: é configuração operacional atual, logo decide
+     * `archived_at` (SchoolClass::scopeNotArchived). A turma de apoio ativa
+     * continua; a arquivada sai da lista, mas não é apagada.
+     */
+    #[Test]
+    public function the_manual_list_never_offers_an_archived_turma(): void
+    {
+        $this->schoolClassFor($this->teacher, '7.º C');
+        $support = $this->schoolClassFor($this->teacher, 'Apoio 8.º F');
+        $this->inTenant(fn () => $support->forceFill(['is_support_class' => true])->save());
+
+        $archived = $this->schoolClassFor($this->teacher, '9.º B');
+        $this->inTenant(fn () => $archived->forceFill([
+            'status' => ClassStatus::Archived,
+            'archived_at' => now(),
+        ])->save());
+
+        $this->actingAs($this->teacher)
+            ->withSession($this->tenantSession())
+            ->get('/classes/schedule-setup')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('classes/ScheduleSetup')
+                ->has('classes', 2)
+                ->where('classes.0.label', '7.º C')
+                ->where('classes.1.label', 'Apoio 8.º F'));
+
+        $this->assertTrue($this->inTenant(fn (): bool => SchoolClass::query()->whereKey($archived->id)->exists()));
     }
 
     #[Test]
