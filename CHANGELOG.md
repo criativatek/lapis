@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.155.2] — 2026-09-29
+
+Duas dívidas registadas como issues, fechadas juntas: um seletor que ainda
+oferecia turmas arquivadas e um teste que falhava ao acaso.
+
+### Corrigido
+
+- **«Configurar horários»** (`classes.schedule-setup`) deixa de listar turmas
+  arquivadas. É a mesma regra que a 0.145.4 já aplicava a «Configurar
+  manualmente» no Horário do Professor: configurar um horário é configuração
+  operacional atual, e por isso decide `archived_at`
+  (`SchoolClass::scopeNotArchived`). As turmas de apoio ativas continuam na
+  lista. Nada é apagado, e a turma arquivada continua a abrir-se pela sua
+  própria página. (#18)
+
+### Interno
+
+- `LessonAttendanceRoundTripTest` deixa de ser intermitente. Procurava a turma
+  restaurada com `like '7.º A%'` e sem ordenação, e a `SchoolClassFactory`
+  gera rótulos `'7.º '` + letra aleatória. Quando a letra saía `A` (ou `a`,
+  porque a collation ignora maiúsculas), havia duas turmas elegíveis e o teste
+  podia apanhar a que não tinha aulas. Passa a procurar pelo rótulo exato
+  `'7.º A lições'` com `sole()`, que falha alto se um dia houver ambiguidade
+  em vez de escolher uma ao acaso. (#14)
+
 ## [0.155.1] — 2026-09-26
 
 As observações que o professor escreve no separador **Resultados** passam a

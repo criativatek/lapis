@@ -119,7 +119,10 @@ class ClassController extends Controller
     {
         Gate::authorize('viewAny', SchoolClass::class);
 
+        // Como «Configurar manualmente» no Horário do Professor: configuração
+        // operacional atual, logo só turmas não arquivadas. Nada é apagado.
         $classes = $this->teacherClasses()
+            ->notArchived()
             ->with('subject')
             ->orderBy('label')
             ->get()
