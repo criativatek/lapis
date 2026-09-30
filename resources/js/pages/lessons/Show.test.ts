@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
+import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import Show from './Show.vue';
 
 type MockForm = Record<string, unknown> & { isDirty: boolean };
@@ -75,8 +76,10 @@ function mountPage(
         can_record_outcome?: boolean;
         context_label?: string;
         class_group_label?: string | null;
+        summary?: { content: string; private_notes: string | null; resources: string | null; homework: string | null; reviewed_at: string | null } | null;
     } = {},
     attendanceOverrides: Partial<typeof defaultAttendance> = {},
+    dayEvents: DayEvent[] = [],
 ) {
     const wrapper = mount(Show, {
         props: {
@@ -104,6 +107,7 @@ function mountPage(
                 ...overrides,
             },
             attendance: { ...defaultAttendance, ...attendanceOverrides },
+            day_events: dayEvents,
         },
     });
 
@@ -535,5 +539,70 @@ describe('lessons/Show — resultado registado (0.146.1)', () => {
         const wrapper = mountPage({ status: 'prepared', status_label: 'Preparada' });
 
         expect(wrapper.get('[data-testid="lesson-state"]').text()).toBe('Preparada');
+    });
+});
+
+describe('lessons/Show — acontecimentos do dia', () => {
+    const meeting: DayEvent = {
+        ulid: 'event-meeting',
+        title: 'Reunião de departamento',
+        starts_at: '14:10',
+        ends_at: '15:00',
+        all_day: false,
+        notes: 'Trazer a planificação.',
+        type_label: 'Reunião',
+    };
+    const trip: DayEvent = {
+        ulid: 'event-trip',
+        title: 'Visita de estudo',
+        starts_at: null,
+        ends_at: null,
+        all_day: true,
+        notes: null,
+        type_label: 'Visita de estudo',
+    };
+    const existingSummary = {
+        content: 'Leitura do capítulo 3.',
+        private_notes: null,
+        resources: null,
+        homework: null,
+        reviewed_at: null,
+    };
+
+    it('shows no block when the day has no events', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.text()).not.toContain('Acontecimentos do dia');
+    });
+
+    it('shows each event with its title, type, schedule and notes', () => {
+        const wrapper = mountPage({}, {}, [trip, meeting]);
+        const items = wrapper.findAll('[data-testid="day-event"]');
+
+        expect(wrapper.text()).toContain('Acontecimentos do dia');
+        expect(items).toHaveLength(2);
+        expect(items[0].text()).toContain('Visita de estudo');
+        expect(items[0].text()).toContain('Todo o dia');
+        expect(items[1].text()).toContain('Reunião de departamento');
+        expect(items[1].text()).toContain('Reunião');
+        expect(items[1].text()).toContain('14:10–15:00');
+        expect(items[1].text()).toContain('Trazer a planificação.');
+    });
+
+    it('appends to the existing sumário without saving, then shows «Já no sumário»', async () => {
+        const wrapper = mountPage({ summary: existingSummary }, {}, [meeting]);
+        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Adicionar ao sumário'))!;
+
+        expect(button.attributes('type')).toBe('button');
+
+        await button.trigger('click');
+
+        expect(summaryForm().content).toBe('Leitura do capítulo 3.\nReunião de departamento — Trazer a planificação.');
+        expect(summaryForm().put).not.toHaveBeenCalled();
+        expect(summaryForm().post).not.toHaveBeenCalled();
+
+        const after = wrapper.findAll('button').find((candidate) => candidate.text().includes('Já no sumário'))!;
+
+        expect(after.attributes('disabled')).toBeDefined();
     });
 });

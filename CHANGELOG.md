@@ -25,6 +25,49 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.0] — 2026-09-30
+
+Um acontecimento marcado no Calendário para uma turma não chegava à aula
+desse dia. Quem agendava uma reunião ou uma visita de estudo para o 7.º A
+abria a lição dessa tarde e não via nada, e tinha de ir ao Calendário copiar
+o texto à mão para o sumário. As duas coisas viviam lado a lado sem nunca se
+cruzarem.
+
+### Adicionado
+
+- **«Acontecimentos do dia»** na página de cada aula (Aulas e Sumários): os
+  acontecimentos do professor, ligados à MESMA turma — e por isso à mesma
+  disciplina —, cujo intervalo de datas cobre o DIA LOCAL da aula, no fuso da
+  organização (Europe/Lisbon por omissão). **Não é preciso sobreposição de
+  horas**: um acontecimento das 14:10 às 15:00 aparece na lição das 15:10.
+  Cada um mostra o título, o tipo, o horário («Todo o dia» quando não tem
+  hora) e as notas.
+- **«Adicionar ao sumário»**, por acontecimento, acrescenta uma linha no fim
+  do sumário (o título e, havendo notas, « — » e as notas) sem apagar o que
+  lá está. **Não grava**: o sumário fica por guardar até o professor carregar
+  em «Guardar», com o aviso de alterações por guardar de sempre. O botão passa
+  a «Já no sumário» quando essa linha já lá está, e desativa-se, com
+  explicação, se o sumário passasse dos 16 000 caracteres — nunca corta texto.
+
+### Segurança e privacidade
+
+- Os acontecimentos continuam **pessoais**, como no Calendário
+  (`CalendarEventPolicy`): numa turma com vários professores, cada um só vê
+  os seus. Nunca atravessam organizações (o âmbito da organização aplica-se à
+  consulta e à turma).
+- Sem o módulo Calendário (`canRead('calendar')`, o mesmo critério das rotas
+  `module:calendar`) a consulta nem corre e o bloco não aparece.
+- Abrir a aula não escreve nada: não cria sumários, aulas nem ligações.
+
+### Interno
+
+- `App\Services\Lessons\LessonDayEvents`: uma só consulta, pelo índice
+  `(organization_id, user_id, starts_on, ends_on)`, ordenada «todo o dia»
+  primeiro, depois por hora e por título. O dia local vem de
+  `ClassArchivalWindow::timezoneFor()`, a fonte que já existia.
+- A lógica do texto acrescentado vive em `resources/js/lib/lessonDayEvents.ts`,
+  testada à parte. Sem migrations.
+
 ## [0.155.2] — 2026-09-29
 
 Duas dívidas registadas como issues, fechadas juntas: um seletor que ainda

@@ -7,6 +7,8 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import LessonAttendanceList from '@/components/lessons/LessonAttendanceList.vue';
 import type { LessonAttendance } from '@/components/lessons/LessonAttendanceList.vue';
+import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
+import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
 import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
 import { Badge } from '@/components/ui/badge';
@@ -61,7 +63,7 @@ type Lesson = {
     } | null;
 };
 
-const props = defineProps<{ lesson: Lesson; attendance: LessonAttendance }>();
+const props = defineProps<{ lesson: Lesson; attendance: LessonAttendance; day_events: DayEvent[] }>();
 
 // Rascunho de faltas antes da consolidação: começa com o que o servidor já
 // sabia (linhas 'absent' gravadas) e viaja com o sumário e com o "marcar
@@ -158,6 +160,16 @@ function basePreviousSummary(): void {
     summaryForm.private_notes = previousSummary.value.private_notes ?? '';
     summaryForm.resources = previousSummary.value.resources ?? '';
     summaryForm.homework = previousSummary.value.homework ?? '';
+}
+
+const summaryTextarea = ref<HTMLTextAreaElement | null>(null);
+
+function applyDayEventToSummary(content: string, focusSummary: boolean): void {
+    summaryForm.content = content;
+
+    if (focusSummary) {
+        summaryTextarea.value?.focus();
+    }
 }
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -327,6 +339,8 @@ onBeforeUnmount(() => {
                 Sumário guardado.
             </div>
 
+            <LessonDayEvents :events="day_events" :summary-content="summaryForm.content" @append="applyDayEventToSummary" />
+
             <div class="grid gap-2">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
@@ -334,7 +348,7 @@ onBeforeUnmount(() => {
                         <Copy class="size-4" /> Basear no sumário anterior
                     </Button>
                 </div>
-                <textarea id="lesson-summary" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
+                <textarea id="lesson-summary" ref="summaryTextarea" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
                 <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
             </div>
 
