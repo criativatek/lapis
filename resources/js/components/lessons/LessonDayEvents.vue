@@ -67,11 +67,13 @@ function addToSummary(event: DayEvent): void {
                     </p>
                     <p v-if="event.notes" class="whitespace-pre-line text-sm text-muted-foreground">{{ event.notes }}</p>
                 </div>
-                <div class="flex shrink-0 flex-col items-end gap-1">
+                <div class="flex shrink-0 flex-col items-stretch gap-1 sm:items-end">
+                    <!-- Alvo táctil ≥44px no telemóvel (DESIGN.md); no ecrã largo mantém o tamanho sm. -->
                     <Button
                         type="button"
                         variant="outline"
                         size="sm"
+                        class="min-h-11 w-full sm:min-h-0 sm:w-auto"
                         :disabled="blockedReasons[event.ulid] !== null"
                         @click="addToSummary(event)"
                     >

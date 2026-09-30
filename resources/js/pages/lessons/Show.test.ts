@@ -594,6 +594,8 @@ describe('lessons/Show — acontecimentos do dia', () => {
         const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Adicionar ao sumário'))!;
 
         expect(button.attributes('type')).toBe('button');
+        // Alvo táctil ≥44px no telemóvel (DESIGN.md), sem mudar o tamanho no ecrã largo.
+        expect(button.classes()).toEqual(expect.arrayContaining(['min-h-11', 'sm:min-h-0']));
 
         await button.trigger('click');
 

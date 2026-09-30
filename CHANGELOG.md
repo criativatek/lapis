@@ -48,6 +48,8 @@ cruzarem.
   em «Guardar», com o aviso de alterações por guardar de sempre. O botão passa
   a «Já no sumário» quando essa linha já lá está, e desativa-se, com
   explicação, se o sumário passasse dos 16 000 caracteres — nunca corta texto.
+  No telemóvel o botão ocupa a largura do cartão e tem o alvo táctil de 44px
+  que o DESIGN.md pede.
 
 ### Segurança e privacidade
 
