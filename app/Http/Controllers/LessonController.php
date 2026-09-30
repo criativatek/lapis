@@ -18,7 +18,9 @@ use App\Models\LessonStatus;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\LessonAttendanceRoster;
+use App\Services\Lessons\LessonDayEvents;
 use App\Services\Lessons\ShiftLessonPlanning;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,6 +42,8 @@ class LessonController extends Controller implements HasMiddleware
         protected LessonAttendanceRoster $attendanceRoster,
         protected RecordLessonOutcome $recordLessonOutcome,
         protected ShiftLessonPlanning $lessonPlanning,
+        protected LessonDayEvents $dayEvents,
+        protected Entitlements $entitlements,
     ) {}
 
     /**
@@ -50,13 +54,21 @@ class LessonController extends Controller implements HasMiddleware
         return ['module:lessons'];
     }
 
-    public function show(Lesson $lesson): Response
+    public function show(Request $request, Lesson $lesson): Response
     {
         Gate::authorize('view', $lesson);
-        $lesson->load(['schoolClass.subject', 'classGroup', 'summary', 'plan']);
+        $lesson->load(['schoolClass.subject', 'schoolClass.organization', 'classGroup', 'summary', 'plan']);
 
         return Inertia::render('lessons/Show', [
             'attendance' => $this->attendanceProp($lesson),
+            // Os acontecimentos do Calendário do Ano Letivo que cobrem o dia
+            // local desta aula, na mesma turma — nunca com o Calendário
+            // trancado (o professor não pode ver o que não pode aceder), e
+            // canRead() e não allows(): um plano só de leitura continua a ver
+            // os seus próprios acontecimentos aqui, tal como no Calendário.
+            'day_events' => $this->entitlements->canRead('calendar')
+                ? $this->dayEvents->for($lesson, $this->user($request))
+                : [],
             'lesson' => [
                 'ulid' => $lesson->ulid,
                 'starts_at' => $lesson->starts_at->toIso8601String(),
