@@ -25,6 +25,42 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.1] — 2026-10-03
+
+Os testes que provam contra um MySQL real as garantias que o SQLite não sabe
+dar — Suporte, lugares Fundador e vouchers — não conseguiam falhar. O helper
+`assertRejected()` chamava `$this->fail()` dentro do mesmo `try` que apanhava
+a recusa do MySQL com `catch (Throwable)`, e por isso apanhava também a
+própria falha: uma escrita que o MySQL aceitasse passava por recusada. O CI
+mostrava-o como «1 risky» desde a Central de Suporte, e só nesse teste, porque
+era o único sem mais nenhuma asserção.
+
+### Corrigido
+
+- **`assertRejected()` falha quando o MySQL aceita.** Passa a viver num só
+  sítio (`Tests\Concerns\AssertsMysqlRejection`), em vez de três cópias, com
+  o `fail()` fora do `try`. E só conta como recusa uma recusa do motor por uma
+  restrição: integridade (SQLSTATE 23 — UNIQUE, chave estrangeira, NOT NULL),
+  CHECK (erro 3819) ou valor fora do domínio da coluna em modo estrito
+  (SQLSTATE 22). Uma coluna inexistente, um erro de sintaxe ou a ligação em
+  baixo deixam de passar por «garantia provada».
+- **Provado contra uma violação real.** Com a CHECK do estado e o UNIQUE da
+  referência retirados do schema de rascunho, o helper antigo deixava passar
+  `the_reference_and_each_notification_are_unique` e só apanhava a outra por
+  acaso, numa contagem final; o novo falha os dois testes com «O MySQL aceitou
+  o estado «closed»» e «O MySQL aceitou duas vezes a mesma referência».
+- O helper mais estrito mostrou que `seat_number = -1` é recusado pelo tipo
+  `UNSIGNED` da coluna (SQLSTATE 22003) antes de a CHECK do intervalo ser
+  avaliada. Continua a ser uma recusa do motor, e o comentário diz porquê.
+- A mensagem do lugar Fundador fora do intervalo dizia «MySQL aceitou» duas
+  vezes.
+
+### Interno
+
+- 15 testes, 62 asserções, verdes em MySQL 9.7.1 (o do CI) e em MySQL 8.0.43
+  (o de produção); sem «risky». Só testes: nenhum código da aplicação mudou.
+  Sem migrations.
+
 ## [0.156.0] — 2026-09-30
 
 Um acontecimento marcado no Calendário para uma turma não chegava à aula
