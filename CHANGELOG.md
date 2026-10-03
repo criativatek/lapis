@@ -25,6 +25,30 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.3] — 2026-10-03
+
+Fecha a dívida que restava da revisão da 0.146.1 (#21). Dos três pontos
+registados, dois já tinham sido resolvidos pela 0.147.0 (fecho rápido de
+aulas): a elegibilidade do lote vive numa só função (`canQuickClose`, usada
+pela seleção, pela caixa de cada aula e pelo botão do lote), e «Lecionado»
+desapareceu — a app diz «Lecionada» em todo o lado, e `Index.test.ts` afirma
+que a semana nunca mostra a forma masculina.
+
+### Corrigido
+
+- **O painel «Não houve aula» usa a paleta da casa.** As cores da ausência do
+  professor (âmbar) e das outras atividades letivas (violeta) estavam escritas
+  à mão em `LessonOutcomePanel.vue`, numa segunda cópia da decisão que
+  `statusTone.ts` já toma para o resto da app. Passa a pedir
+  `statusToneClasses(outcome)`: os mesmos tons dos distintivos das aulas, com
+  o contraste dos dois temas já verificado. O fundo fica um tom mais forte
+  (100 em vez de 50), igual ao dos distintivos.
+
+### Interno
+
+- Teste novo em `LessonOutcomePanel.test.ts`: cada resultado registado pinta-se
+  com as classes de `qualitativeToneClasses` e sem tons 50/300 escritos à mão.
+  Só frontend. Sem migrations.
 ## [0.156.2] — 2026-10-03
 
 O botão flutuante «Reportar problema» ficava por cima do conteúdo no
