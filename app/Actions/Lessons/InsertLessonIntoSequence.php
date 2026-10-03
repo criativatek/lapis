@@ -147,6 +147,9 @@ class InsertLessonIntoSequence
      * deslocadas como CÓPIAS com a data nova, e a aula nova como um modelo que
      * nunca é gravado.
      *
+     * Vão TODAS as aulas, ausências do professor incluídas: quem decide o que
+     * entra na numeração é `LessonNumbering`, e não esta lista.
+     *
      * @param  array{
      *     insertion: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int},
      *     moves: list<array{lesson: Lesson, occurrence: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int}}>,

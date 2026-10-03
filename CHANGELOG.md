@@ -25,6 +25,53 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.8] — 2026-10-03
+
+«Inserir aula na sequência» a partir de 6 de outubro foi recusada com «Esta
+operação mudaria o número da aula de 16/09/2026, que já foi lecionada (Lição
+3 → Lição 4). O histórico não é renumerado.» Uma inserção em outubro não tem
+nada que mexer em setembro. Reproduzido com dados fictícios: basta haver,
+antes de uma aula lecionada, uma aula registada como «Professor ausente». A
+execução não mudava número nenhum — era a pré-visualização que se enganava
+nas contas, e sem ela o botão «Inserir aula» fica desativado.
+
+### Corrigido
+
+- **Uma ausência do professor deixou de contar como lição na
+  pré-visualização da inserção.** Desde a 0.146.0, uma aula registada como
+  «Professor ausente» não numera e fica fora da sequência
+  (`LessonNumbering::sequence()`). A pré-visualização montava a turma
+  hipotética com TODAS as aulas, ausências incluídas, e
+  `previewHypotheticalSequence()` contava cada ausência como uma lição: todas
+  as lecionadas depois dela «passavam» para o número seguinte, e a proteção do
+  histórico recusava a operação inteira. A execução sempre usou a sequência
+  certa, e por isso não mudava número nenhum; mas sem pré-visualização válida
+  o diálogo não deixa confirmar. A população da numeração passa a ser decidida
+  num só sítio: o serviço põe de fora as ausências, venha a lista de onde vier.
+- **A proteção do histórico fica exatamente como estava.** Uma operação que
+  mudasse de facto o número de uma aula lecionada continua recusada, na
+  pré-visualização e na execução.
+- **O diálogo já não mistura pré-visualizações de datas diferentes.** Mudar a
+  data antes de a pré-visualização anterior responder deixava as duas a
+  correr, e a mais antiga podia chegar depois: uma recusa de outra data
+  aparecia ao lado do botão «Inserir aula» ativo — ou, ao contrário, uma
+  pré-visualização de outra data ativava o botão. Só a última pedida conta.
+  Encontrado na verificação no browser desta correção.
+
+### Interno
+
+- `InsertLessonAfterTeacherAbsenceTest` reproduz o caso com dados fictícios
+  (lecionadas em setembro com uma ausência pelo meio, inserção pedida para uma
+  terça de outubro) e falha antes da correção com a mesma mensagem. Depois
+  dela, confirma que tudo o que está antes da ocorrência de inserção mantém
+  data, número, estado, resultado, sumário e assiduidade; que só a aula
+  seguinte da mesma sequência se desloca; que a pré-visualização promete
+  exatamente os números que a execução grava; o mesmo numa sequência de grupo
+  (T1 com uma ausência, T2 intacta); e que o serviço ignora uma ausência que
+  lhe seja passada. `InsertLessonDialog.test.ts` (novo) força as respostas a
+  chegar fora de ordem, nos dois sentidos. Sem migrations; nenhum dado é
+  alterado.
+
 ## [0.156.0] — 2026-09-30
 
 Um acontecimento marcado no Calendário para uma turma não chegava à aula
