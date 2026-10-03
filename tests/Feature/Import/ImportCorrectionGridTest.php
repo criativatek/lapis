@@ -535,11 +535,16 @@ class ImportCorrectionGridTest extends TestCase
             $this->assertSame($instrument->id, $event->subject_id);
             $this->assertSame($this->teacher->id, $event->causer_id);
             $this->assertSame($this->organization->id, $event->organization_id);
+
+            // MySQL stores a JSON object with its keys reordered (shortest
+            // first), SQLite keeps them as written: compare content, not order.
+            $properties = $event->properties;
+            ksort($properties);
             $this->assertSame([
                 'class_id' => $this->class->id,
                 'instrument_id' => $instrument->id,
                 'source' => 'correction_import',
-            ], $event->properties);
+            ], $properties);
 
             // Scores keep being recorded, once.
             $this->assertSame(1, AuditEvent::query()->where('event', 'scores.recorded')->count());
