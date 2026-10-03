@@ -39,7 +39,8 @@ altura, abaixo dos 44 px que o desenho exige para toques.
 - **Abaixo de `sm`, o fim de cada página rola para fora de baixo do botão.** O
   layout autenticado reserva agora, só em ecrãs pequenos, o espaço do botão
   (44 px), da sua margem e da área segura do dispositivo
-  (`env(safe-area-inset-bottom)`). Em ecrãs maiores nada mudou.
+  (`env(safe-area-inset-bottom)`). A reserva aplica-se em todas as larguras:
+  no computador liberta a ligação «Novidades» do rodapé, que o botão cobria.
 - **O botão passa a ser só um ícone nos ecrãs pequenos**, com 44 × 44 px, e a
   posição respeita a área segura. O nome acessível continua a ser «Reportar
   problema» (para leitores de ecrã e foco por teclado) e o texto volta a

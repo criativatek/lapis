@@ -28,10 +28,12 @@ withDefaults(defineProps<Props>(), {
             </div>
             <AppFooter />
             <!-- Reserva para o botão flutuante «Reportar problema» (IssueReporter, montado
-                 em AppLayout): 44px do botão + 16px de margem + a área segura do
-                 dispositivo, mais folga. Só abaixo de `sm`, onde o botão é fixo sobre
-                 o conteúdo; assim o fim de qualquer página rola para fora de baixo dele. -->
-            <div data-issue-reporter-clearance class="h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 sm:hidden print:hidden" aria-hidden="true" />
+                 em AppLayout), em TODAS as larguras, para o fim de qualquer página
+                 rolar para fora de baixo dele. Abaixo de `sm`: 44px do botão + 16px
+                 de margem + a área segura do dispositivo, mais folga. De `sm` para
+                 cima: 32px do botão + 16px de margem (`h-14`), o que liberta a
+                 ligação «Novidades» do rodapé. -->
+            <div data-issue-reporter-clearance class="h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 sm:h-14 print:hidden" aria-hidden="true" />
         </AppContent>
         <Toaster />
     </AppShell>

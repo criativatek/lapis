@@ -168,12 +168,13 @@ describe('the floating «Reportar problema» button on small screens (#47)', () 
         expect(html).toContain('<span class="sr-only sm:not-sr-only">Reportar problema</span>');
     });
 
-    it('makes the layout reserve room under the page so its end scrolls clear of the button, on mobile only', async () => {
+    it('makes the layout reserve room under the page so its end scrolls clear of the button', async () => {
         const html = await render(sharedProps());
         const spacer = html.match(/<div[^>]*data-issue-reporter-clearance[^>]*>/)?.[0] ?? '';
 
         expect(spacer).toContain('h-[calc(5rem+env(safe-area-inset-bottom))]');
-        expect(spacer).toContain('sm:hidden');
+        expect(spacer).toContain('sm:h-14');
+        expect(spacer).not.toContain('sm:hidden');
         expect(spacer).toContain('aria-hidden="true"');
     });
 });
