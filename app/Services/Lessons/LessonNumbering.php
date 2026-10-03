@@ -88,7 +88,7 @@ final class LessonNumbering
      *
      * A POPULAÇÃO É A DE `sequence()`, decidida aqui e não por quem chama: uma
      * ausência do professor não é lição, e é posta de fora mesmo que chegue na
-     * lista. Até à 0.156.8 contava como uma — a pré-visualização da inserção
+     * lista. Antes da 0.157.0 contava como uma — a pré-visualização da inserção
      * passa TODAS as aulas da turma —, e cada lecionada depois de uma ausência
      * «ganhava» mais um número: uma inserção em outubro era recusada por mudar
      * a Lição 3 de setembro para Lição 4, que a execução nunca faria.

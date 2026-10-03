@@ -280,7 +280,7 @@ class PedagogicalImportSafetyTest extends TestCase
     }
 
     /**
-     * 0.156.4 — a row the validator refuses is kept as a descriptor only and
+     * 0.157.0 — a row the validator refuses is kept as a descriptor only and
      * handed back to the plan on every preview. Until now the plan skipped the
      * flat child domains, so a refused score, allocation, weight, response or
      * cancelled occurrence never reached "Pontos a rever" and was silently

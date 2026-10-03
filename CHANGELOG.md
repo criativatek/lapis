@@ -25,158 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.156.6] — 2026-10-03
+## [0.157.0] — 2026-10-03
 
-Um ensaio de recuperação a partir do backup diário, numa instalação
-descartável fora do servidor, correu bem — e mostrou duas coisas que o
-procedimento não dizia, e uma que o script de backup fazia mal. Fecha também
-a causa do erro que o `tar` dava em todos os deploys.
+Release de pendências: oito correções, integradas e verificadas em conjunto.
+A mais urgente é a da inserção de aulas — uma inserção em outubro era recusada
+por «mudar» a numeração de setembro. As restantes fecham as issues #47 e #21,
+o único defeito da #13, duas lacunas encontradas na verificação no browser
+(Resultados e importador), o ensaio de recuperação dos backups e os testes de
+garantias MySQL, que não conseguiam falhar.
 
-### Corrigido
+> **Nota de versão.** As PRs desta release foram abertas em paralelo e cada uma
+> trazia um número próprio (0.156.1 a 0.156.8), que ainda aparece nas
+> mensagens dos seus commits. Nenhum desses números foi publicado: o que chega
+> a produção é esta versão, e as entradas abaixo são essas oito, agrupadas.
 
-- **Uma execução manual do backup num dia 1 já não gasta um lugar mensal.**
-  `scripts/backup-database.sh` nomeava «monthly» TODAS as execuções do dia 1,
-  e a retenção mensal conta ficheiros: a 2026-09-01 ficaram sete mensais do
-  mesmo dia, e doze ficheiros deixavam de ser doze meses. Passa a ser mensal
-  só o primeiro backup do dia 1; os seguintes são diários (30 dias). Os sete
-  de setembro não são apagados nem renomeados — como são os mais antigos,
-  saem pela ordem normal sem tirar cobertura a nenhum mês.
-
-- **O `tar` do deploy deixa de sair com erro por causa de `.superpowers`.**
-  Um relatório de agente de 2026-09-09 tinha sido versionado à força, apesar
-  de `/.superpowers` estar no `.gitignore`, e por isso entrava em todos os
-  pacotes; no servidor a pasta pertence a `lapis` com modo 750, e o `tar`,
-  que corre como `lapis-deploy`, falhava ao criá-la — em todos os deploys
-  desde a 0.146.3, com a aplicação toda escrita na mesma. O ficheiro sai do
-  índice (continua no histórico). A partir do próximo pacote, um `tar` com
-  erro volta a querer dizer alguma coisa.
-
-### Documentação
-
-- `docs/deployment.md`, «Ensaio com a aplicação a arrancar sobre a cópia»: o
-  ensaio de 2026-10-03 (restauro em MySQL 8.0.43 sem erros, dados idênticos
-  byte a byte, estrutura idêntica a um `migrate` limpo da 0.156.0, aplicação a
-  arrancar sem migrations pendentes) e as regras que deixou. **Nunca a
-  `APP_KEY` de produção num ensaio:** com ela,
-  `applyPlatformMailSettings()` impõe o SMTP de produção guardado na base por
-  cima de `MAIL_MAILER=log`.
-- O que o backup da base **não** recupera: os ficheiros de
-  `storage/app/private` (fotografias de alunos, anexos do Suporte, logótipos)
-  e a `APP_KEY`, sem a qual os nomes e números de aluno cifrados são ilegíveis.
-- «Risco residual»: o dump próprio do CloudPanel (03:15, 7 dias) e o seu
-  backup remoto (04:15), cuja configuração não é legível pela conta de deploy
-  — por isso continua por provar que exista cópia fora do servidor.
-
-### Interno
-
-- Só script, documentação e um ficheiro fora do índice; a aplicação não muda.
-  Sem migrations. O script corre da pasta da aplicação, por isso a correção
-  da retenção só vale depois do deploy.
-## [0.156.3] — 2026-10-03
-
-Fecha a dívida que restava da revisão da 0.146.1 (#21). Dos três pontos
-registados, dois já tinham sido resolvidos pela 0.147.0 (fecho rápido de
-aulas): a elegibilidade do lote vive numa só função (`canQuickClose`, usada
-pela seleção, pela caixa de cada aula e pelo botão do lote), e «Lecionado»
-desapareceu — a app diz «Lecionada» em todo o lado, e `Index.test.ts` afirma
-que a semana nunca mostra a forma masculina.
-
-### Corrigido
-
-- **O painel «Não houve aula» usa a paleta da casa.** As cores da ausência do
-  professor (âmbar) e das outras atividades letivas (violeta) estavam escritas
-  à mão em `LessonOutcomePanel.vue`, numa segunda cópia da decisão que
-  `statusTone.ts` já toma para o resto da app. Passa a pedir
-  `statusToneClasses(outcome)`: os mesmos tons dos distintivos das aulas, com
-  o contraste dos dois temas já verificado. O fundo fica um tom mais forte
-  (100 em vez de 50), igual ao dos distintivos.
-
-### Interno
-
-- Teste novo em `LessonOutcomePanel.test.ts`: cada resultado registado pinta-se
-  com as classes de `qualitativeToneClasses` e sem tons 50/300 escritos à mão.
-  Só frontend. Sem migrations.
-## [0.156.2] — 2026-10-03
-
-O botão flutuante «Reportar problema» ficava por cima do conteúdo no
-telemóvel. Numa aula, a 375 px de largura, tapava parte das notas do último
-«Acontecimento do dia» e metade do seu botão «Já no sumário» / «Adicionar ao
-sumário»: a página não deixava espaço por baixo, por isso qualquer controlo que
-passasse no canto inferior direito ficava coberto, e o botão tinha só 32 px de
-altura, abaixo dos 44 px que o desenho exige para toques.
-
-### Corrigido
-
-- **Abaixo de `sm`, o fim de cada página rola para fora de baixo do botão.** O
-  layout autenticado reserva agora, só em ecrãs pequenos, o espaço do botão
-  (44 px), da sua margem e da área segura do dispositivo
-  (`env(safe-area-inset-bottom)`). A reserva aplica-se em todas as larguras:
-  no computador liberta a ligação «Novidades» do rodapé, que o botão cobria.
-- **O botão passa a ser só um ícone nos ecrãs pequenos**, com 44 × 44 px, e a
-  posição respeita a área segura. O nome acessível continua a ser «Reportar
-  problema» (para leitores de ecrã e foco por teclado) e o texto volta a
-  ver-se de `sm` para cima. O que o reporte faz — diálogo, captura, envio — não
-  mudou.
-
-Sem migrations.
-## [0.156.5] — 2026-10-03
-
-### Corrigido
-- **Auditoria: o elemento de avaliação criado pela importação de grelha de correção passa a registar `instrument.created`.** O contrato de cobertura da 0.145.1 inclui os elementos de avaliação, mas só o formulário manual os registava; a importação criava o elemento e registava apenas `scores.recorded`, pelo que o histórico mostrava notas lançadas num elemento que nunca aparecia como criado. O evento é gravado dentro da mesma transação da importação (uma importação que falha não deixa rasto), com o mesmo nome, sujeito, autor e organização do caminho manual, e propriedades só com ids (`class_id`, `instrument_id`) e a origem `source = correction_import`. Nunca leva nomes de alunos, notas, texto de itens, título nem nome do ficheiro. Importar para um elemento já existente não regista criação. Resolve parcialmente a issue #13.
-
-Sem migrations.
-## [0.156.4] — 2026-10-03
-
-Ao importar um backup, a pré-visualização não mostrava as linhas filhas que o
-validador tinha recusado. Uma pontuação, uma alocação de item a domínio, um
-peso de domínio ou de período, uma pergunta ou resposta de autoavaliação, ou
-uma aula cancelada com campos em falta ou inválidos desapareciam sem aviso: o
-professor confirmava e perdia essas linhas sem saber.
-
-### Corrigido
-
-- **«Pontos a rever» passa a listar as recusas das linhas filhas.** O plano
-  de importação saltava estes domínios ao juntar as recusas guardadas desde a
-  0.155.1; deixou de saltar, e cada recusa conta como inválida no domínio
-  respetivo. Cada ponto mostra o nome do domínio em português (os domínios
-  que não aparecem na tabela-resumo ganharam nome próprio, em vez de um traço)
-  e a frase fixa do validador. **Nunca** o conteúdo da linha recusada:
-  valores, textos, códigos de itens ou e-mails não são guardados nem
-  mostrados.
-
-### Sem alterações
-
-- O que se grava não muda: só as linhas `new` são escritas, o validador e o
-  esquema do backup são os mesmos, e «Confirmar» continua a depender apenas
-  de haver linhas novas.
-
-Sem migrations.
-## [0.156.7] — 2026-10-03
-
-Encontrado na verificação no browser dos Resultados (dados fictícios, código
-da 0.156.0): o professor grava as observações, continua a escrever no mesmo
-separador e grava outra vez — e a segunda gravação era recusada com «As
-observações foram alteradas noutra janela. Recarregue a página…». Não havia
-outra janela. Seguir o conselho e recarregar deitava fora o que tinha acabado
-de escrever.
-
-### Corrigido
-
-- **Gravar as observações duas vezes seguidas no mesmo separador.** O
-  formulário copiava a versão da nota (`lock_version`) uma única vez, ao abrir
-  a página; o servidor incrementava-a a cada gravação e a página voltava com a
-  nova, mas o formulário continuava a enviar a antiga. Passa a levar a versão
-  nova no sucesso da própria gravação.
-- **A deteção de conflitos continua igual.** A versão só é atualizada depois
-  de uma gravação feita por esta janela; se outra janela gravar entretanto, o
-  formulário continua com a versão que leu e o servidor recusa, como antes.
-
-### Interno
-
-- Dois testes em `Results.test.ts`: a gravação seguinte leva a versão nova; uma
-  versão que mudou sem esta janela ter gravado não é copiada. O primeiro falha
-  sem a correção. Só frontend. Sem migrations.
-## [0.156.8] — 2026-10-03
+### «Inserir aula» depois de uma ausência do professor (#55)
 
 «Inserir aula na sequência» a partir de 6 de outubro foi recusada com «Esta
 operação mudaria o número da aula de 16/09/2026, que já foi lecionada (Lição
@@ -186,7 +49,7 @@ antes de uma aula lecionada, uma aula registada como «Professor ausente». A
 execução não mudava número nenhum — era a pré-visualização que se enganava
 nas contas, e sem ela o botão «Inserir aula» fica desativado.
 
-### Corrigido
+#### Corrigido
 
 - **Uma ausência do professor deixou de contar como lição na
   pré-visualização da inserção.** Desde a 0.146.0, uma aula registada como
@@ -209,7 +72,7 @@ nas contas, e sem ela o botão «Inserir aula» fica desativado.
   pré-visualização de outra data ativava o botão. Só a última pedida conta.
   Encontrado na verificação no browser desta correção.
 
-### Interno
+#### Interno
 
 - `InsertLessonAfterTeacherAbsenceTest` reproduz o caso com dados fictícios
   (lecionadas em setembro com uma ausência pelo meio, inserção pedida para uma
@@ -222,7 +85,171 @@ nas contas, e sem ela o botão «Inserir aula» fica desativado.
   lhe seja passada. `InsertLessonDialog.test.ts` (novo) força as respostas a
   chegar fora de ordem, nos dois sentidos. Sem migrations; nenhum dado é
   alterado.
-## [0.156.1] — 2026-10-03
+
+### Observações dos Resultados gravadas duas vezes seguidas (#49)
+
+Encontrado na verificação no browser dos Resultados (dados fictícios, código
+da 0.156.0): o professor grava as observações, continua a escrever no mesmo
+separador e grava outra vez — e a segunda gravação era recusada com «As
+observações foram alteradas noutra janela. Recarregue a página…». Não havia
+outra janela. Seguir o conselho e recarregar deitava fora o que tinha acabado
+de escrever.
+
+#### Corrigido
+
+- **Gravar as observações duas vezes seguidas no mesmo separador.** O
+  formulário copiava a versão da nota (`lock_version`) uma única vez, ao abrir
+  a página; o servidor incrementava-a a cada gravação e a página voltava com a
+  nova, mas o formulário continuava a enviar a antiga. Passa a levar a versão
+  nova no sucesso da própria gravação.
+- **A deteção de conflitos continua igual.** A versão só é atualizada depois
+  de uma gravação feita por esta janela; se outra janela gravar entretanto, o
+  formulário continua com a versão que leu e o servidor recusa, como antes.
+
+#### Interno
+
+- Dois testes em `Results.test.ts`: a gravação seguinte leva a versão nova; uma
+  versão que mudou sem esta janela ter gravado não é copiada. O primeiro falha
+  sem a correção. Só frontend. Sem migrations.
+
+### Recusas de linhas filhas na pré-visualização do importador (#51)
+
+Ao importar um backup, a pré-visualização não mostrava as linhas filhas que o
+validador tinha recusado. Uma pontuação, uma alocação de item a domínio, um
+peso de domínio ou de período, uma pergunta ou resposta de autoavaliação, ou
+uma aula cancelada com campos em falta ou inválidos desapareciam sem aviso: o
+professor confirmava e perdia essas linhas sem saber.
+
+#### Corrigido
+
+- **«Pontos a rever» passa a listar as recusas das linhas filhas.** O plano
+  de importação saltava estes domínios ao juntar as recusas guardadas desde a
+  0.155.1; deixou de saltar, e cada recusa conta como inválida no domínio
+  respetivo. Cada ponto mostra o nome do domínio em português (os domínios
+  que não aparecem na tabela-resumo ganharam nome próprio, em vez de um traço)
+  e a frase fixa do validador. **Nunca** o conteúdo da linha recusada:
+  valores, textos, códigos de itens ou e-mails não são guardados nem
+  mostrados.
+
+#### Sem alterações
+
+- O que se grava não muda: só as linhas `new` são escritas, o validador e o
+  esquema do backup são os mesmos, e «Confirmar» continua a depender apenas
+  de haver linhas novas.
+
+Sem migrations.
+
+### Auditoria do elemento criado pela importação de grelha (#52, issue #13)
+
+#### Corrigido
+- **Auditoria: o elemento de avaliação criado pela importação de grelha de correção passa a registar `instrument.created`.** O contrato de cobertura da 0.145.1 inclui os elementos de avaliação, mas só o formulário manual os registava; a importação criava o elemento e registava apenas `scores.recorded`, pelo que o histórico mostrava notas lançadas num elemento que nunca aparecia como criado. O evento é gravado dentro da mesma transação da importação (uma importação que falha não deixa rasto), com o mesmo nome, sujeito, autor e organização do caminho manual, e propriedades só com ids (`class_id`, `instrument_id`) e a origem `source = correction_import`. Nunca leva nomes de alunos, notas, texto de itens, título nem nome do ficheiro. Importar para um elemento já existente não regista criação. Resolve parcialmente a issue #13.
+
+Sem migrations.
+
+### «Reportar problema» no telemóvel (#50, issue #47)
+
+O botão flutuante «Reportar problema» ficava por cima do conteúdo no
+telemóvel. Numa aula, a 375 px de largura, tapava parte das notas do último
+«Acontecimento do dia» e metade do seu botão «Já no sumário» / «Adicionar ao
+sumário»: a página não deixava espaço por baixo, por isso qualquer controlo que
+passasse no canto inferior direito ficava coberto, e o botão tinha só 32 px de
+altura, abaixo dos 44 px que o desenho exige para toques.
+
+#### Corrigido
+
+- **Abaixo de `sm`, o fim de cada página rola para fora de baixo do botão.** O
+  layout autenticado reserva agora, só em ecrãs pequenos, o espaço do botão
+  (44 px), da sua margem e da área segura do dispositivo
+  (`env(safe-area-inset-bottom)`). A reserva aplica-se em todas as larguras:
+  no computador liberta a ligação «Novidades» do rodapé, que o botão cobria.
+- **O botão passa a ser só um ícone nos ecrãs pequenos**, com 44 × 44 px, e a
+  posição respeita a área segura. O nome acessível continua a ser «Reportar
+  problema» (para leitores de ecrã e foco por teclado) e o texto volta a
+  ver-se de `sm` para cima. O que o reporte faz — diálogo, captura, envio — não
+  mudou.
+
+Sem migrations.
+
+### Painel «Não houve aula» com a paleta da casa (#54, issue #21)
+
+Fecha a dívida que restava da revisão da 0.146.1 (#21). Dos três pontos
+registados, dois já tinham sido resolvidos pela 0.147.0 (fecho rápido de
+aulas): a elegibilidade do lote vive numa só função (`canQuickClose`, usada
+pela seleção, pela caixa de cada aula e pelo botão do lote), e «Lecionado»
+desapareceu — a app diz «Lecionada» em todo o lado, e `Index.test.ts` afirma
+que a semana nunca mostra a forma masculina.
+
+#### Corrigido
+
+- **O painel «Não houve aula» usa a paleta da casa.** As cores da ausência do
+  professor (âmbar) e das outras atividades letivas (violeta) estavam escritas
+  à mão em `LessonOutcomePanel.vue`, numa segunda cópia da decisão que
+  `statusTone.ts` já toma para o resto da app. Passa a pedir
+  `statusToneClasses(outcome)`: os mesmos tons dos distintivos das aulas, com
+  o contraste dos dois temas já verificado. O fundo fica um tom mais forte
+  (100 em vez de 50), igual ao dos distintivos.
+
+#### Interno
+
+- Teste novo em `LessonOutcomePanel.test.ts`: cada resultado registado pinta-se
+  com as classes de `qualitativeToneClasses` e sem tons 50/300 escritos à mão.
+  Só frontend. Sem migrations.
+
+### Backups, ensaio de recuperação e pacote de deploy (#53)
+
+Um ensaio de recuperação a partir do backup diário, numa instalação
+descartável fora do servidor, correu bem — e mostrou duas coisas que o
+procedimento não dizia, e uma que o script de backup fazia mal. Fecha também
+a causa do erro que o `tar` dava em todos os deploys.
+
+#### Corrigido
+
+- **Uma execução manual do backup num dia 1 já não gasta um lugar mensal.**
+  `scripts/backup-database.sh` nomeava «monthly» TODAS as execuções do dia 1,
+  e a retenção mensal conta ficheiros: a 2026-09-01 ficaram sete mensais do
+  mesmo dia, e doze ficheiros deixavam de ser doze meses. Passa a ser mensal
+  só o primeiro backup do dia 1; os seguintes são diários (30 dias). Os sete
+  de setembro não são apagados nem renomeados — como são os mais antigos,
+  saem pela ordem normal sem tirar cobertura a nenhum mês.
+
+- **O `tar` do deploy deixa de sair com erro por causa de `.superpowers`.**
+  Um relatório de agente de 2026-09-09 tinha sido versionado à força, apesar
+  de `/.superpowers` estar no `.gitignore`, e por isso entrava em todos os
+  pacotes; no servidor a pasta pertence a `lapis` com modo 750, e o `tar`,
+  que corre como `lapis-deploy`, falhava ao criá-la — em todos os deploys
+  desde a 0.146.3, com a aplicação toda escrita na mesma. O ficheiro sai do
+  índice (continua no histórico). A partir do próximo pacote, um `tar` com
+  erro volta a querer dizer alguma coisa.
+
+#### Documentação
+
+- `docs/deployment.md`, «Ensaio com a aplicação a arrancar sobre a cópia»: o
+  ensaio de 2026-10-03 (restauro em MySQL 8.0.43 sem erros, dados idênticos
+  byte a byte, estrutura idêntica a um `migrate` limpo da 0.156.0, aplicação a
+  arrancar sem migrations pendentes) e o **bloqueio explícito** que qualquer
+  ensaio passa a exigir: neutralizar na cópia o SMTP e a IA de
+  `platform_settings` e apagar os jobs, ambiente com email em log e IA,
+  GitHub, SSR e armazenamento externo desligados, nada de `queue:work` nem de
+  `schedule:run`, e provar o bloqueio com um comando antes de servir. Mudar a
+  `APP_KEY` não basta: com a chave real, `applyPlatformMailSettings()` impõe o
+  SMTP de produção guardado na base por cima de `MAIL_MAILER=log`.
+- **Plano de backups com o que o dump não traz:** os ficheiros de
+  `storage/app/private` (fotografias de alunos, anexos do Suporte, logótipos),
+  com um arquivo com checksum antes de cada deploy até haver cópia diária, e a
+  `APP_KEY`, sem a qual os nomes e números de aluno cifrados são ilegíveis —
+  uma cópia fora do servidor guardada pelo responsável, confirmada por
+  impressão digital sem nunca mostrar a chave.
+- «Risco residual»: o dump próprio do CloudPanel (03:15, 7 dias) e o seu
+  backup remoto (04:15), cuja configuração não é legível pela conta de deploy
+  — por isso continua por provar que exista cópia fora do servidor.
+
+#### Interno
+
+- Só script, documentação e um ficheiro fora do índice; a aplicação não muda.
+  Sem migrations. O script corre da pasta da aplicação, por isso a correção
+  da retenção só vale depois do deploy.
+
+### Testes de garantias MySQL que não podiam falhar (#48)
 
 Os testes que provam contra um MySQL real as garantias que o SQLite não sabe
 dar — Suporte, lugares Fundador e vouchers — não conseguiam falhar. O helper
@@ -232,7 +259,7 @@ própria falha: uma escrita que o MySQL aceitasse passava por recusada. O CI
 mostrava-o como «1 risky» desde a Central de Suporte, e só nesse teste, porque
 era o único sem mais nenhuma asserção.
 
-### Corrigido
+#### Corrigido
 
 - **`assertRejected()` falha quando o MySQL aceita.** Passa a viver num só
   sítio (`Tests\Concerns\AssertsMysqlRejection`), em vez de três cópias, com
@@ -252,11 +279,18 @@ era o único sem mais nenhuma asserção.
 - A mensagem do lugar Fundador fora do intervalo dizia «MySQL aceitou» duas
   vezes.
 
-### Interno
+#### Interno
 
 - 15 testes, 62 asserções, verdes em MySQL 9.7.1 (o do CI) e em MySQL 8.0.43
   (o de produção); sem «risky». Só testes: nenhum código da aplicação mudou.
   Sem migrations.
+
+### Ações do CI (#1, Dependabot)
+
+- `actions/checkout` 7.0.0 → 7.0.1 e `actions/setup-node` 6.4.0 → 7.0.0, com os
+  mesmos SHA fixados. O workflow só usa `node-version: '22'`, sem cache nem
+  registo, por isso as mudanças da 7.0.0 (ESM, cache 5.1) não o afetam. O
+  comentário ao lado do SHA do `setup-node` passa a dizer a versão certa.
 
 ## [0.156.0] — 2026-09-30
 

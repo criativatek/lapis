@@ -62,7 +62,7 @@ terceira:
    domínio, o `ulid` quando é um ULID válido, e a frase fixa do validador.
    A linha recusada em si nunca é guardada, e o seu texto nunca aparece.
    Antes disso, `edit()` reconstruía o plano sem elas e as recusas
-   desapareciam da pré-visualização. Desde a 0.156.4 isto vale também para as
+   desapareciam da pré-visualização. Desde a 0.157.0 isto vale também para as
    linhas filhas sem identidade própria (pontuações, alocações de itens a
    domínios, pesos de domínios e de períodos, perguntas e respostas de
    autoavaliação, aulas canceladas): o plano já não as salta, entram na

@@ -51,7 +51,7 @@ function mountPreview() {
                 status_label: 'Por confirmar',
                 original_filename: 'backup.zip',
                 source_schema_version: 13,
-                source_app_version: '0.156.4',
+                source_app_version: '0.157.0',
                 source_generated_at: null,
                 source_organization: null,
                 summary: null,

@@ -183,7 +183,7 @@ entrou à força no commit `fb7ef479`, e o pacote é feito de `git ls-files`. No
 servidor, `.superpowers/` e `.superpowers/sdd/` pertencem a `lapis:lapis` com
 modo `750`, restos de uma ferramenta que correu como `lapis`; o `tar` corre
 como `lapis-deploy`, que só tem leitura pelo grupo, e não consegue criar a
-subpasta. A 0.156.6 tira esse ficheiro do índice: a partir do primeiro pacote
+subpasta. A 0.157.0 tira esse ficheiro do índice: a partir do primeiro pacote
 construído depois dela, o `tar` deve sair com 0, e um estado de erro volta a
 ser sinal de um problema real. A pasta antiga no servidor é inerte (não é
 servida nem lida pela aplicação); apagá-la exige uma sessão como `lapis`.
@@ -795,29 +795,65 @@ o comprimento e o prefixo do ciphertext se mantêm; não é preciso decifrar nad
 
 A regra acima vale para o servidor: em produção a aplicação nunca aponta para
 uma base restaurada. Um ensaio de recuperação completo — a aplicação a
-arrancar sobre a cópia, numa **instalação descartável fora do servidor** —
-foi feito a 2026-10-03, e deixou três regras:
+arrancar sobre a cópia — faz-se **numa instalação descartável fora do
+servidor**, e só com tudo o que sai para fora **bloqueado explicitamente**.
 
-- **Nunca a `APP_KEY` de produção.** Com uma chave descartável, as colunas
-  cifradas (`student_identities.display_name`/`school_number`,
-  `platform_settings.mail_password`/`ai_api_key`) não se decifram, e é isso
-  que mantém o ensaio inerte: `AppServiceProvider::applyPlatformMailSettings()`
-  falha a decifrar a password SMTP, regista «The MAC is invalid» e cai para o
-  mailer do ambiente. **Com a chave real, esse método impõe
-  `mail.default = smtp` com as credenciais de produção guardadas na base, por
-  cima de `MAIL_MAILER=log`** — o mesmo para a chave de IA em
-  `applyPlatformAiSettings()`. Se um dia for preciso provar a decifra com a
-  chave real, anular primeiro, na cópia, `mail_*` e `ai_api_key` de
-  `platform_settings`.
-- Ambiente: `MAIL_MAILER=log`, `QUEUE_CONNECTION=database` sem worker (os
-  jobs ficam na tabela e nada os corre), sem `schedule:run`,
-  `INERTIA_SSR_ENABLED=false`, servidor só em `127.0.0.1`.
-- Comparar **dados** voltando a fazer o dump da cópia com as mesmas opções:
-  as linhas `INSERT` têm de ter o mesmo SHA-256 que as do original. E
-  comparar a **estrutura** com a de um `migrate` limpo do commit em produção,
-  no mesmo motor (assinatura por tabela de colunas, índices, chaves
-  estrangeiras e CHECKs). No fim, apagar o datadir, as cópias do dump e o
-  `laravel.log` da instalação: os traces de decifra levam texto cifrado.
+**Mudar a `APP_KEY` não basta, e não é a proteção.** Uma chave descartável faz
+falhar a decifra de `platform_settings` e, por acaso, a aplicação cai para o
+mailer do ambiente — mas isso é um efeito colateral, não um bloqueio: a
+mesma cópia arrancada com a chave real (para provar a decifra dos alunos, por
+exemplo) põe `AppServiceProvider::applyPlatformMailSettings()` a impor
+`mail.default = smtp` com as credenciais de produção guardadas na base, **por
+cima de `MAIL_MAILER=log`**, e `applyPlatformAiSettings()` a ligar a IA com a
+chave de produção. Por isso, em QUALQUER ensaio, os passos seguintes são
+obrigatórios, por esta ordem, antes de a aplicação servir um pedido:
+
+1. **Neutralizar a cópia, antes de qualquer arranque da aplicação** (é a base
+   restaurada, nunca a de produção):
+
+   ```sql
+   UPDATE platform_settings
+      SET mail_host = NULL, mail_username = NULL, mail_password = NULL,
+          ai_enabled = 0, ai_provider = NULL, ai_model = NULL, ai_api_key = NULL;
+   DELETE FROM jobs;          -- jobs de produção que vieram no dump
+   DELETE FROM failed_jobs;
+   ```
+
+   Sem `mail_host`, `mailConfigured()` é falso e nada impõe SMTP; com
+   `ai_enabled = 0`, o interruptor geral anula o driver de IA.
+2. **Ambiente** (variáveis de ambiente, que ganham ao `.env`):
+
+   ```
+   MAIL_MAILER=log  QUEUE_CONNECTION=database  BROADCAST_CONNECTION=log
+   LAPIS_AI_DRIVER=  LAPIS_AI_KEY=  LAPIS_SUPPORT_GITHUB_TOKEN=  LAPIS_SUPPORT_GITHUB_REPOSITORY=
+   INERTIA_SSR_ENABLED=false  FILESYSTEM_DISK=local  AWS_ACCESS_KEY_ID=  AWS_SECRET_ACCESS_KEY=
+   SESSION_DOMAIN=  APP_URL=http://127.0.0.1:<porta>  APP_KEY=<descartável, nunca a de produção>
+   ```
+
+   O `LAPIS_SUPPORT_GITHUB_TOKEN` vazio impede a exportação de pedidos de
+   suporte para issues do GitHub.
+3. **Nada corre sozinho:** nunca `queue:work`, nunca `schedule:run` (o
+   scheduler corre `retention:execute`, `support:retention` e os prunes, e os
+   lembretes do Suporte enviam email). Servidor só em `127.0.0.1`.
+4. **Provar o bloqueio antes de servir** — se alguma linha não der o esperado,
+   não arrancar:
+
+   ```bash
+   php artisan tinker --execute 'echo json_encode([
+     "mail" => config("mail.default"), "queue" => config("queue.default"),
+     "ai" => config("lapis.ai.driver"), "github" => filled(config("lapis.support.github.token")),
+     "ssr" => config("inertia.ssr.enabled"), "db" => config("database.connections.mysql.database"),
+   ]);' < /dev/null
+   # esperado: mail=log, queue=database, ai=null/"", github=false, ssr=false, db=a base de ensaio
+   ```
+
+5. **Comparar** dados voltando a fazer o dump da cópia com as mesmas opções (as
+   linhas `INSERT` têm de ter o mesmo SHA-256 que as do original) e a
+   estrutura com a de um `migrate` limpo do commit em produção, no mesmo motor
+   (assinatura por tabela de colunas, índices, chaves estrangeiras e CHECKs).
+6. **No fim, apagar** o datadir, as cópias do dump, os ficheiros privados que
+   tenham vindo e o `laravel.log` da instalação: os traces de decifra levam
+   texto cifrado.
 
 Resultado de 2026-10-03 (backup diário das 04:17, MySQL 8.0.43 local, o
 motor de produção): restauro com exit 0 e stderr vazio em 11 s; 105 tabelas
@@ -834,6 +870,53 @@ com 302 para `/login`.
 - o `.env` e, com ele, a `APP_KEY`. Sem ela, os nomes e números de aluno
   cifrados da cópia são ilegíveis: **perder o servidor e a `APP_KEY` é perder
   esses dados, mesmo com o dump intacto.**
+
+### Ficheiros privados — fora do backup da base, e não podem ficar
+
+`storage/app/private` guarda o que a base só referencia: fotografias de alunos
+(`student-photos/`), anexos do Suporte (`support/`), logótipos das escolas
+(`school-logos/`) e exportações/importações temporárias (que expiram sozinhas).
+O `backup-database.sh` não os copia. Até haver backup diário deles, o plano é:
+
+- **Antes de cada deploy**, um arquivo junto dos dumps, só leitura para o
+  grupo, com checksum — não depende de nenhum serviço novo:
+
+  ```bash
+  APP=/home/lapis/htdocs/lapis.criativatek.com; STAMP=$(date +%Y%m%d-%H%M%S)
+  OUT=/home/lapis/backups/private-files-$STAMP.tgz
+  ( umask 027; tar -C "$APP/storage/app" -czf "$OUT" private ) &&
+    tar -tzf "$OUT" >/dev/null && sha256sum "$OUT" && tar -tzf "$OUT" | grep -vc '/$'
+  ```
+
+  O número de ficheiros tem de bater com
+  `find $APP/storage/app/private -type f | wc -l`. Nunca listar nomes de
+  ficheiros num relatório (os das fotografias identificam alunos).
+- **Diariamente e fora do servidor**, junto com os dumps, quando o destino
+  offsite estiver decidido (ver «Risco residual»). O volume é pequeno (4,3 MB
+  a 2026-10-03).
+- Restaurar é extrair para `storage/app/` com o dono `lapis-deploy:lapis` e
+  modos 640/750, nunca para `public/`.
+
+### `APP_KEY` — a chave sem a qual o backup não se lê
+
+Os nomes e números de aluno (`student_identities`) e as credenciais de
+`platform_settings` estão cifrados com a `APP_KEY`, que vive **só** no `.env`
+do servidor. Um dump perfeito sem ela restaura alunos ilegíveis. Regras:
+
+- **Uma cópia fora do servidor, guardada pelo responsável** — num gestor de
+  palavras-passe e numa cópia em papel selada — e em mais lado nenhum: nunca
+  no repositório, num chat, num ticket, num log, num backup em claro ou num
+  relatório. Os backups offsite levam a base e os ficheiros, **não** o `.env`.
+- **Confirmar a cópia sem mostrar a chave**, comparando impressões digitais:
+
+  ```bash
+  ssh lapis-prod "sed -n 's/^APP_KEY=//p' /home/lapis/htdocs/lapis.criativatek.com/.env | tr -d '
+' | sha256sum | cut -c1-16"
+  # e o mesmo sobre a cópia guardada; os 16 caracteres têm de ser iguais
+  ```
+- **Não rodar a chave** sem um plano de re-cifra: uma `APP_KEY` nova torna
+  ilegível tudo o que foi cifrado com a anterior (o Laravel aceita
+  `APP_PREVIOUS_KEYS` para a transição, mas isso é uma operação própria).
 
 ### Backup antes de deploy
 

@@ -7,7 +7,7 @@ use Illuminate\Database\QueryException;
 /**
  * «O MySQL recusa isto» — provado, não presumido.
  *
- * Até à 0.156.1 este helper vivia copiado nos três `*MysqlGuaranteesTest`, e
+ * Antes da 0.157.0 este helper vivia copiado nos três `*MysqlGuaranteesTest`, e
  * as três cópias tinham o `$this->fail()` DENTRO do `try` cuja recusa queriam
  * apanhar, com um `catch (Throwable)`. O `fail()` lança uma
  * `AssertionFailedError`, que é um Throwable como outro qualquer, e o próprio
