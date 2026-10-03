@@ -215,12 +215,13 @@ class BuildImportPlan
             $resultsAnalysisNotes['rows'],
         );
 
-        $noIssueDomains = ['profile_version_domains', 'profile_version_periods', 'item_domain_allocations', 'student_item_scores', 'self_assessment_questions', 'self_assessment_responses', 'cancelled_lesson_occurrences'];
-
+        // Every domain, child rows included: a refused row of a flat child
+        // domain (score, allocation, weight, response, cancelled occurrence)
+        // is a descriptor like any other and must reach "Pontos a rever".
+        // Safe because the appended row is `invalid` and every writer only
+        // acts on `new` rows (or `existing`/`conflict` rows carrying an id).
         foreach ($rows as $domain => $domainRows) {
-            if (! in_array($domain, $noIssueDomains, true)) {
-                $rows[$domain] = $this->appendRowIssues($domainRows, $issuesByDomain->get($domain, collect()));
-            }
+            $rows[$domain] = $this->appendRowIssues($domainRows, $issuesByDomain->get($domain, collect()));
         }
 
         $counts = [];

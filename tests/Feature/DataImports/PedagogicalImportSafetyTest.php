@@ -279,6 +279,112 @@ class PedagogicalImportSafetyTest extends TestCase
         $this->assertSame(1, $this->tenantCount(Classification::class, $organization));
     }
 
+    /**
+     * 0.156.4 — a row the validator refuses is kept as a descriptor only and
+     * handed back to the plan on every preview. Until now the plan skipped the
+     * flat child domains, so a refused score, allocation, weight, response or
+     * cancelled occurrence never reached "Pontos a rever" and was silently
+     * lost. Each refused row below carries a distinctive value that must not
+     * appear anywhere in the response.
+     */
+    #[Test]
+    public function refused_child_rows_reach_the_preview_as_descriptors_and_never_leak_their_content(): void
+    {
+        $teacher = User::factory()->create();
+        $organization = $teacher->personalOrganization();
+        $class = $this->fullScenario($organization, $teacher);
+        $file = $this->backupUpload($organization, $teacher);
+        $this->deletePedagogicalData($organization, $class);
+
+        $sentence = 'Campos obrigatórios em falta ou inválidos.';
+        $tampered = $this->rewriteBackup($file, function (array $json): array {
+            $json['student_item_scores'][] = [
+                'item_ulid' => 'ITEM-SEGREDO-4471', 'enrollment_ulid' => (string) Str::ulid(), 'result_state' => 'assessed',
+                'points_earned' => 7777.5, 'state_reason' => 'Motivo-segredo-4471', 'assessed_by_email' => 'segredo.4471@example.test',
+            ];
+            $json['item_domain_allocations'][] = [
+                'item_ulid' => (string) Str::ulid(), 'domain_ulid' => 'DOMINIO-SEGREDO-4471', 'allocation_percent' => 4471.25,
+            ];
+            $json['profile_version_domains'][] = [
+                'version_ulid' => 'VERSAO-SEGREDO-4471', 'domain_ulid' => (string) Str::ulid(), 'weight_percent' => 4471.75,
+            ];
+            $json['self_assessment_responses'][] = [
+                'self_assessment_ulid' => 'AUTOAVAL-SEGREDO-4471', 'text_answer' => 'Resposta-segredo-4471',
+            ];
+            $json['cancelled_lesson_occurrences'][] = [
+                'class_ulid' => 'TURMA-SEGREDO-4471', 'recurring_lesson_slot_ulid' => (string) Str::ulid(),
+                'occurs_at' => '2025-10-01 09:00:00', 'cancelled_by_email' => 'cancelou.4471@example.test',
+            ];
+
+            return $json;
+        });
+        $import = $this->uploadInto($organization, $teacher, $tampered);
+
+        $secrets = ['SEGREDO-4471', 'segredo-4471', 'segredo.4471', 'cancelou.4471', '7777.5', '4471.25', '4471.75'];
+        $refused = ['student_item_scores', 'item_domain_allocations', 'profile_version_domains', 'self_assessment_responses', 'cancelled_lesson_occurrences'];
+
+        // Twice: the descriptors are persisted, not a one-off of the upload.
+        foreach ([1, 2] as $visit) {
+            $response = $this->actingAs($teacher)->withSession(['organization_id' => $organization->id])
+                ->get("/data-imports/{$import->ulid}");
+
+            $response->assertInertia(fn ($page) => $page
+                ->where('plan.counts.student_item_scores.invalid', 1)
+                ->where('plan.counts.student_item_scores.new', 2)
+                ->where('plan.counts.item_domain_allocations.invalid', 1)
+                ->where('plan.counts.item_domain_allocations.new', 2)
+                ->where('plan.counts.profile_version_domains.invalid', 1)
+                ->where('plan.counts.profile_version_domains.new', 2)
+                ->where('plan.counts.self_assessment_responses.invalid', 1)
+                ->where('plan.counts.self_assessment_responses.new', 1)
+                ->where('plan.counts.cancelled_lesson_occurrences.invalid', 1)
+                ->where('plan.can_confirm', true));
+
+            $rows = $response->viewData('page')['props']['plan']['rows'];
+
+            foreach ($refused as $domain) {
+                $invalid = array_values(array_filter($rows[$domain], fn (array $row): bool => $row['classification'] === 'invalid'));
+                $this->assertCount(1, $invalid, "visit {$visit}: {$domain}");
+                $this->assertSame(['ulid' => null, 'classification' => 'invalid', 'reason' => $sentence], $invalid[0], "visit {$visit}: {$domain}");
+            }
+
+            foreach ($secrets as $secret) {
+                $this->assertStringNotContainsString($secret, $response->getContent(), "visit {$visit}: «{$secret}» leaked");
+            }
+        }
+
+        $stored = DataImport::withoutGlobalScope('organization')->findOrFail($import->id)->canonical_snapshot;
+        foreach ($secrets as $secret) {
+            $this->assertStringNotContainsString($secret, (string) json_encode($stored['validation_issues']), "descriptor kept «{$secret}»");
+        }
+
+        $this->confirm($organization, $teacher, $import);
+
+        // Exactly what an untampered backup restores — nothing for the refused rows.
+        $this->assertSame(2, DB::table('student_item_scores')->count());
+        $this->assertSame(2, DB::table('item_domain_allocations')->count());
+        $this->assertSame(2, DB::table('profile_version_domains')->count());
+        $this->assertSame(1, DB::table('self_assessment_responses')->count());
+        $this->assertSame(0, DB::table('cancelled_lesson_occurrences')->count());
+    }
+
+    /**
+     * @param  callable(array<string, mixed>): array<string, mixed>  $mutate
+     */
+    private function rewriteBackup(UploadedFile $file, callable $mutate): UploadedFile
+    {
+        $copy = tempnam(sys_get_temp_dir(), 'lapis-child-refusals-backup-').'.zip';
+        copy($file->getPathname(), $copy);
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($copy));
+        $json = $mutate(json_decode((string) $zip->getFromName('backup-lapis.json'), true));
+        $zip->addFromString('backup-lapis.json', (string) json_encode($json));
+        $zip->close();
+
+        return new UploadedFile($copy, 'backup.zip', 'application/zip', null, true);
+    }
+
     private function fullScenario(Organization $organization, User $teacher): SchoolClass
     {
         return $this->inTenant($organization, function () use ($organization, $teacher): SchoolClass {
