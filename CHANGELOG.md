@@ -25,6 +25,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.2] — 2026-10-03
+
+O botão flutuante «Reportar problema» ficava por cima do conteúdo no
+telemóvel. Numa aula, a 375 px de largura, tapava parte das notas do último
+«Acontecimento do dia» e metade do seu botão «Já no sumário» / «Adicionar ao
+sumário»: a página não deixava espaço por baixo, por isso qualquer controlo que
+passasse no canto inferior direito ficava coberto, e o botão tinha só 32 px de
+altura, abaixo dos 44 px que o desenho exige para toques.
+
+### Corrigido
+
+- **Abaixo de `sm`, o fim de cada página rola para fora de baixo do botão.** O
+  layout autenticado reserva agora, só em ecrãs pequenos, o espaço do botão
+  (44 px), da sua margem e da área segura do dispositivo
+  (`env(safe-area-inset-bottom)`). A reserva aplica-se em todas as larguras:
+  no computador liberta a ligação «Novidades» do rodapé, que o botão cobria.
+- **O botão passa a ser só um ícone nos ecrãs pequenos**, com 44 × 44 px, e a
+  posição respeita a área segura. O nome acessível continua a ser «Reportar
+  problema» (para leitores de ecrã e foco por teclado) e o texto volta a
+  ver-se de `sm` para cima. O que o reporte faz — diálogo, captura, envio — não
+  mudou.
+
+Sem migrations.
 ## [0.156.5] — 2026-10-03
 
 ### Corrigido
