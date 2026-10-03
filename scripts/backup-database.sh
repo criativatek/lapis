@@ -47,7 +47,13 @@ day_of_month="$(date +%d)"
 
 # Um backup do dia 1 é o mensal desse mês. O nome carrega a distinção para que
 # a retenção não tenha de adivinhar nada a partir de datas de ficheiro.
-if [ "$day_of_month" = "01" ]; then
+#
+# SÓ O PRIMEIRO do dia 1. A retenção mensal conta ficheiros, e cada execução
+# manual num dia 1 (um dump antes de um deploy, por exemplo) também saía
+# «monthly»: a 2026-09-01 ficaram sete mensais do mesmo dia. Doze ficheiros
+# deixavam assim de ser doze meses. As execuções seguintes do dia 1 são
+# diárias, com a retenção de 30 dias de qualquer outro dia.
+if [ "$day_of_month" = "01" ] && ! compgen -G "$BACKUP_DIR/lapis-monthly-${stamp:0:8}-*.sql.gz" > /dev/null; then
     kind="monthly"
 else
     kind="daily"

@@ -177,6 +177,17 @@ não o estado de saída, que responde se a extração escreveu. Repare-se no que
 isto revela — **ficheiros de tooling de IA estão versionados e portanto entram
 no pacote** pela allowlist, sem serem precisos em produção.
 
+A causa exata, vista a 2026-10-03: `/.superpowers` está no `.gitignore`, mas
+UM ficheiro (`.superpowers/sdd/2026-09-09-schedule-initial-setup-history/task-1-report.md`)
+entrou à força no commit `fb7ef479`, e o pacote é feito de `git ls-files`. No
+servidor, `.superpowers/` e `.superpowers/sdd/` pertencem a `lapis:lapis` com
+modo `750`, restos de uma ferramenta que correu como `lapis`; o `tar` corre
+como `lapis-deploy`, que só tem leitura pelo grupo, e não consegue criar a
+subpasta. A 0.156.6 tira esse ficheiro do índice: a partir do primeiro pacote
+construído depois dela, o `tar` deve sair com 0, e um estado de erro volta a
+ser sinal de um problema real. A pasta antiga no servidor é inerte (não é
+servida nem lida pela aplicação); apagá-la exige uma sessão como `lapis`.
+
 **Duas ações deste runbook são recusadas pelo classificador do auto mode**, e
 têm alternativas equivalentes que passam: o `scp update.tgz` (usar
 `ssh lapis-prod 'cat > /home/lapis-deploy/update.tgz' < update.tgz`, e confirmar
@@ -669,7 +680,7 @@ acontecer.
 | Destino | `/home/lapis/backups/` — **fora da aplicação e fora do web root** |
 | Formato | `lapis-{daily,monthly}-YYYYMMDD-HHMMSS.sql.gz` (gzip -9) |
 | Permissões | ficheiros `640 lapis-deploy:lapis`; pasta `770 lapis:lapis` |
-| Retenção | diários **30 dias**; mensais (dia 1) os **12 mais recentes** |
+| Retenção | diários **30 dias**; mensais (o **primeiro** backup do dia 1) os **12 mais recentes** — uma execução manual num dia 1 sai diária |
 | Credenciais | `~/.my.cnf` do `lapis-deploy`, modo `600` |
 | Log | `/home/lapis/backups/backup.log` |
 
@@ -780,6 +791,50 @@ e as contagens de `users`, `organizations`, `classes`, `students`,
 objetivo é estrutura e contagens. Para as colunas cifradas basta confirmar que
 o comprimento e o prefixo do ciphertext se mantêm; não é preciso decifrar nada.
 
+### Ensaio com a aplicação a arrancar sobre a cópia
+
+A regra acima vale para o servidor: em produção a aplicação nunca aponta para
+uma base restaurada. Um ensaio de recuperação completo — a aplicação a
+arrancar sobre a cópia, numa **instalação descartável fora do servidor** —
+foi feito a 2026-10-03, e deixou três regras:
+
+- **Nunca a `APP_KEY` de produção.** Com uma chave descartável, as colunas
+  cifradas (`student_identities.display_name`/`school_number`,
+  `platform_settings.mail_password`/`ai_api_key`) não se decifram, e é isso
+  que mantém o ensaio inerte: `AppServiceProvider::applyPlatformMailSettings()`
+  falha a decifrar a password SMTP, regista «The MAC is invalid» e cai para o
+  mailer do ambiente. **Com a chave real, esse método impõe
+  `mail.default = smtp` com as credenciais de produção guardadas na base, por
+  cima de `MAIL_MAILER=log`** — o mesmo para a chave de IA em
+  `applyPlatformAiSettings()`. Se um dia for preciso provar a decifra com a
+  chave real, anular primeiro, na cópia, `mail_*` e `ai_api_key` de
+  `platform_settings`.
+- Ambiente: `MAIL_MAILER=log`, `QUEUE_CONNECTION=database` sem worker (os
+  jobs ficam na tabela e nada os corre), sem `schedule:run`,
+  `INERTIA_SSR_ENABLED=false`, servidor só em `127.0.0.1`.
+- Comparar **dados** voltando a fazer o dump da cópia com as mesmas opções:
+  as linhas `INSERT` têm de ter o mesmo SHA-256 que as do original. E
+  comparar a **estrutura** com a de um `migrate` limpo do commit em produção,
+  no mesmo motor (assinatura por tabela de colunas, índices, chaves
+  estrangeiras e CHECKs). No fim, apagar o datadir, as cópias do dump e o
+  `laravel.log` da instalação: os traces de decifra levam texto cifrado.
+
+Resultado de 2026-10-03 (backup diário das 04:17, MySQL 8.0.43 local, o
+motor de produção): restauro com exit 0 e stderr vazio em 11 s; 105 tabelas
+e 122 migrations; os 86 `INSERT` idênticos byte a byte ao dump original; a
+estrutura idêntica à de um `migrate` limpo da 0.156.0 (1282 colunas, 532
+índices, 295 chaves estrangeiras, 123 CHECKs); a aplicação arranca,
+`migrate:status` sem pendentes, páginas públicas com 200 e rotas autenticadas
+com 302 para `/login`.
+
+**O que esse ensaio não recupera**, porque o backup não o contém:
+
+- os ficheiros de `storage/app/private` — fotografias de alunos, anexos do
+  Suporte, logótipos das escolas (176 ficheiros, 4,3 MB a 2026-10-03);
+- o `.env` e, com ele, a `APP_KEY`. Sem ela, os nomes e números de aluno
+  cifrados da cópia são ilegíveis: **perder o servidor e a `APP_KEY` é perder
+  esses dados, mesmo com o dump intacto.**
+
 ### Backup antes de deploy
 
 O **diário é a rede principal**. Um dump pré-deploy adicional é obrigatório
@@ -798,6 +853,14 @@ Os backups vivem no mesmo disco da base de dados. Protegem contra erro humano,
 migration má e corrupção lógica — **não** contra perda do servidor. Uma cópia
 offsite é a próxima melhoria operacional (P1); não foi criada aqui para não
 introduzir um serviço externo sem decisão.
+
+Visto a 2026-10-03, a partir da conta `lapis-deploy`: o CloudPanel faz o seu
+próprio dump diário (`clpctl db:backup`, 03:15, 7 dias, em
+`/home/lapis/backups/databases/`) e corre `/home/clp/scripts/create_backup.sh`
+às 04:15 — o backup remoto do painel, que só copia alguma coisa se tiver um
+destino configurado em *Admin Area → Backups*. Essa configuração não é legível
+sem root, por isso **não está provado** que exista cópia fora do servidor. O
+`rclone` e o `restic` estão instalados no sistema.
 
 `backup.log` cresce ~1 linha por dia e não precisa de rotação tão cedo.
 

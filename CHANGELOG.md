@@ -25,6 +25,53 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.6] — 2026-10-03
+
+Um ensaio de recuperação a partir do backup diário, numa instalação
+descartável fora do servidor, correu bem — e mostrou duas coisas que o
+procedimento não dizia, e uma que o script de backup fazia mal. Fecha também
+a causa do erro que o `tar` dava em todos os deploys.
+
+### Corrigido
+
+- **Uma execução manual do backup num dia 1 já não gasta um lugar mensal.**
+  `scripts/backup-database.sh` nomeava «monthly» TODAS as execuções do dia 1,
+  e a retenção mensal conta ficheiros: a 2026-09-01 ficaram sete mensais do
+  mesmo dia, e doze ficheiros deixavam de ser doze meses. Passa a ser mensal
+  só o primeiro backup do dia 1; os seguintes são diários (30 dias). Os sete
+  de setembro não são apagados nem renomeados — como são os mais antigos,
+  saem pela ordem normal sem tirar cobertura a nenhum mês.
+
+- **O `tar` do deploy deixa de sair com erro por causa de `.superpowers`.**
+  Um relatório de agente de 2026-09-09 tinha sido versionado à força, apesar
+  de `/.superpowers` estar no `.gitignore`, e por isso entrava em todos os
+  pacotes; no servidor a pasta pertence a `lapis` com modo 750, e o `tar`,
+  que corre como `lapis-deploy`, falhava ao criá-la — em todos os deploys
+  desde a 0.146.3, com a aplicação toda escrita na mesma. O ficheiro sai do
+  índice (continua no histórico). A partir do próximo pacote, um `tar` com
+  erro volta a querer dizer alguma coisa.
+
+### Documentação
+
+- `docs/deployment.md`, «Ensaio com a aplicação a arrancar sobre a cópia»: o
+  ensaio de 2026-10-03 (restauro em MySQL 8.0.43 sem erros, dados idênticos
+  byte a byte, estrutura idêntica a um `migrate` limpo da 0.156.0, aplicação a
+  arrancar sem migrations pendentes) e as regras que deixou. **Nunca a
+  `APP_KEY` de produção num ensaio:** com ela,
+  `applyPlatformMailSettings()` impõe o SMTP de produção guardado na base por
+  cima de `MAIL_MAILER=log`.
+- O que o backup da base **não** recupera: os ficheiros de
+  `storage/app/private` (fotografias de alunos, anexos do Suporte, logótipos)
+  e a `APP_KEY`, sem a qual os nomes e números de aluno cifrados são ilegíveis.
+- «Risco residual»: o dump próprio do CloudPanel (03:15, 7 dias) e o seu
+  backup remoto (04:15), cuja configuração não é legível pela conta de deploy
+  — por isso continua por provar que exista cópia fora do servidor.
+
+### Interno
+
+- Só script, documentação e um ficheiro fora do índice; a aplicação não muda.
+  Sem migrations. O script corre da pasta da aplicação, por isso a correção
+  da retenção só vale depois do deploy.
 ## [0.156.3] — 2026-10-03
 
 Fecha a dívida que restava da revisão da 0.146.1 (#21). Dos três pontos
