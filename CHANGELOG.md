@@ -25,6 +25,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.5] — 2026-10-03
+
+### Corrigido
+- **Auditoria: o elemento de avaliação criado pela importação de grelha de correção passa a registar `instrument.created`.** O contrato de cobertura da 0.145.1 inclui os elementos de avaliação, mas só o formulário manual os registava; a importação criava o elemento e registava apenas `scores.recorded`, pelo que o histórico mostrava notas lançadas num elemento que nunca aparecia como criado. O evento é gravado dentro da mesma transação da importação (uma importação que falha não deixa rasto), com o mesmo nome, sujeito, autor e organização do caminho manual, e propriedades só com ids (`class_id`, `instrument_id`) e a origem `source = correction_import`. Nunca leva nomes de alunos, notas, texto de itens, título nem nome do ficheiro. Importar para um elemento já existente não regista criação. Resolve parcialmente a issue #13.
+
+Sem migrations.
+
 ## [0.156.0] — 2026-09-30
 
 Um acontecimento marcado no Calendário para uma turma não chegava à aula
