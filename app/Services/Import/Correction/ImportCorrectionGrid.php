@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentEligibility;
 use App\Services\Assessment\RecordScores;
+use App\Services\Audit\AuditLog;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Import\CorrectionImportException;
 use App\Support\Import\CorrectionImportTempStorage;
@@ -66,6 +67,7 @@ class ImportCorrectionGrid
         protected RecordScores $recordScores,
         protected CorrectionImportTempStorage $storage,
         protected Entitlements $entitlements,
+        protected AuditLog $audit,
     ) {}
 
     /**
@@ -102,6 +104,23 @@ class ImportCorrectionGrid
             $instrument = $mapping->createsInstrument()
                 ? $this->createInstrument($import, $grid, $mapping)
                 : $this->existingInstrument($import, $mapping);
+
+            if ($mapping->createsInstrument()) {
+                // The same event the manual form records (§22.4), written inside
+                // the transaction so a failed import leaves no trace of it. Ids
+                // only: no title, no file name, nothing the grid said.
+                $this->audit->record(
+                    'instrument.created',
+                    $instrument,
+                    $teacher,
+                    "Elemento de avaliação criado por importação de grelha — {$import->schoolClass->label}.",
+                    [
+                        'class_id' => $import->class_id,
+                        'instrument_id' => $instrument->id,
+                        'source' => 'correction_import',
+                    ],
+                );
+            }
 
             $cells = $this->cells($grid, $mapping, $instrument);
 
