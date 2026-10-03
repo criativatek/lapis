@@ -25,6 +25,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.4] — 2026-10-03
+
+Ao importar um backup, a pré-visualização não mostrava as linhas filhas que o
+validador tinha recusado. Uma pontuação, uma alocação de item a domínio, um
+peso de domínio ou de período, uma pergunta ou resposta de autoavaliação, ou
+uma aula cancelada com campos em falta ou inválidos desapareciam sem aviso: o
+professor confirmava e perdia essas linhas sem saber.
+
+### Corrigido
+
+- **«Pontos a rever» passa a listar as recusas das linhas filhas.** O plano
+  de importação saltava estes domínios ao juntar as recusas guardadas desde a
+  0.155.1; deixou de saltar, e cada recusa conta como inválida no domínio
+  respetivo. Cada ponto mostra o nome do domínio em português (os domínios
+  que não aparecem na tabela-resumo ganharam nome próprio, em vez de um traço)
+  e a frase fixa do validador. **Nunca** o conteúdo da linha recusada:
+  valores, textos, códigos de itens ou e-mails não são guardados nem
+  mostrados.
+
+### Sem alterações
+
+- O que se grava não muda: só as linhas `new` são escritas, o validador e o
+  esquema do backup são os mesmos, e «Confirmar» continua a depender apenas
+  de haver linhas novas.
+
+Sem migrations.
+
 ## [0.156.0] — 2026-09-30
 
 Um acontecimento marcado no Calendário para uma turma não chegava à aula
