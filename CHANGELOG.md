@@ -25,6 +25,32 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.156.7] — 2026-10-03
+
+Encontrado na verificação no browser dos Resultados (dados fictícios, código
+da 0.156.0): o professor grava as observações, continua a escrever no mesmo
+separador e grava outra vez — e a segunda gravação era recusada com «As
+observações foram alteradas noutra janela. Recarregue a página…». Não havia
+outra janela. Seguir o conselho e recarregar deitava fora o que tinha acabado
+de escrever.
+
+### Corrigido
+
+- **Gravar as observações duas vezes seguidas no mesmo separador.** O
+  formulário copiava a versão da nota (`lock_version`) uma única vez, ao abrir
+  a página; o servidor incrementava-a a cada gravação e a página voltava com a
+  nova, mas o formulário continuava a enviar a antiga. Passa a levar a versão
+  nova no sucesso da própria gravação.
+- **A deteção de conflitos continua igual.** A versão só é atualizada depois
+  de uma gravação feita por esta janela; se outra janela gravar entretanto, o
+  formulário continua com a versão que leu e o servidor recusa, como antes.
+
+### Interno
+
+- Dois testes em `Results.test.ts`: a gravação seguinte leva a versão nova; uma
+  versão que mudou sem esta janela ter gravado não é copiada. O primeiro falha
+  sem a correção. Só frontend. Sem migrations.
+
 ## [0.156.0] — 2026-09-30
 
 Um acontecimento marcado no Calendário para uma turma não chegava à aula

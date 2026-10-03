@@ -192,7 +192,17 @@ const noteForm = useForm<{ body: string; lock_version: number }>({
 });
 
 function submitNote(): void {
-    noteForm.put(props.links.note, { preserveScroll: true });
+    noteForm.put(props.links.note, {
+        preserveScroll: true,
+        // O servidor incrementa a versão a cada gravação. Sem a levar para o
+        // formulário, a gravação seguinte NESTE separador seguia com a antiga
+        // e era recusada como «alteradas noutra janela». Só aqui, no sucesso
+        // da própria gravação: copiar a versão sempre que as props mudam
+        // apagaria a deteção de um conflito verdadeiro com outra janela.
+        onSuccess: () => {
+            noteForm.lock_version = props.note.lock_version;
+        },
+    });
 }
 
 const noteUpdatedLabel = computed(() => {

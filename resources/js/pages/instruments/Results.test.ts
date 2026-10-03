@@ -250,4 +250,31 @@ describe('Results.vue', () => {
         expect(wrapper.text()).toContain('Guardar observações');
         expect(wrapper.find('textarea').attributes('disabled')).toBeUndefined();
     });
+
+    it('leva a versão nova para a gravação seguinte no mesmo separador', async () => {
+        mocks.forms.length = 0;
+        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
+        const form = mocks.forms.find((candidate) => 'lock_version' in candidate)!;
+
+        // O servidor grava, incrementa a versão e a página volta com ela.
+        (form.put as ReturnType<typeof vi.fn>).mockImplementation(async (_url: string, options: { onSuccess?: () => void }) => {
+            await wrapper.setProps({ note: { ...baseProps().note, lock_version: 2 } });
+            options.onSuccess?.();
+        });
+
+        await wrapper.findAll('button').find((button) => button.text().includes('Guardar observações'))!.trigger('click');
+        await vi.waitFor(() => expect(form.lock_version).toBe(2));
+    });
+
+    it('não copia uma versão que mudou sem ter sido esta janela a gravar', async () => {
+        mocks.forms.length = 0;
+        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
+        const form = mocks.forms.find((candidate) => 'lock_version' in candidate)!;
+
+        // Outra janela gravou: a versão nas props sobe, mas o formulário tem de
+        // continuar com a que leu, para o servidor poder recusar o conflito.
+        await wrapper.setProps({ note: { ...baseProps().note, lock_version: 5 } });
+
+        expect(form.lock_version).toBe(1);
+    });
 });
