@@ -147,6 +147,38 @@ describe('AppLayout under SSR, with the shared props the shell is promised', () 
     });
 });
 
+describe('the floating «Reportar problema» button on small screens (#47)', () => {
+    it('is a 44px touch target below `sm`, with the accessible name kept and the safe-area inset respected', async () => {
+        const html = await render(sharedProps());
+        const launcher = html.match(/<button[^>]*data-issue-launcher[^>]*>/)?.[0] ?? '';
+
+        expect(launcher).toContain('aria-label="Reportar problema"');
+        // Repeating the `sm:` prefix is what lets these win over Button's size="sm" (`h-8`, `px-3`) under tailwind-merge.
+        expect(launcher).toMatch(/\bh-11\b/);
+        expect(launcher).toMatch(/\bw-11\b/);
+        expect(launcher).toMatch(/\bsm:h-8\b/);
+        expect(launcher).toMatch(/\bsm:w-auto\b/);
+        expect(launcher).toContain('bottom-[calc(1rem+env(safe-area-inset-bottom))]');
+        expect(launcher).toContain('sm:bottom-4');
+    });
+
+    it('keeps the text for assistive tech on mobile and shows it from `sm` up', async () => {
+        const html = await render(sharedProps());
+
+        expect(html).toContain('<span class="sr-only sm:not-sr-only">Reportar problema</span>');
+    });
+
+    it('makes the layout reserve room under the page so its end scrolls clear of the button', async () => {
+        const html = await render(sharedProps());
+        const spacer = html.match(/<div[^>]*data-issue-reporter-clearance[^>]*>/)?.[0] ?? '';
+
+        expect(spacer).toContain('h-[calc(5rem+env(safe-area-inset-bottom))]');
+        expect(spacer).toContain('sm:h-14');
+        expect(spacer).not.toContain('sm:hidden');
+        expect(spacer).toContain('aria-hidden="true"');
+    });
+});
+
 describe('the shell under SSR without its shared props — the ssr.log mechanism', () => {
     it("the context bar fails on 'length' when the academic years are missing", async () => {
         const { selectableAcademicYears: _dropped, ...withoutAcademicYears } = sharedProps();

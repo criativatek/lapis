@@ -86,6 +86,13 @@ final class LessonNumbering
      * usa: as aulas deslocadas chegam como cópias em memória com a data nova, e
      * a aula a inserir como um modelo nunca gravado.
      *
+     * A POPULAÇÃO É A DE `sequence()`, decidida aqui e não por quem chama: uma
+     * ausência do professor não é lição, e é posta de fora mesmo que chegue na
+     * lista. Antes da 0.157.0 contava como uma — a pré-visualização da inserção
+     * passa TODAS as aulas da turma —, e cada lecionada depois de uma ausência
+     * «ganhava» mais um número: uma inserção em outubro era recusada por mudar
+     * a Lição 3 de setembro para Lição 4, que a execução nunca faria.
+     *
      * @param  iterable<Lesson>  $lessons  todas as aulas da turma, no estado hipotético
      * @return array<int, int> lesson_id => número novo, só das aulas gravadas que mudariam
      *
@@ -94,6 +101,7 @@ final class LessonNumbering
     public function previewHypotheticalSequence(int $classId, iterable $lessons): array
     {
         $sorted = new Collection(collect($lessons)
+            ->reject(fn (Lesson $lesson): bool => $lesson->outcome === LessonOutcome::TeacherAbsent)
             ->sort(function (Lesson $left, Lesson $right): int {
                 $byTime = $left->starts_at->getTimestamp() <=> $right->starts_at->getTimestamp();
 

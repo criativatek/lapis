@@ -90,11 +90,19 @@ watch(classUlid, () => {
     classGroupId.value = '';
 });
 
+// Cada pré-visualização leva um número, e só a ÚLTIMA pedida escreve no
+// estado. Trocar a data antes de a anterior responder deixava as duas a correr,
+// e a mais antiga podia chegar depois: uma recusa de outra data aparecia ao lado
+// do botão ativo da data nova — ou, ao contrário, uma pré-visualização de outra
+// data ativava o botão.
+let latestRequest = 0;
+
 async function loadPreview(): Promise<void> {
     if (!open.value || classUlid.value === '' || insertAt.value === '') {
         return;
     }
 
+    const request = ++latestRequest;
     loading.value = true;
     failure.value = null;
     preview.value = null;
@@ -119,6 +127,10 @@ async function loadPreview(): Promise<void> {
 
         const body = await response.json();
 
+        if (request !== latestRequest) {
+            return;
+        }
+
         if (!response.ok) {
             // 422 traz a mensagem real do domínio — «contém uma aula já
             // lecionada em 12/09», «não há ocorrências suficientes» —, e é essa
@@ -133,9 +145,13 @@ async function loadPreview(): Promise<void> {
 
         preview.value = body as Preview;
     } catch {
-        failure.value = 'Não foi possível calcular a inserção.';
+        if (request === latestRequest) {
+            failure.value = 'Não foi possível calcular a inserção.';
+        }
     } finally {
-        loading.value = false;
+        if (request === latestRequest) {
+            loading.value = false;
+        }
     }
 }
 

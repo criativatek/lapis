@@ -6,6 +6,7 @@ use App\Domain\Import\Correction\CorrectionGridSource;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicYear;
+use App\Models\AuditEvent;
 use App\Models\CorrectionImport;
 use App\Models\CorrectionImportStatus;
 use App\Models\Domain;
@@ -22,6 +23,7 @@ use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
+use App\Services\Assessment\RecordScores;
 use App\Services\Import\Correction\ImportCorrectionGrid;
 use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Entitlements\Entitlements;
@@ -513,6 +515,109 @@ class ImportCorrectionGridTest extends TestCase
         $this->inTenant(function (): void {
             $this->assertSame(0, Instrument::count(), 'Uma recusa não deixa meio instrumento para trás.');
             $this->assertSame(0, StudentItemScore::count());
+        });
+    }
+
+    #[Test]
+    public function creating_an_instrument_by_import_records_one_instrument_created_event(): void
+    {
+        $this->enrol();
+
+        $instrument = $this->confirm($this->makeImport($this->fullMapping()));
+
+        $this->inTenant(function () use ($instrument): void {
+            $events = AuditEvent::query()->where('event', 'instrument.created')->get();
+
+            $this->assertCount(1, $events);
+
+            $event = $events->first();
+            $this->assertSame('Instrument', $event->subject_type);
+            $this->assertSame($instrument->id, $event->subject_id);
+            $this->assertSame($this->teacher->id, $event->causer_id);
+            $this->assertSame($this->organization->id, $event->organization_id);
+
+            // MySQL stores a JSON object with its keys reordered (shortest
+            // first), SQLite keeps them as written: compare content, not order.
+            $properties = $event->properties;
+            ksort($properties);
+            $this->assertSame([
+                'class_id' => $this->class->id,
+                'instrument_id' => $instrument->id,
+                'source' => 'correction_import',
+            ], $properties);
+
+            // Scores keep being recorded, once.
+            $this->assertSame(1, AuditEvent::query()->where('event', 'scores.recorded')->count());
+
+            // Ids and counts only: nothing the grid or the teacher wrote.
+            $dump = json_encode($event->only(['summary', 'properties']), JSON_UNESCAPED_UNICODE);
+            foreach (['Teste importado', 'Teste de Exemplo', 'plickers-basico', 'exemplo.csv', 'capital', 'triângulo'] as $forbidden) {
+                $this->assertStringNotContainsString($forbidden, $dump);
+            }
+        });
+    }
+
+    #[Test]
+    public function a_refused_import_records_no_instrument_created_event(): void
+    {
+        $this->enrol();
+        $import = $this->makeImport($this->fullMapping(), status: 'needs_mapping');
+
+        try {
+            $this->confirm($import);
+            $this->fail('Um import por decidir não pode ser confirmado.');
+        } catch (CorrectionImportException) {
+            // Expected.
+        }
+
+        $this->inTenant(fn () => $this->assertSame(0, AuditEvent::query()->where('event', 'instrument.created')->count()));
+    }
+
+    #[Test]
+    public function a_failure_after_the_instrument_is_created_rolls_the_event_back(): void
+    {
+        $this->enrol();
+        $import = $this->makeImport($this->fullMapping());
+
+        $this->mock(RecordScores::class)
+            ->shouldReceive('save')
+            ->andThrow(new \RuntimeException('falha simulada'));
+
+        try {
+            $this->confirm($import);
+            $this->fail('A falha tinha de se propagar.');
+        } catch (\RuntimeException) {
+            // Expected.
+        }
+
+        $this->inTenant(function (): void {
+            $this->assertSame(0, Instrument::count());
+            $this->assertSame(0, AuditEvent::query()->where('event', 'instrument.created')->count());
+        });
+    }
+
+    #[Test]
+    public function importing_into_an_existing_instrument_records_no_instrument_created_event(): void
+    {
+        $this->enrol();
+        $created = $this->confirm($this->makeImport($this->fullMapping()));
+
+        $itemIds = $this->inTenant(fn () => $created->items()->orderBy('sequence')->pluck('id')->all());
+
+        $this->inTenant(fn () => AuditEvent::query()->delete());
+
+        $associate = $this->fullMapping([
+            'mode' => ImportMapping::MODE_ASSOCIATE,
+            'instrumentId' => $created->id,
+            'items' => ['item:6' => $itemIds[0], 'item:7' => $itemIds[1], 'item:8' => $itemIds[2]],
+            'conflicts' => [],
+        ]);
+
+        $this->confirm($this->makeImport($associate));
+
+        $this->inTenant(function (): void {
+            $this->assertSame(1, Instrument::count());
+            $this->assertSame(0, AuditEvent::query()->where('event', 'instrument.created')->count());
         });
     }
 

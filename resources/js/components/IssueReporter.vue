@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useForm, usePage } from '@inertiajs/vue3';
+import { Flag } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -304,11 +305,15 @@ function submit(): void {
             variant="secondary"
             size="sm"
             data-issue-launcher
-            class="fixed bottom-4 right-4 z-40 shadow-lg print:hidden"
+            aria-label="Reportar problema"
+            class="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-40 h-11 w-11 px-0 shadow-lg print:hidden sm:bottom-4 sm:h-8 sm:w-auto sm:px-3 sm:has-[>svg]:px-3"
             :disabled="capturing"
             @click="openReporter"
         >
-            {{ capturing ? 'A capturar…' : 'Reportar problema' }}
+            <!-- Abaixo de `sm` é só o ícone (alvo táctil de 44px, DESIGN.md); o texto
+                 fica para o leitor de ecrã e volta a ver-se de `sm` para cima. -->
+            <Flag class="sm:hidden" aria-hidden="true" />
+            <span class="sr-only sm:not-sr-only">{{ capturing ? 'A capturar…' : 'Reportar problema' }}</span>
         </Button>
 
         <Dialog v-model:open="open">
