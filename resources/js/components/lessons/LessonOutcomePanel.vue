@@ -3,6 +3,7 @@ import { CalendarX2 } from '@lucide/vue';
 import { ref } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
+import { statusToneClasses } from '@/lib/statusTone';
 
 export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity';
 
@@ -14,6 +15,10 @@ export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_a
  * O motivo da ausência é SÓ uma categoria: não existe campo de texto para ele.
  * A decisão e as recusas vivem no servidor (RecordLessonOutcome); este
  * componente só as apresenta.
+ *
+ * A cor vem da paleta da casa (`statusToneClasses`): ausência âmbar, outras
+ * atividades violeta — as mesmas da lista de aulas e do resto da app, em vez
+ * de uma segunda cópia escrita à mão aqui (#21).
  */
 defineProps<{
     lessonUlid: string;
@@ -34,12 +39,7 @@ const dialogOpen = ref(false);
 <template>
     <section
         v-if="outcome !== null && outcome !== 'taught'"
-        :class="[
-            'space-y-1 rounded-xl border p-4',
-            outcome === 'teacher_absent'
-                ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100'
-                : 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-100',
-        ]"
+        :class="['space-y-1 rounded-xl border p-4', statusToneClasses(outcome)]"
         data-testid="lesson-outcome"
     >
         <p class="font-semibold">{{ outcomeLabel }}</p>
