@@ -25,6 +25,146 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.158.0] — 2026-10-04
+
+Aulas e Sumários passa a ler-se sem abrir aula a aula. Três vistas sobre as
+mesmas aulas — Semana, Por turma e Horário —, com os sumários completos por
+omissão, a identidade de cada turma estável em toda a aplicação, e a edição
+do sumário no próprio cartão, que grava só o sumário e recusa sobrescrever o
+que entretanto se gravou noutra janela.
+
+### Três vistas sobre as mesmas aulas
+
+#### Adicionado
+
+- **Semana.** As aulas por dia, em cartões largos com três zonas: à esquerda
+  a hora, a turma e o âmbito; ao centro o sumário inteiro, numa coluna de
+  leitura de 72 caracteres, com os parágrafos e as quebras de linha que o
+  professor escreveu; à direita o estado, a assiduidade e o fecho rápido. As
+  zonas reorganizam-se pela largura real do contentor (consultas
+  `@container`), e no telemóvel ficam empilhadas em largura total.
+- **«Texto completo / Compacto».** Uma escolha global: completo por omissão;
+  compacto recorta cada sumário a duas linhas, com «Mostrar tudo» por cartão.
+  Nunca há caixas com scroll interno.
+- **Por turma.** A sequência de uma turma, lição a lição, com o último
+  sumário ANTES do intervalo, do mesmo grupo e de mais nenhum (a regra de
+  «Basear no sumário anterior»): com um grupo escolhido, o desse grupo vem à
+  frente e sozinho; com todos, os anteriores de cada grupo ficam lado a lado
+  num bloco que se recolhe. O intervalo alarga-se (2 semanas, 4 semanas, ano
+  letivo) sem criar aulas: a vista só lê, e uma semana nunca aberta diz que
+  não tem aulas registadas em vez de fingir.
+- **Horário pelas horas reais.** Cada início e cada fim de aula da semana é
+  uma fronteira, e as linhas são os troços entre elas: a mesma hora fica na
+  mesma linha em todos os dias, e um troço sem aula em nenhum dia aparece
+  como «Sem aulas no horário do professor». Aulas que se cruzam no mesmo dia
+  ficam lado a lado, em pistas, e dizem por texto «Em simultâneo com …»; no
+  telemóvel agrupam-se sob um cabeçalho horário comum, cada aula e cada
+  grupo separados. Continua a não se inventar a grelha da escola: as linhas
+  saem das aulas. Os filtros esbatem as aulas em vez de as tirar.
+- **«Ver sumário completo»** no Horário leva ao cartão na vista Semana e
+  deixa voltar ao horário («Voltar ao horário»), no mesmo sítio.
+- **Navegação fixa e discreta**: uma barra de 44px com atalhos para os dias
+  (ou para as semanas, num intervalo longo da vista por turma), que assinala o
+  dia à vista e não tapa conteúdo.
+- **Filtros no URL**: as turmas sempre à vista; estado, «Terminadas por
+  confirmar» e sumário em «Mais filtros», recolhidos por omissão; qualquer
+  filtro ativo aparece como pílula removível em «A mostrar X de Y».
+- **Voltar ao mesmo sítio.** Vista, semana, filtros, densidade, turma, grupo
+  e intervalo vivem no URL; «Voltar às aulas da semana» na página da aula
+  regressa pelo histórico quando se veio da semana — mesma posição de
+  leitura, foco no cartão de onde se saiu.
+
+#### Alterado
+
+- **A turma inteira deixa de estar implícita.** O âmbito diz-se sempre por
+  extenso e com um contorno próprio: «Turma inteira» (contínuo), «Grupo T1»
+  (tracejado, faixa listrada), «Turma de apoio» (duplo). A cor nunca é a
+  única distinção.
+- **Estado e identidade separados.** O estado é uma pílula redonda à direita
+  (os tons de `statusTone`); a identidade é uma etiqueta quadrada à esquerda.
+  O «✓ Sumário» ao lado de «Preparada» saiu: a presença do sumário vê-se no
+  texto, e a falta diz o motivo («A aula já foi lecionada e ainda não tem
+  registo do que foi dado», «O planeamento passou para a aula seguinte»,
+  «Escrever o sumário prepara a aula»).
+- **A semana mostra os acontecimentos do dia** do Calendário do professor em
+  cada cartão (uma consulta para a semana inteira, só com o Calendário
+  acessível), e o editor oferece «Adicionar ao sumário».
+- Os botões «Inserir aula» e «Marcar lecionadas» aceitam uma classe de
+  tamanho, para chegarem a 44px no telemóvel.
+
+### Editar o sumário no cartão — só o sumário
+
+#### Adicionado
+
+- **`PATCH lessons/{lesson}/summary/content`**
+  (`lessons.summary.content.update`). Aceita `content` e `summary_version`, e
+  mais nada, e chama `SaveLessonSummary` só com o texto: as notas do
+  professor, os recursos e o TPC ficam byte a byte como estavam. Herda tudo o
+  resto: o bloqueio da aula, «Por preparar → Preparada», a revisão de uma
+  aula lecionada (`reviewed_at`/`reviewed_by`), a auditoria
+  (`lesson.prepared`, `lesson.summary_saved`, `lesson.summary_reviewed`), a
+  autorização, a recusa durante a impersonação e em modo só de leitura.
+- **Editor no cartão**, com Guardar, Cancelar, «Alterações por guardar»,
+  contador de 16 000 caracteres, campo que cresce com o texto, Ctrl+Enter e
+  Esc.
+- **«Tens alterações por guardar»** (`useUnsavedChangesGuard`, partilhado com
+  a página da aula): na navegação interna, um diálogo com «Continuar a
+  editar», «Sair sem guardar» e «Guardar e continuar» — que só continua
+  depois de a gravação ser aceite e, se falhar, fica onde estava com o texto
+  intacto. Ao fechar ou recarregar, a proteção nativa do browser.
+
+#### Corrigido
+
+- **Gravações concorrentes já não se sobrescrevem em silêncio.** Duas janelas
+  (ou o cartão e a página da aula) ganhavam por ordem de chegada. Agora cada
+  gravação leva a versão que o ecrã leu (`lessons.summary_version`) e o
+  servidor recusa-a, sob o mesmo bloqueio da aula e antes de escrever o que
+  quer que seja, se entretanto alguém gravou. Vale para o `PATCH` novo, para
+  o `PUT` da página da aula e para «Limpar sumário». Quem vê a recusa compara
+  os dois textos lado a lado e escolhe: combinar no editor (a ação
+  principal), continuar só com o seu, ou descartar o seu e ficar com o
+  gravado. O rascunho nunca sai do editor sem decisão explícita, e a
+  gravação seguinte volta a verificar a versão.
+- **`RecordLessonOutcome` apagava o sumário sem eventos** (`summary()->delete()`
+  do query builder). Passa a apagar pelo modelo, para a versão subir.
+
+### Cor estável por professor e turma
+
+#### Adicionado
+
+- **`class_teachers.identity_tone`**: o tom de cada turma para cada professor,
+  atribuído uma vez quando o professor passa a ter a turma
+  (`ClassTeacher::creating`, `ClassIdentityTones::nextFor`: o menos usado
+  entre as suas turmas ativas do mesmo ano letivo; em empate, a ordem da
+  paleta) e nunca recalculado. Acrescentar, arquivar ou filtrar turmas não
+  muda o de nenhuma; a posição numa lista não entra. Aulas e Sumários e o
+  Horário do Professor leem o mesmo tom (`lib/turmaTones`).
+
+### Migrations (duas, aditivas e reversíveis)
+
+- `2026_11_15_000100_add_summary_version_to_lessons_table` — `lessons.summary_version`,
+  inteiro sem sinal, por omissão 0. As aulas existentes começam em 0.
+- `2026_11_15_000200_add_identity_tone_to_class_teachers_table` —
+  `class_teachers.identity_tone`, texto anulável com CHECK pela paleta, e um
+  preenchimento inicial determinístico (por professor e ano letivo, pela
+  ordem de criação da ligação, a mesma regra do menos usado).
+
+**Deploy e rollback.** As duas colunas são novas e têm valor por omissão (ou
+são anuláveis): o código da 0.157.0 ignora-as, por isso um rollback só de
+código é seguro sem desfazer as migrations. O código novo precisa delas —
+migrar antes de servir. Sem alterações a backups nem a exportações: o tom é
+apresentação por professor e é atribuído de novo quando uma turma importada
+é ligada ao professor.
+
+Verificado num MySQL 8.0.43 descartável (o motor de produção): `migrate:fresh`,
+dados fictícios pelas ações da aplicação, `migrate:rollback --step=2` limpo,
+`migrate` de novo com o preenchimento a dar os mesmos tons, as aulas intactas,
+o CHECK a recusar um tom fora da paleta; e o código da 0.157.0 a ligar
+professores, criar aulas, gravar e limpar sumários sobre o esquema novo. Uma
+ligação professor–turma criada DURANTE um rollback de código fica sem tom
+(`identity_tone` nulo): o ecrã mostra o tom de recurso, como antes desta
+versão, até a ligação ser refeita.
+
 ## [0.157.0] — 2026-10-03
 
 Release de pendências: oito correções, integradas e verificadas em conjunto.

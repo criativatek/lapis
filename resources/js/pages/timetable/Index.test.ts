@@ -35,7 +35,7 @@ type TimetableSlot = {
     ends_at: string;
     starts_on: string | null;
     ends_on: string | null;
-    school_class: { ulid: string; label: string };
+    school_class: { ulid: string; label: string; identity_tone?: string | null };
     subject: string;
 };
 

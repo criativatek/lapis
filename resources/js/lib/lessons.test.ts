@@ -130,7 +130,9 @@ describe('regras de ecrã das vistas da semana (0.158.0)', () => {
     it('diz o âmbito por extenso: turma inteira, grupo ou turma de apoio', () => {
         expect(lessonScope(base)).toEqual({ kind: 'whole', label: 'Turma inteira' });
         expect(lessonScope({ ...base, class_group_id: 1, class_group_label: 'T1' })).toEqual({ kind: 'group', label: 'Grupo T1' });
-        expect(lessonScope({ ...base, school_class: { ulid: 'x', label: 'Apoio', is_support_class: true } })).toEqual({ kind: 'support', label: 'Turma de apoio' });
+        const support = { ...base, school_class: { ulid: 'x', label: 'Apoio', is_support_class: true } } as WeekLesson;
+
+        expect(lessonScope(support)).toEqual({ kind: 'support', label: 'Turma de apoio' });
     });
 
     it('reconhece aulas simultâneas no mesmo dia, e só no mesmo dia', () => {
