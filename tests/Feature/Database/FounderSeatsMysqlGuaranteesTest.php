@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\AssertsMysqlRejection;
 use Tests\TestCase;
 use Throwable;
 
@@ -40,6 +41,8 @@ use Throwable;
  */
 class FounderSeatsMysqlGuaranteesTest extends TestCase
 {
+    use AssertsMysqlRejection;
+
     private const DATABASE = 'lapis_founder_scratch';
 
     private const HARD_CAP = 1000;
@@ -72,7 +75,7 @@ class FounderSeatsMysqlGuaranteesTest extends TestCase
         foreach ([0, -1, self::HARD_CAP + 1] as $forbidden) {
             $this->assertRejected(
                 fn () => $this->insertSeat($forbidden, $this->organizationId(1)),
-                "MySQL aceitou seat_number = {$forbidden}",
+                "seat_number = {$forbidden}",
             );
         }
 
@@ -245,16 +248,6 @@ class FounderSeatsMysqlGuaranteesTest extends TestCase
             'currency' => 'EUR',
             'claimed_at' => '2026-06-01 10:00:00',
         ]);
-    }
-
-    private function assertRejected(callable $write, string $what): void
-    {
-        try {
-            $write();
-            $this->fail("MySQL aceitou {$what}");
-        } catch (Throwable) {
-            // É esta a garantia.
-        }
     }
 
     private function scratch(): Connection

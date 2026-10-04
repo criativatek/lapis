@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
+import { qualitativeToneClasses } from '@/lib/qualitativeTone';
 import LessonOutcomePanel from './LessonOutcomePanel.vue';
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -78,6 +79,34 @@ describe('LessonOutcomePanel', () => {
         expect(note.maxLength).toBe(160);
         expect(note.required).toBe(false);
         expect(document.body.textContent).toContain('Evite incluir dados pessoais desnecessários.');
+        wrapper.unmount();
+    });
+
+    it.each([
+        ['teacher_absent', 'amber'],
+        ['class_external_activity', 'violet'],
+    ] as const)('paints a recorded %s outcome with the house palette (%s), not hand-written colours', (outcome, tone) => {
+        const wrapper = mount(LessonOutcomePanel, {
+            props: {
+                lessonUlid: 'lesson-a',
+                outcome,
+                outcomeLabel: 'Resultado',
+                outcomeReasonLabel: null,
+                outcomeNote: null,
+                canRecord: false,
+                reasons: [],
+                pendingPlan: null,
+            },
+        });
+
+        const panel = wrapper.get('[data-testid="lesson-outcome"]');
+
+        for (const toneClass of qualitativeToneClasses[tone].split(' ')) {
+            expect(panel.classes()).toContain(toneClass);
+        }
+
+        // As classes antigas, escritas à mão: fundo 50 e borda 300.
+        expect(panel.classes().filter((name) => /^(dark:)?(bg|border)-(amber|violet)-(50|300|900)$/.test(name))).toEqual([]);
         wrapper.unmount();
     });
 });

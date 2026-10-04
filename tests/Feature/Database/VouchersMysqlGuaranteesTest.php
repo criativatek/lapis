@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\AssertsMysqlRejection;
 use Tests\TestCase;
 use Throwable;
 
@@ -36,6 +37,8 @@ use Throwable;
  */
 class VouchersMysqlGuaranteesTest extends TestCase
 {
+    use AssertsMysqlRejection;
+
     private const DATABASE = 'lapis_founder_scratch';
 
     protected function setUp(): void
@@ -115,9 +118,9 @@ class VouchersMysqlGuaranteesTest extends TestCase
         );
 
         // A recusa tem de ter deixado a tabela como estava. `assertRejected`
-        // só sabe que houve uma exceção — e uma exceção qualquer (uma coluna
-        // mal escrita, a ligação em baixo) também é uma exceção. É a contagem
-        // que prova que foi o índice único a recusar, e não outra coisa.
+        // já só aceita uma violação de restrição (e não uma coluna mal escrita
+        // ou a ligação em baixo); a contagem prova o resto — que a linha
+        // recusada não ficou para trás.
         $this->assertSame(1, (int) $this->scratch()->table('vouchers')->count());
     }
 
@@ -372,16 +375,6 @@ class VouchersMysqlGuaranteesTest extends TestCase
             'created_at' => '2026-06-01 10:00:00',
             'updated_at' => '2026-06-01 10:00:00',
         ], $overrides));
-    }
-
-    private function assertRejected(callable $write, string $what): void
-    {
-        try {
-            $write();
-            $this->fail("MySQL aceitou {$what}");
-        } catch (Throwable) {
-            // É esta a garantia.
-        }
     }
 
     private function scratch(): Connection

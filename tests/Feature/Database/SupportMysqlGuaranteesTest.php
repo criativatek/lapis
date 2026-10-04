@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\AssertsMysqlRejection;
 use Tests\TestCase;
 use Throwable;
 
@@ -40,6 +41,8 @@ use Throwable;
  */
 class SupportMysqlGuaranteesTest extends TestCase
 {
+    use AssertsMysqlRejection;
+
     private const DATABASE = 'lapis_founder_scratch';
 
     protected function setUp(): void
@@ -315,16 +318,6 @@ class SupportMysqlGuaranteesTest extends TestCase
             'created_at' => '2026-09-20 10:00:00',
             'updated_at' => '2026-09-20 10:00:00',
         ], $overrides));
-    }
-
-    private function assertRejected(callable $write, string $what): void
-    {
-        try {
-            $write();
-            $this->fail("MySQL aceitou {$what}");
-        } catch (Throwable) {
-            // É esta a garantia.
-        }
     }
 
     private function scratch(): Connection

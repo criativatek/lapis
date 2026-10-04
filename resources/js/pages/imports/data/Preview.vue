@@ -55,7 +55,8 @@ type Plan = {
  * responses, instrument_groups — are deliberately left out of both lists:
  * their counts already fold into totalNew, and any issue on them still
  * surfaces in "Pontos a rever" (allIssueRows scans every domain, shown or
- * not), so nothing is silently hidden — only kept off the summary table.
+ * not, labelled through hiddenDomainLabels), so nothing is silently hidden
+ * — only kept off the summary table.
  */
 const domainGroups: {
     title: string;
@@ -311,11 +312,27 @@ const totalNew = computed(() => {
     return Object.values(props.plan.counts).reduce((sum, c) => sum + c.new, 0);
 });
 
-const domainLabels = new Map(
-    domainGroups.flatMap((group) =>
+/**
+ * The flat child domains kept off the summary table (see domainGroups) still
+ * need a human name when one of their rows lands in "Pontos a rever": a row
+ * the validator refused has no label of its own, so without this the teacher
+ * would read a bare "—" next to the reason.
+ */
+const hiddenDomainLabels: [string, string][] = [
+    ['instrument_groups', 'Grupos de elementos de avaliação'],
+    ['item_domain_allocations', 'Alocações de itens a domínios'],
+    ['profile_version_domains', 'Pesos dos domínios nos perfis'],
+    ['profile_version_periods', 'Pesos dos períodos nos perfis'],
+    ['self_assessment_questions', 'Perguntas de autoavaliação'],
+    ['self_assessment_responses', 'Respostas de autoavaliação'],
+];
+
+const domainLabels = new Map<string, string>([
+    ...domainGroups.flatMap((group) =>
         group.domains.map((domain) => [domain.key, domain.label] as const),
     ),
-);
+    ...hiddenDomainLabels,
+]);
 
 /**
  * Each issue keeps the domain it came from: a row the backup validator

@@ -62,7 +62,13 @@ terceira:
    domínio, o `ulid` quando é um ULID válido, e a frase fixa do validador.
    A linha recusada em si nunca é guardada, e o seu texto nunca aparece.
    Antes disso, `edit()` reconstruía o plano sem elas e as recusas
-   desapareciam da pré-visualização.
+   desapareciam da pré-visualização. Desde a 0.157.0 isto vale também para as
+   linhas filhas sem identidade própria (pontuações, alocações de itens a
+   domínios, pesos de domínios e de períodos, perguntas e respostas de
+   autoavaliação, aulas canceladas): o plano já não as salta, entram na
+   contagem de inválidas do domínio e aparecem em «Pontos a rever» com o nome
+   do domínio e a frase do validador — nunca o conteúdo da linha recusada. O
+   que se escreve não muda: só as linhas `new` são gravadas.
 3. **Confirmação** (`POST /data-imports/{ulid}/confirm`) — reconstrói o
    plano **outra vez**, agora dentro de uma transação com a linha
    `data_imports` e a organização de destino bloqueadas (`lockForUpdate`), e
