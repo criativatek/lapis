@@ -814,3 +814,32 @@ describe('Horário do Professor — a semana consultada', () => {
         );
     });
 });
+
+/**
+ * 0.158.0 — o tom é o GUARDADO para este professor (`class_teachers.identity_tone`),
+ * e não um cálculo sobre as turmas visíveis: a mesma turma tem o mesmo tom aqui
+ * e em Aulas e Sumários, e acrescentar ou tirar turmas não mexe no das outras.
+ */
+describe('timetable — tom guardado por professor e turma', () => {
+    it('usa o tom guardado de cada turma', () => {
+        const wrapper = mountPage([
+            slot({ ulid: 'slot-a', school_class: { ulid: 'class-a', label: '7.º C', identity_tone: 'rose' } }),
+            slot({ ulid: 'slot-b', day_of_week: 2, school_class: { ulid: 'class-b', label: '8.º B', identity_tone: 'stone' } }),
+        ]);
+        const [first, second] = blocksOf(week(wrapper));
+
+        expect(badgeOf(first as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.rose.split(' ')));
+        expect(badgeOf(second as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.stone.split(' ')));
+    });
+
+    it('acrescentar uma turma não muda o tom das que já lá estavam', () => {
+        const alone = mountPage([slot({ school_class: { ulid: 'class-z', label: '9.º Z', identity_tone: 'amber' } })]);
+        const withAnother = mountPage([
+            slot({ ulid: 'slot-new', school_class: { ulid: 'class-a', label: '5.º A', identity_tone: 'blue' } }),
+            slot({ ulid: 'slot-z', day_of_week: 2, school_class: { ulid: 'class-z', label: '9.º Z', identity_tone: 'amber' } }),
+        ]);
+
+        expect(badgeOf(blocksOf(week(alone))[0] as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.amber.split(' ')));
+        expect(badgeOf(blocksOf(week(withAnother))[1] as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.amber.split(' ')));
+    });
+});

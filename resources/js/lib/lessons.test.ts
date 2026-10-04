@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { isQuickClosable, lessonDisplayState, lessonQuickCloseState } from '@/lib/lessons';
-import type { LessonStateSource, LessonTimingSource } from '@/lib/lessons';
+import {
+    emptySummaryReason,
+    followsPreviousWithoutBreak,
+    isQuickClosable,
+    lessonDisplayState,
+    lessonQuickCloseState,
+    lessonScope,
+    simultaneousLessons,
+    summaryOneLine,
+    summaryParagraphs,
+} from '@/lib/lessons';
+import type { LessonStateSource, LessonTimingSource, WeekLesson } from '@/lib/lessons';
 
 /**
  * 0.146.1 — uma aula com resultado registado está fechada: o cartão nunca
@@ -102,5 +112,52 @@ describe('lessonQuickCloseState', () => {
     it('uma aula com resultado registado está fechada', () => {
         expect(lessonQuickCloseState(timing({ outcome: 'teacher_absent' }), now)).toBe('closed');
         expect(isQuickClosable(timing({ outcome: 'class_external_activity' }), now)).toBe(false);
+    });
+});
+
+describe('regras de ecrã das vistas da semana (0.158.0)', () => {
+    const base = {
+        ulid: 'a',
+        starts_at: '2026-10-08T09:30:00+01:00',
+        ends_at: '2026-10-08T10:20:00+01:00',
+        school_class: { ulid: 'class-a', label: '7.º A', is_support_class: false },
+        class_group_id: null,
+        class_group_label: null,
+        status: 'prepared',
+        outcome: null,
+    } as unknown as WeekLesson;
+
+    it('diz o âmbito por extenso: turma inteira, grupo ou turma de apoio', () => {
+        expect(lessonScope(base)).toEqual({ kind: 'whole', label: 'Turma inteira' });
+        expect(lessonScope({ ...base, class_group_id: 1, class_group_label: 'T1' })).toEqual({ kind: 'group', label: 'Grupo T1' });
+        expect(lessonScope({ ...base, school_class: { ulid: 'x', label: 'Apoio', is_support_class: true } })).toEqual({ kind: 'support', label: 'Turma de apoio' });
+    });
+
+    it('reconhece aulas simultâneas no mesmo dia, e só no mesmo dia', () => {
+        const t2 = { ...base, ulid: 'b' };
+        const otherDay = { ...base, ulid: 'c', starts_at: '2026-10-09T09:30:00+01:00', ends_at: '2026-10-09T10:20:00+01:00' };
+
+        expect(simultaneousLessons(base, [base, t2, otherDay]).map((lesson) => lesson.ulid)).toEqual(['b']);
+    });
+
+    it('«tempo seguido» só para a mesma turma e o mesmo grupo, sem intervalo', () => {
+        const next = { ...base, ulid: 'b', starts_at: '2026-10-08T10:20:00+01:00', ends_at: '2026-10-08T11:10:00+01:00' };
+        const otherGroup = { ...next, class_group_id: 2 };
+
+        expect(followsPreviousWithoutBreak(next, [base, next])).toBe(true);
+        expect(followsPreviousWithoutBreak(otherGroup, [base, otherGroup])).toBe(false);
+    });
+
+    it('diz porque é que uma aula está sem sumário', () => {
+        const now = new Date('2026-10-08T11:00:00+01:00');
+
+        expect(emptySummaryReason({ ...base, outcome: 'teacher_absent' }, now)).toBe('O planeamento passou para a aula seguinte.');
+        expect(emptySummaryReason({ ...base, status: 'taught', outcome: 'taught' }, now)).toContain('já foi lecionada');
+        expect(emptySummaryReason({ ...base, starts_at: '2026-10-09T09:30:00+01:00', ends_at: '2026-10-09T10:20:00+01:00' }, now)).toBe('Escrever o sumário prepara a aula.');
+    });
+
+    it('parágrafos por linha em branco; quebras simples ficam no parágrafo', () => {
+        expect(summaryParagraphs('A\nB\n\nC')).toEqual(['A\nB', 'C']);
+        expect(summaryOneLine('A\nB\n\nC')).toBe('A · B · C');
     });
 });
