@@ -21,7 +21,7 @@
  * aparece quando o CONTENTOR tem largura para ela.
  */
 import { Link } from '@inertiajs/vue3';
-import { CircleAlert, Layers } from '@lucide/vue';
+import { CircleAlert, Layers, Presentation } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import LessonIdentity from '@/components/lessons/week/LessonIdentity.vue';
 import LessonStatePill from '@/components/lessons/week/LessonStatePill.vue';
@@ -79,6 +79,7 @@ const emit = defineEmits<{
     'update:selected': [value: string[]];
     read: [lesson: WeekLesson];
     open: [lesson: WeekLesson];
+    project: [lesson: WeekLesson];
 }>();
 
 defineSlots<{
@@ -200,8 +201,9 @@ function onDayKeydown(event: KeyboardEvent, index: number): void {
         [next]?.focus();
 }
 
+// 24px de altura no mínimo (WCAG 2.2, 2.5.8): três ligações empilhadas num bloco estreito deixam de caber na exceção do espaçamento.
 const linkClass =
-    'font-medium text-primary underline-offset-2 hover:underline focus-visible:rounded focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
+    'inline-flex min-h-6 items-center font-medium text-primary underline-offset-2 hover:underline focus-visible:rounded focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
 const mobileLinkClass =
     'inline-flex min-h-11 items-center rounded-md px-1 text-sm font-medium text-primary underline underline-offset-2 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
 const freeStripes =
@@ -398,6 +400,19 @@ const freeStripes =
                                 @click="emit('read', lesson)"
                             >
                                 Ver sumário completo
+                            </button>
+                            <button
+                                type="button"
+                                :class="[linkClass, 'gap-1']"
+                                :aria-label="`Projetar sumário — ${context(lesson)}`"
+                                data-testid="timetable-project"
+                                @click="emit('project', lesson)"
+                            >
+                                <Presentation
+                                    class="size-3.5"
+                                    aria-hidden="true"
+                                />
+                                Projetar sumário
                             </button>
                             <slot
                                 name="actions"
@@ -602,6 +617,22 @@ const freeStripes =
                                     @click="emit('read', lesson)"
                                 >
                                     Ver sumário completo
+                                </button>
+                                <button
+                                    type="button"
+                                    :class="[
+                                        mobileLinkClass,
+                                        'inline-flex items-center gap-1.5',
+                                    ]"
+                                    :aria-label="`Projetar sumário — ${context(lesson)}`"
+                                    data-testid="timetable-project"
+                                    @click="emit('project', lesson)"
+                                >
+                                    <Presentation
+                                        class="size-4"
+                                        aria-hidden="true"
+                                    />
+                                    Projetar sumário
                                 </button>
                                 <slot
                                     name="actions"
