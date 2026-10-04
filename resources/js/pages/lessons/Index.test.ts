@@ -209,7 +209,7 @@ describe('vista Semana — ler os sumários sem abrir aulas', () => {
 
         await wrapper.get('[data-testid="density-compact"]').trigger('click');
 
-        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&density=compacto' }));
+        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=semana&density=compacto' }));
         const summary = wrapper.get('[data-testid="lesson-summary"]');
         expect(summary.attributes('data-density')).toBe('compacto');
         expect(summary.classes()).toContain('line-clamp-2');
@@ -341,7 +341,7 @@ describe('filtros — turmas à vista, o resto recolhível, sempre identificados
 
         await wrapper.get('[data-testid="filter-class-class-b"]').trigger('click');
 
-        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&classes=class-b' }));
+        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=semana&classes=class-b' }));
         expect(inertia.router.get).not.toHaveBeenCalled();
         expect(wrapper.findAll('[data-testid="lesson-card"]').map((card) => card.attributes('data-lesson'))).toEqual(['lesson-b']);
     });
@@ -357,7 +357,7 @@ describe('filtros — turmas à vista, o resto recolhível, sempre identificados
 
         await active.get('button[aria-label="Remover o filtro Lecionada"]').trigger('click');
 
-        expect(inertia.router.replace).toHaveBeenLastCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05' }));
+        expect(inertia.router.replace).toHaveBeenLastCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=semana' }));
     });
 
     it('«Limpar filtros» tira todos', async () => {
@@ -365,7 +365,7 @@ describe('filtros — turmas à vista, o resto recolhível, sempre identificados
 
         await wrapper.get('[data-testid="clear-filters"]').trigger('click');
 
-        expect(inertia.router.replace).toHaveBeenLastCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05' }));
+        expect(inertia.router.replace).toHaveBeenLastCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=semana' }));
     });
 });
 
@@ -499,7 +499,7 @@ describe('vista Horário — horas reais, tempos livres e simultâneas', () => {
 
         await wrapper.get('[data-testid="timetable-grid"] [data-testid="timetable-read"]').trigger('click');
 
-        expect(inertia.router.push).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05' }));
+        expect(inertia.router.push).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=semana' }));
         await nextTick();
         expect(wrapper.find('#aula-a').exists()).toBe(true);
         expect(wrapper.get('[data-testid="back-to-timetable"]').text()).toContain('Voltar ao horário');
@@ -660,7 +660,7 @@ describe('navegação entre semanas', () => {
         await wrapper.get('button[aria-label="Semana anterior"]').trigger('click');
 
         expect(inertia.router.get).toHaveBeenCalledWith(
-            '/lessons?week=2026-09-28&states=prepared',
+            '/lessons?week=2026-09-28&view=semana&states=prepared',
             {},
             expect.objectContaining({ preserveState: true }),
         );
@@ -769,5 +769,24 @@ describe('estado, fecho rápido e lote (inalterados)', () => {
         await button(wrapper, 'Horário')!.trigger('click');
 
         expect(wrapper.text()).not.toMatch(/Preparado|Lecionado/);
+    });
+});
+
+describe('a vista vai sempre no URL', () => {
+    it('um URL sem vista (entrada nova) aplica a última vista escolhida neste browser', () => {
+        window.localStorage.setItem('lapis.lessons.view', 'horario');
+
+        mountPage([makeLesson()], { url: '/lessons?week=2026-10-05' });
+
+        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=horario' }));
+    });
+
+    it('um URL que diz a vista — também a Semana — manda sobre a vista guardada', () => {
+        window.localStorage.setItem('lapis.lessons.view', 'horario');
+
+        const wrapper = mountPage([makeLesson()], { url: '/lessons?week=2026-10-05&view=semana' });
+
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+        expect(wrapper.find('[data-testid="lesson-card"]').exists()).toBe(true);
     });
 });

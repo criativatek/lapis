@@ -60,6 +60,14 @@ const props = defineProps<{
 }>();
 
 const open = ref(false);
+
+/** Abrir sem o botão — p. ex. a partir do menu «⋯» no telemóvel. */
+defineExpose({
+    show: () => {
+        open.value = true;
+    },
+});
+
 const classUlid = ref(props.classes[0]?.ulid ?? '');
 const classGroupId = ref<string>('');
 const insertAt = ref(props.defaultDate);

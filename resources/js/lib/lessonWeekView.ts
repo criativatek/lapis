@@ -100,18 +100,18 @@ export function parseWeekViewState(url: string): WeekViewState {
 }
 
 /**
- * Os parâmetros de URL deste estado, sem os valores por omissão — o URL de
- * quem nunca mexeu em nada continua a ser só `/lessons?week=…`.
+ * Os parâmetros de URL deste estado, sem os filtros por omissão.
+ *
+ * A VISTA VAI SEMPRE, também a Semana: um URL sem `view` é uma entrada nova
+ * (o menu lateral, a semana de uma aula), e é só aí que a última vista
+ * escolhida neste browser se aplica. Se a Semana não dissesse o seu nome, voltar
+ * a ela pelo histórico abria outra vista.
  */
 export function weekViewQuery(
     state: WeekViewState,
     week: string,
 ): Record<string, string> {
-    const query: Record<string, string> = { week };
-
-    if (state.view !== 'semana') {
-        query.view = state.view;
-    }
+    const query: Record<string, string> = { week, view: state.view };
 
     if (state.classes.length > 0) {
         query.classes = state.classes.join(',');

@@ -28,9 +28,9 @@ function lesson(overrides: Partial<WeekLesson> = {}): WeekLesson {
 const now = new Date('2026-10-08T11:00:00+01:00');
 
 describe('o estado de leitura vive no URL', () => {
-    it('sem nada no URL, é a vista Semana com sumários completos e sem filtros', () => {
+    it('sem nada no URL, é a vista Semana com sumários completos e sem filtros; a vista vai sempre no URL', () => {
         expect(parseWeekViewState('/lessons?week=2026-10-05')).toEqual(DEFAULT_VIEW_STATE);
-        expect(weekViewUrl(DEFAULT_VIEW_STATE, '2026-10-05')).toBe('/lessons?week=2026-10-05');
+        expect(weekViewUrl(DEFAULT_VIEW_STATE, '2026-10-05')).toBe('/lessons?week=2026-10-05&view=semana');
     });
 
     it('ida e volta sem perder nada', () => {
@@ -46,7 +46,7 @@ describe('o estado de leitura vive no URL', () => {
     });
 
     it('os parâmetros da vista por turma só vão para o URL nessa vista', () => {
-        expect(weekViewQuery({ ...DEFAULT_VIEW_STATE, classUlid: 'c1', range: '4' }, '2026-10-05')).toEqual({ week: '2026-10-05' });
+        expect(weekViewQuery({ ...DEFAULT_VIEW_STATE, classUlid: 'c1', range: '4' }, '2026-10-05')).toEqual({ week: '2026-10-05', view: 'semana' });
     });
 });
 

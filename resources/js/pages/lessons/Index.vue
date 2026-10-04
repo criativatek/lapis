@@ -17,6 +17,8 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
     BookOpen,
     CalendarDays,
+    CalendarPlus,
+    CheckCheck,
     CheckSquare,
     ChevronLeft,
     ChevronRight,
@@ -891,6 +893,7 @@ function setSelected(ulid: string, value: boolean): void {
 }
 
 const batchDialog = ref<InstanceType<typeof BatchTaughtDialog> | null>(null);
+const insertDialog = ref<InstanceType<typeof InsertLessonDialog> | null>(null);
 
 // Um só diálogo de resultado para a página inteira, apontado à aula escolhida.
 const outcomeDialogOpen = ref(false);
@@ -984,8 +987,10 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
     <Head title="Aulas e Sumários" />
     <main class="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6">
         <!-- Cabeçalho compacto -->
-        <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-            <div class="min-w-0">
+        <div
+            class="flex items-start justify-between gap-x-3 gap-y-2 sm:flex-wrap sm:gap-x-6"
+        >
+            <div class="min-w-0 flex-1">
                 <h1
                     class="text-xl leading-7 font-semibold tracking-tight sm:text-[22px]"
                 >
@@ -999,18 +1004,22 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     >
                 </p>
             </div>
-            <div v-if="academicYear" class="flex flex-wrap items-center gap-2">
+            <div
+                v-if="academicYear"
+                class="flex shrink-0 flex-wrap items-center gap-2"
+            >
                 <InsertLessonDialog
                     v-if="insertableClasses.length > 0"
+                    ref="insertDialog"
                     :classes="insertableClasses"
                     :default-date="week.start"
-                    trigger-class="min-h-11 sm:min-h-9"
+                    trigger-class="hidden min-h-9 sm:inline-flex"
                 />
                 <Button
                     type="button"
                     :variant="selectionMode ? 'secondary' : 'outline'"
                     size="sm"
-                    class="min-h-11 sm:min-h-9"
+                    class="hidden min-h-9 sm:inline-flex"
                     :disabled="selectableLessons.length === 0"
                     @click="selectionMode = !selectionMode"
                 >
@@ -1024,7 +1033,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     :week-start="week.start"
                     :today="today"
                     :selected="selected"
-                    trigger-class="min-h-11 sm:min-h-9"
+                    trigger-class="hidden min-h-9 sm:inline-flex"
                 />
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
@@ -1039,6 +1048,34 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" class="min-w-[16rem]">
+                        <!-- No telemóvel, as ações que no ecrã largo têm botão próprio. -->
+                        <DropdownMenuItem
+                            v-if="insertableClasses.length > 0"
+                            class="min-h-11 sm:hidden"
+                            @select="insertDialog?.show()"
+                        >
+                            <CalendarPlus class="size-4" aria-hidden="true" />
+                            Inserir aula
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            class="min-h-11 sm:hidden"
+                            :disabled="selectableLessons.length === 0"
+                            @select="selectionMode = !selectionMode"
+                        >
+                            <CheckSquare class="size-4" aria-hidden="true" />
+                            {{
+                                selectionMode
+                                    ? 'Terminar seleção'
+                                    : 'Selecionar aulas'
+                            }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            class="min-h-11 sm:hidden"
+                            @select="batchDialog?.show()"
+                        >
+                            <CheckCheck class="size-4" aria-hidden="true" />
+                            Marcar lecionadas
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                             class="min-h-11 sm:min-h-9"
                             :disabled="materializeForm.processing"
@@ -1142,7 +1179,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
 
             <div
                 v-if="academicYear && view !== 'horario'"
-                class="grid w-full grid-cols-2 gap-0.5 rounded-lg border bg-card p-0.5 sm:ml-auto sm:inline-grid sm:w-auto"
+                class="hidden grid-cols-2 gap-0.5 rounded-lg border bg-card p-0.5 sm:ml-auto sm:inline-grid"
                 role="group"
                 aria-label="Sumários"
             >
@@ -1210,7 +1247,46 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                         : 'aulas desta semana'
                 "
                 @update="updateFilters"
-            />
+            >
+                <template #actions>
+                    <div
+                        v-if="view !== 'horario'"
+                        class="grid grid-cols-2 gap-0.5 rounded-lg border bg-card p-0.5 sm:hidden"
+                        role="group"
+                        aria-label="Sumários"
+                    >
+                        <button
+                            type="button"
+                            :aria-pressed="state.density === 'completo'"
+                            aria-label="Texto completo"
+                            :class="[
+                                'inline-flex min-h-11 items-center justify-center rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                                state.density === 'completo'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent',
+                            ]"
+                            data-testid="density-full-mobile"
+                            @click="setDensity('completo')"
+                        >
+                            Completo
+                        </button>
+                        <button
+                            type="button"
+                            :aria-pressed="state.density === 'compacto'"
+                            :class="[
+                                'inline-flex min-h-11 items-center justify-center rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                                state.density === 'compacto'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent',
+                            ]"
+                            data-testid="density-compact-mobile"
+                            @click="setDensity('compacto')"
+                        >
+                            Compacto
+                        </button>
+                    </div>
+                </template>
+            </LessonWeekFilters>
             <p
                 v-if="view !== 'turma' && lessons.length > 0"
                 class="mt-2 text-sm text-muted-foreground"

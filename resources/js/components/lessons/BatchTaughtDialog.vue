@@ -75,7 +75,12 @@ function openForSelection(): void {
     open.value = true;
 }
 
-defineExpose({ openForSelection });
+/** Abrir no modo normal sem o botão — p. ex. a partir do menu «⋯» no telemóvel. */
+function show(): void {
+    open.value = true;
+}
+
+defineExpose({ openForSelection, show });
 
 const form = useForm({
     mode: 'today' as Mode,

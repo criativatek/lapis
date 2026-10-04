@@ -137,16 +137,18 @@ const chip =
     >
         <div class="flex flex-wrap items-center gap-2">
             <template v-if="showClasses && classes.length > 0">
-                <span
-                    id="lesson-filter-classes"
-                    class="text-[13px] font-semibold text-muted-foreground"
-                    >Turmas</span
-                >
+                <!-- A etiqueta vive dentro do grupo, para correr na mesma linha
+                     das primeiras turmas em vez de gastar uma linha sozinha. -->
                 <div
                     role="group"
                     aria-labelledby="lesson-filter-classes"
-                    class="flex flex-wrap gap-1.5"
+                    class="flex flex-wrap items-center gap-1.5"
                 >
+                    <span
+                        id="lesson-filter-classes"
+                        class="mr-1 text-[13px] font-semibold text-muted-foreground"
+                        >Turmas</span
+                    >
                     <button
                         v-for="schoolClass in classes"
                         :key="schoolClass.ulid"
@@ -184,6 +186,7 @@ const chip =
                     </button>
                 </div>
             </template>
+            <slot name="actions" />
             <Button
                 type="button"
                 variant="outline"
