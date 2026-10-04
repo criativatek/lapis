@@ -186,6 +186,11 @@ const chip =
                     </button>
                 </div>
             </template>
+            <span
+                v-else
+                class="text-[13px] font-semibold text-muted-foreground"
+                >Filtrar as aulas por estado e sumário</span
+            >
             <slot name="actions" />
             <Button
                 type="button"
