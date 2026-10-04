@@ -36,6 +36,9 @@ class LessonSummaryRequest extends FormRequest
             'private_notes' => ['nullable', 'string', 'max:16000'],
             'resources' => ['nullable', 'string', 'max:16000'],
             'homework' => ['nullable', 'string', 'max:16000'],
+            // A versão do sumário que a página viu ao abrir: sem ela, uma
+            // página antiga gravava por cima de um texto mais novo sem aviso.
+            'summary_version' => ['required', 'integer', 'min:0'],
             'absent' => ['sometimes', 'array', 'max:200'],
             'absent.*' => ['string', 'ulid', 'distinct'],
         ];

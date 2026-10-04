@@ -45,11 +45,17 @@ class ClearLessonSummary
 {
     public function __construct(protected AuditLog $audit) {}
 
-    public function execute(Lesson $lesson, User $actor): void
+    public function execute(Lesson $lesson, User $actor, ?int $expectedVersion = null): void
     {
-        DB::transaction(function () use ($actor, $lesson): void {
+        DB::transaction(function () use ($actor, $expectedVersion, $lesson): void {
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
+
+            // Mesmo bloqueio otimista de SaveLessonSummary: limpar um texto que
+            // entretanto mudou noutra janela apagaria o que o professor nunca viu.
+            if ($expectedVersion !== null && $expectedVersion !== $locked->summary_version) {
+                throw SaveLessonSummary::staleVersion();
+            }
 
             if ($locked->isTaught()) {
                 throw ValidationException::withMessages([

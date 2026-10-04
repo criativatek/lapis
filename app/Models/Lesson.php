@@ -32,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $outcome_recorded_by
  * @property Carbon|null $attendance_recorded_at
  * @property int|null $attendance_recorded_by
+ * @property int $summary_version sobe em TODA a escrita do sumário (eventos de LessonSummary); vive na aula porque a linha do sumário é apagada e recriada
  * @property int|null $created_by nullable desde 2026-11-10 (importação de backup — ver 2026_11_10_000500_let_imported_lessons_keep_an_unresolved_author); nunca `null` numa aula criada pela própria aplicação
  * @property-read int|null $absent_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  * @property-read int|null $plan_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
@@ -61,6 +62,7 @@ class Lesson extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'lesson_number' => 'integer',
+            'summary_version' => 'integer',
             'status' => LessonStatus::class,
             'outcome' => LessonOutcome::class,
             'origin' => LessonOrigin::class,

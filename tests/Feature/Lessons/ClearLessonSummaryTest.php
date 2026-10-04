@@ -32,11 +32,11 @@ class ClearLessonSummaryTest extends TestCase
         $lesson = $this->makeLesson();
 
         $this->asTeacher()
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Primeira versão.'])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Primeira versão.', 'summary_version' => $this->summaryVersion($lesson)])
             ->assertRedirect();
 
         $this->asTeacher()
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Versão corrigida.'])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Versão corrigida.', 'summary_version' => $this->summaryVersion($lesson)])
             ->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
@@ -60,7 +60,7 @@ class ClearLessonSummaryTest extends TestCase
             fn () => $lesson->summary()->create(['content' => 'Sumário errado.']),
         );
 
-        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary")->assertRedirect();
+        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])->assertRedirect();
 
         $this->assertDatabaseHas('lessons', ['id' => $lesson->id]);
         $this->assertDatabaseHas('recurring_lesson_slots', ['id' => $slot->id]);
@@ -86,7 +86,7 @@ class ClearLessonSummaryTest extends TestCase
             'homework' => 'Exercícios 1 a 5.',
         ]));
 
-        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary")->assertRedirect();
+        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
             $summary = $lesson->refresh()->summary;
@@ -111,7 +111,7 @@ class ClearLessonSummaryTest extends TestCase
 
         $this->asTeacher()
             ->from('/lessons')
-            ->delete("/lessons/{$lesson->ulid}/summary")
+            ->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])
             ->assertSessionHasErrors('summary');
 
         $this->inTenant($this->organization, fn () => $this->assertSame(
@@ -142,7 +142,7 @@ class ClearLessonSummaryTest extends TestCase
             fn () => $lesson->summary()->create(['content' => 'Sumário órfão.']),
         );
 
-        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary")->assertSessionHasNoErrors();
+        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])->assertSessionHasNoErrors();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
             $lesson->refresh();
@@ -163,7 +163,7 @@ class ClearLessonSummaryTest extends TestCase
         );
 
         $this->asTeacher()
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Redação revista.'])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Redação revista.', 'summary_version' => $this->summaryVersion($lesson)])
             ->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
@@ -179,7 +179,7 @@ class ClearLessonSummaryTest extends TestCase
     {
         $lesson = $this->makeLesson();
 
-        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary")->assertRedirect();
+        $this->asTeacher()->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])->assertRedirect();
 
         $this->inTenant($this->organization, fn () => $this->assertSame(
             LessonStatus::Preparation,
@@ -200,7 +200,7 @@ class ClearLessonSummaryTest extends TestCase
 
         $this->actingAs($other)
             ->withSession(['organization_id' => $this->organization->id])
-            ->delete("/lessons/{$lesson->ulid}/summary")
+            ->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])
             ->assertForbidden();
 
         $this->inTenant($this->organization, fn () => $this->assertSame(
@@ -223,7 +223,7 @@ class ClearLessonSummaryTest extends TestCase
                 'organization_id' => $this->organization->id,
                 'impersonator_id' => 999,
             ])
-            ->delete("/lessons/{$lesson->ulid}/summary")
+            ->delete("/lessons/{$lesson->ulid}/summary", ['summary_version' => $this->summaryVersion($lesson)])
             ->assertForbidden();
 
         $this->inTenant($this->organization, fn () => $this->assertSame(

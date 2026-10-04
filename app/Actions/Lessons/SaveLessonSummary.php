@@ -8,6 +8,7 @@ use App\Models\LessonSummary;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SaveLessonSummary
 {
@@ -27,11 +28,24 @@ class SaveLessonSummary
      * @param  array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
      * @param  list<string>|null  $absentStudentUlids  o rascunho de faltas, gravado na MESMA transação do sumário quando vem — nunca quando a assiduidade já está consolidada, ver SaveLessonAttendanceDraft::apply()
      */
-    public function execute(Lesson $lesson, array $details, User $actor, ?array $absentStudentUlids = null): LessonSummary
-    {
-        return DB::transaction(function () use ($absentStudentUlids, $actor, $details, $lesson): LessonSummary {
+    public function execute(
+        Lesson $lesson,
+        array $details,
+        User $actor,
+        ?array $absentStudentUlids = null,
+        ?int $expectedVersion = null,
+    ): LessonSummary {
+        return DB::transaction(function () use ($absentStudentUlids, $actor, $details, $expectedVersion, $lesson): LessonSummary {
             /** @var Lesson $lockedLesson */
             $lockedLesson = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
+
+            // Bloqueio otimista: a versão que o ecrã viu tem de ser a que está
+            // gravada AGORA, com a aula já trancada e antes de qualquer
+            // escrita — incluindo o rascunho de faltas. Os chamadores
+            // internos (sequências, importação) não passam versão.
+            if ($expectedVersion !== null && $expectedVersion !== $lockedLesson->summary_version) {
+                throw self::staleVersion();
+            }
 
             // Consolidada, a lista vem só como eco do ecrã: as correções têm rota
             // própria, e gravar notas ou recursos não pode falhar por causa dela.
@@ -102,5 +116,15 @@ class SaveLessonSummary
 
             return $summary;
         });
+    }
+
+    /**
+     * A mesma recusa para quem grava e para quem limpa (ClearLessonSummary).
+     */
+    public static function staleVersion(): ValidationException
+    {
+        return ValidationException::withMessages([
+            'summary_version' => __('O sumário desta aula foi alterado noutra janela depois de o abrires. O teu texto não foi gravado.'),
+        ]);
     }
 }
