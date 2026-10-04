@@ -26,6 +26,7 @@ import {
     Link2,
     Pencil,
     Plus,
+    Presentation,
 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { SpecialLessonOutcome } from '@/components/lessons/LessonOutcomeDialog.vue';
@@ -84,6 +85,7 @@ const props = withDefaults(
 const emit = defineEmits<{
     edit: [];
     open: [];
+    project: [];
     'toggle-expanded': [];
     'update:selected': [value: boolean];
     outcome: [outcome: SpecialLessonOutcome];
@@ -345,7 +347,7 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                         <p
                             v-for="(paragraph, index) in paragraphs"
                             :key="index"
-                            class="break-words whitespace-pre-line"
+                            class="min-w-0 whitespace-pre-line wrap-anywhere"
                         >
                             {{ paragraph }}
                         </p>
@@ -444,9 +446,25 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                         </Link>
                     </Button>
                     <Button
+                        type="button"
+                        variant="ghost"
+                        class="min-h-11 flex-[1_1_calc(50%-0.5rem)] sm:min-h-9 sm:flex-none"
+                        :data-testid="`project-${lesson.ulid}`"
+                        :aria-label="`Projetar sumário — ${context}`"
+                        @click="emit('project')"
+                    >
+                        <Presentation class="size-4" aria-hidden="true" />
+                        Projetar sumário
+                    </Button>
+                    <Button
                         as-child
                         variant="ghost"
-                        class="min-h-11 flex-[1_1_100%] sm:min-h-9 sm:flex-none"
+                        :class="[
+                            'min-h-11 sm:min-h-9 sm:flex-none',
+                            attendanceApplies
+                                ? 'flex-[1_1_calc(50%-0.5rem)]'
+                                : 'flex-[1_1_100%]',
+                        ]"
                     >
                         <Link
                             :href="`/lessons/${lesson.ulid}`"

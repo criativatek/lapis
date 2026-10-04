@@ -51,6 +51,7 @@ import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue'
 import LessonClassView from '@/components/lessons/week/LessonClassView.vue';
 import LessonDayNav from '@/components/lessons/week/LessonDayNav.vue';
 import type { DayNavItem } from '@/components/lessons/week/LessonDayNav.vue';
+import LessonProjection from '@/components/lessons/week/LessonProjection.vue';
 import LessonSummaryEditor from '@/components/lessons/week/LessonSummaryEditor.vue';
 import LessonWeekCard from '@/components/lessons/week/LessonWeekCard.vue';
 import LessonWeekFilters from '@/components/lessons/week/LessonWeekFilters.vue';
@@ -78,6 +79,7 @@ import {
     weekdayAbbr,
     weekRangeLabel,
 } from '@/lib/lessonDates';
+import { projectionFor } from '@/lib/lessonProjection';
 import {
     isQuickClosable,
     isTaughtLesson,
@@ -596,6 +598,58 @@ const editingContext = computed(() =>
         ? `${editingLesson.value.context_label} (${dayHeading(lessonDate(editingLesson.value))}, ${lessonTimeRange(editingLesson.value)})`
         : null,
 );
+
+// ---------------------------------------------- projetar o sumário na sala
+//
+// Abrir e fechar a projeção não é navegação: não passa pela guarda, não grava,
+// não fecha o editor e não toca no URL. Mostra o texto que está no editor
+// (marcado «Por guardar») ou o guardado, e nada mais.
+
+const projected = ref<string | null>(null);
+const projectionLesson = computed<WeekLesson | null>(() => {
+    if (projected.value === null) {
+        return null;
+    }
+
+    return (
+        findLesson(projected.value) ??
+        props.classView?.previous
+            .map((entry) => entry.lesson)
+            .find((lesson) => lesson?.ulid === projected.value) ??
+        null
+    );
+});
+const projection = computed(() => {
+    const lesson = projectionLesson.value;
+
+    if (lesson === null) {
+        return null;
+    }
+
+    return projectionFor(
+        lesson,
+        editor.value?.ulid === lesson.ulid
+            ? { text: editor.value.draft, dirty: isDirty() }
+            : null,
+    );
+});
+
+function openProjection(lesson: WeekLesson): void {
+    projected.value = lesson.ulid;
+}
+
+function setProjectionOpen(value: boolean): void {
+    if (!value) {
+        projected.value = null;
+    }
+}
+
+// Se a aula projetada deixa de existir (outra semana, outro filtro), fecha.
+watch(projectionLesson, (lesson) => {
+    if (lesson === null) {
+        projected.value = null;
+    }
+});
 
 function focusEditor(): void {
     nextTick(() => editorComponent.value?.focus());
@@ -1369,6 +1423,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     :density="state.density"
                     @update="updateClassView"
                     @open="rememberReturn"
+                    @project="openProjection"
                 >
                     <template #card="{ lesson, dayLessons }">
                         <LessonWeekCard
@@ -1386,6 +1441,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                             :highlighted="highlighted === lesson.ulid"
                             @edit="startEdit(lesson)"
                             @open="rememberReturn(lesson)"
+                            @project="openProjection(lesson)"
                             @toggle-expanded="toggleExpanded(lesson.ulid)"
                             @update:selected="
                                 (value) => setSelected(lesson.ulid, value)
@@ -1405,6 +1461,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     :conflict="editor.conflict"
                                     @save="saveSummary"
                                     @cancel="cancelEdit"
+                                    @project="openProjection(lesson)"
                                     @combine="combineTexts"
                                     @keep-mine="keepMine"
                                     @use-stored="useStored"
@@ -1445,6 +1502,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 @update:selected="selected = $event"
                 @read="readInWeek"
                 @open="rememberReturn"
+                @project="openProjection"
             >
                 <template #actions="{ lesson, time, variant }">
                     <LessonQuickActions
@@ -1520,6 +1578,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     :highlighted="highlighted === lesson.ulid"
                                     @edit="startEdit(lesson)"
                                     @open="rememberReturn(lesson)"
+                                    @project="openProjection(lesson)"
                                     @toggle-expanded="
                                         toggleExpanded(lesson.ulid)
                                     "
@@ -1548,6 +1607,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                             :conflict="editor.conflict"
                                             @save="saveSummary"
                                             @cancel="cancelEdit"
+                                            @project="openProjection(lesson)"
                                             @combine="combineTexts"
                                             @keep-mine="keepMine"
                                             @use-stored="useStored"
@@ -1605,6 +1665,12 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     ? `${outcomeLesson.context_label} · ${lessonTimeRange(outcomeLesson)}`
                     : null
             "
+        />
+
+        <LessonProjection
+            :open="projection !== null"
+            :projection="projection"
+            @update:open="setProjectionOpen"
         />
 
         <UnsavedChangesDialog

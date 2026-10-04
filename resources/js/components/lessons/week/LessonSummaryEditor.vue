@@ -19,6 +19,7 @@ import {
     History,
     Info,
     Plus,
+    Presentation,
     Save,
 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
@@ -48,6 +49,7 @@ const emit = defineEmits<{
     'update:modelValue': [value: string];
     save: [];
     cancel: [];
+    project: [];
     combine: [];
     'keep-mine': [];
     'use-stored': [];
@@ -292,6 +294,18 @@ defineExpose({
             >
                 Cancelar
             </Button>
+            <Button
+                type="button"
+                variant="outline"
+                class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
+                :disabled="saving"
+                aria-label="Projetar sumário"
+                data-testid="summary-project"
+                @click="emit('project')"
+            >
+                <Presentation class="size-4" aria-hidden="true" />
+                Projetar
+            </Button>
             <span
                 :id="`${fieldId}-status`"
                 aria-live="polite"
@@ -320,6 +334,7 @@ defineExpose({
         <p :id="`${fieldId}-help`" class="text-xs text-muted-foreground">
             Ctrl+Enter guarda · Esc cancela. Guarda só o sumário: as notas do
             professor, os recursos e o TPC ficam como estão, na página da aula.
+            «Projetar» mostra o texto como está, sem o guardar.
         </p>
     </div>
 </template>

@@ -15,6 +15,13 @@ const longDay = new Intl.DateTimeFormat('pt-PT', {
     month: 'long',
     timeZone: 'UTC',
 });
+const fullDay = new Intl.DateTimeFormat('pt-PT', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+});
 /**
  * As abreviaturas da escola («seg», «ter»…), escritas aqui e não pedidas ao
  * Intl: o «short» do pt-PT varia entre browsers («seg.», «segunda»), e uma
@@ -30,6 +37,11 @@ const dayMonth = new Intl.DateTimeFormat('pt-PT', {
 /** «Segunda-feira, 28 de setembro». */
 export function dayHeading(date: string): string {
     return capitalizeFirst(longDay.format(anchor(date)));
+}
+
+/** «Quinta-feira, 1 de outubro de 2026» — a data por extenso, com ano. */
+export function fullDateLabel(date: string): string {
+    return capitalizeFirst(fullDay.format(anchor(date)));
 }
 
 /** «seg» */

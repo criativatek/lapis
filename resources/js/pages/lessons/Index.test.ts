@@ -5,7 +5,7 @@
  * guarda de alterações por guardar. Mais o fecho rápido e o lote, que vêm de
  * antes e não podem regredir.
  */
-import { mount } from '@vue/test-utils';
+import { DOMWrapper, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
@@ -152,7 +152,7 @@ const teacherClasses: TeacherClass[] = [
 
 function mountPage(
     lessons: WeekLesson[] = [makeLesson()],
-    options: { url?: string; classView?: ClassViewData | null; classes?: TeacherClass[] } = {},
+    options: { url?: string; classView?: ClassViewData | null; classes?: TeacherClass[]; attach?: boolean } = {},
 ) {
     inertia.page.url = options.url ?? '/lessons?week=2026-10-05';
 
@@ -168,7 +168,8 @@ function mountPage(
             classes: options.classes ?? teacherClasses,
             classView: options.classView ?? null,
         },
-        global: { stubs: { EmptyState: true, teleport: true } },
+        global: { stubs: { EmptyState: true, teleport: !options.attach } },
+        attachTo: options.attach ? document.body : undefined,
     });
 }
 
@@ -788,5 +789,176 @@ describe('a vista vai sempre no URL', () => {
 
         expect(inertia.router.replace).not.toHaveBeenCalled();
         expect(wrapper.find('[data-testid="lesson-card"]').exists()).toBe(true);
+    });
+});
+
+describe('projetar o sumário — só de leitura, na sala', () => {
+    // A projeção teleporta para o <body>: aqui o portal é real (sem o stub) e procura-se lá.
+    const projection = () => new DOMWrapper(document.body).find('[data-testid="lesson-projection"]');
+    // `router.on` só regista um ouvinte ao montar; tudo o resto seria uma visita ou um pedido.
+    const networkCalls = () =>
+        Object.entries(inertia.router)
+            .filter(([name]) => name !== 'on')
+            .reduce((total, [, mock]) => total + mock.mock.calls.length, 0);
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('«Projetar sumário» abre a projeção com o conteúdo certo, sem pedidos nem mudar o URL', async () => {
+        const wrapper = mountPage([makeLesson()], { attach: true });
+        const url = inertia.page.url;
+        const before = networkCalls();
+
+        await wrapper.get('[data-testid="project-lesson-a"]').trigger('click');
+        await nextTick();
+
+        const dialog = projection();
+        expect(dialog.exists()).toBe(true);
+        expect(dialog.get('[data-testid="projection-context"]').text()).toContain('7.º A · Matemática');
+        expect(dialog.get('[data-testid="projection-date"]').text()).toBe('Quinta-feira, 8 de outubro de 2026');
+        expect(dialog.get('[data-testid="projection-number"]').text()).toBe('Lição 12');
+        expect(dialog.get('[data-testid="projection-summary"]').findAll('p')).toHaveLength(2);
+        expect(dialog.find('[data-testid="projection-unsaved"]').exists()).toBe(false);
+        expect(inertia.page.url).toBe(url);
+        expect(networkCalls()).toBe(before);
+
+        await dialog.get('[data-testid="projection-larger"]').trigger('click');
+        expect(networkCalls()).toBe(before);
+        wrapper.unmount();
+    });
+
+    it('fechar devolve o foco ao botão que abriu, sem pedidos', async () => {
+        const wrapper = mountPage([makeLesson()], { attach: true });
+        const trigger = wrapper.get('[data-testid="project-lesson-a"]');
+        (trigger.element as HTMLElement).focus();
+
+        await trigger.trigger('click');
+        await nextTick();
+        await nextTick();
+        await projection().get('[data-testid="projection-close"]').trigger('click');
+        await nextTick();
+        await nextTick();
+
+        expect(projection().exists()).toBe(false);
+        expect(document.activeElement).toBe(trigger.element);
+        expect(networkCalls()).toBe(0);
+        wrapper.unmount();
+    });
+
+    it('com o editor aberto e texto alterado mostra o rascunho «Por guardar», sem gravar nada', async () => {
+        const draft = 'Rascunho novo.\n\nSegundo bloco.';
+        const wrapper = mountPage([makeLesson()], { attach: true });
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await nextTick();
+        await wrapper.get('[data-testid="summary-editor"] textarea').setValue(draft);
+
+        await wrapper.get('[data-testid="summary-project"]').trigger('click');
+        await nextTick();
+
+        const dialog = projection();
+        expect(dialog.get('[data-testid="projection-summary"]').text()).toContain('Rascunho novo.');
+        expect(dialog.get('[data-testid="projection-unsaved"]').text()).toContain('Por guardar');
+
+        await dialog.get('[data-testid="projection-close"]').trigger('click');
+        await nextTick();
+
+        expect(projection().exists()).toBe(false);
+        expect((wrapper.get('[data-testid="summary-editor"] textarea').element as HTMLTextAreaElement).value).toBe(draft);
+        expect(wrapper.get('[data-testid="summary-editor-status"]').text()).toContain('Alterações por guardar');
+        expect(networkCalls()).toBe(0);
+        wrapper.unmount();
+    });
+
+    it('com o editor aberto mas sem alterações projeta o texto guardado', async () => {
+        const wrapper = mountPage([makeLesson()], { attach: true });
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await nextTick();
+
+        await wrapper.get('[data-testid="summary-project"]').trigger('click');
+        await nextTick();
+
+        expect(projection().find('[data-testid="projection-unsaved"]').exists()).toBe(false);
+        expect(projection().get('[data-testid="projection-summary"]').findAll('p')).toHaveLength(2);
+        wrapper.unmount();
+    });
+
+    it('no Horário abre a projeção e a vista continua o Horário', async () => {
+        const wrapper = mountPage([makeLesson()], { url: '/lessons?week=2026-10-05&view=horario', attach: true });
+
+        await wrapper.get('[data-testid="timetable-project"]').trigger('click');
+        await nextTick();
+
+        expect(projection().exists()).toBe(true);
+        expect(projection().get('[data-testid="projection-number"]').text()).toBe('Lição 12');
+        expect(inertia.page.url).toContain('view=horario');
+        expect(networkCalls()).toBe(0);
+        wrapper.unmount();
+    });
+
+    it('no bloco «Últimos sumários» da vista Por turma projeta essa aula anterior', async () => {
+        const wrapper = mountPage([], {
+            url: '/lessons?week=2026-10-05&view=turma&class=class-b',
+            attach: true,
+            classView: {
+                class: { ulid: 'class-b', label: '8.º B', subject: 'Matemática', is_support_class: false, identity_tone: 'emerald', groups: teacherClasses[1].groups },
+                group: 'todos',
+                range: { key: '1', start: '2026-10-05', end: '2026-10-11', clamped: false },
+                lessons: [],
+                previous: [
+                    {
+                        group_id: 1,
+                        group_label: 'T1',
+                        lesson: makeLesson({
+                            ulid: 'prev-t1',
+                            summary: 'Anterior do T1.',
+                            lesson_number: 11,
+                            school_class: { ulid: 'class-b', label: '8.º B', is_support_class: false },
+                            class_group_id: 1,
+                            class_group_label: 'T1',
+                            starts_at: '2026-10-01T09:30:00+01:00',
+                            ends_at: '2026-10-01T10:20:00+01:00',
+                        }),
+                    },
+                ],
+            },
+        });
+
+        await wrapper.get('[data-testid="previous-project-prev-t1"]').trigger('click');
+        await nextTick();
+
+        const dialog = projection();
+        expect(dialog.get('[data-testid="projection-context"]').text()).toContain('8.º B · Matemática · Grupo T1');
+        expect(dialog.get('[data-testid="projection-number"]').text()).toBe('Lição 11');
+        expect(dialog.get('[data-testid="projection-date"]').text()).toBe('Quinta-feira, 1 de outubro de 2026');
+        expect(dialog.get('[data-testid="projection-summary"]').text()).toBe('Anterior do T1.');
+        wrapper.unmount();
+    });
+
+    it('uma aula sem número não mostra «Lição» e uma sem sumário diz que ainda não tem', async () => {
+        const wrapper = mountPage([makeLesson({ lesson_number: null, summary: null, has_summary: false })], { attach: true });
+
+        await wrapper.get('[data-testid="project-lesson-a"]').trigger('click');
+        await nextTick();
+
+        expect(projection().exists()).toBe(true);
+        expect(projection().text()).not.toContain('Lição');
+        expect(projection().get('[data-testid="projection-empty"]').text()).toContain('Esta aula ainda não tem sumário.');
+        wrapper.unmount();
+    });
+
+    it('fecha se a aula projetada deixa de existir nas props', async () => {
+        const wrapper = mountPage([makeLesson()], { attach: true });
+        await wrapper.get('[data-testid="project-lesson-a"]').trigger('click');
+        await nextTick();
+        expect(projection().exists()).toBe(true);
+
+        await wrapper.setProps({ lessons: [] });
+        await nextTick();
+        await nextTick();
+        await nextTick();
+
+        expect(projection().exists()).toBe(false);
+        wrapper.unmount();
     });
 });

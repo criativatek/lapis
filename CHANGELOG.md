@@ -25,6 +25,67 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.159.0] — 2026-10-04
+
+Projetar o sumário na sala. Cada aula de Aulas e Sumários — na Semana, na vista
+Por turma (também nos últimos sumários anteriores) e no Horário — tem
+«Projetar sumário», que abre uma apresentação ampla, só de leitura, com o que é
+dos alunos e mais nada.
+
+### Adicionado
+
+- **«Projetar sumário»** nos cartões da Semana e da vista Por turma, nos últimos
+  sumários anteriores da vista Por turma, nas aulas do Horário (grelha e lista
+  do telemóvel) e no editor do cartão («Projetar», para mostrar o texto que se
+  está a escrever). No Horário, as três ligações de cada aula passam a ter
+  24px de altura mínima (WCAG 2.2, 2.5.8): empilhadas num bloco estreito, já
+  não chegava a exceção do espaçamento.
+- **A apresentação** ocupa o ecrã: turma, disciplina e grupo como contexto
+  («8.º B · Físico-Química · Grupo T1»), «Lição N» com a numeração existente
+  (T1 e T2 da mesma divisão com o mesmo número; uma aula sem número fica sem
+  número — nunca se inventa um), a data por extenso com o ano («Quinta-feira,
+  1 de outubro de 2026») e o sumário completo, com os parágrafos e as quebras
+  de linha do professor. Sem sumário: «Esta aula ainda não tem sumário.»
+- **Letra grande e fluida**, proporcional à largura do ecrã, com A−/A+ (e as
+  teclas − e +) entre 70% e 200%, lembrada no browser; texto e fundo com os
+  tokens da casa (contraste ≥ 7:1 medido nos dois temas). O texto nunca é
+  cortado: a área de leitura rola, é focável e responde às setas, PageDown e
+  End; um endereço sem espaços parte-se em vez de alargar a página. No
+  telemóvel ocupa a largura disponível, com controlos de 44px.
+- **Ecrã inteiro** (quando o browser o permite) e **Fechar**. O Escape sai
+  primeiro do ecrã inteiro e só o seguinte fecha; fechar em ecrã inteiro sai
+  dele antes de desmontar. Clicar fora não fecha: um toque perdido na sala não
+  tira o sumário do quadro.
+- **Só leitura.** Abrir, ampliar, ecrã inteiro e fechar não fazem nenhum pedido
+  ao servidor e não mexem na aula. Com o editor aberto e alterações por
+  guardar, projeta-se o rascunho, marcado «Por guardar», sem o gravar; ao
+  fechar, o rascunho continua no editor.
+- **Voltar ao mesmo cartão.** Fechar ou Escape devolvem o foco ao botão que
+  abriu, com a mesma semana, filtros, vista e posição: a projeção não é
+  navegação e não toca no URL.
+- **Só o que é dos alunos.** Os dados passam por uma única porta,
+  `projectionFor()` (`lib/lessonProjection.ts`), que devolve uma lista branca
+  de oito campos. Notas privadas, recursos, TPC, estado, assiduidade, nomes de
+  alunos, acontecimentos do dia e resultado da aula nunca chegam à projeção.
+
+### Corrigido
+
+- Um sumário com um endereço muito longo, sem espaços, saía da largura do
+  cartão no telemóvel: o `break-words` não deixa a coluna encolher abaixo da
+  palavra mais longa. Os parágrafos do cartão e da projeção passam a
+  `wrap-anywhere`.
+
+### Testes
+
+- `lib/lessonProjection.test.ts` (lista branca, data com ano, número, grupos,
+  rascunho), `LessonProjection.test.ts` (conteúdo, letra, ecrã inteiro, Escape,
+  fechar só depois de sair do ecrã inteiro, nada interno) e seis cenários novos
+  em `pages/lessons/Index.test.ts` (abrir sem pedidos nem mudança de URL, foco
+  devolvido, rascunho «Por guardar» sem gravar, Horário, últimos sumários
+  anteriores, aula sem número).
+- Sem migrations e sem alterações de backend: o deploy é só de código, e o
+  rollback para a 0.158.0 também.
+
 ## [0.158.0] — 2026-10-04
 
 Aulas e Sumários passa a ler-se sem abrir aula a aula. Três vistas sobre as
