@@ -6,6 +6,7 @@ use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Classes\ClassArchivalWindow;
+use App\Services\Classes\ClassIdentityTones;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -38,6 +39,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
     public function __construct(
         protected CurrentOrganization $currentOrganization,
         protected ClassArchivalWindow $archivalWindow,
+        protected ClassIdentityTones $identityTones,
     ) {}
 
     /**
@@ -69,6 +71,13 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ->with('subject')
             ->orderBy('label')
             ->get();
+
+        // A cor de identidade que ESTE professor deu a cada turma — gravada, e
+        // por isso igual aqui e em «Aulas e Sumários» —, numa só consulta.
+        $tones = $this->identityTones->forTeacher(
+            (int) $teacher->getKey(),
+            $schoolClasses->modelKeys(),
+        );
 
         $timezone = $this->currentOrganization->get()->timezone;
         $today = CarbonImmutable::now($timezone)->startOfDay();
@@ -125,6 +134,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 'school_class' => [
                     'ulid' => $slot->schoolClass->ulid,
                     'label' => $slot->schoolClass->label,
+                    'identity_tone' => $tones[$slot->schoolClass->id] ?? null,
                 ],
                 'subject' => $slot->schoolClass->subject->name,
             ])
@@ -141,6 +151,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 'ulid' => $schoolClass->ulid,
                 'label' => $schoolClass->label,
                 'subject' => $schoolClass->subject->name,
+                'identity_tone' => $tones[$schoolClass->id] ?? null,
             ])
             ->values();
 
