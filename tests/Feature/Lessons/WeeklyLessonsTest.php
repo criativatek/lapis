@@ -79,6 +79,13 @@ class WeeklyLessonsTest extends TestCase
             }
         });
 
+        // As consultas do plano (assinatura, módulos, overrides) já vêm
+        // aquecidas do middleware `module:lessons` num pedido real; aquece-se
+        // aqui para contar só o que a semana pede: as 5 de sempre, mais os
+        // tons de identidade e os acontecimentos do dia — constantes, e não
+        // uma por aula.
+        $this->tenant($organization, fn (): bool => app(Entitlements::class)->canRead('calendar'));
+
         $count = 0;
         DB::listen(function () use (&$count): void {
             $count++;
@@ -87,7 +94,7 @@ class WeeklyLessonsTest extends TestCase
             $teacher, $year, CarbonImmutable::parse('2026-09-07'),
         ));
 
-        $this->assertLessThanOrEqual(5, $count);
+        $this->assertLessThanOrEqual(8, $count);
     }
 
     #[Test]

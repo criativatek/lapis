@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, reactive } from 'vue';
+import { defineComponent, h, nextTick, reactive } from 'vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import Show from './Show.vue';
 
@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     forms: [] as MockForm[],
     beforeHandlers: [] as ((event: Event) => void)[],
     unsubscribe: vi.fn(),
+    visit: vi.fn(),
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -28,6 +29,7 @@ vi.mock('@inertiajs/vue3', () => ({
             return mocks.unsubscribe;
         },
         patch: vi.fn(),
+        visit: mocks.visit,
     },
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
@@ -38,6 +40,10 @@ vi.mock('@inertiajs/vue3', () => ({
             isDirty: false,
             put: vi.fn(),
             post: vi.fn(),
+            delete: vi.fn(),
+            clearErrors: vi.fn(),
+            defaults: vi.fn(),
+            data: () => ({ ...data }),
         }) as MockForm;
 
         mocks.forms.push(form);
@@ -45,6 +51,25 @@ vi.mock('@inertiajs/vue3', () => ({
         return form;
     },
 }));
+
+// O diálogo real teleporta para fora da árvore; aqui renderiza-se inline, e só
+// enquanto está aberto — para se poder ver que fecha.
+vi.mock('@/components/ui/dialog', () => {
+    const passthrough = defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) });
+
+    return {
+        Dialog: defineComponent({
+            props: { open: { type: Boolean, default: false } },
+            setup: (props, { slots }) => () => (props.open ? h('div', { 'data-dialog': '' }, slots.default?.()) : null),
+        }),
+        DialogClose: passthrough,
+        DialogContent: passthrough,
+        DialogDescription: passthrough,
+        DialogFooter: passthrough,
+        DialogHeader: passthrough,
+        DialogTitle: passthrough,
+    };
+});
 
 const wrappers: VueWrapper[] = [];
 
@@ -77,6 +102,7 @@ function mountPage(
         context_label?: string;
         class_group_label?: string | null;
         summary?: { content: string; private_notes: string | null; resources: string | null; homework: string | null; reviewed_at: string | null } | null;
+        summary_version?: number;
     } = {},
     attendanceOverrides: Partial<typeof defaultAttendance> = {},
     dayEvents: DayEvent[] = [],
@@ -90,6 +116,7 @@ function mountPage(
                 status: 'preparation' as const,
                 status_label: 'Por preparar',
                 lesson_number: 3,
+                summary_version: 4,
                 outcome: null,
                 outcome_label: null,
                 outcome_reason_label: null,
@@ -109,6 +136,7 @@ function mountPage(
             attendance: { ...defaultAttendance, ...attendanceOverrides },
             day_events: dayEvents,
         },
+        global: { stubs: { teleport: true } },
     });
 
     wrappers.push(wrapper);
@@ -129,16 +157,37 @@ function fireBeforeUnload(): Event {
 }
 
 function fireInAppNavigation(): Event {
-    const event = new Event('before', { cancelable: true });
+    const event = new CustomEvent('before', {
+        cancelable: true,
+        detail: {
+            visit: {
+                url: new URL('http://localhost/classes'),
+                method: 'get',
+                data: {},
+                replace: false,
+                preserveScroll: false,
+                preserveState: false,
+                only: [],
+                except: [],
+                headers: {},
+            },
+        },
+    });
     mocks.beforeHandlers.forEach((handler) => handler(event));
 
     return event;
+}
+
+function dialogButton(wrapper: VueWrapper, testId: string) {
+    return wrapper.find(`[data-testid="${testId}"]`);
 }
 
 beforeEach(() => {
     mocks.forms.length = 0;
     mocks.beforeHandlers.length = 0;
     mocks.unsubscribe.mockClear();
+    mocks.visit.mockClear();
+    window.sessionStorage.clear();
     vi.stubGlobal(
         'fetch',
         vi.fn(() => Promise.resolve({ status: 204 } as Response)),
@@ -227,63 +276,115 @@ describe('lessons/Show — unsaved changes warning', () => {
     });
 
     it('does not interrupt in-app navigation while nothing has been typed', () => {
-        mountPage();
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const wrapper = mountPage();
 
         expect(fireInAppNavigation().defaultPrevented).toBe(false);
-        expect(confirmSpy).not.toHaveBeenCalled();
+        expect(dialogButton(wrapper, 'unsaved-stay').exists()).toBe(false);
     });
 
-    it('lets in-app navigation through when the teacher confirms losing the changes', () => {
-        mountPage();
+    it('suspends in-app navigation and asks, once the sumário has unsaved changes', async () => {
+        const wrapper = mountPage();
         summaryForm().isDirty = true;
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-        expect(fireInAppNavigation().defaultPrevented).toBe(false);
-        expect(confirmSpy).toHaveBeenCalledOnce();
-    });
-
-    it('cancels in-app navigation when the teacher declines', () => {
-        mountPage();
-        summaryForm().isDirty = true;
-        vi.spyOn(window, 'confirm').mockReturnValue(false);
 
         expect(fireInAppNavigation().defaultPrevented).toBe(true);
+        await nextTick();
+
+        expect(wrapper.text()).toContain('Tens alterações por guardar');
+        expect(dialogButton(wrapper, 'unsaved-save').text()).toContain('Guardar e continuar');
+    });
+
+    it('«Sair sem guardar» resumes the suspended visit', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        fireInAppNavigation();
+        await nextTick();
+
+        await dialogButton(wrapper, 'unsaved-leave').trigger('click');
+
+        expect(mocks.visit).toHaveBeenCalledOnce();
+        expect(mocks.visit.mock.calls[0][0]).toBe('http://localhost/classes');
+    });
+
+    it('«Continuar a editar» keeps the teacher on the page', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        fireInAppNavigation();
+        await nextTick();
+
+        await dialogButton(wrapper, 'unsaved-stay').trigger('click');
+        await nextTick();
+
+        expect(mocks.visit).not.toHaveBeenCalled();
+        expect(dialogButton(wrapper, 'unsaved-stay').exists()).toBe(false);
+    });
+
+    it('«Guardar e continuar» only continues after the save is accepted', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        fireInAppNavigation();
+        await nextTick();
+
+        await dialogButton(wrapper, 'unsaved-save').trigger('click');
+
+        const put = summaryForm().put as ReturnType<typeof vi.fn>;
+        expect(put).toHaveBeenCalledOnce();
+        expect(mocks.visit).not.toHaveBeenCalled();
+
+        const options = put.mock.calls[0][1] as { onSuccess: () => void; onFinish: () => void };
+        options.onSuccess();
+        options.onFinish();
+        await nextTick();
+        await nextTick();
+
+        expect(mocks.visit).toHaveBeenCalledOnce();
+    });
+
+    it('«Guardar e continuar» stays put when the save fails', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        fireInAppNavigation();
+        await nextTick();
+
+        await dialogButton(wrapper, 'unsaved-save').trigger('click');
+        const options = (summaryForm().put as ReturnType<typeof vi.fn>).mock.calls[0][1] as { onFinish: () => void };
+        options.onFinish();
+        await nextTick();
+        await nextTick();
+
+        expect(mocks.visit).not.toHaveBeenCalled();
     });
 
     /**
-     * The back link built in the previous fix is an ordinary Inertia visit, so
-     * it goes through the same guard rather than around it.
+     * The back link goes through the same guard rather than around it.
      */
-    it('guards the "Voltar às aulas da semana" link like any other in-app navigation', () => {
+    it('guards the "Voltar às aulas da semana" link like any other in-app navigation', async () => {
         const wrapper = mountPage();
         summaryForm().isDirty = true;
-        vi.spyOn(window, 'confirm').mockReturnValue(false);
 
         const link = wrapper.findAll('a').find((a) => a.text().includes('Voltar às aulas da semana'));
 
         expect(link!.attributes('href')).toBe('/lessons?week=2026-09-07');
-        expect(fireInAppNavigation().defaultPrevented).toBe(true);
+
+        await link!.trigger('click', { button: 0 });
+
+        expect(mocks.visit).not.toHaveBeenCalled();
+        expect(wrapper.text()).toContain('Tens alterações por guardar');
     });
 
     /** Saving is how the work is kept — it must never be interrogated. */
     it('never interrogates the page\'s own "Guardar" submission', async () => {
         const wrapper = mountPage();
         summaryForm().isDirty = true;
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
         await wrapper.find('form').trigger('submit');
 
         expect(summaryForm().put).toHaveBeenCalledOnce();
         expect(fireInAppNavigation().defaultPrevented).toBe(false);
-        expect(fireBeforeUnload().defaultPrevented).toBe(false);
-        expect(confirmSpy).not.toHaveBeenCalled();
     });
 
     it('never interrogates the "Marcar como lecionada" request', async () => {
         const wrapper = mountPage();
         summaryForm().isDirty = true;
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
         const button = wrapper
             .findAll('button')
@@ -293,7 +394,6 @@ describe('lessons/Show — unsaved changes warning', () => {
 
         expect(mocks.forms[1].post).toHaveBeenCalledOnce();
         expect(fireInAppNavigation().defaultPrevented).toBe(false);
-        expect(confirmSpy).not.toHaveBeenCalled();
     });
 
     it('unregisters both listeners when the page goes away', () => {
@@ -606,5 +706,85 @@ describe('lessons/Show — acontecimentos do dia', () => {
         const after = wrapper.findAll('button').find((candidate) => candidate.text().includes('Já no sumário'))!;
 
         expect(after.attributes('disabled')).toBeDefined();
+    });
+});
+
+describe('lessons/Show — versão do sumário e gravações concorrentes (0.158.0)', () => {
+    it('sends the summary version it read with the sumário', () => {
+        mountPage({ summary_version: 7 });
+
+        expect(summaryForm().summary_version).toBe(7);
+    });
+
+    it('sends the version with «Limpar sumário» too', () => {
+        mountPage({ summary_version: 7 });
+
+        expect(mocks.forms.find((form) => 'summary_version' in form && !('content' in form))?.summary_version).toBe(7);
+    });
+
+    it('shows the stored text next to the draft when the save is refused by a newer version', async () => {
+        const wrapper = mountPage({
+            summary_version: 5,
+            summary: { content: 'Gravado noutra janela.', private_notes: null, resources: null, homework: null, reviewed_at: null },
+        });
+        summaryForm().content = 'O meu rascunho.';
+        (summaryForm().errors as Record<string, string>).summary_version = 'O sumário desta aula foi alterado noutra janela depois de o abrires.';
+        await nextTick();
+
+        const panel = wrapper.find('[data-testid="summary-conflict"]');
+        expect(panel.exists()).toBe(true);
+        expect(panel.text()).toContain('O meu rascunho.');
+        expect(panel.text()).toContain('Gravado noutra janela.');
+        // A mensagem não se repete na lista de erros por cima.
+        expect(wrapper.text().match(/alterado noutra janela depois de o abrires/g)).toBeNull();
+    });
+
+    it('«Combinar no editor» keeps the draft, adds the stored lines and adopts the version just seen', async () => {
+        const wrapper = mountPage({
+            summary_version: 5,
+            summary: { content: 'Linha gravada.', private_notes: null, resources: null, homework: null, reviewed_at: null },
+        });
+        summaryForm().content = 'O meu rascunho.';
+        (summaryForm().errors as Record<string, string>).summary_version = 'alterado';
+        await nextTick();
+
+        await wrapper.find('[data-testid="conflict-combine"]').trigger('click');
+
+        expect(summaryForm().content).toBe('O meu rascunho.\nLinha gravada.');
+        expect(summaryForm().summary_version).toBe(5);
+        expect(summaryForm().clearErrors).toHaveBeenCalledWith('summary_version');
+        expect(summaryForm().put).not.toHaveBeenCalled();
+    });
+});
+
+describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () => {
+    it('goes back through history when the teacher came from the week view', async () => {
+        window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url: '/lessons?week=2026-09-07&view=turma', lesson: 'lesson-a' }));
+        const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+        Object.defineProperty(window.history, 'length', { configurable: true, value: 3 });
+        const wrapper = mountPage();
+        await nextTick();
+
+        const link = wrapper.find('[data-testid="lesson-back"]');
+        expect(link.attributes('href')).toBe('/lessons?week=2026-09-07&view=turma');
+
+        await link.trigger('click', { button: 0 });
+
+        expect(back).toHaveBeenCalledOnce();
+        expect(mocks.visit).not.toHaveBeenCalled();
+    });
+
+    it('ignores a remembered origin that belongs to another lesson', async () => {
+        window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url: '/lessons?week=2026-01-05', lesson: 'other-lesson' }));
+        const wrapper = mountPage();
+        await nextTick();
+
+        expect(wrapper.find('[data-testid="lesson-back"]').attributes('href')).toBe('/lessons?week=2026-09-07');
+    });
+
+    it('marks the attendance section so «Assiduidade» on the week card lands on it', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.find('#assiduidade').exists()).toBe(true);
     });
 });

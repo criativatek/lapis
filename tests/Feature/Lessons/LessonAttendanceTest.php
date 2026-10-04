@@ -69,7 +69,7 @@ class LessonAttendanceTest extends TestCase
         // O ecrã reenvia a lista consolidada em cada «Guardar» — nunca pode
         // bloquear a edição do sumário nem alterar a assiduidade.
         $this->asTeacher()
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Revisto depois', 'absent' => []])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Revisto depois', 'absent' => [], 'summary_version' => $this->summaryVersion($lesson)])
             ->assertSessionHasNoErrors()
             ->assertRedirect();
 

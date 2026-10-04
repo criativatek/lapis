@@ -55,9 +55,19 @@ type Preview = {
 const props = defineProps<{
     classes: InsertableClass[];
     defaultDate: string;
+    /** Classes do botão que abre o diálogo (p. ex. alvos de 44px no telemóvel). */
+    triggerClass?: string;
 }>();
 
 const open = ref(false);
+
+/** Abrir sem o botão — p. ex. a partir do menu «⋯» no telemóvel. */
+defineExpose({
+    show: () => {
+        open.value = true;
+    },
+});
+
 const classUlid = ref(props.classes[0]?.ulid ?? '');
 const classGroupId = ref<string>('');
 const insertAt = ref(props.defaultDate);
@@ -173,7 +183,7 @@ function submit(): void {
 <template>
     <Dialog v-model:open="open">
         <DialogTrigger as-child>
-            <Button type="button" variant="outline" size="sm" class="min-h-9">
+            <Button type="button" variant="outline" size="sm" :class="props.triggerClass ?? 'min-h-9'">
                 <CalendarPlus class="size-4" /> Inserir aula
             </Button>
         </DialogTrigger>

@@ -112,6 +112,7 @@ class AuditTrailCoverageTest extends TestCase
         $this->inTenantOrg(fn () => $lesson->summary()->create(['content' => 'Primeira versão.']));
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Segunda versão.',
         ])->assertRedirect();
 

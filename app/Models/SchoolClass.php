@@ -198,14 +198,17 @@ class SchoolClass extends Model
     }
 
     /**
-     * @return BelongsToMany<User, $this>
+     * @return BelongsToMany<User, $this, ClassTeacher, 'pivot'>
      */
     public function teachers(): BelongsToMany
     {
         // Pivot keys are class_id/user_id — SchoolClass would otherwise derive
         // school_class_id from the model name.
         return $this->belongsToMany(User::class, 'class_teachers', 'class_id', 'user_id')
-            ->withPivot('role')->withTimestamps();
+            // `using()` para que o attach() grave pelo modelo e o tom de
+            // identidade nasça no evento `creating` (ClassTeacher).
+            ->using(ClassTeacher::class)
+            ->withPivot('role', 'identity_tone')->withTimestamps();
     }
 
     /**

@@ -44,6 +44,7 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Introdução aos números racionais.',
         ])->assertRedirect();
 
@@ -65,9 +66,11 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Primeira versão.',
         ])->assertRedirect();
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Versão final do sumário.',
         ])->assertRedirect();
 
@@ -102,6 +105,7 @@ class LessonSummaryTest extends TestCase
         foreach ($values as $field => $value) {
             $lesson = $this->lessonFor($this->teacher);
             $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+                'summary_version' => $this->summaryVersion($lesson),
                 'content' => 'Conteúdo obrigatório.',
                 $field => "  {$value}  ",
             ])->assertRedirect();
@@ -119,6 +123,7 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Conteúdo obrigatório.',
             'private_notes' => '   ',
             'resources' => '',
@@ -138,6 +143,7 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher, attributes: ['status' => LessonStatus::Taught]);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => str_repeat('Conteúdo abundante. ', 100),
         ])->assertRedirect();
 
@@ -153,6 +159,7 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => '   ',
         ])->assertSessionHasErrors('content');
 
@@ -165,6 +172,7 @@ class LessonSummaryTest extends TestCase
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => str_repeat('á', 16001),
         ])->assertSessionHasErrors('content');
 
@@ -180,7 +188,7 @@ class LessonSummaryTest extends TestCase
 
         $this->actingAs($unassignedTeacher)
             ->withSession(['organization_id' => $this->organization->id])
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Não autorizado.'])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Não autorizado.', 'summary_version' => $this->summaryVersion($lesson)])
             ->assertForbidden();
 
         $this->assertDatabaseCount('lesson_summaries', 0);
@@ -194,7 +202,7 @@ class LessonSummaryTest extends TestCase
         $otherLesson = $this->lessonFor($otherTeacher, $otherOrganization);
 
         $this->asTeacher()
-            ->put("/lessons/{$otherLesson->ulid}/summary", ['content' => 'Tenant errado.'])
+            ->put("/lessons/{$otherLesson->ulid}/summary", ['content' => 'Tenant errado.', 'summary_version' => $this->summaryVersion($otherLesson)])
             ->assertNotFound();
 
         $this->assertDatabaseCount('lesson_summaries', 0);
@@ -210,7 +218,7 @@ class LessonSummaryTest extends TestCase
                 'organization_id' => $this->organization->id,
                 'impersonator_id' => 999,
             ])
-            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Bloqueado.'])
+            ->put("/lessons/{$lesson->ulid}/summary", ['content' => 'Bloqueado.', 'summary_version' => $this->summaryVersion($lesson)])
             ->assertForbidden();
 
         $this->assertDatabaseCount('lesson_summaries', 0);
@@ -230,6 +238,7 @@ class LessonSummaryTest extends TestCase
         Carbon::setTestNow('2026-10-08 12:30:00');
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => 'Texto revisto que não pode constar na auditoria.',
             'private_notes' => 'Nota revista confidencial.',
             'resources' => 'Recurso revisto confidencial.',
@@ -262,6 +271,11 @@ class LessonSummaryTest extends TestCase
             $this->assertStringNotContainsString('TPC anterior confidencial.', $serializedAudit);
             $this->assertStringNotContainsString('TPC revisto confidencial.', $serializedAudit);
         });
+    }
+
+    private function summaryVersion(Lesson $lesson): int
+    {
+        return (int) Lesson::withoutGlobalScopes()->whereKey($lesson->getKey())->value('summary_version');
     }
 
     private function asTeacher(): self

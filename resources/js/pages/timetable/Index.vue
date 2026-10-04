@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
 import type { TurmaTone } from './timetable';
 import {
-    assignTurmaTones,
+    resolveTurmaTones,
     TURMA_TONES,
     turmaBadgeClass,
     turmaBarClass,
@@ -30,7 +30,8 @@ type TimetableSlot = {
     occurs_on?: string;
     starts_on: string | null;
     ends_on: string | null;
-    school_class: { ulid: string; label: string };
+    /** `identity_tone`: o tom guardado desta turma para este professor (0.158.0). */
+    school_class: { ulid: string; label: string; identity_tone?: string | null };
     subject: string;
 };
 
@@ -38,6 +39,7 @@ type ClassOption = {
     ulid: string;
     label: string;
     subject: string;
+    identity_tone?: string | null;
 };
 
 type ConsultedWeek = { start: string; end: string; is_current: boolean };
@@ -208,18 +210,27 @@ const summary = computed(() => {
 // ------------------------------------------------------ o tom de cada turma
 
 /**
- * OS TONS DESTA PÁGINA, DECIDIDOS SOBRE AS TURMAS DESTA PÁGINA. As turmas
- * visíveis são as que têm mesmo blocos em `props.slots` — uma turma sem aula
- * nenhuma não está aqui e não entra na repartição — e é o conjunto delas, e não
- * cada `ulid` isolado, que decide os tons: enquanto forem seis ou menos, cada
- * uma leva um tom só seu.
+ * O TOM DE CADA TURMA É O GUARDADO (0.158.0): `class_teachers.identity_tone`,
+ * atribuído uma vez a este professor e nunca recalculado — a mesma turma tem o
+ * mesmo tom aqui e em Aulas e Sumários, e acrescentar, arquivar ou filtrar
+ * turmas não muda o de nenhuma. Só uma relação sem tom guardado cai no tom de
+ * recurso, decidido sobre o conjunto de turmas visíveis (`resolveTurmaTones`).
  *
- * A conta é feita uma vez por renderização e lida nos três sítios onde a semana
- * se desenha (grelha, fim de semana e agenda), pelo que as três dizem sempre o
- * mesmo sobre a mesma turma.
+ * Lido uma vez por renderização nos três sítios onde a semana se desenha
+ * (grelha, fim de semana e agenda), que dizem por isso sempre o mesmo.
  */
 const turmaTones = computed(() =>
-    assignTurmaTones(props.slots.map((slot) => slot.school_class.ulid)),
+    resolveTurmaTones(
+        props.slots.map((slot) => ({
+            ulid: slot.school_class.ulid,
+            identity_tone:
+                slot.school_class.identity_tone ??
+                props.classes.find(
+                    (option) => option.ulid === slot.school_class.ulid,
+                )?.identity_tone ??
+                null,
+        })),
+    ),
 );
 
 function toneOf(ulid: string): TurmaTone {

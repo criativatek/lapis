@@ -10,6 +10,7 @@ use App\Models\ClassGroup;
 use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
+use App\Services\Lessons\ClassLessonsView;
 use App\Services\Lessons\WeeklyLessonsQuery;
 use App\Support\Entitlements\AccessState;
 use App\Support\Entitlements\Entitlements;
@@ -28,6 +29,7 @@ class LessonWeekController extends Controller implements HasMiddleware
 
     public function __construct(
         private readonly WeeklyLessonsQuery $weeklyLessons,
+        private readonly ClassLessonsView $classView,
         private readonly MaterializeLessonsForWeek $materializeLessons,
         private readonly ResolveSelectedAcademicYear $resolveAcademicYear,
         private readonly Entitlements $entitlements,
@@ -68,8 +70,29 @@ class LessonWeekController extends Controller implements HasMiddleware
             );
         }
 
+        $teacher = $this->user($request);
+        $classes = $academicYear === null ? [] : $this->classView->classes($teacher, $academicYear);
+
         return Inertia::render('lessons/Index', [
             'lessons' => $academicYear === null ? [] : $this->weeklyLessons->for($this->user($request), $academicYear, $weekStart),
+            // Todas as turmas do professor neste ano (arquivadas marcadas), com
+            // a cor de identidade que ele lhes deu e os grupos ativos.
+            'classes' => $classes,
+            // A vista «por turma» — só calculada quando é pedida (função, para
+            // que um reload parcial `only: ['classView']` não pague o resto) e
+            // só leitura: nada aqui cria ou altera aulas. A semana
+            // selecionada já foi materializada acima, como sempre.
+            'classView' => fn (): ?array => $academicYear === null || $request->validated('view') !== 'turma'
+                ? null
+                : $this->classView->for(
+                    $teacher,
+                    $academicYear,
+                    $classes,
+                    $this->stringParameter($request, 'class'),
+                    $this->stringParameter($request, 'group') ?? 'todos',
+                    $this->stringParameter($request, 'range') ?? '1',
+                    $weekStart,
+                ),
             'week' => ['start' => $weekStart->toDateString(), 'end' => $weekStart->endOfWeek()->toDateString()],
             'academicYear' => $academicYear?->label,
             'configuredClassesCount' => $academicYear === null ? 0 : SchoolClass::query()
@@ -159,6 +182,13 @@ class LessonWeekController extends Controller implements HasMiddleware
                     ->all()),
             ])
             ->all());
+    }
+
+    private function stringParameter(WeeklyLessonsRequest $request, string $key): ?string
+    {
+        $value = $request->validated($key);
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function selectedAcademicYear(Request $request): ?AcademicYear

@@ -8,6 +8,7 @@ use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\RecordLessonOutcome;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
+use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
 use App\Http\Requests\Lessons\RecordLessonOutcomeRequest;
@@ -76,6 +77,9 @@ class LessonController extends Controller implements HasMiddleware
                 'status' => $lesson->status->value,
                 'status_label' => $this->statusLabel($lesson->status),
                 'lesson_number' => $lesson->lesson_number,
+                // A versão do sumário que este ecrã viu — volta no PUT e no
+                // DELETE para o servidor recusar uma gravação sobre texto mais novo.
+                'summary_version' => $lesson->summary_version,
                 // O resultado real da ocorrência (0.146.0) — NULL enquanto aberta.
                 'outcome' => $lesson->outcome?->value,
                 'outcome_label' => $lesson->outcome?->label(),
@@ -137,6 +141,29 @@ class LessonController extends Controller implements HasMiddleware
             ],
             $this->user($request),
             $request->absentStudentUlids(),
+            $request->integer('summary_version'),
+        );
+
+        return back()->with('success', 'Sumário guardado.');
+    }
+
+    /**
+     * Grava SÓ o texto do sumário: a ação recebe a chave `content` e nenhuma
+     * outra, para que as notas privadas, os recursos e o TPC fiquem como
+     * estavam, byte a byte.
+     */
+    public function updateSummaryContent(
+        LessonSummaryContentRequest $request,
+        Lesson $lesson,
+    ): RedirectResponse {
+        $this->refuseDuringImpersonation($request);
+
+        $this->saveLessonSummary->execute(
+            $lesson,
+            ['content' => $request->string('content')->toString()],
+            $this->user($request),
+            null,
+            $request->integer('summary_version'),
         );
 
         return back()->with('success', 'Sumário guardado.');
@@ -234,7 +261,9 @@ class LessonController extends Controller implements HasMiddleware
         Gate::authorize('update', $lesson);
         $this->refuseDuringImpersonation($request);
 
-        $this->clearLessonSummary->execute($lesson, $this->user($request));
+        $validated = $request->validate(['summary_version' => ['required', 'integer', 'min:0']]);
+
+        $this->clearLessonSummary->execute($lesson, $this->user($request), (int) $validated['summary_version']);
 
         return back()->with('success', 'Sumário limpo. A aula foi mantida.');
     }

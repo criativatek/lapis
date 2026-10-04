@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Check, Copy, Eraser, Save, Trash2 } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { ArrowLeft, Check, Copy, Eraser, Info, Save, Trash2 } from '@lucide/vue';
+import { computed, onMounted, ref } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -11,6 +11,8 @@ import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
 import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
+import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue';
+import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,8 +26,10 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
 import { lessonDisplayState } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
+import { combineSummaries } from '@/lib/summaryMerge';
 import { capitalizeFirst } from '@/lib/text';
 
 type Lesson = {
@@ -35,6 +39,13 @@ type Lesson = {
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
     lesson_number: number | null;
+    /**
+     * A versão do sumário que esta página leu (`lessons.summary_version`). Vai
+     * com cada gravação e com «Limpar sumário»: uma página aberta há horas não
+     * apaga em silêncio o que entretanto se gravou noutra janela ou no cartão
+     * da semana (0.158.0).
+     */
+    summary_version: number;
     /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
     outcome: LessonOutcomeValue | null;
     outcome_label: string | null;
@@ -78,10 +89,11 @@ const summaryForm = useForm({
     resources: props.lesson.summary?.resources ?? '',
     homework: props.lesson.summary?.homework ?? '',
     absent: initialAbsent,
+    summary_version: props.lesson.summary_version ?? 0,
 });
 const taughtForm = useForm({ absent: initialAbsent });
 const recordForm = useForm({ absent: initialAbsent });
-const clearForm = useForm({});
+const clearForm = useForm({ summary_version: props.lesson.summary_version ?? 0 });
 const deleteForm = useForm({});
 
 function updateAbsent(absent: string[]): void {
@@ -106,11 +118,14 @@ const deleteDialogOpen = ref(false);
 
 function clearSummary(): void {
     submittingFromThisPage.value = true;
+    // A versão que a página mostra: limpar só apaga o que se está a ver.
+    clearForm.summary_version = props.lesson.summary_version ?? 0;
     clearForm.delete(`/lessons/${props.lesson.ulid}/summary`, {
         preserveScroll: true,
         onSuccess: () => {
             clearDialogOpen.value = false;
             summaryForm.content = '';
+            summaryForm.summary_version = props.lesson.summary_version ?? 0;
             summaryForm.defaults({ ...summaryForm.data(), content: '' });
         },
         onFinish: releaseSubmission,
@@ -187,7 +202,50 @@ const lessonTime = computed(() => {
 
     return props.lesson.ends_at ? `${start}–${timeFormatter.format(new Date(props.lesson.ends_at))}` : start;
 });
-const summaryErrors = computed(() => Object.values(summaryForm.errors));
+/**
+ * GRAVAÇÃO RECUSADA POR CONFLITO DE VERSÃO — outra janela (ou o cartão da
+ * semana) gravou este sumário depois de esta página o ler. O que se escreveu
+ * aqui fica no formulário; mostra-se o texto gravado ao lado para comparar e
+ * combinar. Nenhuma escolha grava sozinha: a gravação seguinte volta a ser
+ * verificada no servidor, já com a versão que se acabou de ver.
+ */
+const conflict = computed(() =>
+    summaryForm.errors.summary_version
+        ? {
+              stored: props.lesson.summary?.content ?? '',
+              version: props.lesson.summary_version ?? 0,
+          }
+        : null,
+);
+const conflictNotice = ref<string | null>(null);
+
+function resolveConflict(choice: 'combine' | 'keep-mine' | 'use-stored'): void {
+    const current = conflict.value;
+
+    if (current === null) {
+        return;
+    }
+
+    if (choice === 'combine') {
+        summaryForm.content = combineSummaries(summaryForm.content, current.stored);
+        conflictNotice.value = 'Os dois textos foram combinados. Revê e guarda; a versão volta a ser verificada.';
+    } else if (choice === 'keep-mine') {
+        conflictNotice.value = 'Ficas com o teu texto. Ao guardar, ele substitui o que está gravado.';
+    } else {
+        summaryForm.content = current.stored;
+        conflictNotice.value = null;
+    }
+
+    summaryForm.summary_version = current.version;
+    summaryForm.clearErrors('summary_version');
+    summaryTextarea.value?.focus();
+}
+
+const summaryErrors = computed(() =>
+    Object.entries(summaryForm.errors)
+        .filter(([field]) => field !== 'summary_version')
+        .map(([, message]) => message),
+);
 const attendanceErrors = computed(() => [...Object.values(taughtForm.errors), ...Object.values(recordForm.errors)]);
 
 // The week to return to is derived from the lesson itself, never threaded in
@@ -216,11 +274,27 @@ function releaseSubmission(): void {
     submittingFromThisPage.value = false;
 }
 
-function submitSummary(): void {
+/** Grava o formulário inteiro; resolve `true` só quando a gravação foi aceite. */
+function submitSummary(): Promise<boolean> {
     submittingFromThisPage.value = true;
-    summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, {
-        preserveScroll: true,
-        onFinish: releaseSubmission,
+    conflictNotice.value = null;
+
+    return new Promise((resolve) => {
+        let saved = false;
+
+        summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                saved = true;
+                // Antes de o formulário se dar por limpo, para a versão nova
+                // ficar também no ponto de partida.
+                summaryForm.summary_version = props.lesson.summary_version ?? 0;
+            },
+            onFinish: () => {
+                releaseSubmission();
+                resolve(saved);
+            },
+        });
     });
 }
 
@@ -237,47 +311,64 @@ function markTaught(): void {
 // against the values the form was created with, and it returns to false by
 // itself once a save succeeds (useForm re-baselines its defaults in
 // onSuccess), so a saved sumário never triggers the warning.
-const UNSAVED_CHANGES_MESSAGE =
-    'Tens alterações por guardar neste sumário. Se saíres agora, perdes o que escreveste. Queres mesmo sair?';
+//
+// Navigating inside the app opens «Tens alterações por guardar» (with
+// «Guardar e continuar», which only continues once the save is accepted);
+// closing the tab or reloading gets the browser's own native protection.
+const guard = useUnsavedChangesGuard({
+    isDirty: () => summaryForm.isDirty,
+    isSubmitting: () => submittingFromThisPage.value,
+    save: submitSummary,
+    discard: () => {},
+});
 
-function hasUnsavedChanges(): boolean {
-    return summaryForm.isDirty && !submittingFromThisPage.value;
+async function saveAndContinue(): Promise<void> {
+    const saved = await guard.saveAndContinue();
+
+    if (!saved) {
+        summaryTextarea.value?.focus();
+    }
 }
 
-// Tab close, refresh, and navigation out of the app: the browser shows its own
-// wording, so the message here only opts in to being asked at all.
-function warnOnUnload(event: BeforeUnloadEvent): void {
-    if (!hasUnsavedChanges()) {
+// «Voltar às aulas da semana» regressa ao sítio exato de onde se veio — a
+// mesma vista, os mesmos filtros e a mesma posição — quando se veio de lá
+// (Aulas e Sumários guardou a origem nesta sessão). Sem essa origem, vai para
+// a semana da aula, como sempre.
+const RETURN_KEY = 'lapis.lessons.return';
+const returnTarget = ref<{ url: string; viaHistory: boolean }>({
+    url: originWeekHref.value,
+    viaHistory: false,
+});
+
+onMounted(() => {
+    try {
+        const entry = JSON.parse(window.sessionStorage.getItem(RETURN_KEY) ?? 'null') as {
+            url?: string;
+            lesson?: string;
+        } | null;
+
+        if (entry?.lesson === props.lesson.ulid && typeof entry.url === 'string' && entry.url.startsWith('/lessons')) {
+            returnTarget.value = { url: entry.url, viaHistory: true };
+        }
+    } catch {
+        // Sem sessionStorage, o regresso é à semana da aula.
+    }
+});
+
+function goBack(event: MouseEvent): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
     }
 
     event.preventDefault();
+    guard.request(() => {
+        if (returnTarget.value.viaHistory && window.history.length > 1) {
+            window.history.back();
+        } else {
+            router.visit(returnTarget.value.url);
+        }
+    });
 }
-
-// Navigation inside the app never reaches beforeunload — Inertia's own
-// `before` event is the equivalent hook, and it is cancelable.
-function guardInAppNavigation(event: Event): void {
-    if (!hasUnsavedChanges()) {
-        return;
-    }
-
-    if (!window.confirm(UNSAVED_CHANGES_MESSAGE)) {
-        event.preventDefault();
-    }
-}
-
-let stopGuardingNavigation: (() => void) | null = null;
-
-onMounted(() => {
-    window.addEventListener('beforeunload', warnOnUnload);
-    stopGuardingNavigation = router.on('before', guardInAppNavigation);
-});
-
-onBeforeUnmount(() => {
-    window.removeEventListener('beforeunload', warnOnUnload);
-    stopGuardingNavigation?.();
-    stopGuardingNavigation = null;
-});
 </script>
 
 <template>
@@ -285,10 +376,10 @@ onBeforeUnmount(() => {
 
     <main class="mx-auto w-full max-w-3xl space-y-6 p-4 pb-28 sm:p-6 sm:pb-8">
         <Button as-child variant="ghost" class="-ml-3 min-h-11">
-            <Link :href="originWeekHref">
+            <a :href="returnTarget.url" data-testid="lesson-back" @click="goBack">
                 <ArrowLeft class="size-4" />
                 Voltar às aulas da semana
-            </Link>
+            </a>
         </Button>
 
         <div class="space-y-3">
@@ -350,10 +441,24 @@ onBeforeUnmount(() => {
                 </div>
                 <textarea id="lesson-summary" ref="summaryTextarea" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />
                 <InputError id="lesson-summary-error" :message="summaryForm.errors.content" />
+                <p v-if="conflictNotice && !conflict" role="status" class="flex items-start gap-1.5 text-sm">
+                    <Info class="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />{{ conflictNotice }}
+                </p>
+                <LessonSummaryConflict
+                    v-if="conflict"
+                    class="@container"
+                    :draft="summaryForm.content"
+                    :stored="conflict.stored"
+                    @combine="resolveConflict('combine')"
+                    @keep-mine="resolveConflict('keep-mine')"
+                    @use-stored="resolveConflict('use-stored')"
+                />
             </div>
 
             <LessonAttendanceList
                 v-if="lesson.outcome === null || lesson.outcome === 'taught'"
+                id="assiduidade"
+                class="scroll-mt-20"
                 :lesson-ulid="lesson.ulid"
                 :attendance="attendance"
                 :class-group-label="lesson.class_group_label"
@@ -497,10 +602,19 @@ onBeforeUnmount(() => {
              guarda, não marca como lecionada, e passa pela mesma guarda de
              alterações por guardar que a de cima. -->
         <Button as-child variant="outline" class="min-h-11 w-full sm:w-auto">
-            <Link :href="originWeekHref">
+            <a :href="returnTarget.url" data-testid="lesson-back-bottom" @click="goBack">
                 <ArrowLeft class="size-4" />
                 Voltar às aulas da semana
-            </Link>
+            </a>
         </Button>
+
+        <UnsavedChangesDialog
+            :open="guard.pending.value !== null"
+            :context="`${lesson.context_label} (${lessonDate}, ${lessonTime})`"
+            :saving="guard.saving.value"
+            @stay="guard.stay"
+            @leave="guard.leaveWithoutSaving"
+            @save="saveAndContinue"
+        />
     </main>
 </template>

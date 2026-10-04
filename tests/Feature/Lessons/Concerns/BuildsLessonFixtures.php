@@ -91,6 +91,15 @@ trait BuildsLessonFixtures
         ], $attributes)));
     }
 
+    /**
+     * A versão do sumário gravada AGORA — o valor que o ecrã enviaria ao abrir.
+     * Lida sem o tenant: há testes que a pedem para a aula de outra organização.
+     */
+    protected function summaryVersion(Lesson $lesson): int
+    {
+        return (int) Lesson::withoutGlobalScopes()->whereKey($lesson->getKey())->value('summary_version');
+    }
+
     protected function makeGroup(string $label, ?SchoolClass $schoolClass = null): ClassGroup
     {
         $schoolClass ??= $this->schoolClass;

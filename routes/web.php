@@ -562,6 +562,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
+        // Só o texto do sumário (cartão da semana, vista da turma): o PUT acima
+        // grava os quatro campos de uma vez, e usá-lo daqui apagaria as notas.
+        Route::patch('lessons/{lesson}/summary/content', [LessonController::class, 'updateSummaryContent'])->name('lessons.summary.content.update');
         // Limpar o sumário e eliminar a aula são DUAS rotas, e não uma com um
         // parâmetro: são duas decisões diferentes do professor, com duas
         // confirmações diferentes e duas consequências diferentes. Uma só rota
