@@ -441,14 +441,14 @@ const segment =
                     </div>
                     <Link
                         :href="`/lessons/${focusedLane.lesson.ulid}`"
-                        class="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
+                        class="mt-2 inline-flex min-h-11 items-center align-top text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
                         @click="emit('open', focusedLane.lesson)"
                     >
                         Abrir aula
                     </Link>
                     <button
                         type="button"
-                        class="mt-2 ml-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
+                        class="mt-2 ml-4 inline-flex min-h-11 items-center align-top gap-1.5 text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
                         :aria-label="`Projetar sumário — ${focusedLane.lesson.context_label}`"
                         :data-testid="`previous-project-${focusedLane.lesson.ulid}`"
                         @click="emit('project', focusedLane.lesson)"
@@ -564,14 +564,14 @@ const segment =
                             </div>
                             <Link
                                 :href="`/lessons/${entry.lesson.ulid}`"
-                                class="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
+                                class="mt-2 inline-flex min-h-11 items-center align-top text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
                                 @click="emit('open', entry.lesson)"
                             >
                                 Abrir aula
                             </Link>
                             <button
                                 type="button"
-                                class="mt-2 ml-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
+                                class="mt-2 ml-4 inline-flex min-h-11 items-center align-top gap-1.5 text-sm font-medium text-primary underline underline-offset-2 sm:min-h-0"
                                 :aria-label="`Projetar sumário — ${entry.lesson.context_label}`"
                                 :data-testid="`previous-project-${entry.lesson.ulid}`"
                                 @click="emit('project', entry.lesson)"
