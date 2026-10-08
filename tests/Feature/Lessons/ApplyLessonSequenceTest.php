@@ -95,7 +95,8 @@ class ApplyLessonSequenceTest extends TestCase
             $this->assertSame('2026-10-01', $event->properties['from']);
             $this->assertSame(1, $event->properties['counts']['closed']);
             $this->assertSame(2, $event->properties['counts']['fill']);
-            $this->assertSame(['summary' => true, 'resources' => true, 'homework' => true, 'private_notes' => true], $event->properties['copy_options']);
+            // A coluna JSON do MySQL reordena as chaves: comparar sem depender da ordem.
+            $this->assertSameJsonPayload(['summary' => true, 'resources' => true, 'homework' => true, 'private_notes' => true], $event->properties['copy_options']);
         });
     }
 
