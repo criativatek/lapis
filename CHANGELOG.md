@@ -25,6 +25,72 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.160.0] — 2026-10-08
+
+Quatro correções em Aulas e Sumários: aplicar uma sequência sem perder nem
+deslocar aulas, o contexto certo ao preparar uma aula, o sumário que nunca volta
+ao texto antigo depois de guardado, e «Aulas de hoje» a abrir no dia certo. O
+âmbito é o comportamento daqui para a frente: as aulas que já ficaram
+desorganizadas não são reorganizadas por esta versão.
+
+### Corrigido
+
+- **Aplicar uma sequência já não faz desaparecer a primeira aula.** A sequência
+  emparelhava o elemento *n* com a *n*-ésima aula futura: uma aula já preparada
+  (por exemplo, no dia seguinte) «consumia» o primeiro elemento sem o receber, e
+  os restantes ficavam deslocados. Agora uma aula preparada que se preserva é
+  saltada **sem consumir** nenhum elemento — a sequência continua até encontrar
+  um horário livre, por ordem e sem perder nem repetir elementos.
+- **Ao aplicar, pergunta-se «A partir de que data pretende aplicar esta
+  sequência?».** As aulas anteriores a essa data e as aulas já lecionadas (ou
+  fechadas por ausência do professor ou atividade da turma) nunca são alteradas.
+  A sequência segue o horário e o calendário letivo da turma (feriados,
+  interrupções, aulas eliminadas), incluindo semanas que ainda não tinham sido
+  abertas, e respeita o público: turma inteira ou um grupo (T1, T2).
+- **Pré-visualização antes de confirmar**, com data, hora, lição e conteúdo de
+  cada aula, e o que acontece a cada uma: «Nova», «Atualizada», «Sem
+  alterações», «Preservada — já preparada», «Substituir», «… — não é
+  alterada». Cada aula já preparada pode ser preservada (por omissão) ou
+  substituída, e substituir exige uma confirmação explícita. Cancelar não grava
+  nada; uma falha a meio não deixa a sequência aplicada pela metade; se as aulas
+  mudarem entre a pré-visualização e a confirmação, a aplicação é recusada e a
+  pré-visualização é refeita.
+- **Editar uma sequência é diferente de a aplicar.** Guardar a sequência nunca
+  altera aulas; depois de guardar uma sequência já aplicada, a aplicação mostra
+  onde está aplicada e oferece «Aplicar alterações ao calendário». A
+  reaplicação reconhece as aulas que vieram da sequência: atualiza só o que
+  mudou, mantém o que o professor editou à mão e retira o conteúdo que ficaria
+  duplicado — sem duplicações nem deslocações.
+- **Preparar uma aula mostra também as aulas já preparadas.** O painel «Antes
+  desta aula» (na página da aula e, em versão compacta, no editor do cartão)
+  junta as aulas anteriores lecionadas e as preparadas ainda por lecionar, da
+  mesma turma e do mesmo grupo, por data e hora, com o estado de cada uma
+  («Lecionada» / «Preparada — por lecionar»). A própria aula e as posteriores
+  nunca entram; as mais recentes nunca ficam escondidas pelo limite.
+  «Basear no sumário anterior» passa a dizer de que aula vem o texto e em que
+  estado está. Na vista Por turma, o bloco anterior diz a que data se refere.
+- **O sumário guardado aparece logo em todas as vistas.** Voltar à semana (pelo
+  botão «Voltar às aulas da semana» ou pelo «Atrás» do browser) mostrava o texto
+  antigo até à navegação seguinte. Uma gravação confirmada passa a prevalecer
+  sobre qualquer resposta mais antiga, e a semana revalida-se ao regressar. Na
+  página da aula, uma falha do servidor ou da ligação mostra uma mensagem clara
+  e mantém o texto escrito para nova tentativa.
+- **«Aulas de hoje» abre no dia de hoje** — e não no primeiro dia da semana. Sem
+  aulas hoje, abre no próximo dia com aulas, mesmo na semana seguinte,
+  respeitando os filtros e o fuso horário da aplicação; sem próximas aulas no
+  calendário do ano, diz isso claramente.
+
+### Técnico
+
+- Migração aditiva e reversível `2026_11_16_000100`: `lesson_summaries` ganha
+  `lesson_sequence_id`, `lesson_sequence_item_id` (FKs `nullOnDelete`) e
+  `sequence_content_hash`. Sem backfill. Não viaja no backup.
+- Novas rotas: `POST lessons/sequences/{sequence}/preview`,
+  `GET lessons/{lesson}/preparation-context`, `GET lessons/next-day` (todas só
+  leitura).
+- Testes de numeração T1/T2 com relógio fixo: a 08/10 o `created_at` dos tempos
+  passou por cima das datas fixas e 12 testes ficaram vermelhos sem regressão.
+
 ## [0.159.0] — 2026-10-04
 
 Projetar o sumário na sala. Cada aula de Aulas e Sumários — na Semana, na vista
