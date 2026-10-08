@@ -554,6 +554,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // single-segment lessons/{lesson} wildcard below, which would
         // otherwise swallow GET lessons/sequences by treating "sequences"
         // as a lesson ulid.
+        // `lessons/next-day` pela mesma razão: leitura JSON do atalho «Aulas de
+        // hoje» (próximo dia com aula), que o wildcard engoliria como uma aula.
+        Route::get('lessons/next-day', [LessonWeekController::class, 'nextDay'])->name('lessons.next-day');
         Route::get('lessons/sequences', [LessonSequenceController::class, 'index'])->name('lessons.sequences.index');
         Route::post('lessons/sequences', [LessonSequenceController::class, 'store'])->name('lessons.sequences.store');
         Route::put('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'update'])->name('lessons.sequences.update');

@@ -11,11 +11,13 @@ use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\ClassLessonsView;
+use App\Services\Lessons\NextLessonDay;
 use App\Services\Lessons\WeeklyLessonsQuery;
 use App\Support\Entitlements\AccessState;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ResolveSelectedAcademicYear;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -33,6 +35,7 @@ class LessonWeekController extends Controller implements HasMiddleware
         private readonly MaterializeLessonsForWeek $materializeLessons,
         private readonly ResolveSelectedAcademicYear $resolveAcademicYear,
         private readonly Entitlements $entitlements,
+        private readonly NextLessonDay $nextLessonDay,
     ) {}
 
     /** @return list<string> */
@@ -100,11 +103,12 @@ class LessonWeekController extends Controller implements HasMiddleware
                 ->whereHas('teachers', fn ($query) => $query->whereKey($this->user($request)->getKey()))
                 ->whereHas('recurringLessonSlots')
                 ->count(),
-            // «Hoje» vem do SERVIDOR, no fuso da organização, e não do relógio
-            // do portátil do professor: é o mesmo dia que o lote de «Hoje» vai
-            // usar do lado de lá, e um botão que diga um dia e marque outro é
-            // pior do que não existir.
-            'today' => CarbonImmutable::now('Europe/Lisbon')->toDateString(),
+            // «Hoje» vem do SERVIDOR, no fuso da aplicação (`app.timezone`, a
+            // mesma fonte de NextLessonDay), e não do relógio do portátil do
+            // professor: é o mesmo dia que o lote de «Hoje» vai usar do lado
+            // de lá, e um botão que diga um dia e marque outro é pior do que
+            // não existir.
+            'today' => $this->today()->toDateString(),
             // As turmas onde é possível inserir uma aula, com os seus grupos:
             // a sequência em que se insere é (turma, grupo), e sem os grupos o
             // formulário não conseguiria distinguir T1 de T2.
@@ -116,6 +120,60 @@ class LessonWeekController extends Controller implements HasMiddleware
                 TeacherAbsenceReason::cases(),
             ),
         ]);
+    }
+
+    /**
+     * O próximo dia, depois de `after`, em que o professor tem aula — SÓ
+     * LEITURA, para o atalho «Aulas de hoje» saber para que semana saltar
+     * quando o resto da semana aberta não tem aulas. Não materializa nada:
+     * abrir a semana de destino é que o faz, como sempre.
+     */
+    public function nextDay(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'after' => ['required', 'date_format:Y-m-d'],
+            'classes' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ]);
+        $academicYear = $this->selectedAcademicYear($request);
+
+        if ($academicYear === null) {
+            return response()->json(['date' => null]);
+        }
+
+        $classUlids = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', (string) ($validated['classes'] ?? ''))),
+            fn (string $ulid): bool => $ulid !== '',
+        )));
+
+        // Com filtro, é a interseção com as turmas do professor: se TODOS os
+        // ULIDs forem desconhecidos a resposta é `null`, e nunca «todas as
+        // turmas» (NextLessonDay devolve `null` sem turmas).
+        $classes = $classUlids === [] ? [] : array_values(SchoolClass::query()
+            ->where('academic_year_id', $academicYear->getKey())
+            ->taughtBy($this->user($request))
+            ->whereIn('ulid', array_slice($classUlids, 0, 100))
+            ->pluck('ulid')
+            ->map(fn (mixed $ulid): string => (string) $ulid)
+            ->all());
+
+        if ($classUlids !== [] && $classes === []) {
+            return response()->json(['date' => null]);
+        }
+
+        return response()->json([
+            'date' => $this->nextLessonDay->after(
+                $this->user($request),
+                $academicYear,
+                CarbonImmutable::parse($validated['after'], (string) config('app.timezone')),
+                $this->today(),
+                $classes,
+            ),
+        ]);
+    }
+
+    private function today(): CarbonImmutable
+    {
+        return CarbonImmutable::now((string) config('app.timezone'));
     }
 
     public function materialize(Request $request): RedirectResponse

@@ -5,10 +5,11 @@
  * guarda de alterações por guardar. Mais o fecho rápido e o lote, que vêm de
  * antes e não podem regredir.
  */
-import { DOMWrapper, mount } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
+import { resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import type { WeekLesson } from '@/lib/lessons';
 import type { ClassViewData, TeacherClass } from '@/lib/lessonWeekView';
 import Index from './Index.vue';
@@ -18,6 +19,7 @@ type VisitOptions = {
     onError?: (errors: Record<string, string>) => void;
     onFinish?: () => void;
     onNetworkError?: () => boolean | void;
+    onHttpException?: () => boolean | void;
     only?: string[];
 };
 
@@ -180,6 +182,7 @@ function button(wrapper: ReturnType<typeof mountPage>, text: string) {
 beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    resetConfirmedSummaries();
     Object.values(inertia.router).forEach((mock) => mock.mockClear());
     // Relógio congelado: quinta-feira, 08/10/2026, 11:00 em Lisboa.
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
@@ -189,6 +192,16 @@ beforeEach(() => {
 afterEach(() => {
     vi.useRealTimers();
 });
+
+/** A revalidação ao montar: uma visita SÍNCRONA ao próprio URL, só das aulas. */
+function expectRevalidation(): void {
+    expect(inertia.router.reload).not.toHaveBeenCalled();
+    expect(inertia.router.get).toHaveBeenCalledWith(
+        inertia.page.url,
+        {},
+        expect.objectContaining({ only: ['lessons', 'classView'], preserveState: true, preserveScroll: true, replace: true }),
+    );
+}
 
 describe('vista Semana — ler os sumários sem abrir aulas', () => {
     it('mostra o sumário completo por omissão, com parágrafos e quebras de linha', () => {
@@ -966,6 +979,373 @@ describe('projetar o sumário — só de leitura, na sala', () => {
         await nextTick();
 
         expect(projection().exists()).toBe(false);
+        wrapper.unmount();
+    });
+});
+
+describe('sumário atualizado depois de guardar — nunca volta atrás', () => {
+    const textarea = (wrapper: ReturnType<typeof mountPage>) => wrapper.get('[data-testid="summary-editor"] textarea');
+    const cardText = (wrapper: ReturnType<typeof mountPage>) => wrapper.get('[data-testid="lesson-summary"]').text();
+
+    async function saveWith(wrapper: ReturnType<typeof mountPage>, text: string) {
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await nextTick();
+        await textarea(wrapper).setValue(text);
+        await wrapper.get('[data-testid="summary-save"]').trigger('click');
+
+        return inertia.router.patch.mock.calls[0][2] as VisitOptions;
+    }
+
+    async function confirmSave(wrapper: ReturnType<typeof mountPage>, options: VisitOptions, text: string, version: number) {
+        // As props frescas chegam antes do onSuccess, como no reload parcial.
+        await wrapper.setProps({ lessons: [makeLesson({ summary: text, summary_version: version })] });
+        options.onSuccess?.();
+        options.onFinish?.();
+        await nextTick();
+        await nextTick();
+    }
+
+    it('depois de guardar, o cartão mostra o texto novo sem recarregar a página', async () => {
+        const wrapper = mountPage();
+        const options = await saveWith(wrapper, 'Texto novo.');
+
+        await confirmSave(wrapper, options, 'Texto novo.', 4);
+
+        expect(cardText(wrapper)).toContain('Texto novo.');
+        expect(cardText(wrapper)).not.toContain('Equações do primeiro grau.');
+        expect(inertia.router.reload).not.toHaveBeenCalled();
+    });
+
+    it('uma resposta antiga e atrasada não repõe o texto anterior', async () => {
+        const wrapper = mountPage();
+        const options = await saveWith(wrapper, 'Texto novo.');
+        await confirmSave(wrapper, options, 'Texto novo.', 4);
+
+        // Chega uma resposta mais antiga do que a gravação confirmada.
+        await wrapper.setProps({ lessons: [makeLesson({ summary: longSummary, summary_version: 3 })] });
+        await nextTick();
+
+        expect(cardText(wrapper)).toContain('Texto novo.');
+        expect(cardText(wrapper)).not.toContain('Equações do primeiro grau.');
+
+        // E o próximo guardar parte da versão efetiva, não de um conflito falso.
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await nextTick();
+        await textarea(wrapper).setValue('Texto novo, outra vez.');
+        await wrapper.get('[data-testid="summary-save"]').trigger('click');
+
+        expect(inertia.router.patch.mock.calls[1][1]).toEqual({ content: 'Texto novo, outra vez.', summary_version: 4 });
+    });
+
+    it('sem a aula nas props frescas, regista a gravação com a versão seguinte e o texto enviado', async () => {
+        const wrapper = mountPage();
+        const options = await saveWith(wrapper, 'Texto novo.');
+
+        options.onSuccess?.();
+        options.onFinish?.();
+        await nextTick();
+
+        expect(cardText(wrapper)).toContain('Texto novo.');
+    });
+
+    it.each([
+        ['validação', (options: VisitOptions) => options.onError?.({ content: 'O sumário é demasiado longo.' }), 'O sumário é demasiado longo.'],
+        ['ligação', (options: VisitOptions) => options.onNetworkError?.(), 'a ligação falhou'],
+        ['servidor', (options: VisitOptions) => options.onHttpException?.(), 'o servidor não respondeu como devia'],
+    ])('um erro de %s deixa o editor aberto com o texto, sem «Guardado» e sem alterar o cartão', async (_name, fail, message) => {
+        const wrapper = mountPage();
+        const options = await saveWith(wrapper, 'Texto por gravar.');
+
+        fail(options);
+        options.onFinish?.();
+        await nextTick();
+
+        expect((textarea(wrapper).element as HTMLTextAreaElement).value).toBe('Texto por gravar.');
+        expect(wrapper.get('[data-testid="summary-editor"]').text()).toContain(message);
+        expect(wrapper.text()).not.toContain('Guardado');
+        expect(wrapper.get('[data-testid="summary-editor-status"]').text()).toContain('Alterações por guardar');
+        expect(wrapper.find('[data-testid="summary-editor"]').exists()).toBe(true);
+    });
+
+    it('mostra «A guardar…» anunciado enquanto grava, com o texto só de leitura', async () => {
+        const wrapper = mountPage();
+        await saveWith(wrapper, 'Texto novo.');
+
+        const status = wrapper.get('[data-testid="summary-editor-status"]');
+        expect(status.text()).toBe('A guardar…');
+        expect(status.attributes('aria-live')).toBe('polite');
+        expect(textarea(wrapper).attributes('readonly')).toBeDefined();
+        expect(wrapper.get('[data-testid="summary-save"]').text()).toContain('A guardar…');
+    });
+
+    it('ao regressar com props antigas mostra logo o texto confirmado e revalida no servidor', () => {
+        window.sessionStorage.setItem(
+            'lapis.lessons.confirmedSummaries',
+            JSON.stringify({ 'lesson-a': { ulid: 'lesson-a', content: 'Gravado antes de sair.', version: 4 } }),
+        );
+
+        const wrapper = mountPage([makeLesson({ summary: longSummary, summary_version: 3 })]);
+
+        expect(cardText(wrapper)).toContain('Gravado antes de sair.');
+        expectRevalidation();
+    });
+
+    it('quando outra página alterou aulas, revalida ao montar mesmo sem gravação registada', () => {
+        window.sessionStorage.setItem('lapis.lessons.stale', '1');
+
+        mountPage();
+
+        expectRevalidation();
+    });
+
+    it('com as props em dia não revalida', () => {
+        mountPage();
+
+        expect(inertia.router.reload).not.toHaveBeenCalled();
+        expect(inertia.router.get).not.toHaveBeenCalled();
+    });
+
+    it('revalida com uma visita síncrona e só depois continua o arranque (vista guardada, «Aulas de hoje»)', () => {
+        window.sessionStorage.setItem('lapis.lessons.stale', '1');
+        window.localStorage.setItem('lapis.lessons.view', 'horario');
+        inertia.page.url = '/lessons?week=2026-10-05';
+
+        mountPage();
+
+        // Nunca o reload assíncrono: uma resposta tardia dele repunha a semana antiga.
+        expect(inertia.router.reload).not.toHaveBeenCalled();
+        expect(inertia.router.get).toHaveBeenCalledTimes(1);
+        // A vista guardada ainda não foi aplicada: espera pela revalidação.
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+
+        const options = inertia.router.get.mock.calls[0][2] as unknown as { onFinish: () => void };
+        options.onFinish();
+
+        expect(inertia.router.replace).toHaveBeenCalledWith(expect.objectContaining({ url: '/lessons?week=2026-10-05&view=horario' }));
+    });
+
+    it('uma revalidação cancelada por outra visita não continua o arranque', () => {
+        window.sessionStorage.setItem('lapis.lessons.stale', '1');
+        window.localStorage.setItem('lapis.lessons.view', 'horario');
+        inertia.page.url = '/lessons?week=2026-10-05';
+
+        mountPage();
+
+        const options = inertia.router.get.mock.calls[0][2] as unknown as { onCancel: () => void; onFinish: () => void };
+        options.onCancel();
+        options.onFinish();
+
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+    });
+});
+
+describe('«Aulas de hoje» — posiciona no dia certo (foco=hoje)', () => {
+    const FOCUS_URL = '/lessons?week=2026-10-05&view=semana&foco=hoje';
+    const scrolled: string[] = [];
+    const lessonOn = (ulid: string, day: string, overrides: Partial<WeekLesson> = {}) =>
+        makeLesson({
+            ulid,
+            starts_at: `${day}T09:30:00+01:00`,
+            ends_at: `${day}T10:20:00+01:00`,
+            ...overrides,
+        });
+    const classB = { ulid: 'class-b', label: '8.º B', is_support_class: false };
+    const nextDayResponse = (date: string | null) =>
+        vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ date }) } as Response));
+
+    beforeEach(() => {
+        scrolled.length = 0;
+        Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+            scrolled.push(this.id);
+        });
+        // O rAF do jsdom corre sobre temporizadores: aqui dispara logo.
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+            callback(0);
+
+            return 0;
+        });
+        vi.stubGlobal('fetch', nextDayResponse(null));
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    const replacedUrls = () => inertia.router.replace.mock.calls.map((call) => (call[0] as { url: string }).url);
+
+    it('com aulas hoje posiciona em #dia-<hoje>, e não no primeiro dia da semana, e limpa o foco do URL', async () => {
+        const wrapper = mountPage(
+            [lessonOn('mon', '2026-10-05'), lessonOn('thu', '2026-10-08'), lessonOn('fri', '2026-10-09')],
+            { url: FOCUS_URL, attach: true },
+        );
+        await flushPromises();
+
+        expect(scrolled).toEqual(['dia-2026-10-08']);
+        expect(document.activeElement?.id).toBe('dia-2026-10-08');
+        expect(replacedUrls()).toEqual(['/lessons?week=2026-10-05&view=semana']);
+        expect(fetch).not.toHaveBeenCalled();
+        expect(inertia.router.get).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('sem aulas hoje, mas mais tarde na semana, posiciona nesse dia', async () => {
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05'), lessonOn('fri', '2026-10-09')], {
+            url: FOCUS_URL,
+            attach: true,
+        });
+        await flushPromises();
+
+        expect(scrolled).toEqual(['dia-2026-10-09']);
+        expect(fetch).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('sem foco no URL não posiciona nada, nem toca no URL', async () => {
+        const wrapper = mountPage([lessonOn('thu', '2026-10-08')], { url: '/lessons?week=2026-10-05&view=semana', attach: true });
+        await flushPromises();
+
+        expect(scrolled).toEqual([]);
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('com o destino na semana seguinte pede o próximo dia, navega com foco=hoje e posiciona quando as props chegam', async () => {
+        vi.stubGlobal('fetch', nextDayResponse('2026-10-14'));
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05'), lessonOn('tue', '2026-10-06')], {
+            url: FOCUS_URL,
+            attach: true,
+        });
+        await flushPromises();
+
+        expect(fetch).toHaveBeenCalledOnce();
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/lessons/next-day?after=2026-10-11');
+        expect(inertia.router.get).toHaveBeenCalledOnce();
+        const [url, , options] = inertia.router.get.mock.calls[0] as unknown as [string, unknown, Record<string, unknown> & { onSuccess: () => void }];
+        expect(url).toBe('/lessons?week=2026-10-12&view=semana&foco=hoje');
+        expect(options).toMatchObject({ preserveState: true, replace: true });
+        expect(scrolled).toEqual([]);
+
+        // As props da semana seguinte chegam.
+        await wrapper.setProps({
+            week: { start: '2026-10-12', end: '2026-10-18' },
+            lessons: [lessonOn('wed', '2026-10-14')],
+        });
+        options.onSuccess();
+        await flushPromises();
+
+        expect(scrolled).toEqual(['dia-2026-10-14']);
+        expect(replacedUrls().at(-1)).toBe('/lessons?week=2026-10-12&view=semana');
+        wrapper.unmount();
+    });
+
+    it('sem próximas aulas mostra o aviso, sem navegar, e limpa o foco', async () => {
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05')], { url: FOCUS_URL, attach: true });
+        await flushPromises();
+
+        const notice = wrapper.get('[data-testid="today-notice"]');
+        expect(notice.attributes('role')).toBe('status');
+        expect(notice.text()).toContain('Não há aulas hoje nem nas próximas semanas deste ano letivo.');
+        expect(inertia.router.get).not.toHaveBeenCalled();
+        expect(replacedUrls()).toEqual(['/lessons?week=2026-10-05&view=semana']);
+        wrapper.unmount();
+    });
+
+    it('com filtros ativos o aviso di-lo e oferece «Limpar filtros»', async () => {
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05')], {
+            url: '/lessons?week=2026-10-05&view=semana&classes=class-a&foco=hoje',
+            attach: true,
+        });
+        await flushPromises();
+
+        const notice = wrapper.get('[data-testid="today-notice"]');
+        expect(notice.text()).toContain('com os filtros ativos');
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/lessons/next-day?after=2026-10-11&classes=class-a');
+
+        await wrapper.get('[data-testid="today-clear-filters"]').trigger('click');
+
+        expect(wrapper.find('[data-testid="today-notice"]').exists()).toBe(false);
+        wrapper.unmount();
+    });
+
+    it('um erro de rede no pedido mostra o aviso e não salta', async () => {
+        vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('offline'))));
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05')], { url: FOCUS_URL, attach: true });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="today-notice"]').text()).toContain('Não foi possível encontrar a próxima aula.');
+        expect(inertia.router.get).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('uma resposta de erro do servidor também é só um aviso', async () => {
+        vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 500 } as Response)));
+        const wrapper = mountPage([lessonOn('mon', '2026-10-05')], { url: FOCUS_URL, attach: true });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="today-notice"]').text()).toContain('Não foi possível encontrar a próxima aula.');
+        expect(inertia.router.get).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('com o filtro de turma a esconder as aulas de hoje, salta para o próximo dia visível', async () => {
+        const wrapper = mountPage(
+            [lessonOn('today-b', '2026-10-08', { school_class: classB }), lessonOn('fri-a', '2026-10-09')],
+            { url: '/lessons?week=2026-10-05&view=semana&classes=class-a&foco=hoje', attach: true },
+        );
+        await flushPromises();
+
+        expect(scrolled).toEqual(['dia-2026-10-09']);
+        expect(fetch).not.toHaveBeenCalled();
+        wrapper.unmount();
+    });
+
+    it('se os filtros escondem tudo na semana de destino, volta a pedir a partir do fim dessa semana (sem ciclos)', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi
+                .fn()
+                .mockImplementationOnce(nextDayResponse('2026-10-14'))
+                .mockImplementationOnce(nextDayResponse('2026-10-21')),
+        );
+        const wrapper = mountPage([], { url: '/lessons?week=2026-10-05&view=semana&classes=class-a&foco=hoje', attach: true });
+        await flushPromises();
+        const first = inertia.router.get.mock.calls[0] as unknown as [string, unknown, { onSuccess: () => void }];
+
+        // A semana de destino só tem aulas de outra turma: tudo escondido.
+        await wrapper.setProps({
+            week: { start: '2026-10-12', end: '2026-10-18' },
+            lessons: [lessonOn('b', '2026-10-14', { school_class: classB })],
+        });
+        first[2].onSuccess();
+        await flushPromises();
+
+        expect(vi.mocked(fetch).mock.calls[1][0]).toBe('/lessons/next-day?after=2026-10-18&classes=class-a');
+        expect(inertia.router.get.mock.calls[1][0]).toBe('/lessons?week=2026-10-19&view=semana&classes=class-a&foco=hoje');
+        expect(scrolled).toEqual([]);
+        wrapper.unmount();
+    });
+
+    it('o posicionamento não depende de temporizadores', async () => {
+        vi.useRealTimers();
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+        vi.setSystemTime(new Date('2026-10-08T11:00:00+01:00'));
+        // Regista quem pede temporizadores. O `focus()` do jsdom pede um por si (Selection),
+        // e isso não é da página: o que importa é que o posicionamento não peça nenhum.
+        const origin = globalThis.setTimeout;
+        const requestedBy: string[] = [];
+        vi.spyOn(globalThis, 'setTimeout').mockImplementation(((...args: Parameters<typeof setTimeout>) => {
+            requestedBy.push(new Error().stack ?? '');
+
+            return origin(...args);
+        }) as typeof setTimeout);
+
+        const wrapper = mountPage([lessonOn('thu', '2026-10-08')], { url: FOCUS_URL, attach: true });
+        // Sem avançar o relógio: só nextTick e rAF.
+        await flushPromises();
+
+        expect(scrolled).toEqual(['dia-2026-10-08']);
+        expect(requestedBy.filter((stack) => stack.includes('Index.vue') && !stack.includes('jsdom'))).toEqual([]);
         wrapper.unmount();
     });
 });

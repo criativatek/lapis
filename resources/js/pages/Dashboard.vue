@@ -199,15 +199,15 @@ function pendingLabel(schoolClass: ClassCard): string {
         </div>
 
         <!-- «AULAS DE HOJE» — o destino a que o professor volta todos os dias,
-             logo abaixo da saudação e sem scroll. /lessons já abre a semana
-             corrente com o dia de hoje selecionado, por isso a copy é verdade
-             sem rota nova. Só com o módulo `lessons` com escrita: numa
+             logo abaixo da saudação e sem scroll. `foco=hoje` pede à página
+             das aulas que posicione a vista Semana no dia de hoje — ou, sem
+             aulas hoje, no próximo dia com aula (lessons/Index.vue). Só com o módulo `lessons` com escrita: numa
              organização em consulta não há sumário a registar, e o menu
              continua a oferecer a leitura. É o único link para as aulas nesta
              página — nada a duplicar. -->
         <Link
             v-if="canRegisterLessons"
-            href="/lessons"
+            href="/lessons?view=semana&foco=hoje"
             :class="[
                 card('plain'),
                 'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-fit sm:min-w-80',

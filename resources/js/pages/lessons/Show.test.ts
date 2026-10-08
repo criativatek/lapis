@@ -3,6 +3,7 @@ import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, reactive } from 'vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
+import { consumeLessonsStale, resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import Show from './Show.vue';
 
 type MockForm = Record<string, unknown> & { isDirty: boolean };
@@ -188,6 +189,7 @@ beforeEach(() => {
     mocks.unsubscribe.mockClear();
     mocks.visit.mockClear();
     window.sessionStorage.clear();
+    resetConfirmedSummaries();
     vi.stubGlobal(
         'fetch',
         vi.fn(() => Promise.resolve({ status: 204 } as Response)),
@@ -883,5 +885,68 @@ describe('lessons/Show — «Antes desta aula»', () => {
         await base!.trigger('click');
 
         expect(summaryForm().content).toBe('Plano de terça.');
+    });
+});
+
+describe('lessons/Show — gravação confirmada e falhas (0.158.1)', () => {
+    type PutOptions = {
+        onSuccess: () => void;
+        onFinish: () => void;
+        onHttpException: () => boolean | void;
+        onNetworkError: () => boolean | void;
+    };
+
+    const saved = { content: 'Texto gravado.', private_notes: null, resources: null, homework: null, reviewed_at: null };
+
+    async function submit(wrapper: VueWrapper): Promise<PutOptions> {
+        await wrapper.get('form').trigger('submit');
+
+        return (summaryForm().put as ReturnType<typeof vi.fn>).mock.calls[0][1] as PutOptions;
+    }
+
+    it('uma gravação aceite fica registada com a versão das props atualizadas e avisa a semana', async () => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        const options = await submit(wrapper);
+
+        options.onSuccess();
+        options.onFinish();
+
+        const stored = JSON.parse(window.sessionStorage.getItem('lapis.lessons.confirmedSummaries') ?? '{}') as Record<string, unknown>;
+        expect(stored['lesson-a']).toEqual({ ulid: 'lesson-a', content: 'Texto gravado.', version: 5 });
+        expect(consumeLessonsStale()).toBe(true);
+    });
+
+    it.each([
+        ['a ligação falha', 'onNetworkError', 'a ligação falhou'],
+        ['o servidor responde mal', 'onHttpException', 'o servidor não respondeu como devia'],
+    ] as const)('quando %s mostra a mensagem, mantém o texto e nunca diz «Sumário guardado.»', async (_name, hook, message) => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        summaryForm().content = 'O meu texto por gravar.';
+        const options = await submit(wrapper);
+
+        options[hook]();
+        options.onFinish();
+        await nextTick();
+
+        expect(wrapper.get('[data-testid="summary-save-failure"]').text()).toContain(message);
+        expect(wrapper.text()).toContain('O teu texto continua aqui');
+        expect(wrapper.text()).not.toContain('Sumário guardado.');
+        expect(summaryForm().content).toBe('O meu texto por gravar.');
+        expect(window.sessionStorage.getItem('lapis.lessons.confirmedSummaries')).toBeNull();
+        expect(consumeLessonsStale()).toBe(false);
+    });
+
+    it('a mensagem de falha desaparece na tentativa seguinte', async () => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        const first = await submit(wrapper);
+        first.onNetworkError();
+        first.onFinish();
+        await nextTick();
+        expect(wrapper.find('[data-testid="summary-save-failure"]').exists()).toBe(true);
+
+        await wrapper.get('form').trigger('submit');
+        await nextTick();
+
+        expect(wrapper.find('[data-testid="summary-save-failure"]').exists()).toBe(false);
     });
 });
