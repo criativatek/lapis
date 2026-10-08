@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Check, Copy, Eraser, Info, Save, Trash2 } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -27,6 +27,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
+import { markLessonsStale, recordConfirmedSummary } from '@/lib/confirmedSummaries';
 import { lessonDisplayState } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
@@ -106,6 +107,7 @@ function recordAttendance(): void {
     submittingFromThisPage.value = true;
     recordForm.post(`/lessons/${props.lesson.ulid}/attendance`, {
         preserveScroll: true,
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
@@ -123,6 +125,10 @@ function clearSummary(): void {
     clearForm.delete(`/lessons/${props.lesson.ulid}/summary`, {
         preserveScroll: true,
         onSuccess: () => {
+            // O sumário limpo também sobe a versão: a semana não pode voltar,
+            // pelo histórico, a mostrar o texto que acabou de ser apagado.
+            recordConfirmedSummary(props.lesson.ulid, '', props.lesson.summary_version ?? 0);
+            markLessonsStale();
             clearDialogOpen.value = false;
             summaryForm.content = '';
             summaryForm.summary_version = props.lesson.summary_version ?? 0;
@@ -132,9 +138,18 @@ function clearSummary(): void {
     });
 }
 
+// O resultado da aula é registado pelo diálogo de «Não houve aula», que não
+// passa por aqui: quando o resultado ou o estado mudam nas props, as aulas da
+// semana também ficaram para trás.
+watch(
+    () => [props.lesson.outcome, props.lesson.status],
+    () => markLessonsStale(),
+);
+
 function deleteLesson(): void {
     submittingFromThisPage.value = true;
     deleteForm.delete(`/lessons/${props.lesson.ulid}`, {
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
@@ -218,6 +233,11 @@ const conflict = computed(() =>
         : null,
 );
 const conflictNotice = ref<string | null>(null);
+/**
+ * Falha que NÃO é de validação (500, ligação perdida): o servidor não deu uma
+ * resposta que o formulário saiba ler. Fica à vista, com o texto intacto.
+ */
+const saveFailure = ref<string | null>(null);
 
 function resolveConflict(choice: 'combine' | 'keep-mine' | 'use-stored'): void {
     const current = conflict.value;
@@ -278,6 +298,7 @@ function releaseSubmission(): void {
 function submitSummary(): Promise<boolean> {
     submittingFromThisPage.value = true;
     conflictNotice.value = null;
+    saveFailure.value = null;
 
     return new Promise((resolve) => {
         let saved = false;
@@ -289,6 +310,26 @@ function submitSummary(): Promise<boolean> {
                 // Antes de o formulário se dar por limpo, para a versão nova
                 // ficar também no ponto de partida.
                 summaryForm.summary_version = props.lesson.summary_version ?? 0;
+                // Gravação CONFIRMADA: a semana mostra este texto mesmo que o
+                // histórico a reponha com as props de antes.
+                recordConfirmedSummary(
+                    props.lesson.ulid,
+                    props.lesson.summary?.content ?? '',
+                    props.lesson.summary_version ?? 0,
+                );
+                markLessonsStale();
+            },
+            onHttpException: () => {
+                saveFailure.value =
+                    'Não foi possível guardar: o servidor não respondeu como devia. O teu texto continua aqui — tenta outra vez.';
+
+                return false;
+            },
+            onNetworkError: () => {
+                saveFailure.value =
+                    'Não foi possível guardar: a ligação falhou. O teu texto continua aqui, por gravar — tenta outra vez.';
+
+                return false;
             },
             onFinish: () => {
                 releaseSubmission();
@@ -302,6 +343,7 @@ function markTaught(): void {
     submittingFromThisPage.value = true;
     taughtForm.post(`/lessons/${props.lesson.ulid}/mark-taught`, {
         preserveScroll: true,
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
@@ -425,7 +467,12 @@ function goBack(event: MouseEvent): void {
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
             <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
 
-            <div v-if="summaryForm.recentlySuccessful" role="status" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+            <div v-if="saveFailure" role="alert" class="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" data-testid="summary-save-failure">
+                <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                {{ saveFailure }}
+            </div>
+
+            <div v-if="summaryForm.recentlySuccessful && !saveFailure" role="status" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
                 <Check class="size-4" />
                 Sumário guardado.
             </div>
