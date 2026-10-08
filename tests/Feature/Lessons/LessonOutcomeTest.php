@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\Lessons\ClassAttendanceSummary;
 use App\Services\Lessons\LessonNumbering;
 use App\Services\Lessons\StudentAttendanceHistory;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -38,6 +39,13 @@ class LessonOutcomeTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // RELÓGIO FIXO no dia em que estes casos foram escritos (15/09/2026).
+        // LessonNumbering só liga T1/T2 a partir de `slot.starts_on ??
+        // slot.created_at`, e os tempos daqui nascem sem `starts_on`: com o
+        // relógio real, a 08/10 o `created_at` passou por cima das aulas fixas
+        // de 05–07/10 e a numeração deixou de as ligar — vermelho sem
+        // regressão nenhuma (o mesmo teste-bomba de ScheduleValidityReconciliationTest).
+        $this->travelTo(CarbonImmutable::parse('2026-09-15 10:00:00', 'Europe/Lisbon'));
         $this->bootLessonFixtures();
     }
 
