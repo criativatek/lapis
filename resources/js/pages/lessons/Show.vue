@@ -11,6 +11,7 @@ import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
 import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
+import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
 import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue';
 import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
+import { baseOnLabel } from '@/lib/lessonContext';
+import type { LessonBaseSource } from '@/lib/lessonContext';
 import { lessonDisplayState } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
@@ -140,11 +143,10 @@ function deleteLesson(): void {
 }
 
 // "Basear no sumário anterior" — a read-only convenience (never a write) that
-// offers the same class's most recent earlier sumário as an editable
+// offers the most recent earlier lesson WITH TEXT (taught or only prepared; the button names which) as an editable
 // starting point. Fetched once, up front, only when there is nothing typed
 // yet to lose — never overwrites anything the teacher already wrote.
-type PreviousSummary = { content: string; private_notes: string | null; resources: string | null; homework: string | null };
-const previousSummary = ref<PreviousSummary | null>(null);
+const previousSummary = ref<LessonBaseSource | null>(null);
 
 onMounted(async () => {
     if (props.lesson.summary?.content) {
@@ -157,7 +159,7 @@ onMounted(async () => {
         });
 
         if (response.status !== 204) {
-            previousSummary.value = (await response.json()) as PreviousSummary;
+            previousSummary.value = (await response.json()) as LessonBaseSource;
         }
     } catch {
         // Best-effort only — no previous summary is offered on failure.
@@ -421,6 +423,10 @@ function goBack(event: MouseEvent): void {
             @submitting="(value) => (submittingFromThisPage = value)"
         />
 
+        <!-- O contexto de quem prepara: aberto numa aula por dar, recolhido numa já
+             fechada (aí já não se prepara nada). -->
+        <LessonPreparationContextPanel :lesson-ulid="lesson.ulid" :default-open="lesson.outcome === null && lesson.status !== 'taught'" />
+
         <form class="space-y-4" @submit.prevent="submitSummary">
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
             <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
@@ -436,7 +442,7 @@ function goBack(event: MouseEvent): void {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
                     <Button v-if="canBasePrevious" type="button" variant="outline" size="sm" @click="basePreviousSummary">
-                        <Copy class="size-4" /> Basear no sumário anterior
+                        <Copy class="size-4" /> {{ baseOnLabel(previousSummary) }}
                     </Button>
                 </div>
                 <textarea id="lesson-summary" ref="summaryTextarea" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />

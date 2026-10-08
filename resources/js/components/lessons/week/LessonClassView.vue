@@ -19,6 +19,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { ChevronDown, History, Presentation } from '@lucide/vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import LessonIdentity from '@/components/lessons/week/LessonIdentity.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     addDays,
@@ -40,6 +41,7 @@ import type {
     Density,
     TeacherClass,
 } from '@/lib/lessonWeekView';
+import { statusToneClasses } from '@/lib/statusTone';
 import type { TurmaTone } from '@/lib/turmaTones';
 
 const props = defineProps<{
@@ -395,8 +397,8 @@ const segment =
                     class="size-4 text-muted-foreground"
                     aria-hidden="true"
                 />
-                Último sumário de {{ laneScope(focusedLane).label }} antes de
-                {{ dayMonthLabel(classView.range.start) }}
+                Antes de {{ dayMonthLabel(classView.range.start) }} — último sumário de
+                {{ laneScope(focusedLane).label }}
             </h3>
             <article
                 class="relative rounded-[10px] border bg-card py-3.5 pr-4 pl-[22px]"
@@ -418,6 +420,13 @@ const segment =
                         <span>{{
                             shortDayLabel(lessonDate(focusedLane.lesson))
                         }}</span>
+                        <Badge
+                            v-if="focusedLane.state"
+                            variant="secondary"
+                            data-testid="previous-state"
+                            :class="statusToneClasses(focusedLane.state)"
+                            >{{ focusedLane.state_label }}</Badge
+                        >
                     </p>
                     <div
                         v-if="density === 'compacto'"
@@ -489,8 +498,7 @@ const segment =
                         class="size-4 text-muted-foreground"
                         aria-hidden="true"
                     />
-                    Últimos sumários antes de
-                    {{ dayMonthLabel(classView.range.start) }}
+                    Antes de {{ dayMonthLabel(classView.range.start) }} — últimos sumários
                     <span class="font-normal text-muted-foreground"
                         >({{ classView.previous.length }})</span
                     >
@@ -537,6 +545,13 @@ const segment =
                                 <span>{{
                                     shortDayLabel(lessonDate(entry.lesson))
                                 }}</span>
+                                <Badge
+                                    v-if="entry.state"
+                                    variant="secondary"
+                                    data-testid="previous-state"
+                                    :class="statusToneClasses(entry.state)"
+                                    >{{ entry.state_label }}</Badge
+                                >
                             </template>
                         </p>
                         <template v-if="entry.lesson">

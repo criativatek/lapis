@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, reactive } from 'vue';
@@ -786,5 +786,102 @@ describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () =>
         const wrapper = mountPage();
 
         expect(wrapper.find('#assiduidade').exists()).toBe(true);
+    });
+});
+
+describe('lessons/Show — «Antes desta aula»', () => {
+    const entry = (overrides: Record<string, unknown>) => ({
+        ulid: 'e',
+        starts_at: '2026-09-07T09:00:00+01:00',
+        ends_at: '2026-09-07T09:50:00+01:00',
+        lesson_number: 1,
+        context_label: '7.º A',
+        state: 'taught',
+        state_label: 'Lecionada',
+        content: 'Texto.',
+        resources: null,
+        homework: null,
+        ...overrides,
+    });
+
+    function stubFetch(routes: { context?: () => Promise<Response>; previous?: () => Promise<Response> }) {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((url: string) => {
+                if (url.includes('/preparation-context')) {
+                    return (routes.context ?? (() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ lessons: [], has_more: false }) } as Response)))();
+                }
+
+                return (routes.previous ?? (() => Promise.resolve({ status: 204 } as Response)))();
+            }),
+        );
+    }
+
+    const json = (body: unknown) => () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+
+    it('mostra as aulas anteriores por ordem, com o estado de cada uma', async () => {
+        stubFetch({
+            context: json({
+                lessons: [
+                    entry({ ulid: 'mon', content: 'Funções afins.' }),
+                    entry({ ulid: 'tue', starts_at: '2026-09-08T09:00:00+01:00', state: 'prepared', state_label: 'Preparada — por lecionar', content: 'Sistemas.', homework: 'Ficha 3' }),
+                ],
+                has_more: true,
+            }),
+        });
+
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const entries = wrapper.findAll('[data-testid="lesson-context-entry"]');
+        expect(entries).toHaveLength(2);
+        expect(entries[0].text()).toContain('Segunda-feira');
+        expect(entries[0].get('[data-testid="lesson-context-state"]').text()).toBe('Lecionada');
+        expect(entries[1].get('[data-testid="lesson-context-state"]').text()).toBe('Preparada — por lecionar');
+        expect(entries[1].text()).toContain('TPC: Ficha 3');
+        expect(wrapper.find('[data-testid="lesson-context-more"]').exists()).toBe(true);
+    });
+
+    it('sem aulas anteriores diz-o, sem erro', async () => {
+        stubFetch({});
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-empty"]').text()).toContain('Sem aulas anteriores com conteúdo');
+        expect(wrapper.find('[data-testid="lesson-context-error"]').exists()).toBe(false);
+    });
+
+    it('um erro de carregamento mostra a mensagem e não parte o formulário', async () => {
+        stubFetch({ context: () => Promise.resolve({ ok: false, status: 500 } as Response) });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-error"]').text()).toContain('Não foi possível carregar as aulas anteriores.');
+        expect(wrapper.find('#lesson-summary').exists()).toBe(true);
+        expect(wrapper.text()).toContain('Guardar');
+    });
+
+    it('«Basear…» cita a aula e o estado, e só copia ao clicar', async () => {
+        stubFetch({
+            previous: json({
+                content: 'Plano de terça.',
+                private_notes: null,
+                resources: null,
+                homework: null,
+                starts_at: '2026-09-08T09:00:00+01:00',
+                state: 'prepared',
+                state_label: 'Preparada — por lecionar',
+            }),
+        });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const base = wrapper.findAll('button').find((button) => button.text().startsWith('Basear na aula de'));
+        expect(base?.text()).toBe('Basear na aula de 08/09 (Preparada — por lecionar)');
+        expect(summaryForm().content).toBe('');
+
+        await base!.trigger('click');
+
+        expect(summaryForm().content).toBe('Plano de terça.');
     });
 });

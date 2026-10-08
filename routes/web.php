@@ -585,9 +585,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::patch('lessons/{lesson}/attendance/{student:ulid}', [LessonAttendanceController::class, 'correct'])
             ->name('lessons.attendance.correct')
             ->withoutScopedBindings();
-        // Read-only convenience for "Basear no sumário anterior" — never
+        // Read-only: «Antes desta aula» (preparation-context) e "Basear no sumário anterior" — never
         // writes; copies into the CURRENT lesson's still-open, unsaved form.
         Route::get('lessons/{lesson}/previous-summary', [LessonController::class, 'previousSummary'])->name('lessons.previous-summary');
+        Route::get('lessons/{lesson}/preparation-context', [LessonController::class, 'preparationContext'])->name('lessons.preparation-context');
 
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');
