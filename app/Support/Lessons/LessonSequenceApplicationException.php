@@ -25,4 +25,14 @@ class LessonSequenceApplicationException extends RuntimeException
     {
         return new self(__('A turma selecionada não é do ano de escolaridade desta sequência.'));
     }
+
+    public static function emptySequence(): self
+    {
+        return new self(__('Esta sequência não tem aulas para aplicar.'));
+    }
+
+    public static function archivedClass(): self
+    {
+        return new self(__('A turma selecionada está arquivada.'));
+    }
 }

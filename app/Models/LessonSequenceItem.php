@@ -12,10 +12,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One step of a `LessonSequence` — a reusable template of Sumario text.
  *
  * WHAT THIS MAY NEVER BECOME: a live reference a lesson keeps reading. It is
- * read exactly once, by `ApplyLessonSequence`, which copies its fields into a
- * fresh, independent `LessonSummary`. Editing this item afterwards changes
- * nothing that was already applied — the same guarantee `ReportTemplate`
- * gives its reports.
+ * read only when the teacher applies the sequence, by `ApplyLessonSequence`,
+ * which copies its fields into an independent `LessonSummary`. Editing this
+ * item afterwards changes nothing that was already applied — the same
+ * guarantee `ReportTemplate` gives its reports. The summary does remember which
+ * item it came from (`lesson_summaries.lesson_sequence_item_id`), but only so
+ * that an explicit re-application can recognise its own placements.
  *
  * @property int $id
  * @property string $ulid

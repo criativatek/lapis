@@ -74,6 +74,7 @@ class LessonSequenceTest extends TestCase
         $year = $this->academicYearFor();
         $schoolClass = $this->schoolClassFor($this->teacher, $subject, $year);
         $lesson = $this->lessonFor($schoolClass);
+        $this->lessonFor($schoolClass, '2026-10-15 09:30:00');
 
         $sequence = $this->sequenceFor($this->teacher, $subject, $year, [
             ['summary' => 'Manter e editar.'],
@@ -82,7 +83,9 @@ class LessonSequenceTest extends TestCase
 
         // Applied once — the item that survives the edit below must never be
         // retroactively rewritten in the lesson it was already copied into.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+        // (Dois passos, como o ecrã: pré-visualização e confirmação com token.)
+        $preview = $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $this->applyPayload($schoolClass))->assertOk();
+        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", array_merge($this->applyPayload($schoolClass), ['plan_token' => $preview->json('plan_token')]))
             ->assertRedirect();
 
         $keptItem = $this->inTenant($this->organization, fn () => $sequence->items()->orderBy('position')->first());
@@ -208,6 +211,8 @@ class LessonSequenceTest extends TestCase
             'class_id' => $schoolClass->id,
             'starts_at' => $startsAt,
             'ends_at' => null,
+            // Manual: sem tempo do horário, a materialização que o plano faz não as reconcilia.
+            'origin' => 'manual',
             'status' => $status,
             'created_by' => $this->teacher->id,
         ]));
@@ -263,6 +268,8 @@ class LessonSequenceTest extends TestCase
     {
         return array_merge([
             'class_id' => $schoolClass->id,
+            'from' => '2026-10-01',
+            'plan_token' => str_repeat('0', 64),
             'summary' => true,
             'resources' => true,
             'homework' => true,

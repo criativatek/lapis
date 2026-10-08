@@ -268,10 +268,13 @@ export type ClassViewData = {
     group: string;
     range: { key: ClassRange; start: string; end: string; clamped: boolean };
     lessons: WeekLesson[];
-    /** O último sumário antes do intervalo, por grupo — do MESMO grupo, e de mais nenhum. */
+    /** O último sumário antes do INÍCIO DO INTERVALO (não da aula que se prepara), por grupo — do MESMO grupo, e de mais nenhum. */
     previous: {
         group_id: number | null;
         group_label: string | null;
         lesson: WeekLesson | null;
+        /** Lecionada / preparada por lecionar; NULL sem aula ou numa fechada sem ser lecionada. */
+        state: 'taught' | 'prepared' | null;
+        state_label: string | null;
     }[];
 };

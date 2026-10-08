@@ -1,8 +1,9 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, reactive } from 'vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
+import { consumeLessonsStale, resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import Show from './Show.vue';
 
 type MockForm = Record<string, unknown> & { isDirty: boolean };
@@ -188,6 +189,7 @@ beforeEach(() => {
     mocks.unsubscribe.mockClear();
     mocks.visit.mockClear();
     window.sessionStorage.clear();
+    resetConfirmedSummaries();
     vi.stubGlobal(
         'fetch',
         vi.fn(() => Promise.resolve({ status: 204 } as Response)),
@@ -786,5 +788,165 @@ describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () =>
         const wrapper = mountPage();
 
         expect(wrapper.find('#assiduidade').exists()).toBe(true);
+    });
+});
+
+describe('lessons/Show — «Antes desta aula»', () => {
+    const entry = (overrides: Record<string, unknown>) => ({
+        ulid: 'e',
+        starts_at: '2026-09-07T09:00:00+01:00',
+        ends_at: '2026-09-07T09:50:00+01:00',
+        lesson_number: 1,
+        context_label: '7.º A',
+        state: 'taught',
+        state_label: 'Lecionada',
+        content: 'Texto.',
+        resources: null,
+        homework: null,
+        ...overrides,
+    });
+
+    function stubFetch(routes: { context?: () => Promise<Response>; previous?: () => Promise<Response> }) {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((url: string) => {
+                if (url.includes('/preparation-context')) {
+                    return (routes.context ?? (() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ lessons: [], has_more: false }) } as Response)))();
+                }
+
+                return (routes.previous ?? (() => Promise.resolve({ status: 204 } as Response)))();
+            }),
+        );
+    }
+
+    const json = (body: unknown) => () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+
+    it('mostra as aulas anteriores por ordem, com o estado de cada uma', async () => {
+        stubFetch({
+            context: json({
+                lessons: [
+                    entry({ ulid: 'mon', content: 'Funções afins.' }),
+                    entry({ ulid: 'tue', starts_at: '2026-09-08T09:00:00+01:00', state: 'prepared', state_label: 'Preparada — por lecionar', content: 'Sistemas.', homework: 'Ficha 3' }),
+                ],
+                has_more: true,
+            }),
+        });
+
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const entries = wrapper.findAll('[data-testid="lesson-context-entry"]');
+        expect(entries).toHaveLength(2);
+        expect(entries[0].text()).toContain('Segunda-feira');
+        expect(entries[0].get('[data-testid="lesson-context-state"]').text()).toBe('Lecionada');
+        expect(entries[1].get('[data-testid="lesson-context-state"]').text()).toBe('Preparada — por lecionar');
+        expect(entries[1].text()).toContain('TPC: Ficha 3');
+        expect(wrapper.find('[data-testid="lesson-context-more"]').exists()).toBe(true);
+    });
+
+    it('sem aulas anteriores diz-o, sem erro', async () => {
+        stubFetch({});
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-empty"]').text()).toContain('Sem aulas anteriores com conteúdo');
+        expect(wrapper.find('[data-testid="lesson-context-error"]').exists()).toBe(false);
+    });
+
+    it('um erro de carregamento mostra a mensagem e não parte o formulário', async () => {
+        stubFetch({ context: () => Promise.resolve({ ok: false, status: 500 } as Response) });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-error"]').text()).toContain('Não foi possível carregar as aulas anteriores.');
+        expect(wrapper.find('#lesson-summary').exists()).toBe(true);
+        expect(wrapper.text()).toContain('Guardar');
+    });
+
+    it('«Basear…» cita a aula e o estado, e só copia ao clicar', async () => {
+        stubFetch({
+            previous: json({
+                content: 'Plano de terça.',
+                private_notes: null,
+                resources: null,
+                homework: null,
+                starts_at: '2026-09-08T09:00:00+01:00',
+                state: 'prepared',
+                state_label: 'Preparada — por lecionar',
+            }),
+        });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const base = wrapper.findAll('button').find((button) => button.text().startsWith('Basear na aula de'));
+        expect(base?.text()).toBe('Basear na aula de 08/09 (Preparada — por lecionar)');
+        expect(summaryForm().content).toBe('');
+
+        await base!.trigger('click');
+
+        expect(summaryForm().content).toBe('Plano de terça.');
+    });
+});
+
+describe('lessons/Show — gravação confirmada e falhas (0.158.1)', () => {
+    type PutOptions = {
+        onSuccess: () => void;
+        onFinish: () => void;
+        onHttpException: () => boolean | void;
+        onNetworkError: () => boolean | void;
+    };
+
+    const saved = { content: 'Texto gravado.', private_notes: null, resources: null, homework: null, reviewed_at: null };
+
+    async function submit(wrapper: VueWrapper): Promise<PutOptions> {
+        await wrapper.get('form').trigger('submit');
+
+        return (summaryForm().put as ReturnType<typeof vi.fn>).mock.calls[0][1] as PutOptions;
+    }
+
+    it('uma gravação aceite fica registada com a versão das props atualizadas e avisa a semana', async () => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        const options = await submit(wrapper);
+
+        options.onSuccess();
+        options.onFinish();
+
+        const stored = JSON.parse(window.sessionStorage.getItem('lapis.lessons.confirmedSummaries') ?? '{}') as Record<string, unknown>;
+        expect(stored['lesson-a']).toEqual({ ulid: 'lesson-a', content: 'Texto gravado.', version: 5 });
+        expect(consumeLessonsStale()).toBe(true);
+    });
+
+    it.each([
+        ['a ligação falha', 'onNetworkError', 'a ligação falhou'],
+        ['o servidor responde mal', 'onHttpException', 'o servidor não respondeu como devia'],
+    ] as const)('quando %s mostra a mensagem, mantém o texto e nunca diz «Sumário guardado.»', async (_name, hook, message) => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        summaryForm().content = 'O meu texto por gravar.';
+        const options = await submit(wrapper);
+
+        options[hook]();
+        options.onFinish();
+        await nextTick();
+
+        expect(wrapper.get('[data-testid="summary-save-failure"]').text()).toContain(message);
+        expect(wrapper.text()).toContain('O teu texto continua aqui');
+        expect(wrapper.text()).not.toContain('Sumário guardado.');
+        expect(summaryForm().content).toBe('O meu texto por gravar.');
+        expect(window.sessionStorage.getItem('lapis.lessons.confirmedSummaries')).toBeNull();
+        expect(consumeLessonsStale()).toBe(false);
+    });
+
+    it('a mensagem de falha desaparece na tentativa seguinte', async () => {
+        const wrapper = mountPage({ summary_version: 5, summary: saved });
+        const first = await submit(wrapper);
+        first.onNetworkError();
+        first.onFinish();
+        await nextTick();
+        expect(wrapper.find('[data-testid="summary-save-failure"]').exists()).toBe(true);
+
+        await wrapper.get('form').trigger('submit');
+        await nextTick();
+
+        expect(wrapper.find('[data-testid="summary-save-failure"]').exists()).toBe(false);
     });
 });

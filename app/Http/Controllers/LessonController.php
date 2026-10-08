@@ -20,6 +20,7 @@ use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\LessonAttendanceRoster;
 use App\Services\Lessons\LessonDayEvents;
+use App\Services\Lessons\LessonPreparationContext;
 use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\JsonResponse;
@@ -45,6 +46,7 @@ class LessonController extends Controller implements HasMiddleware
         protected ShiftLessonPlanning $lessonPlanning,
         protected LessonDayEvents $dayEvents,
         protected Entitlements $entitlements,
+        protected LessonPreparationContext $lessonContext,
     ) {}
 
     /**
@@ -171,6 +173,8 @@ class LessonController extends Controller implements HasMiddleware
 
     /**
      * "Basear no sumário anterior" — a read-only convenience, never a write.
+     * (Lê do LessonPreparationContext: a mais recente anterior
+     * COM TEXTO, lecionada ou só preparada, e diz qual das duas.)
      * Finds the same class's most recent earlier lesson that already has a
      * summary, and hands its text back so the frontend can copy it into the
      * CURRENT lesson's still-open, not-yet-saved form. Nothing is persisted
@@ -198,27 +202,41 @@ class LessonController extends Controller implements HasMiddleware
     {
         Gate::authorize('view', $lesson);
 
-        $previous = Lesson::query()
-            ->where('class_id', $lesson->class_id)
-            ->where(fn ($query) => $lesson->class_group_id === null
-                ? $query->whereNull('class_group_id')
-                : $query->where('class_group_id', $lesson->class_group_id))
-            ->where('starts_at', '<', $lesson->starts_at)
-            ->whereHas('summary')
-            ->with('summary')
-            ->orderByDesc('starts_at')
-            ->first();
+        // O mesmo contexto do painel «Antes desta aula»: a entrada MAIS
+        // RECENTE com texto de sumário, lecionada ou apenas preparada — o
+        // estado vai na resposta para o ecrã dizer de onde vem o texto.
+        $found = $this->lessonContext->latestWithSummary($lesson);
 
-        if ($previous === null || $previous->summary === null) {
+        if ($found === null) {
             return response()->json(null, 204);
         }
 
         return response()->json([
-            'content' => $previous->summary->content,
-            'private_notes' => $previous->summary->private_notes,
-            'resources' => $previous->summary->resources,
-            'homework' => $previous->summary->homework,
+            'content' => $found['entry']['content'],
+            // Continuam a vir: o «Basear» copia-as para o formulário do
+            // próprio professor (comportamento de sempre).
+            'private_notes' => $found['lesson']->summary?->private_notes,
+            'resources' => $found['entry']['resources'],
+            'homework' => $found['entry']['homework'],
+            'starts_at' => $found['entry']['starts_at'],
+            'state' => $found['entry']['state'],
+            'state_label' => $found['entry']['state_label'],
         ]);
+    }
+
+    /**
+     * «Antes desta aula» — as aulas anteriores (lecionadas e preparadas por
+     * lecionar) do mesmo público, para quem está a preparar esta. Só leitura;
+     * as regras vivem em LessonPreparationContext.
+     */
+    public function preparationContext(Request $request, Lesson $lesson): JsonResponse
+    {
+        Gate::authorize('view', $lesson);
+
+        return response()->json($this->lessonContext->for(
+            $lesson,
+            $request->integer('limit', LessonPreparationContext::DEFAULT_LIMIT),
+        ));
     }
 
     public function markTaught(MarkLessonAsTaughtRequest $request, Lesson $lesson): RedirectResponse

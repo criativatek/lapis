@@ -19,6 +19,8 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -48,7 +50,7 @@ class ApplyLessonSequenceTest extends TestCase
     }
 
     #[Test]
-    public function applying_with_all_options_creates_independent_summaries_derives_prepared_and_skips_taught_lessons(): void
+    public function applying_with_all_options_creates_independent_summaries_with_provenance_and_skips_closed_lessons(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $taughtLesson = $this->lessonFor($schoolClass, '2026-10-05 09:00:00', LessonStatus::Taught);
@@ -60,17 +62,15 @@ class ApplyLessonSequenceTest extends TestCase
             ['summary' => 'Sumário 2.', 'private_notes' => 'Nota 2.', 'resources' => 'Recurso 2.', 'homework' => 'TPC 2.'],
         ]);
 
-        $response = $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass));
+        $response = $this->applyWithPreview($sequence, $this->applyPayload($schoolClass));
         $response->assertRedirect();
 
-        // A fully successful apply — nothing preserved, nothing unavailable —
-        // reads as one clean sentence, with no trailing clauses.
         $response->assertSessionHas(
             'inertia.flash_data',
-            fn ($flash) => ($flash['toast'] ?? null) === ['type' => 'success', 'message' => 'Sequência aplicada a 2 aulas.'],
+            fn ($flash) => ($flash['toast'] ?? null) === ['type' => 'success', 'message' => 'Sequência aplicada a partir de 01/10: 2 aulas preparadas.'],
         );
 
-        $this->inTenant($this->organization, function () use ($schoolClass, $taughtLesson, $lessonOne, $lessonTwo): void {
+        $this->inTenant($this->organization, function () use ($schoolClass, $sequence, $taughtLesson, $lessonOne, $lessonTwo): void {
             $this->assertSame(LessonStatus::Taught, $taughtLesson->refresh()->status);
             $this->assertNull($taughtLesson->summary()->first());
 
@@ -80,54 +80,68 @@ class ApplyLessonSequenceTest extends TestCase
             $this->assertSame('Recurso 1.', $summaryOne->resources);
             $this->assertSame('TPC 1.', $summaryOne->homework);
             $this->assertSame(LessonStatus::Prepared, $lessonOne->status);
+            $this->assertSame($sequence->id, $summaryOne->lesson_sequence_id);
+            $this->assertSame($sequence->items()->orderBy('position')->first()->id, $summaryOne->lesson_sequence_item_id);
+            $this->assertSame($summaryOne->contentFingerprint(), $summaryOne->sequence_content_hash);
 
             $summaryTwo = $lessonTwo->refresh()->summary()->sole();
             $this->assertSame('Sumário 2.', $summaryTwo->content);
             $this->assertSame(LessonStatus::Prepared, $lessonTwo->status);
 
             $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
-            $this->assertSameJsonPayload([
-                'class_id' => $schoolClass->id,
-                'items_applied' => 2,
-                'items_skipped' => 0,
-                'copy_options' => ['summary' => true, 'resources' => true, 'homework' => true, 'private_notes' => true],
-            ], $event->properties);
+            $this->assertSame($schoolClass->id, $event->properties['class_id']);
+            $this->assertSame(2, $event->properties['items_applied']);
+            $this->assertSame(0, $event->properties['items_skipped']);
+            $this->assertSame('2026-10-01', $event->properties['from']);
+            $this->assertSame(1, $event->properties['counts']['closed']);
+            $this->assertSame(2, $event->properties['counts']['fill']);
+            // A coluna JSON do MySQL reordena as chaves: comparar sem depender da ordem.
+            $this->assertSameJsonPayload(['summary' => true, 'resources' => true, 'homework' => true, 'private_notes' => true], $event->properties['copy_options']);
         });
     }
 
+    /**
+     * Mudou de propósito: antes, uma aula com conteúdo recebia só os campos em
+     * branco e CONSUMIA o elemento. Agora uma aula preparada é preservada
+     * intacta (seja qual for o campo escrito pelo professor) e o horário é
+     * saltado sem consumir o elemento.
+     *
+     * @param  non-empty-string  $field
+     */
     #[Test]
-    public function selected_fields_only_fill_in_what_is_blank_at_the_destination_and_leave_the_rest_untouched(): void
+    #[DataProvider('teacherFields')]
+    public function a_prepared_lesson_is_preserved_intact_and_does_not_consume_an_item(string $field): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => 'Conteúdo original.',
-            'private_notes' => null,
-            'resources' => null,
-            'homework' => 'TPC original.',
-        ]));
+        $prepared = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
+        $free = $this->lessonFor($schoolClass, '2026-10-07 09:00:00');
+        $this->inTenant($this->organization, fn () => LessonSummary::create(
+            array_merge(['lesson_id' => $prepared->id, 'content' => ''], [$field => 'Texto do professor.']),
+        ));
+        $before = $this->inTenant($this->organization, fn () => $prepared->summary()->sole()->only(['content', 'resources', 'homework', 'private_notes']));
 
-        $sequence = $this->sequenceFor([
-            ['summary' => 'Conteúdo novo.', 'private_notes' => 'Nota nova.', 'resources' => 'Recurso novo.', 'homework' => 'TPC novo.'],
-        ]);
+        $sequence = $this->sequenceFor([['summary' => 'Item único.']]);
 
-        // All four options selected — but content and homework are already
-        // filled at the destination, while private_notes and resources are
-        // blank there.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
-            ->assertRedirect();
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))->assertRedirect()->assertSessionHasNoErrors();
 
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            // Already filled — untouched, despite being selected.
-            $this->assertSame('Conteúdo original.', $summary->content);
-            $this->assertSame('TPC original.', $summary->homework);
-            // Blank at the destination — filled in from the sequence item.
-            $this->assertSame('Recurso novo.', $summary->resources);
-            $this->assertSame('Nota nova.', $summary->private_notes);
-            $this->assertDatabaseCount('lesson_summaries', 1);
+        $this->inTenant($this->organization, function () use ($prepared, $free, $before): void {
+            $this->assertSame($before, $prepared->summary()->sole()->only(['content', 'resources', 'homework', 'private_notes']));
+            $this->assertNull($prepared->summary()->sole()->lesson_sequence_id);
+            $this->assertSame('Item único.', $free->summary()->sole()->content);
         });
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function teacherFields(): array
+    {
+        return [
+            'content' => ['content'],
+            'resources' => ['resources'],
+            'homework' => ['homework'],
+            'private_notes' => ['private_notes'],
+        ];
     }
 
     #[Test]
@@ -140,11 +154,7 @@ class ApplyLessonSequenceTest extends TestCase
             'resources' => 'Recurso do item.',
         ]]);
 
-        // "summary" explicitly off, "resources" on. There is no existing row,
-        // but resources still has something genuine to write, so the row is
-        // created — content falls back to '' as a structural placeholder,
-        // never to the sequence item's actual summary text.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass, [
             'summary' => false,
             'resources' => true,
             'homework' => false,
@@ -161,235 +171,45 @@ class ApplyLessonSequenceTest extends TestCase
     }
 
     #[Test]
-    public function a_lesson_with_no_existing_summary_and_nothing_applicable_is_skipped_entirely_without_creating_a_row(): void
+    public function an_item_with_nothing_to_copy_for_the_chosen_options_consumes_the_lesson_without_creating_a_row(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $sequence = $this->sequenceFor([[
-            'summary' => 'Texto que nunca deve ser aplicado.',
-            'private_notes' => 'Nota que nunca deve ser aplicada.',
-            'resources' => 'Recurso que nunca deve ser aplicado.',
-            'homework' => 'TPC que nunca deve ser aplicado.',
-        ]]);
+        $sequence = $this->sequenceFor([['summary' => 'Texto que nunca deve ser aplicado.']]);
 
-        // Every option off — there is nothing at all to apply, so the lesson
-        // is skipped entirely rather than getting an empty placeholder row.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
+        // Só «Recursos» está selecionado e o elemento não tem recursos.
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass, [
             'summary' => false,
-            'resources' => false,
+            'resources' => true,
             'homework' => false,
             'private_notes' => false,
-        ]))->assertRedirect();
+        ]))->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertDatabaseMissing('lesson_summaries', ['lesson_id' => $lesson->id]);
         $this->assertDatabaseCount('lesson_summaries', 0);
 
-        $this->inTenant($this->organization, function (): void {
+        $this->inTenant($this->organization, function () use ($lesson): void {
             $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
             $this->assertSame(0, $event->properties['items_applied']);
             $this->assertSame(0, $event->properties['items_skipped']);
-        });
-    }
-
-    #[Test]
-    public function summary_option_off_leaves_a_blank_existing_content_field_unwritten(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        // A LessonSummary row can already exist with an empty content field
-        // (e.g. left that way by a previous sequence application) — a
-        // legitimate, anticipated state, not a broken one.
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => '',
-        ]));
-
-        $sequence = $this->sequenceFor([['summary' => 'Nunca deve substituir o vazio.']]);
-
-        // The option being off blocks the write on its own — independent of
-        // whether the destination happens to already be blank.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => false,
-            'homework' => false,
-            'private_notes' => false,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('', $summary->content);
-            // Nothing was actually written, so Preparation never derives to
-            // Prepared — SaveLessonSummary was never called for this lesson.
-            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
-            $this->assertDatabaseCount('lesson_summaries', 1);
-        });
-    }
-
-    #[Test]
-    public function selecting_summary_when_the_destination_already_has_content_leaves_it_unchanged(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => 'Conteúdo já escrito à mão.',
-        ]));
-
-        $sequence = $this->sequenceFor([['summary' => 'Novo conteúdo que nunca deve aparecer.']]);
-
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => true,
-            'resources' => false,
-            'homework' => false,
-            'private_notes' => false,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('Conteúdo já escrito à mão.', $summary->content);
+            $this->assertSame(1, $event->properties['counts']['nothing_to_copy']);
             $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
         });
     }
 
     #[Test]
-    public function selecting_resources_when_the_destination_already_has_them_leaves_them_unchanged(): void
+    public function an_existing_blank_row_is_left_unwritten_when_nothing_is_to_be_copied(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
         $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $this->inTenant($this->organization, fn () => LessonSummary::create([
             'lesson_id' => $lesson->id,
             'content' => '',
-            'resources' => 'Recurso já definido.',
         ]));
 
-        $sequence = $this->sequenceFor([['summary' => '', 'resources' => 'Recurso novo — nunca deve aparecer.']]);
-
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => true,
-            'homework' => false,
-            'private_notes' => false,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('Recurso já definido.', $summary->resources);
-            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
-        });
-    }
-
-    #[Test]
-    public function selecting_homework_when_the_destination_already_has_it_leaves_it_unchanged(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => '',
-            'homework' => 'TPC já definido.',
-        ]));
-
-        $sequence = $this->sequenceFor([['summary' => '', 'homework' => 'TPC novo — nunca deve aparecer.']]);
-
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => false,
-            'homework' => true,
-            'private_notes' => false,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('TPC já definido.', $summary->homework);
-            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
-        });
-    }
-
-    #[Test]
-    public function selecting_private_notes_when_the_destination_already_has_them_leaves_them_unchanged(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => '',
-            'private_notes' => 'Nota já definida.',
-        ]));
-
-        $sequence = $this->sequenceFor([['summary' => '', 'private_notes' => 'Nota nova — nunca deve aparecer.']]);
-
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => false,
-            'homework' => false,
-            'private_notes' => true,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('Nota já definida.', $summary->private_notes);
-            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
-        });
-    }
-
-    #[Test]
-    public function unselected_fields_stay_untouched_regardless_of_existing_content_or_what_the_sequence_offered(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => 'Conteúdo existente que não deve mudar.',
-            'resources' => null,
-            'homework' => 'TPC existente que não deve mudar.',
-            'private_notes' => 'Nota existente que não deve mudar.',
-        ]));
-
-        $sequence = $this->sequenceFor([[
-            'summary' => 'Sumário novo — nunca deve aparecer.',
-            'resources' => 'Recurso novo.',
-            'homework' => 'TPC novo — nunca deve aparecer.',
-            'private_notes' => 'Nota nova — nunca deve aparecer.',
-        ]]);
-
-        // Only resources is selected. content/homework/private_notes are
-        // never even considered, no matter that the sequence offers
-        // different, non-blank text for them.
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => true,
-            'homework' => false,
-            'private_notes' => false,
-        ]))->assertRedirect();
-
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $summary = $lesson->summary()->sole();
-            $this->assertSame('Recurso novo.', $summary->resources);
-            $this->assertSame('Conteúdo existente que não deve mudar.', $summary->content);
-            $this->assertSame('TPC existente que não deve mudar.', $summary->homework);
-            $this->assertSame('Nota existente que não deve mudar.', $summary->private_notes);
-        });
-    }
-
-    #[Test]
-    public function blank_values_in_the_sequence_item_never_overwrite_or_clear_an_existing_but_blank_destination_and_the_lesson_is_preserved(): void
-    {
-        $schoolClass = $this->schoolClassFor($this->teacher);
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $lesson->id,
-            'content' => '',
-            'resources' => null,
-            'homework' => null,
-            'private_notes' => null,
-        ]));
-
-        // Every field blank at the source too — even with every option
-        // selected, there is nothing genuine to copy.
         $sequence = $this->sequenceFor([['summary' => '']]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
-            ->assertRedirect();
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))->assertRedirect();
 
         $this->inTenant($this->organization, function () use ($lesson): void {
             $summary = $lesson->summary()->sole();
@@ -397,13 +217,9 @@ class ApplyLessonSequenceTest extends TestCase
             $this->assertNull($summary->resources);
             $this->assertNull($summary->homework);
             $this->assertNull($summary->private_notes);
-            // Nothing changed, so SaveLessonSummary was never called — no
-            // false "prepared" transition for a lesson that was not touched.
+            // Nada foi escrito, por isso nunca «Preparada» sem sumário.
             $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
-
-            $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
-            $this->assertSame(0, $event->properties['items_applied']);
-            $this->assertSame(0, $event->properties['items_skipped']);
+            $this->assertDatabaseCount('lesson_summaries', 1);
         });
     }
 
@@ -411,101 +227,108 @@ class ApplyLessonSequenceTest extends TestCase
     public function private_notes_is_never_copied_unless_explicitly_requested(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
-        $existingLesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $this->inTenant($this->organization, fn () => LessonSummary::create([
-            'lesson_id' => $existingLesson->id,
-            'content' => 'Conteúdo.',
-            'private_notes' => 'Nota que tem de sobreviver.',
-        ]));
-
+        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $sequence = $this->sequenceFor([
             ['summary' => 'Novo conteúdo.', 'private_notes' => 'Nota do item — nunca deve ser copiada.'],
         ]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => true,
-            'resources' => true,
-            'homework' => true,
-            'private_notes' => false,
-        ]))->assertRedirect();
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass, ['private_notes' => false]))->assertRedirect();
 
-        $this->inTenant($this->organization, function () use ($existingLesson): void {
-            $summary = $existingLesson->summary()->sole();
-            $this->assertSame('Nota que tem de sobreviver.', $summary->private_notes);
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $summary = $lesson->summary()->sole();
+            $this->assertSame('Novo conteúdo.', $summary->content);
+            $this->assertNull($summary->private_notes);
         });
     }
 
+    /**
+     * Mudou de propósito: antes aplicava-se aos itens que cabiam e contava os
+     * outros como «sem aula». Agora um plano incompleto recusa-se inteiro.
+     */
     #[Test]
-    public function fewer_eligible_lessons_than_items_applies_to_the_available_ones_and_reports_counts(): void
+    public function fewer_eligible_lessons_than_items_refuses_the_whole_application(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
+        // Origem manual: a materialização que o plano faz para procurar mais
+        // horário reconcilia (e remove) as aulas vazias órfãs do horário.
         $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
+        $this->inTenant($this->organization, fn () => $lesson->forceFill(['origin' => 'manual'])->save());
         $sequence = $this->sequenceFor([
             ['summary' => 'Item 1.'],
             ['summary' => 'Item 2.'],
             ['summary' => 'Item 3.'],
         ]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
-            ->assertRedirect();
+        $preview = $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $this->applyPayload($schoolClass))
+            ->assertOk()
+            ->assertJsonPath('complete', false)
+            ->assertJsonCount(2, 'unplaced');
 
-        $this->inTenant($this->organization, function () use ($lesson): void {
-            $this->assertSame('Item 1.', $lesson->summary()->sole()->content);
-            $this->assertDatabaseCount('lesson_summaries', 1);
+        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass) + ['plan_token' => $preview->json('plan_token')])
+            ->assertSessionHasErrors('from');
 
-            $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
-            $this->assertSame(1, $event->properties['items_applied']);
-            $this->assertSame(2, $event->properties['items_skipped']);
-        });
+        $this->assertDatabaseCount('lesson_summaries', 0);
+        $this->assertDatabaseMissing('audit_events', ['event' => 'lesson_sequence.applied']);
     }
 
     #[Test]
-    public function zero_eligible_lessons_reports_zero_applied_without_erroring(): void
+    public function zero_eligible_lessons_refuses_without_writing_anything(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
-        // Only a past lesson exists — nothing eligible.
         $this->lessonFor($schoolClass, '2026-09-01 09:00:00');
         $sequence = $this->sequenceFor([['summary' => 'Item único.']]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
-            ->assertRedirect()
-            ->assertSessionHasNoErrors();
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))->assertSessionHasErrors('from');
 
         $this->assertDatabaseCount('lesson_summaries', 0);
-        $this->inTenant($this->organization, function (): void {
-            $event = AuditEvent::query()->where('event', 'lesson_sequence.applied')->sole();
-            $this->assertSame(0, $event->properties['items_applied']);
-            $this->assertSame(1, $event->properties['items_skipped']);
-        });
     }
 
     #[Test]
-    public function apply_reports_preserved_and_unavailable_counts_distinctly_in_the_flash_message(): void
+    public function apply_reports_the_real_counts_in_the_flash_message(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
-        // Only one eligible lesson for a two-item sequence.
-        $lesson = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
-        $sequence = $this->sequenceFor([
-            ['summary' => 'Item 1.'],
-            ['summary' => 'Item 2.'],
-        ]);
+        $prepared = $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
+        $this->lessonFor($schoolClass, '2026-10-07 09:00:00');
+        $this->inTenant($this->organization, fn () => LessonSummary::create(['lesson_id' => $prepared->id, 'content' => 'Do professor.']));
+        $sequence = $this->sequenceFor([['summary' => 'Item 1.']]);
 
-        // Nothing selected — the one matched lesson is preserved (nothing to
-        // write), and the second item has no lesson left to pair with.
-        $response = $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass, [
-            'summary' => false,
-            'resources' => false,
-            'homework' => false,
-            'private_notes' => false,
-        ]));
+        $response = $this->applyWithPreview($sequence, $this->applyPayload($schoolClass));
         $response->assertRedirect();
 
         $response->assertSessionHas('inertia.flash_data', fn ($flash) => ($flash['toast'] ?? null) === [
-            'type' => 'warning',
-            'message' => 'Sequência aplicada a 0 aulas. 1 aula já tinha conteúdo próprio e foi preservada. 1 item sem aula disponível.',
+            'type' => 'success',
+            'message' => 'Sequência aplicada a partir de 01/10: 1 aula preparada, 1 aula preservada.',
         ]);
+    }
 
-        $this->assertDatabaseMissing('lesson_summaries', ['lesson_id' => $lesson->id]);
+    #[Test]
+    public function the_date_must_be_today_or_later_and_at_least_one_field_must_be_selected(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
+        $sequence = $this->sequenceFor([['summary' => 'Item.']]);
+
+        $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $this->applyPayload($schoolClass, ['from' => '2026-09-30']))
+            ->assertStatus(422)->assertJsonValidationErrors('from');
+
+        $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $this->applyPayload($schoolClass, [
+            'summary' => false, 'resources' => false, 'homework' => false, 'private_notes' => false,
+        ]))->assertStatus(422)->assertJsonValidationErrors('summary');
+
+        $this->assertDatabaseCount('lesson_summaries', 0);
+    }
+
+    #[Test]
+    public function applying_without_a_plan_token_is_refused(): void
+    {
+        $schoolClass = $this->schoolClassFor($this->teacher);
+        $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
+        $sequence = $this->sequenceFor([['summary' => 'Item.']]);
+
+        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+            ->assertSessionHasErrors('plan_token');
+
+        $this->assertDatabaseCount('lesson_summaries', 0);
     }
 
     #[Test]
@@ -516,7 +339,7 @@ class ApplyLessonSequenceTest extends TestCase
         $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $sequence = $this->sequenceFor([['summary' => 'Item.']]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))
             ->assertRedirect()
             ->assertSessionHasErrors('class_id');
 
@@ -530,7 +353,7 @@ class ApplyLessonSequenceTest extends TestCase
         $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $sequence = $this->sequenceFor([['summary' => 'Item.']], gradeLevel: '7.º');
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))
             ->assertRedirect()
             ->assertSessionHasErrors('class_id');
 
@@ -544,7 +367,7 @@ class ApplyLessonSequenceTest extends TestCase
         $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $sequence = $this->sequenceFor([['summary' => 'Item universal.']], gradeLevel: null);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))
             ->assertRedirect()
             ->assertSessionHasNoErrors();
 
@@ -565,7 +388,7 @@ class ApplyLessonSequenceTest extends TestCase
         $this->lessonFor($schoolClass, '2026-10-06 09:00:00');
         $sequence = $this->sequenceFor([['summary' => 'Item.']]);
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+        $this->applyWithPreview($sequence, $this->applyPayload($schoolClass))
             ->assertForbidden();
 
         $this->assertDatabaseCount('lesson_summaries', 0);
@@ -580,10 +403,25 @@ class ApplyLessonSequenceTest extends TestCase
 
         $this->actingAs($this->teacher)
             ->withSession(['organization_id' => $this->organization->id, 'impersonator_id' => 999])
-            ->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass))
+            ->post("/lessons/sequences/{$sequence->ulid}/apply", $this->applyPayload($schoolClass) + ['plan_token' => str_repeat('0', 64)])
             ->assertForbidden();
 
         $this->assertDatabaseCount('lesson_summaries', 0);
+    }
+
+    /**
+     * O caminho real do ecrã: pré-visualiza (JSON) e confirma com o plan_token.
+     * Quando a pré-visualização recusa, a confirmação segue com um token vazio
+     * para que seja a própria recusa do servidor a falar.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function applyWithPreview(LessonSequence $sequence, array $payload): TestResponse
+    {
+        $preview = $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $payload);
+        $token = $preview->status() === 200 ? $preview->json('plan_token') : str_repeat('0', 64);
+
+        return $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $payload + ['plan_token' => $token]);
     }
 
     private function asTeacher(): self
@@ -626,6 +464,8 @@ class ApplyLessonSequenceTest extends TestCase
             'class_id' => $schoolClass->id,
             'starts_at' => $startsAt,
             'ends_at' => null,
+            // Manual: sem tempo do horário, a materialização que o plano faz não as reconcilia.
+            'origin' => 'manual',
             'status' => $status,
             'created_by' => $this->teacher->id,
         ]));
@@ -667,6 +507,7 @@ class ApplyLessonSequenceTest extends TestCase
     {
         return array_merge([
             'class_id' => $schoolClass->id,
+            'from' => '2026-10-01',
             'summary' => true,
             'resources' => true,
             'homework' => true,

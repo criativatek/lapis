@@ -23,6 +23,7 @@ import {
     Save,
 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
 import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -176,6 +177,9 @@ defineExpose({
                 aria-hidden="true"
             />{{ note.text }}
         </p>
+        <!-- «Antes desta aula»: recolhido, em versão curta, carregado em paralelo
+             e sem nunca bloquear a escrita; um erro fica dentro da própria secção. -->
+        <LessonPreparationContextPanel :lesson-ulid="lesson.ulid" compact :default-open="false" />
         <textarea
             :id="fieldId"
             ref="textarea"

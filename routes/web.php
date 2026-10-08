@@ -554,10 +554,16 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // single-segment lessons/{lesson} wildcard below, which would
         // otherwise swallow GET lessons/sequences by treating "sequences"
         // as a lesson ulid.
+        // `lessons/next-day` pela mesma razão: leitura JSON do atalho «Aulas de
+        // hoje» (próximo dia com aula), que o wildcard engoliria como uma aula.
+        Route::get('lessons/next-day', [LessonWeekController::class, 'nextDay'])->name('lessons.next-day');
         Route::get('lessons/sequences', [LessonSequenceController::class, 'index'])->name('lessons.sequences.index');
         Route::post('lessons/sequences', [LessonSequenceController::class, 'store'])->name('lessons.sequences.store');
         Route::put('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'update'])->name('lessons.sequences.update');
         Route::delete('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'destroy'])->name('lessons.sequences.destroy');
+        // Pré-visualização ANTES da aplicação, e ambas antes do wildcard: calcula
+        // o mesmo plano que `apply` executa, dentro de uma transação revertida.
+        Route::post('lessons/sequences/{lessonSequence}/preview', [LessonSequenceController::class, 'preview'])->name('lessons.sequences.preview');
         Route::post('lessons/sequences/{lessonSequence}/apply', [LessonSequenceController::class, 'apply'])->name('lessons.sequences.apply');
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
@@ -585,9 +591,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::patch('lessons/{lesson}/attendance/{student:ulid}', [LessonAttendanceController::class, 'correct'])
             ->name('lessons.attendance.correct')
             ->withoutScopedBindings();
-        // Read-only convenience for "Basear no sumário anterior" — never
+        // Read-only: «Antes desta aula» (preparation-context) e "Basear no sumário anterior" — never
         // writes; copies into the CURRENT lesson's still-open, unsaved form.
         Route::get('lessons/{lesson}/previous-summary', [LessonController::class, 'previousSummary'])->name('lessons.previous-summary');
+        Route::get('lessons/{lesson}/preparation-context', [LessonController::class, 'preparationContext'])->name('lessons.preparation-context');
 
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');

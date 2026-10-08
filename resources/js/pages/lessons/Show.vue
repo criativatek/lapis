@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Check, Copy, Eraser, Info, Save, Trash2 } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -11,6 +11,7 @@ import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
 import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
 import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
+import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
 import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue';
 import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,9 @@ import {
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
+import { markLessonsStale, recordConfirmedSummary } from '@/lib/confirmedSummaries';
+import { baseOnLabel } from '@/lib/lessonContext';
+import type { LessonBaseSource } from '@/lib/lessonContext';
 import { lessonDisplayState } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
@@ -106,6 +110,7 @@ function recordAttendance(): void {
     submittingFromThisPage.value = true;
     recordForm.post(`/lessons/${props.lesson.ulid}/attendance`, {
         preserveScroll: true,
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
@@ -123,6 +128,10 @@ function clearSummary(): void {
     clearForm.delete(`/lessons/${props.lesson.ulid}/summary`, {
         preserveScroll: true,
         onSuccess: () => {
+            // O sumário limpo também sobe a versão: a semana não pode voltar,
+            // pelo histórico, a mostrar o texto que acabou de ser apagado.
+            recordConfirmedSummary(props.lesson.ulid, '', props.lesson.summary_version ?? 0);
+            markLessonsStale();
             clearDialogOpen.value = false;
             summaryForm.content = '';
             summaryForm.summary_version = props.lesson.summary_version ?? 0;
@@ -132,19 +141,27 @@ function clearSummary(): void {
     });
 }
 
+// O resultado da aula é registado pelo diálogo de «Não houve aula», que não
+// passa por aqui: quando o resultado ou o estado mudam nas props, as aulas da
+// semana também ficaram para trás.
+watch(
+    () => [props.lesson.outcome, props.lesson.status],
+    () => markLessonsStale(),
+);
+
 function deleteLesson(): void {
     submittingFromThisPage.value = true;
     deleteForm.delete(`/lessons/${props.lesson.ulid}`, {
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
 
 // "Basear no sumário anterior" — a read-only convenience (never a write) that
-// offers the same class's most recent earlier sumário as an editable
+// offers the most recent earlier lesson WITH TEXT (taught or only prepared; the button names which) as an editable
 // starting point. Fetched once, up front, only when there is nothing typed
 // yet to lose — never overwrites anything the teacher already wrote.
-type PreviousSummary = { content: string; private_notes: string | null; resources: string | null; homework: string | null };
-const previousSummary = ref<PreviousSummary | null>(null);
+const previousSummary = ref<LessonBaseSource | null>(null);
 
 onMounted(async () => {
     if (props.lesson.summary?.content) {
@@ -157,7 +174,7 @@ onMounted(async () => {
         });
 
         if (response.status !== 204) {
-            previousSummary.value = (await response.json()) as PreviousSummary;
+            previousSummary.value = (await response.json()) as LessonBaseSource;
         }
     } catch {
         // Best-effort only — no previous summary is offered on failure.
@@ -218,6 +235,11 @@ const conflict = computed(() =>
         : null,
 );
 const conflictNotice = ref<string | null>(null);
+/**
+ * Falha que NÃO é de validação (500, ligação perdida): o servidor não deu uma
+ * resposta que o formulário saiba ler. Fica à vista, com o texto intacto.
+ */
+const saveFailure = ref<string | null>(null);
 
 function resolveConflict(choice: 'combine' | 'keep-mine' | 'use-stored'): void {
     const current = conflict.value;
@@ -278,6 +300,7 @@ function releaseSubmission(): void {
 function submitSummary(): Promise<boolean> {
     submittingFromThisPage.value = true;
     conflictNotice.value = null;
+    saveFailure.value = null;
 
     return new Promise((resolve) => {
         let saved = false;
@@ -289,6 +312,26 @@ function submitSummary(): Promise<boolean> {
                 // Antes de o formulário se dar por limpo, para a versão nova
                 // ficar também no ponto de partida.
                 summaryForm.summary_version = props.lesson.summary_version ?? 0;
+                // Gravação CONFIRMADA: a semana mostra este texto mesmo que o
+                // histórico a reponha com as props de antes.
+                recordConfirmedSummary(
+                    props.lesson.ulid,
+                    props.lesson.summary?.content ?? '',
+                    props.lesson.summary_version ?? 0,
+                );
+                markLessonsStale();
+            },
+            onHttpException: () => {
+                saveFailure.value =
+                    'Não foi possível guardar: o servidor não respondeu como devia. O teu texto continua aqui — tenta outra vez.';
+
+                return false;
+            },
+            onNetworkError: () => {
+                saveFailure.value =
+                    'Não foi possível guardar: a ligação falhou. O teu texto continua aqui, por gravar — tenta outra vez.';
+
+                return false;
             },
             onFinish: () => {
                 releaseSubmission();
@@ -302,6 +345,7 @@ function markTaught(): void {
     submittingFromThisPage.value = true;
     taughtForm.post(`/lessons/${props.lesson.ulid}/mark-taught`, {
         preserveScroll: true,
+        onSuccess: markLessonsStale,
         onFinish: releaseSubmission,
     });
 }
@@ -421,11 +465,20 @@ function goBack(event: MouseEvent): void {
             @submitting="(value) => (submittingFromThisPage = value)"
         />
 
+        <!-- O contexto de quem prepara: aberto numa aula por dar, recolhido numa já
+             fechada (aí já não se prepara nada). -->
+        <LessonPreparationContextPanel :lesson-ulid="lesson.ulid" :default-open="lesson.outcome === null && lesson.status !== 'taught'" />
+
         <form class="space-y-4" @submit.prevent="submitSummary">
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
             <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
 
-            <div v-if="summaryForm.recentlySuccessful" role="status" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+            <div v-if="saveFailure" role="alert" class="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" data-testid="summary-save-failure">
+                <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                {{ saveFailure }}
+            </div>
+
+            <div v-if="summaryForm.recentlySuccessful && !saveFailure" role="status" class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
                 <Check class="size-4" />
                 Sumário guardado.
             </div>
@@ -436,7 +489,7 @@ function goBack(event: MouseEvent): void {
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <Label for="lesson-summary" class="text-base font-semibold">Sumário</Label>
                     <Button v-if="canBasePrevious" type="button" variant="outline" size="sm" @click="basePreviousSummary">
-                        <Copy class="size-4" /> Basear no sumário anterior
+                        <Copy class="size-4" /> {{ baseOnLabel(previousSummary) }}
                     </Button>
                 </div>
                 <textarea id="lesson-summary" ref="summaryTextarea" v-model="summaryForm.content" name="content" rows="10" maxlength="16000" required class="min-h-56 w-full resize-y rounded-xl border border-input bg-background px-4 py-3 text-base leading-relaxed shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Escreve o sumário desta aula…" :disabled="summaryForm.processing" aria-describedby="lesson-summary-error" />

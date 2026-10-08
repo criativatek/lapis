@@ -72,6 +72,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
 import {
+    consumeLessonsStale,
+    hasPendingConfirmations,
+    hydrateConfirmedSummaries,
+    pruneCaughtUp,
+    recordConfirmedSummary,
+    withConfirmedSummaries,
+    withConfirmedSummary,
+} from '@/lib/confirmedSummaries';
+import {
     addDays,
     dayHeading,
     dayMonthLabel,
@@ -89,6 +98,7 @@ import {
 } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
 import {
+    activeFilterCount,
     matchesSecondaryFilters,
     matchesWeekFilters,
     parseWeekViewState,
@@ -130,6 +140,65 @@ const props = withDefaults(
     { classes: () => [], classView: null },
 );
 
+// ------------------------------------------- aulas com as gravações confirmadas
+//
+// UM só sítio onde as props das aulas passam a ser lidas: todas as vistas
+// (Semana, Por turma incl. «Últimos sumários», Horário, projeção, editor) usam
+// `weekLessons` e `classViewData`, nunca `props.lessons` / `props.classView`.
+// Uma gravação confirmada tem uma `summary_version`; props com versão menor
+// (histórico do Inertia, resposta atrasada) não repõem o texto anterior.
+hydrateConfirmedSummaries();
+
+const weekLessons = computed(() => withConfirmedSummaries(props.lessons));
+const classViewData = computed<ClassViewData | null>(() => {
+    const view = props.classView;
+
+    if (view === null) {
+        return null;
+    }
+
+    return {
+        ...view,
+        lessons: withConfirmedSummaries(view.lessons),
+        previous: view.previous.map((entry) => ({
+            ...entry,
+            lesson: entry.lesson ? withConfirmedSummary(entry.lesson) : null,
+        })),
+    };
+});
+
+/** Quando TODAS as ocorrências de uma aula nas props já alcançaram a gravação, esquece-a. */
+watch(
+    () => [props.lessons, props.classView] as const,
+    () => {
+        const oldest = new Map<string, number>();
+
+        for (const lesson of [
+            ...props.lessons,
+            ...(props.classView?.lessons ?? []),
+            ...(props.classView?.previous.flatMap((entry) =>
+                entry.lesson ? [entry.lesson] : [],
+            ) ?? []),
+        ]) {
+            oldest.set(
+                lesson.ulid,
+                Math.min(
+                    oldest.get(lesson.ulid) ?? Number.POSITIVE_INFINITY,
+                    lesson.summary_version,
+                ),
+            );
+        }
+
+        pruneCaughtUp(
+            [...oldest].map(([ulid, summary_version]) => ({
+                ulid,
+                summary_version,
+            })),
+        );
+    },
+    { immediate: true },
+);
+
 const page = usePage();
 const state = computed<WeekViewState>(() => parseWeekViewState(page.url));
 const view = computed<WeekView>(() => state.value.view);
@@ -166,8 +235,8 @@ const knownClasses = computed(() => {
     }
 
     for (const lesson of [
-        ...props.lessons,
-        ...(props.classView?.lessons ?? []),
+        ...weekLessons.value,
+        ...(classViewData.value?.lessons ?? []),
     ]) {
         if (!byUlid.has(lesson.school_class.ulid)) {
             byUlid.set(lesson.school_class.ulid, {
@@ -196,7 +265,7 @@ const filterClasses = computed(() =>
         .filter(
             (schoolClass) =>
                 !schoolClass.archived ||
-                props.lessons.some(
+                weekLessons.value.some(
                     (lesson) => lesson.school_class.ulid === schoolClass.ulid,
                 ),
         )
@@ -214,7 +283,7 @@ const pickableClasses = computed<TeacherClass[]>(() =>
     props.classes.filter(
         (schoolClass) =>
             !schoolClass.archived ||
-            schoolClass.ulid === props.classView?.class.ulid,
+            schoolClass.ulid === classViewData.value?.class.ulid,
     ),
 );
 
@@ -269,7 +338,7 @@ function setView(next: WeekView): void {
                     view: 'turma',
                     classUlid:
                         state.value.classUlid ??
-                        props.classView?.class.ulid ??
+                        classViewData.value?.class.ulid ??
                         null,
                 },
                 { server: true, push: true },
@@ -407,7 +476,7 @@ function restoreFromLesson(): void {
 // ------------------------------------------------------------ vista Semana
 
 const visibleWeekLessons = computed(() =>
-    props.lessons.filter(
+    weekLessons.value.filter(
         (lesson) =>
             lesson.ulid === pinnedLesson.value ||
             matchesWeekFilters(lesson, state.value, now.value),
@@ -422,16 +491,16 @@ const days = computed(() => {
         lessons: visibleWeekLessons.value.filter(
             (lesson) => lessonDate(lesson) === date,
         ),
-        all: props.lessons.filter((lesson) => lessonDate(lesson) === date),
+        all: weekLessons.value.filter((lesson) => lessonDate(lesson) === date),
     }));
 });
 
-const facts = computed(() => weekFacts(props.lessons, now.value));
+const facts = computed(() => weekFacts(weekLessons.value, now.value));
 
 // ---------------------------------------------------------- vista Por turma
 
 const classViewLessons = computed(() =>
-    (props.classView?.lessons ?? []).filter(
+    (classViewData.value?.lessons ?? []).filter(
         (lesson) =>
             lesson.ulid === pinnedLesson.value ||
             matchesSecondaryFilters(lesson, state.value, now.value),
@@ -451,10 +520,10 @@ const dayNavItems = computed<DayNavItem[]>(() => {
         }));
     }
 
-    if (view.value === 'turma' && props.classView) {
+    if (view.value === 'turma' && classViewData.value) {
         const lessons = classViewLessons.value;
 
-        if (props.classView.range.key === '1') {
+        if (classViewData.value.range.key === '1') {
             return [...new Set(lessons.map(lessonDate))].map((date) => ({
                 target: `dia-turma-${date}`,
                 label: weekdayAbbr(date),
@@ -465,11 +534,11 @@ const dayNavItems = computed<DayNavItem[]>(() => {
         }
 
         const weeks: string[] = [];
-        let start = props.classView.range.start;
+        let start = classViewData.value.range.start;
         const weekday = new Date(`${start}T12:00:00Z`).getUTCDay();
         start = addDays(start, weekday === 0 ? -6 : 1 - weekday);
 
-        while (start <= props.classView.range.end) {
+        while (start <= classViewData.value.range.end) {
             weeks.push(start);
             start = addDays(start, 7);
         }
@@ -578,6 +647,15 @@ function setEditorComponent(element: unknown): void {
 
 function findLesson(ulid: string): WeekLesson | null {
     return (
+        weekLessons.value.find((lesson) => lesson.ulid === ulid) ??
+        classViewData.value?.lessons.find((lesson) => lesson.ulid === ulid) ??
+        null
+    );
+}
+
+/** A aula tal como veio do servidor, sem a sobreposição das gravações confirmadas. */
+function rawLesson(ulid: string): WeekLesson | null {
+    return (
         props.lessons.find((lesson) => lesson.ulid === ulid) ??
         props.classView?.lessons.find((lesson) => lesson.ulid === ulid) ??
         null
@@ -613,7 +691,7 @@ const projectionLesson = computed<WeekLesson | null>(() => {
 
     return (
         findLesson(projected.value) ??
-        props.classView?.previous
+        classViewData.value?.previous
             .map((entry) => entry.lesson)
             .find((lesson) => lesson?.ulid === projected.value) ??
         null
@@ -726,6 +804,28 @@ function saveSummary(): Promise<boolean> {
                 only: ['lessons', 'classView'],
                 onSuccess: () => {
                     saved = true;
+
+                    // As props já são as frescas (reload parcial): a versão
+                    // devolvida é a que fica registada. Se a aula não veio,
+                    // a gravação subiu a versão em um e o texto foi o enviado.
+                    const fresh = rawLesson(current.ulid);
+
+                    if (
+                        fresh !== null &&
+                        fresh.summary_version > current.baseVersion
+                    ) {
+                        recordConfirmedSummary(
+                            current.ulid,
+                            fresh.summary ?? content,
+                            fresh.summary_version,
+                        );
+                    } else {
+                        recordConfirmedSummary(
+                            current.ulid,
+                            content,
+                            current.baseVersion + 1,
+                        );
+                    }
                 },
                 onError: (errors) => {
                     if (errors.summary_version) {
@@ -932,7 +1032,7 @@ function canQuickClose(lesson: WeekLesson): boolean {
 
 // Só aulas abertas que já começaram entram no lote rápido.
 const selectableLessons = computed(() =>
-    props.lessons.filter((lesson) => canQuickClose(lesson)),
+    weekLessons.value.filter((lesson) => canQuickClose(lesson)),
 );
 
 watch(selectableLessons, (lessons) => {
@@ -973,13 +1073,157 @@ function materialize(): void {
     materializeForm.post('/lessons/materialize-week', { preserveScroll: true });
 }
 
+// --------------------------------------------- «Aulas de hoje» (`foco=hoje`)
+//
+// O atalho do Dashboard abre `/lessons?view=semana&foco=hoje`. Depois de a
+// página estar renderizada, a Semana posiciona-se no primeiro dia VISÍVEL
+// (já filtrado) que seja hoje ou posterior. Se a semana aberta já não o tem,
+// pergunta ao servidor (só leitura) qual é o próximo dia com aula e salta para
+// essa semana, mantendo os filtros, repetindo o passo quando as props chegam.
+// Nada aqui usa temporizadores: só `nextTick` e `requestAnimationFrame`.
+
+type TodayNotice = { kind: 'none' | 'error'; filtered: boolean };
+
+const todayNotice = ref<TodayNotice | null>(null);
+/** As semanas por onde o atalho já passou — cada salto tem de avançar. */
+const todayVisited = new Set<string>();
+
+function wantsTodayFocus(): boolean {
+    const query = page.url.includes('?') ? page.url.slice(page.url.indexOf('?') + 1).split('#')[0] : '';
+
+    return new URLSearchParams(query).get('foco') === 'hoje';
+}
+
+/** Retira `foco` do URL, para que recarregar não volte a saltar. */
+function clearTodayFocus(): void {
+    const url = new URL(page.url, 'http://lapis.local');
+    url.searchParams.delete('foco');
+
+    router.replace({
+        url: `${url.pathname}${url.search}${url.hash}`,
+        preserveState: true,
+        preserveScroll: true,
+    });
+}
+
+function weekStartOf(date: string): string {
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+
+    return addDays(date, weekday === 0 ? -6 : 1 - weekday);
+}
+
+function nextFrame(): Promise<void> {
+    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+async function positionToday(): Promise<void> {
+    if (!wantsTodayFocus()) {
+        return;
+    }
+
+    if (view.value !== 'semana' || !props.academicYear) {
+        clearTodayFocus();
+
+        return;
+    }
+
+    await nextTick();
+    await nextFrame();
+
+    if (!wantsTodayFocus()) {
+        return;
+    }
+
+    const target = days.value.find((day) => day.date >= props.today);
+
+    if (target) {
+        const heading = document.getElementById(`dia-${target.date}`);
+        heading?.scrollIntoView({ block: 'start' });
+        heading?.focus({ preventScroll: true });
+        todayNotice.value = null;
+        clearTodayFocus();
+
+        return;
+    }
+
+    await seekNextLessonDay();
+}
+
+async function seekNextLessonDay(): Promise<void> {
+    const filtered = activeFilterCount(state.value) > 0;
+
+    // Guarda de ciclo: uma semana por onde já se passou não pode voltar a pedir salto.
+    if (todayVisited.has(props.week.start)) {
+        todayNotice.value = { kind: 'error', filtered };
+        clearTodayFocus();
+
+        return;
+    }
+
+    todayVisited.add(props.week.start);
+
+    try {
+        const query = new URLSearchParams({ after: props.week.end });
+
+        if (state.value.classes.length > 0) {
+            query.set('classes', state.value.classes.join(','));
+        }
+
+        const response = await fetch(`/lessons/next-day?${query.toString()}`, {
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+            throw new Error(`next-day ${response.status}`);
+        }
+
+        const { date } = (await response.json()) as { date: string | null };
+
+        if (date === null) {
+            todayNotice.value = { kind: 'none', filtered };
+            clearTodayFocus();
+
+            return;
+        }
+
+        const week = weekStartOf(date);
+
+        if (week <= props.week.start || todayVisited.has(week)) {
+            todayNotice.value = { kind: 'error', filtered };
+            clearTodayFocus();
+
+            return;
+        }
+
+        router.get(
+            `${weekViewUrl(state.value, week)}&foco=hoje`,
+            {},
+            {
+                preserveState: true,
+                replace: true,
+                onSuccess: () => {
+                    void positionToday();
+                },
+                onError: () => {
+                    todayNotice.value = { kind: 'error', filtered };
+                },
+            },
+        );
+    } catch {
+        todayNotice.value = { kind: 'error', filtered };
+        clearTodayFocus();
+    }
+}
+
+function clearAllFilters(): void {
+    todayNotice.value = null;
+    updateFilters({ classes: [], states: [], attention: false, summary: 'todos' });
+}
+
 // ------------------------------------------------------------------------ ciclo
 
-onMounted(() => {
-    clock = setInterval(() => {
-        now.value = new Date();
-    }, 60_000);
-
+/** O resto do arranque: a vista guardada, o regresso ao cartão e «Aulas de hoje». */
+function continueMount(): void {
     // Sem vista no URL, usa a última escolhida neste browser.
     if (!page.url.includes('view=')) {
         const stored = storedView();
@@ -992,6 +1236,59 @@ onMounted(() => {
     }
 
     restoreFromLesson();
+    void positionToday();
+}
+
+onMounted(() => {
+    clock = setInterval(() => {
+        now.value = new Date();
+    }, 60_000);
+
+    // Regresso à semana (histórico do Inertia com props antigas, ou alguma
+    // alteração feita na página da aula): revalida no servidor, mantendo o
+    // scroll e o estado. Enquanto a resposta não chega, a sobreposição já
+    // mostra o texto confirmado.
+    const stale = consumeLessonsStale();
+
+    if (
+        !stale &&
+        !hasPendingConfirmations([
+            ...props.lessons,
+            ...(props.classView?.lessons ?? []),
+        ])
+    ) {
+        continueMount();
+
+        return;
+    }
+
+    // UMA VISITA SÍNCRONA, E NÃO `router.reload()`. O reload do Inertia é
+    // assíncrono, e uma resposta assíncrona só é descartada se mudar o
+    // PATHNAME (Inertia 3.6, `shouldSetPage`): chegando depois de uma visita a
+    // outra semana ou à vista Por turma — o mesmo `/lessons`, outra query —
+    // repunha as props E o URL antigos. Síncrona, é a visita seguinte que a
+    // cancela, nunca o contrário. E o resto do arranque, que pode navegar
+    // (vista guardada, «Aulas de hoje»), espera por ela.
+    let cancelled = false;
+
+    router.get(
+        page.url,
+        {},
+        {
+            only: ['lessons', 'classView'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            onCancel: () => {
+                cancelled = true;
+            },
+            onFinish: () => {
+                if (!cancelled) {
+                    continueMount();
+                }
+            },
+        },
+    );
 });
 
 onBeforeUnmount(() => {
@@ -1272,7 +1569,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
         <template
             v-if="
                 (academicYear &&
-                    lessons.length + (classView?.lessons.length ?? 0) > 0) ||
+                    weekLessons.length + (classViewData?.lessons.length ?? 0) > 0) ||
                 (academicYear && view === 'turma')
             "
         >
@@ -1285,15 +1582,15 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     view === 'turma'
                         ? classViewLessons.length
                         : view === 'horario'
-                          ? lessons.filter((lesson) =>
+                          ? weekLessons.filter((lesson) =>
                                 matchesWeekFilters(lesson, state, now),
                             ).length
                           : visibleWeekLessons.length
                 "
                 :total-count="
                     view === 'turma'
-                        ? (classView?.lessons.length ?? 0)
-                        : lessons.length
+                        ? (classViewData?.lessons.length ?? 0)
+                        : weekLessons.length
                 "
                 :unit-label="
                     view === 'turma'
@@ -1342,7 +1639,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 </template>
             </LessonWeekFilters>
             <p
-                v-if="view !== 'turma' && lessons.length > 0"
+                v-if="view !== 'turma' && weekLessons.length > 0"
                 class="mt-2 text-sm text-muted-foreground"
                 data-testid="week-facts"
             >
@@ -1384,12 +1681,40 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             :items="dayNavItems"
             :back-label="cameFromTimetable ? 'Voltar ao horário' : null"
             :aria-label="
-                view === 'turma' && classView && classView.range.key !== '1'
+                view === 'turma' && classViewData && classViewData.range.key !== '1'
                     ? 'Atalhos para as semanas'
                     : 'Atalhos para os dias'
             "
             @back="backToTimetable"
         />
+
+        <div
+            v-if="todayNotice"
+            class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card p-3 text-sm"
+            role="status"
+            data-testid="today-notice"
+        >
+            <span v-if="todayNotice.kind === 'error'"
+                >Não foi possível encontrar a próxima aula.</span
+            >
+            <span v-else-if="todayNotice.filtered"
+                >Não há aulas hoje nem nas próximas semanas deste ano letivo
+                com os filtros ativos.</span
+            >
+            <span v-else
+                >Não há aulas hoje nem nas próximas semanas deste ano
+                letivo.</span
+            >
+            <Button
+                v-if="todayNotice.kind === 'none' && todayNotice.filtered"
+                type="button"
+                variant="link"
+                class="h-auto min-h-11 px-1 sm:min-h-0"
+                data-testid="today-clear-filters"
+                @click="clearAllFilters"
+                >Limpar filtros</Button
+            >
+        </div>
 
         <div class="mt-2">
             <EmptyState
@@ -1402,13 +1727,13 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             <!-- POR TURMA -->
             <template v-else-if="view === 'turma'">
                 <EmptyState
-                    v-if="classes.length === 0 && !classView"
+                    v-if="classes.length === 0 && !classViewData"
                     title="Ainda sem turmas neste ano letivo"
                     description="A vista por turma mostra a sequência das aulas de cada uma das tuas turmas."
                     :icon="BookOpen"
                 />
                 <p
-                    v-else-if="!classView"
+                    v-else-if="!classViewData"
                     class="rounded-[14px] border border-dashed bg-card p-6 text-center text-sm text-muted-foreground"
                 >
                     A carregar a turma…
@@ -1416,7 +1741,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 <LessonClassView
                     v-else
                     class="mt-2"
-                    :class-view="classView"
+                    :class-view="classViewData"
                     :classes="pickableClasses"
                     :tones="tones"
                     :lessons="classViewLessons"
@@ -1473,7 +1798,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             </template>
 
             <EmptyState
-                v-else-if="lessons.length === 0"
+                v-else-if="weekLessons.length === 0"
                 title="Sem aulas nesta semana"
                 :description="
                     configuredClassesCount > 0
@@ -1487,7 +1812,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             <LessonTimetable
                 v-else-if="view === 'horario'"
                 class="mt-2"
-                :lessons="lessons"
+                :lessons="weekLessons"
                 :week-start="week.start"
                 :today="today"
                 :now="now"
