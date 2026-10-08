@@ -62,6 +62,11 @@ class PreviousLessonSummaryTest extends TestCase
                 'private_notes' => 'Nota.',
                 'resources' => 'Recurso.',
                 'homework' => 'TPC.',
+                // A resposta diz de que aula vem o texto e em que estado está
+                // (esta nunca foi lecionada, por isso «preparada»).
+                'starts_at' => '2026-10-08T09:00:00+01:00',
+                'state' => 'prepared',
+                'state_label' => 'Preparada — por lecionar',
             ]);
 
         // Read-only: nothing was created or changed by asking.

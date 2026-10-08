@@ -27,7 +27,7 @@ final class PreviousLessonSummary
 
     /**
      * @param  list<array{group_id: int|null, group_label: string|null}>  $lanes
-     * @return list<array{group_id: int|null, group_label: string|null, lesson: array<string, mixed>|null}>
+     * @return list<array{group_id: int|null, group_label: string|null, lesson: array<string, mixed>|null, state: string|null, state_label: string|null}>
      */
     public function for(User $teacher, AcademicYear $academicYear, SchoolClass $class, array $lanes, CarbonImmutable $before): array
     {
@@ -60,10 +60,30 @@ final class PreviousLessonSummary
             $rowsByUlid[(string) $row['ulid']] = $row;
         }
 
-        return array_map(fn (array $lane, int $position): array => [
-            'group_id' => $lane['group_id'],
-            'group_label' => $lane['group_label'],
-            'lesson' => isset($found[$position]) ? ($rowsByUlid[$found[$position]->ulid] ?? null) : null,
-        ], $lanes, array_keys($lanes));
+        return array_map(function (array $lane, int $position) use ($found, $rowsByUlid): array {
+            $lesson = $found[$position] ?? null;
+            $state = $lesson === null ? null : self::stateOf($lesson);
+
+            return [
+                'group_id' => $lane['group_id'],
+                'group_label' => $lane['group_label'],
+                'lesson' => $lesson === null ? null : ($rowsByUlid[$lesson->ulid] ?? null),
+                'state' => $state,
+                'state_label' => $state === null ? null : LessonPreparationContext::LABELS[$state],
+            ];
+        }, $lanes, array_keys($lanes));
+    }
+
+    /**
+     * Lecionada / preparada por lecionar / nenhuma das duas (fechada sem ser
+     * lecionada: o rótulo do resultado já vem na própria linha).
+     */
+    private static function stateOf(Lesson $lesson): ?string
+    {
+        return match (true) {
+            $lesson->isTaught() => LessonPreparationContext::STATE_TAUGHT,
+            $lesson->outcome === null => LessonPreparationContext::STATE_PREPARED,
+            default => null,
+        };
     }
 }

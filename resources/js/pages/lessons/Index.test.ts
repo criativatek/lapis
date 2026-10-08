@@ -386,10 +386,12 @@ describe('vista Por turma — a sequência de uma turma', () => {
             }),
         ],
         previous: [
-            { group_id: null, group_label: null, lesson: null },
+            { group_id: null, group_label: null, lesson: null, state: null, state_label: null },
             {
                 group_id: 1,
                 group_label: 'T1',
+                state: 'prepared',
+                state_label: 'Preparada — por lecionar',
                 lesson: makeLesson({
                     ulid: 'prev-t1',
                     summary: 'Anterior do T1.',
@@ -398,7 +400,7 @@ describe('vista Por turma — a sequência de uma turma', () => {
                     ends_at: '2026-10-01T10:20:00+01:00',
                 }),
             },
-            { group_id: 2, group_label: 'T2', lesson: null },
+            { group_id: 2, group_label: 'T2', lesson: null, state: null, state_label: null },
         ],
         ...overrides,
     });
@@ -422,6 +424,7 @@ describe('vista Por turma — a sequência de uma turma', () => {
         expect(lanes).toHaveLength(3);
         expect(lanes[1].text()).toContain('Anterior do T1.');
         expect(lanes[0].text()).toContain('Sem sumário anterior');
+        expect(lanes[1].text()).toContain('Preparada — por lecionar');
 
         const toggle = wrapper.get('[data-testid="class-view-previous-toggle"]');
         expect(toggle.attributes('aria-expanded')).toBe('true');
@@ -439,7 +442,9 @@ describe('vista Por turma — a sequência de uma turma', () => {
         });
 
         expect(wrapper.find('[data-testid="class-view-previous-toggle"]').exists()).toBe(false);
-        expect(wrapper.get('#class-view-previous').text()).toContain('Último sumário de Grupo T1');
+        expect(wrapper.get('#class-view-previous').text()).toContain('Antes de 5/10 — último sumário de Grupo T1');
+        // O bloco é o anterior ao INÍCIO DO INTERVALO e diz em que estado está.
+        expect(wrapper.get('[data-testid="previous-state"]').text()).toBe('Preparada — por lecionar');
         expect(wrapper.findAll('[data-testid="class-view-previous-lane"]')).toHaveLength(1);
     });
 
@@ -909,6 +914,8 @@ describe('projetar o sumário — só de leitura, na sala', () => {
                     {
                         group_id: 1,
                         group_label: 'T1',
+                        state: 'taught',
+                        state_label: 'Lecionada',
                         lesson: makeLesson({
                             ulid: 'prev-t1',
                             summary: 'Anterior do T1.',
