@@ -502,7 +502,7 @@ class LessonSummaryContentTest extends TestCase
     public function applying_a_sequence_bumps_the_version_of_the_lessons_it_writes(): void
     {
         Carbon::setTestNow('2026-10-01 08:00:00');
-        $lesson = $this->makeLesson(['starts_at' => '2026-10-06 09:00:00']);
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-06 09:00:00', 'origin' => 'manual']);
         $opened = $this->summaryVersion($lesson);
         $sequence = $this->inTenant($this->organization, function (): LessonSequence {
             $sequence = LessonSequence::create([
@@ -517,13 +517,18 @@ class LessonSummaryContentTest extends TestCase
             return $sequence;
         });
 
-        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", [
+        // Dois passos, como o ecrã: pré-visualização e confirmação com o token.
+        $payload = [
             'class_id' => $this->schoolClass->id,
+            'from' => '2026-10-01',
             'summary' => true,
             'resources' => false,
             'homework' => false,
             'private_notes' => false,
-        ])->assertSessionHasNoErrors();
+        ];
+        $preview = $this->asTeacher()->postJson("/lessons/sequences/{$sequence->ulid}/preview", $payload)->assertOk();
+        $this->asTeacher()->post("/lessons/sequences/{$sequence->ulid}/apply", $payload + ['plan_token' => $preview->json('plan_token')])
+            ->assertSessionHasNoErrors();
 
         $this->assertSame('Do plano.', $this->summaryRow($lesson)['content']);
         $this->assertSame($opened + 1, $this->summaryVersion($lesson));

@@ -48,6 +48,14 @@ final class ShiftLessonPlanning
 
     private const FIELDS = ['content', 'resources', 'homework', 'private_notes'];
 
+    /**
+     * De onde veio o conteúdo (ApplyLessonSequence). Desce com ele: o texto
+     * chega intacto à aula seguinte, por isso a impressão digital continua a
+     * bater, e uma reaplicação da sequência reconhece o elemento na aula nova
+     * em vez de o colocar uma segunda vez.
+     */
+    private const PROVENANCE = ['lesson_sequence_id', 'lesson_sequence_item_id', 'sequence_content_hash'];
+
     public function __construct(
         private readonly ScheduleOccurrences $occurrences,
         private readonly MaterializeLessonsForRange $materialize,
@@ -141,7 +149,7 @@ final class ShiftLessonPlanning
     /**
      * Retira o planeamento da aula e devolve-o. NULL quando não havia nada.
      *
-     * @return array<string, string|null>|null
+     * @return array<string, string|int|null>|null
      */
     private function takeFrom(Lesson $lesson): ?array
     {
@@ -163,6 +171,10 @@ final class ShiftLessonPlanning
             return null;
         }
 
+        foreach (self::PROVENANCE as $field) {
+            $values[$field] = $summary->getAttribute($field);
+        }
+
         // A linha sai inteira: o sumário de uma ocorrência que não aconteceu
         // não fica a dizer que aconteceu, e a seguinte recebe-o sem cópia.
         $summary->delete();
@@ -171,13 +183,22 @@ final class ShiftLessonPlanning
     }
 
     /**
-     * @param  array<string, string|null>  $values
+     * @param  array<string, string|int|null>  $values
      */
     private function writeInto(Lesson $lesson, array $values): void
     {
+        // A proveniência é escrita SEMPRE, também quando é nula: uma linha
+        // pré-existente na aula de destino não pode ficar com a origem antiga
+        // a descrever um conteúdo que já não é o dela.
+        $provenance = [];
+
+        foreach (self::PROVENANCE as $field) {
+            $provenance[$field] = $values[$field] ?? null;
+        }
+
         LessonSummary::query()->updateOrCreate(
             ['lesson_id' => $lesson->getKey()],
-            ['content' => $values['content'] ?? ''] + array_intersect_key($values, array_flip(['resources', 'homework', 'private_notes'])),
+            ['content' => $values['content'] ?? ''] + array_intersect_key($values, array_flip(['resources', 'homework', 'private_notes'])) + $provenance,
         );
 
         if ($lesson->status === LessonStatus::Preparation) {
@@ -244,7 +265,7 @@ final class ShiftLessonPlanning
     }
 
     /**
-     * @param  array<string, string|null>  $values
+     * @param  array<string, string|int|null>  $values
      */
     private function keepAsPending(Lesson $lesson, array $values, User $actor): void
     {

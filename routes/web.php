@@ -558,6 +558,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('lessons/sequences', [LessonSequenceController::class, 'store'])->name('lessons.sequences.store');
         Route::put('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'update'])->name('lessons.sequences.update');
         Route::delete('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'destroy'])->name('lessons.sequences.destroy');
+        // Pré-visualização ANTES da aplicação, e ambas antes do wildcard: calcula
+        // o mesmo plano que `apply` executa, dentro de uma transação revertida.
+        Route::post('lessons/sequences/{lessonSequence}/preview', [LessonSequenceController::class, 'preview'])->name('lessons.sequences.preview');
         Route::post('lessons/sequences/{lessonSequence}/apply', [LessonSequenceController::class, 'apply'])->name('lessons.sequences.apply');
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');

@@ -13,9 +13,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * A reusable sequence of lesson content, owned by one teacher (Fatia 4).
  *
  * A TEMPLATE, NOT A LIVE LINK — the same discipline as `ReportTemplate`
- * (see its docblock). ApplyLessonSequence reads an item once and writes an
+ * (see its docblock). ApplyLessonSequence reads an item and writes an
  * independent `LessonSummary`; editing this sequence afterwards never
- * reaches back into a lesson it was already applied to.
+ * reaches back into a lesson it was already applied to — saving a sequence
+ * touches no lesson, ever.
+ *
+ * Each summary it writes does remember where it came from
+ * (`lesson_summaries.lesson_sequence_id` / `lesson_sequence_item_id` / hash).
+ * That is NOT a live link: it is only read when the teacher explicitly applies
+ * the sequence AGAIN, so the re-application recognises its own placements
+ * (no duplicates, no shifting) and never rewrites what the teacher changed.
  *
  * @property int $id
  * @property string $ulid
