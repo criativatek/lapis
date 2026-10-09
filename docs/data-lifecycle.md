@@ -213,9 +213,16 @@ segue o dos restantes registos pedagógicos, com três notas:
 Não há eventos em `audit_events` para o caderno, de propósito: a auditoria da
 organização é lida pelo responsável, e expor-lhe-ia a existência e o ritmo dos
 registos privados. A rastreabilidade fica na linha (`author_id`,
-`created_at`, `edited_at`, `deleted_at`). O caderno também **não viaja** no
-backup (ver [backup-schema.md](backup-schema.md)) e, no encerramento de uma
-conta, as linhas ficam como todo o restante conteúdo — já ninguém as lê.
+`created_at`, `edited_at`, `deleted_at`). No encerramento de uma conta, as
+linhas ficam como todo o restante conteúdo — já ninguém as lê.
+
+**Backup (schema v14).** A exportação de dados leva o caderno de quem
+exporta — nunca o de um colega, nem para o responsável da organização — e
+nunca os registos eliminados; o restauro só os repõe na conta do autor e
+nunca faz reaparecer um registo eliminado no destino. O dump diário da base
+(`scripts/backup-database.sh`) é integral: leva a tabela inteira, eliminados
+incluídos, como leva os `evidence_records` eliminados. Detalhe em
+[backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
 ## A regra do ponteiro (0.101.3)
 

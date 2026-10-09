@@ -22,9 +22,7 @@ class ClassNotebookEntryBody implements ValidationRule
             return;
         }
 
-        $visible = preg_replace('/[\s\x{00A0}\x{200B}\x{FEFF}]+/u', '', $value);
-
-        if ($visible === null || $visible === '') {
+        if (ClassNotebookEntry::isBlankBody($value)) {
             $fail(self::BLANK_MESSAGE);
 
             return;

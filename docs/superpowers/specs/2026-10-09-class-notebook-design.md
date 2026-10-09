@@ -126,9 +126,7 @@ Partilha com colegas, anexos, categorias, notificações, tarefas, IA, inclusão
 em relatórios ou na caracterização, alterações aos registos individuais dos
 alunos. E ainda:
 
-- **Backup / exportação** — o caderno **não viaja** no backup (schema v13
-  inalterado), como as sequências de aulas. Incluí-lo é uma versão do schema
-  própria (exportar, validar, planear, restaurar).
+- **Backup / exportação** — ~~não viaja~~ **viaja desde o schema v14**, ver §9.
 - **Encerramento de conta** — as linhas ficam, como todo o conteúdo
   (`AnonymiseClosedAccount` apaga identidades, não conteúdo); deixam de ser
   legíveis por quem quer que seja, porque só o autor as lia.
@@ -188,3 +186,97 @@ principal.
 - Browser (Playwright, SQLite isolada, dados fictícios): fluxo completo em
   1280 px e 375 px, capturas.
 - Migração provada em MySQL 8.0.43 (migrate → estrutura → rollback → migrate).
+
+## 9. Backup e restauro — schema v14
+
+O caderno entra no backup exportável (`backup-lapis.json` e
+`Exportacao-Lapispro.xlsx`) com uma versão de formato nova: `CURRENT = 14`. Um
+backup v2–v13 continua legível e simplesmente não traz a coleção (`?? []`):
+zero registos restaurados, nunca um erro, e nada é apagado no destino.
+
+### 9.1 O que sai — e de quem
+
+`class_notebook_entries`, uma linha por registo:
+
+| Campo | Notas |
+|---|---|
+| `ulid` | identidade |
+| `class_ulid` | a turma; o ano letivo vem da turma (`classes[].academic_year`) |
+| `author_email` | o autor — por construção, quem exporta |
+| `title` | `null` quando não há título |
+| `body` | texto tal como está, parágrafos incluídos |
+| `is_pinned` | booleano |
+| `created_at`, `updated_at`, `edited_at` | ISO 8601; `edited_at` `null` = nunca editado |
+
+**Nunca sai:** `id`, `organization_id`, `class_id`, `author_id`,
+`lock_version`, `deleted_at`.
+
+**Âmbito:** `author_id = quem exporta` **e** `class_id ∈ turmas que ensina`
+(`class_teachers`), dentro da organização atual, **sem os eliminados** (o
+*scope* do `SoftDeletes`, como os `evidence_records`). Um colega da mesma turma,
+o responsável da organização ou outra organização nunca obtêm o caderno de
+outro professor pela exportação: cada um só exporta o seu. Folha «Caderno da
+turma» no XLSX (ano letivo, turma, título, registo, fixado, criado em, editado
+em) e uma linha no «Resumo».
+
+### 9.2 Validação (`ValidateBackupPayload`)
+
+Lista branca: as nove chaves acima. Recusas, cada uma com uma frase fixa e
+**sem nunca repetir título ou texto**: identificação ou turma inválidas; texto
+em falta ou só espaços (a mesma regra do formulário, NBSP e espaço de largura
+zero incluídos); texto acima de 20 000 caracteres ou 65 535 bytes
+(`ClassNotebookEntry::bodyLimitViolation()`); título que não é texto ou passa
+de 160 caracteres (vazio ⇒ `null`); `is_pinned` que não é booleano (ausente ⇒
+`false`); data malformada; `ulid` repetido no mesmo ficheiro (fica o primeiro).
+
+### 9.3 Plano (`BuildClassNotebookEntriesPlan`) — por esta ordem
+
+1. **Autor primeiro.** `author_email` tem de ser o de quem confirma
+   (`resolveAuthor()`, sem distinguir maiúsculas). Se não for, a linha é
+   `invalid` — «escrito por outra conta; o caderno é privado de quem o
+   escreve» — **antes de qualquer consulta ao destino**. É a diferença para o
+   resto do backup, onde um autor por resolver fica a `null` e a linha entra:
+   aqui a autoria é o que decide quem lê, e um registo sem autor ou atribuído a
+   quem importa seria transferir texto privado para outra pessoa.
+2. **Mesmo `ulid` no destino** (mesma organização, **incluindo eliminados**):
+   - de outro autor ⇒ `invalid`, frase neutra — sem comparar conteúdo, para
+     não servir de oráculo;
+   - eliminado ⇒ `conflict` — «foi eliminado do caderno depois da exportação e
+     não é reposto». Eliminar foi uma decisão do professor; o restauro não a
+     desfaz nem cria um duplicado;
+   - noutra turma ⇒ `conflict` (nunca reassociado);
+   - título, texto e fixação iguais ⇒ `existing`; diferentes ⇒ `conflict`
+     (a versão do destino nunca é sobrescrita).
+3. **Turma**: tem de ser `new` ou `existing` neste mesmo plano; senão
+   `invalid`.
+4. **Clonagem idempotente**: numa turma `existing`, um registo do mesmo autor,
+   com o mesmo `created_at`, título e texto (eliminados incluídos) ⇒
+   `existing` (ou `conflict` se eliminado). Assim reimportar um backup clonado
+   com `ulid` novo não duplica.
+5. Caso contrário ⇒ `new`, com `preserve_ulid = false` se o `ulid` existir
+   noutra organização.
+
+As linhas do plano usam `entry_title`/`entry_body`, nunca `title`/`label`/`name`
+— a pré-visualização rotula linhas por esses campos, e um título nunca deve
+aparecer em «Pontos a rever». Linhas `invalid`/`conflict`/`existing` não levam
+título nem texto.
+
+### 9.4 Escrita (`WriteClassNotebookEntries`)
+
+Só `new`. `author_id` = quem confirma (já provado no plano); `class_id` pelo
+mapa de turmas `new ∪ existing`; título, texto, fixação e as três datas tal
+como estavam (normalizadas para o fuso da aplicação, como em
+`WriteResultsAnalysisNotes`); `lock_version = 0` (o contador recomeça nesta
+instalação); `deleted_at` nulo. `class_notebook_entries_created` no resumo.
+
+### 9.5 Notas
+
+- Numa organização institucional, uma turma criada pelo restauro fica sem
+  professor (regra existente); os registos ficam guardados e o autor vê-os
+  quando voltar a ser professor da turma.
+- O texto fica em `data_imports.canonical_snapshot` até a importação ser
+  podada, como qualquer outra coleção (`PruneDataImports`); só quem pediu a
+  importação a vê.
+- O dump diário da base (`scripts/backup-database.sh`) é integral, sem lista
+  de tabelas: a tabela nova entra sem alteração ao script (provado em MySQL
+  8.0.43 com o próprio script).

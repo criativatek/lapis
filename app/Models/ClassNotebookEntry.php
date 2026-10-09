@@ -50,6 +50,19 @@ class ClassNotebookEntry extends Model
     public const int TITLE_MAX_LENGTH = 160;
 
     /**
+     * Um registo só com espaços é vazio — incluindo os que `trim()` não vê
+     * (NBSP, espaço de largura zero, BOM). A regra do formulário
+     * (`ClassNotebookEntryBody`) e a validação do backup partilham esta
+     * definição, para que o que o formulário recusa o restauro também recuse.
+     */
+    public static function isBlankBody(string $body): bool
+    {
+        $visible = preg_replace('/[\s\x{00A0}\x{200B}\x{FEFF}]+/u', '', $body);
+
+        return $visible === null || $visible === '';
+    }
+
+    /**
      * Que limite um registo ultrapassa, se algum: `'characters'`, `'bytes'` ou null.
      */
     public static function bodyLimitViolation(string $body): ?string

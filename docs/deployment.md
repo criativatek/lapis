@@ -787,9 +787,22 @@ tentativa. `join` na chave, ou não se está a comparar nada.
 Comparar, no mínimo: nº de tabelas, colunas, foreign keys e índices; `migrations`;
 e as contagens de `users`, `organizations`, `classes`, `students`,
 `enrollments`, `instruments`, `classifications`, `reports`, `evidence_records`,
-`interventions`. **Nunca extrair nomes, emails ou números de aluno** — o
+`interventions`, `class_notebook_entries`. **Nunca extrair nomes, emails ou números de aluno** — o
 objetivo é estrutura e contagens. Para as colunas cifradas basta confirmar que
 o comprimento e o prefixo do ciphertext se mantêm; não é preciso decifrar nada.
+
+**Tabelas novas entram sozinhas.** O `backup-database.sh` faz `mysqldump` da
+base inteira, sem lista de tabelas nem `--ignore-table`: uma tabela criada por
+uma migração entra no dump seguinte sem tocar no script. Provado para
+`class_notebook_entries` (0.161.0) correndo o PRÓPRIO script contra um MySQL
+8.0.43 descartável (`LAPIS_APP_DIR`, `LAPIS_BACKUP_DIR` e
+`LAPIS_MYSQL_DEFAULTS` apontados para lá) com registos fictícios — texto em
+vários parágrafos com acentos e emoji, sem título, fixado e eliminado:
+restauro com exit 0 e stderr vazio, as linhas idênticas coluna a coluna
+(texto em hexadecimal), e a assinatura da base inteira (colunas, colações,
+índices, FKs) igual à de origem. O texto do caderno vai em claro no dump,
+como os sumários e os registos pedagógicos — a proteção é a do próprio
+ficheiro (0640, fora da aplicação).
 
 ### Ensaio com a aplicação a arrancar sobre a cópia
 

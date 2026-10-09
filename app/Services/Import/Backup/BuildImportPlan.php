@@ -91,6 +91,7 @@ class BuildImportPlan
         private readonly BuildPedagogicalRecordsPlan $recordsPlan,
         private readonly BuildLessonsPlan $lessonsPlan,
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
+        private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
     ) {}
 
     /**
@@ -136,6 +137,15 @@ class BuildImportPlan
 
         $enrollmentRows = $this->classifyEnrollments($enrollmentsIn, $destination, $classesByUlid, $studentsByUlid);
         $enrollmentsByUlid = collect($enrollmentRows)->keyBy('ulid');
+
+        // Schema v14 — needs only the classes, and decides its own author
+        // gate before looking at anything in the destination.
+        $classNotebookEntries = $this->classNotebookEntriesPlan->build(
+            $canonical['class_notebook_entries'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+        );
 
         $data = $this->dataPlan->build(
             $canonical['instruments'] ?? [],
@@ -213,6 +223,7 @@ class BuildImportPlan
             $records['rows'],
             $lessons['rows'],
             $resultsAnalysisNotes['rows'],
+            $classNotebookEntries['rows'],
         );
 
         // Every domain, child rows included: a refused row of a flat child

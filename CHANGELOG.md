@@ -76,14 +76,41 @@ registo a um aluno.
 - Um caderno com registos impede a eliminação definitiva da turma (como os
   restantes dados pedagógicos), em vez de os apagar em cascata.
 
+### Backup e restauro (schema v14)
+
+- **O caderno entra na exportação de dados** — no `backup-lapis.json` (nova
+  versão do formato, 14) e numa folha «Caderno da turma» do Excel, com uma
+  linha no «Resumo». Sai só o caderno de quem exporta, nas turmas que ensina:
+  um colega da mesma turma, o responsável da organização ou outra organização
+  nunca obtêm o caderno de outro professor por esta via. Registos eliminados
+  não saem.
+- **Restauro só na conta do autor.** Ao contrário do resto do backup, um
+  registo escrito por outra conta não é restaurado (nem sem autor, nem
+  atribuído a quem importa); a pré-visualização diz porquê sem mostrar o
+  título, o texto ou o email do autor. Preservam-se a turma (e o ano letivo),
+  o título opcional, os parágrafos, a fixação e as datas de criação,
+  alteração e edição.
+- **Um registo eliminado no destino nunca reaparece** num restauro: fica em
+  conflito, sem ser reposto nem duplicado. Um registo alterado no destino
+  depois da exportação também fica em conflito e nunca é sobrescrito.
+  Reimportar o mesmo backup não cria duplicados, mesmo numa clonagem para
+  outra organização.
+- **Backups anteriores (v2 a v13) continuam a ser lidos** e simplesmente não
+  trazem caderno: nada é criado nem apagado no destino.
+- As cópias integrais diárias da base de dados (`backup-database.sh`) já
+  incluíam a tabela nova sem alteração ao script — confirmado com o próprio
+  script em MySQL 8.0.43 e restauro comparado linha a linha.
+
 ### Técnico
 
 - Tabela `class_notebook_entries` (migração aditiva
   `2026_11_17_000100_create_class_notebook_entries_table`; não altera nenhum
   registo existente). Validada em MySQL 8.0.43: migração, rollback e
   reaplicação.
-- O caderno não faz parte do backup nesta versão (schema v13 inalterado), tal
-  como as sequências de aulas.
+- `BackupSchemaCompatibility::CURRENT = 14`: coleção `class_notebook_entries`
+  (`ValidateBackupPayload`, `BuildClassNotebookEntriesPlan`,
+  `WriteClassNotebookEntries`). Testes de portabilidade com exportação e
+  restauro reais, validados também em MySQL 8.0.43.
 - Desenho em `docs/superpowers/specs/2026-10-09-class-notebook-design.md`.
 
 ## [0.160.0] — 2026-10-08

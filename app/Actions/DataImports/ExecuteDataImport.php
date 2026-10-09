@@ -53,6 +53,7 @@ class ExecuteDataImport
         private readonly WritePedagogicalRecords $recordsWriter,
         private readonly WriteLessons $lessonsWriter,
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
+        private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
     ) {}
@@ -132,6 +133,13 @@ class ExecuteDataImport
                 $rows['results_analysis_notes'], $dataResult['instrumentsByUlid'],
             );
 
+            // Schema v14 — only needs the classes map (new ∪ existing), already
+            // complete after writeClasses(). Authorship was proved in the plan,
+            // so the count is not part of `records_without_original_author`.
+            $classNotebookEntriesCreated = $this->classNotebookEntriesWriter->write(
+                $rows['class_notebook_entries'], $classModels['byUlid'],
+            );
+
             $summary = [
                 'classes' => $this->tally($rows['classes'], $classModels['createdCount']),
                 'students' => $this->tally($rows['students'], $studentModels['createdCount']),
@@ -163,6 +171,7 @@ class ExecuteDataImport
                 'lesson_plans_created' => $lessonCounts['lesson_plans'],
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
+                'class_notebook_entries_created' => $classNotebookEntriesCreated,
                 'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
                     'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
                     'lessons', 'lesson_plans', 'cancelled_lesson_occurrences', 'results_analysis_notes',

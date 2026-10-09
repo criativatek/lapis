@@ -103,6 +103,7 @@ const domainGroups: {
             { key: 'evidence_records', label: 'Registos pedagógicos' },
             { key: 'interventions', label: 'Estratégias e medidas' },
             { key: 'intervention_reviews', label: 'Revisões de estratégias' },
+            { key: 'class_notebook_entries', label: 'Caderno da turma' },
         ],
     },
     {
@@ -174,6 +175,10 @@ const summaryGroups: {
             },
             { key: 'evidence_records_created', label: 'Registos pedagógicos' },
             { key: 'interventions_created', label: 'Estratégias e medidas' },
+            {
+                key: 'class_notebook_entries_created',
+                label: 'Registos do caderno da turma',
+            },
         ],
     },
     {
