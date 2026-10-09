@@ -196,6 +196,27 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
   carregado do disco privado — nunca os dados já restaurados. Detalhe em
   [docs/data-import.md](data-import.md).
 
+## Caderno da turma (0.161.0)
+
+`class_notebook_entries` guarda texto livre que **só o autor lê** — nem os
+colegas da mesma turma, nem o responsável da organização. O ciclo de vida
+segue o dos restantes registos pedagógicos, com três notas:
+
+- **Eliminar é soft delete**, como em `evidence_records`: o registo sai do
+  caderno e a linha fica, sem «recuperar» na interface. Nenhum job o purga.
+- **Arquivar a turma não lhe toca.** O caderno continua consultável pelo
+  autor; nada é copiado para outra turma nem para outro ano letivo.
+- **Bloqueia a eliminação definitiva da turma** (`SchoolClassHistory`,
+  FK RESTRICT, incluindo linhas eliminadas). Uma cascata faria um colega dono
+  da turma eliminar os registos privados de outro professor.
+
+Não há eventos em `audit_events` para o caderno, de propósito: a auditoria da
+organização é lida pelo responsável, e expor-lhe-ia a existência e o ritmo dos
+registos privados. A rastreabilidade fica na linha (`author_id`,
+`created_at`, `edited_at`, `deleted_at`). O caderno também **não viaja** no
+backup (ver [backup-schema.md](backup-schema.md)) e, no encerramento de uma
+conta, as linhas ficam como todo o restante conteúdo — já ninguém as lê.
+
 ## A regra do ponteiro (0.101.3)
 
 > **Nunca limpar `stored_path`/`disk_path` antes de o ficheiro estar

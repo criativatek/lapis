@@ -9,6 +9,7 @@ use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\ClassGroup;
 use App\Models\Classification;
+use App\Models\ClassNotebookEntry;
 use App\Models\ClassStatus;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
@@ -431,6 +432,14 @@ class ClassController extends Controller
             // SubjectParticipationPolicy::manage(), que o controlador volta
             // a verificar em cada pedido.
             'canManageSubjectParticipation' => $canManageParticipation,
+            // O cartão «Caderno da turma»: só o NÚMERO dos registos de quem
+            // olha — o caderno é privado do autor, nunca se conta o de outros.
+            'notebook' => [
+                'count' => ClassNotebookEntry::query()
+                    ->where('class_id', $class->getKey())
+                    ->where('author_id', $this->user()->getKey())
+                    ->count(),
+            ],
         ]);
     }
 

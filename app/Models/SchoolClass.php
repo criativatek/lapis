@@ -293,4 +293,15 @@ class SchoolClass extends Model
     {
         return $this->hasMany(Intervention::class, 'class_id');
     }
+
+    /**
+     * Os registos do caderno da turma — de todos os professores; quem lê
+     * filtra SEMPRE por `author_id`. Existe para o `scopeBindings()` das rotas.
+     *
+     * @return HasMany<ClassNotebookEntry, $this>
+     */
+    public function notebookEntries(): HasMany
+    {
+        return $this->hasMany(ClassNotebookEntry::class, 'class_id');
+    }
 }

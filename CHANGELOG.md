@@ -25,6 +25,67 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.161.0] — 2026-10-09
+
+Caderno da turma: um espaço privado de cada professor para observações e
+informações gerais sobre a turma enquanto grupo, sem obrigar a associar o
+registo a um aluno.
+
+### Adicionado
+
+- **«Caderno da turma»**, na página de cada turma, logo a seguir à
+  caracterização pedagógica — sem entrada nova no menu principal. O cartão diz
+  quantos registos tens e abre o caderno da turma.
+- **Registos simples**: texto obrigatório, com parágrafos, e título opcional.
+  Data de criação e autor são preenchidos automaticamente; a data da última
+  alteração aparece quando o registo foi editado. Sem aluno, categoria ou
+  domínio a preencher.
+- **Fixar no topo**: os registos fixados aparecem primeiro; os restantes, do
+  mais recente para o mais antigo. A ordem usa sempre a data de criação —
+  editar um registo antigo não o transforma num registo novo, e fixar não conta
+  como edição.
+- **Pesquisa** no título e no conteúdo, limitada ao teu caderno naquela turma,
+  e paginação de 20 registos.
+- **Estado da gravação visível.** Se a gravação falhar (ligação ou servidor), o
+  texto escrito fica no formulário e basta voltar a carregar em «Guardar».
+  Cancelar não grava; com alterações por guardar, a aplicação pergunta antes de
+  as descartar ou de sair da página. Se o registo tiver sido alterado noutro
+  separador, a gravação é recusada sem perder o que escreveste.
+- **Eliminar pede confirmação** e segue a política dos restantes registos
+  pedagógicos: o registo sai do caderno (eliminação lógica).
+
+### Privacidade
+
+- **Visível apenas para ti.** Cada registo pertence ao professor que o criou e
+  à turma (e, por ela, ao ano letivo). Outros professores da mesma turma não o
+  consultam, pesquisam, alteram nem eliminam — nem por acesso direto ao
+  endereço, que responde como se o registo não existisse. Alunos e
+  encarregados de educação não têm acesso. Tudo isto é verificado no servidor,
+  em todas as operações, além do isolamento entre organizações e das regras de
+  acesso à turma.
+- O caderno **não gera eventos na auditoria da organização**, para que a
+  existência e o ritmo dos registos privados não fiquem visíveis ao
+  responsável da organização; a rastreabilidade fica no próprio registo.
+- Durante uma sessão de acesso técnico do suporte, o caderno pode ser
+  consultado mas nunca alterado.
+
+### Arquivo e ano letivo
+
+- Uma turma arquivada mantém o caderno disponível para o autor. Nada é copiado
+  para outra turma nem para outro ano letivo.
+- Um caderno com registos impede a eliminação definitiva da turma (como os
+  restantes dados pedagógicos), em vez de os apagar em cascata.
+
+### Técnico
+
+- Tabela `class_notebook_entries` (migração aditiva
+  `2026_11_17_000100_create_class_notebook_entries_table`; não altera nenhum
+  registo existente). Validada em MySQL 8.0.43: migração, rollback e
+  reaplicação.
+- O caderno não faz parte do backup nesta versão (schema v13 inalterado), tal
+  como as sequências de aulas.
+- Desenho em `docs/superpowers/specs/2026-10-09-class-notebook-design.md`.
+
 ## [0.160.0] — 2026-10-08
 
 Quatro correções em Aulas e Sumários: aplicar uma sequência sem perder nem

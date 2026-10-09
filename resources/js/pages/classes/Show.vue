@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Archive, ArchiveRestore, ClipboardList, FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { Archive, ArchiveRestore, ClipboardList, FileUp, Footprints, Lock, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
 import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
@@ -135,6 +135,8 @@ const props = defineProps<{
      * SubjectParticipationPolicy::manage()).
      */
     canManageSubjectParticipation: boolean;
+    /** O cartão «Caderno da turma»: só o número dos registos de quem olha. */
+    notebook?: { count: number };
 }>();
 
 /**
@@ -1130,6 +1132,34 @@ function deleteResult(student: Student): void {
                 <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
                     <Link :href="`/classes/${schoolClass.ulid}/characterisation`">Abrir caracterização</Link>
                 </Button>
+            </CardContent>
+        </Card>
+
+        <!-- O caderno da turma: privado de quem o escreve e sempre visível —
+             não precisa de alunos. A contagem é só a dos registos de quem
+             olha (o servidor não conta os de mais ninguém). -->
+        <Card>
+            <CardHeader>
+                <CardTitle class="text-sm font-medium">Caderno da turma</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-3">
+                <p class="text-sm text-muted-foreground">
+                    Regista e consulta observações, informações gerais e assuntos a acompanhar sobre a turma.
+                </p>
+                <p class="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Lock class="size-4 shrink-0" aria-hidden="true" />
+                    Visível apenas para ti.
+                </p>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <p class="text-sm font-medium">
+                        <template v-if="(notebook?.count ?? 0) === 0">Ainda não tens registos neste caderno.</template>
+                        <template v-else-if="notebook?.count === 1">1 registo</template>
+                        <template v-else>{{ notebook?.count }} registos</template>
+                    </p>
+                    <Button as-child size="sm" class="min-h-11 w-full sm:w-auto">
+                        <Link :href="`/classes/${schoolClass.ulid}/notebook`">Abrir caderno</Link>
+                    </Button>
+                </div>
             </CardContent>
         </Card>
 

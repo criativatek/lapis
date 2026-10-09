@@ -399,3 +399,9 @@ ainda não existe nunca é criada sobre um instrumento em conflito: é
 - `enrollment_instrument_applicability` (exceções à regra derivada de
   inscrição tardia) — tabela normalmente vazia, existe só para
   **contradizer** a regra por omissão; não é exportada nesta fatia
+- `class_notebook_entries` — o **Caderno da turma** (0.161.0) **não viaja**
+  no backup, tal como as sequências de aulas: é texto privado do professor
+  que o escreveu, e o schema v13 fica inalterado. Incluí-lo é uma versão do
+  schema própria — exportar só os registos de quem pede o backup, validar,
+  planear e restaurar, sem nunca fazer reaparecer um registo eliminado (soft
+  delete). Ver [o desenho](superpowers/specs/2026-10-09-class-notebook-design.md)
