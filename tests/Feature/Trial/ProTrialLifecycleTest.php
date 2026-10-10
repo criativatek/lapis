@@ -254,8 +254,6 @@ class ProTrialLifecycleTest extends TestCase
     public function trial_duration_survives_a_europe_lisbon_dst_transition_using_calendar_days_not_manual_hour_math(): void
     {
         config(['trial.pro_days' => 30]);
-        $user = User::factory()->create();
-        $organization = $user->personalOrganization();
 
         // Portugal's 2026 fall-back: clocks go back one hour on the last
         // Sunday of October. Starting the trial a couple of weeks earlier
@@ -263,7 +261,15 @@ class ProTrialLifecycleTest extends TestCase
         // the scenario PersonalAccountClosureTest's known DST flake got
         // wrong by comparing a computed literal timestamp instead of
         // calendar days and preserved wall-clock time.
+        //
+        // FROZEN BEFORE THE USER EXISTS. The account's Base subscription
+        // starts at «now»; created on the real clock and frozen afterwards, it
+        // only counted as in force while the real date was still before
+        // 2026-10-10 09:00 — from that morning on, the trial was refused as
+        // «not on an eligible Base plan» (a clock bomb, on main as well).
         $startedAt = $this->freeze(Carbon::parse('2026-10-10 09:00:00', 'Europe/Lisbon'));
+        $user = User::factory()->create();
+        $organization = $user->personalOrganization();
 
         $trial = app(ActivateProTrial::class)->activate($user, $organization->fresh());
 

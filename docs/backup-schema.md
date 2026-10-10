@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 13 (atual) | `Supported` | Como a v12, acrescentando `results_analysis_notes` — as observações do professor no separador Resultados de um elemento de avaliação (`context_kind = 'instrument'`, a única forma que existe hoje). Texto livre até 20 000 carateres; uma observação vazia nunca é exportada. Ausente num backup v≤12 ⇒ zero observações restauradas, nunca um erro, e nada é apagado no destino |
+| 14 (atual) | `Supported` | Como a v13, acrescentando `class_notebook_entries` — o **Caderno da turma**: registos privados do professor sobre a turma (título opcional, texto, fixação e as três datas). Só sai o caderno de quem exporta, nas turmas que ensina, sem os registos eliminados; só se restaura na conta do próprio autor. Ausente num backup v≤13 ⇒ zero registos restaurados, nunca um erro, e nada é apagado no destino. Ver [Caderno da turma (schema v14)](#caderno-da-turma-schema-v14) |
+| 13 | `LegacyCompatible` | Como a v12, acrescentando `results_analysis_notes` — as observações do professor no separador Resultados de um elemento de avaliação (`context_kind = 'instrument'`, a única forma que existe hoje). Texto livre até 20 000 carateres; uma observação vazia nunca é exportada. Ausente num backup v≤12 ⇒ zero observações restauradas, nunca um erro, e nada é apagado no destino |
 | 12 | `LegacyCompatible` | Como a v11, acrescentando a estampa do enquadramento legal: `interventions[].legal_framework_code` e `interventions[].support_measures[].legal_framework_code` — a versão da lei sob a qual o enquadramento foi decidido. Ausentes num backup v≤11 ⇒ `null`, que significa o mesmo que significava antes de a estampa existir: o regime aplicável resolve-se pelo `started_on` da intervenção. Copiada tal como está, nunca recalculada no restauro |
 | 11 | `LegacyCompatible` | Como a v10, acrescentando o resultado real da aula (0.146.0): `lessons[].outcome` (`taught`, `teacher_absent`, `class_external_activity` ou `null` = ainda não fechada), `outcome_reason` (só categoria — `training`, `official_duty`, `other` — e só numa ausência do professor), `outcome_note` (≤160 caracteres, só numa atividade da turma), `outcome_recorded_at` e `outcome_recorded_by_email`. Ausentes num backup v≤10 ⇒ uma aula `status = taught` fecha como `taught` e as restantes ficam em aberto (o mesmo backfill da migração). Motivo em texto livre, motivo fora de uma ausência, nota fora de uma atividade ou assiduidade consolidada numa ocorrência sem assiduidade aplicável ⇒ a linha é `invalid` |
 | 10 | `LegacyCompatible` | Como a v9, acrescentando `recurring_lesson_slots[].split_lesson_key` e `lessons[].lesson_unit_key` — chaves opacas (ULID, não são dados pessoais) que ligam tempos T1/T2 que são a mesma lição e aulas que são a mesma lição. Ausentes num backup mais antigo ⇒ `null`; presentes mas malformadas ⇒ a linha é `invalid` (nunca desligada em silêncio). Copiadas tal como estão |
@@ -37,10 +38,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 13 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 14 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 13`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 14`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -300,6 +301,11 @@ política que olha para a autoria (`ReportPolicy::authored()`) compara
 `(int) null` com um id real, ou seja, falha fechada. Ver
 `tests/Feature/DataImports/ImportAuthorshipPortabilityTest.php`.
 
+**A exceção é o Caderno da turma (v14).** Ali a autoria não é metadado: é
+quem pode ler. Numa clonagem para outra conta os registos do caderno **não**
+são restaurados — nem sem autor, nem atribuídos a quem importa. Ver
+[Caderno da turma (schema v14)](#caderno-da-turma-schema-v14).
+
 ## O que nunca é importado
 
 Além do que já está documentado em [docs/data-import.md](data-import.md#o-que-nunca-é-importado):
@@ -387,8 +393,91 @@ ainda não existe nunca é criada sobre um instrumento em conflito: é
   semestre) exigem uma nova versão do esquema, porque não têm instrumento
   a que se ligar.
 
+## Caderno da turma (schema v14)
+
+Os registos do **Caderno da turma** (`App\Models\ClassNotebookEntry`) são
+exportados e restaurados desde a v14. São texto **privado** de quem o
+escreveu — nem os colegas da mesma turma nem o responsável da organização o
+leem —, e é isso que torna esta coleção diferente das outras em dois pontos:
+quem a exporta e a quem se restaura. (O suporte técnico pode lê-lo no ecrã
+durante um apoio pedido, mas exportar e importar dados recusam a sessão de
+suporte: o caderno nunca sai nem entra por um backup em nome do professor.)
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade do registo |
+| `class_ulid` | ULID | a turma, que tem de vir NESTE MESMO backup; o ano letivo é o da turma (`classes[].academic_year`) — não se duplica |
+| `author_email` | email | o autor; por construção, quem exporta |
+| `title` | texto ou `null` | até 160 caracteres; vazio ⇒ `null` |
+| `body` | texto | até 20 000 caracteres e 65 535 bytes (`ClassNotebookEntry::bodyLimitViolation()`, o mesmo limite do formulário); parágrafos e caracteres tal como estão |
+| `is_pinned` | booleano | ausente ⇒ `false` |
+| `created_at` / `updated_at` / `edited_at` | ISO 8601 | preservadas; `edited_at` `null` = nunca editado. Presentes mas malformadas invalidam a linha |
+
+**Nunca transportado**: `id`, `organization_id`, `class_id`, `author_id`,
+`lock_version`, `deleted_at`. Um registo restaurado nasce com
+`lock_version = 0` — o contador de concorrência desta instalação.
+
+**Âmbito da exportação — só o caderno de quem exporta.** `author_id = quem
+exporta` **e** turma que ensina (`class_teachers`), na organização atual, e
+**sem os registos eliminados** (o *scope* do `SoftDeletes`, como os
+`evidence_records`). Um colega da mesma turma, o responsável de uma
+organização institucional ou outra organização nunca obtêm o caderno de outro
+professor por esta via: cada um exporta apenas o seu. Também aparece no
+`Exportacao-Lapispro.xlsx`, na folha «Caderno da turma» (ano letivo, turma,
+título, registo, fixado, criado em, editado em) e numa linha do «Resumo».
+
+**Restauro — só na conta do autor.** Ao contrário do resto do backup (ver
+[Autoria](#autoria)), um `author_email` que não é o de quem confirma **não**
+deixa a autoria vazia: a linha é `invalid` e não é restaurada. Num registo
+privado, a autoria é o que decide quem o lê — restaurá-lo sem autor
+deixava-o ilegível para sempre, e atribuí-lo a quem importa transferia texto
+privado para outra pessoa. A decisão é tomada **antes** de qualquer consulta
+ao destino, e a pré-visualização nunca mostra o título, o texto nem o email
+do autor de uma linha recusada.
+
+| Situação no destino | Classificação |
+|---|---|
+| `author_email` ≠ quem confirma | `invalid` — «escrito por outra conta» |
+| Mesmo `ulid`, de outro autor | `invalid`, frase neutra; o conteúdo não é comparado (não serve de oráculo) |
+| Mesmo `ulid`, **eliminado** depois da exportação | `conflict` — não é reposto nem duplicado |
+| Mesmo `ulid`, noutra turma | `conflict` — nunca reassociado |
+| Mesmo `ulid`, título/texto/fixação iguais | `existing` |
+| Mesmo `ulid`, dados diferentes | `conflict` — o destino nunca é sobrescrito |
+| Turma que não é `new` nem `existing` neste restauro | `invalid` |
+| Sem `ulid` no destino, mas o mesmo autor tem, na mesma turma, um registo com a mesma data de criação, título e texto | `existing` (ou `conflict` se esse estiver eliminado) — é o que torna idempotente reimportar um backup clonado com `ulid` novo |
+| Nenhum dos anteriores | `new` (`ulid` novo se o original existir noutra organização) |
+
+**Registos eliminados.** Seguem a política dos registos pedagógicos: a
+eliminação é lógica (`deleted_at`) e não tem «recuperar» na interface. Por
+isso um registo eliminado **nunca sai** na exportação, e um restauro **nunca
+o faz reaparecer**: se o destino o tem eliminado (pelo `ulid` ou pela chave
+de conteúdo), a linha do backup é `conflict` com esse motivo.
+
+**Numa organização institucional**, uma turma criada pelo restauro fica sem
+professor atribuído (ver [docs/data-import.md](data-import.md)); os registos
+ficam guardados com o autor e voltam a ser visíveis para ele quando for
+novamente professor da turma.
+
+**Limitações que ficam**: enquanto a importação não for podada, o texto fica
+em `data_imports.canonical_snapshot` (retenção de `PruneDataImports`), como
+qualquer outra coleção de texto livre — e só quem pediu a importação a pode
+ver.
+
+**Cópias integrais da base.** O dump diário (`scripts/backup-database.sh`)
+copia a base inteira sem lista de tabelas, pelo que a tabela, os registos
+eliminados e todas as colunas lá estão sem alteração ao script — provado em
+MySQL 8.0.43 com o próprio script, restauro numa base limpa e comparação
+linha a linha (ver [docs/deployment.md](deployment.md)).
+
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
+- **Registos eliminados nas outras coleções** — restaurar o próprio backup
+  depois de eliminar um `evidence_records` que ele contém faz falhar a
+  importação inteira (o plano não vê a linha eliminada e o `INSERT` colide
+  com o `ulid` único). Confirmado e registado na issue #61, com
+  `interventions`, `instruments` e `assessment_profiles` como suspeitas
+  ainda por reproduzir. O Caderno da turma (v14) já procura incluindo os
+  eliminados e não tem este problema.
 - Restauro de `ReportTemplate`/`ReportLibraryEntry` — hoje um relatório
   finalizado é autossuficiente (`template_snapshot`), pelo que isto só
   importaria para permitir gerar **novos** relatórios a partir de um modelo

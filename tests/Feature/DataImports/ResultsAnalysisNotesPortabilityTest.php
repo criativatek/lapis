@@ -204,8 +204,10 @@ class ResultsAnalysisNotesPortabilityTest extends TestCase
 
         $backup = $this->backupJson($this->backupUpload($this->teacher, $organization));
 
-        $this->assertSame(13, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(13, $backup['schema_version']);
+        // Schema v14 added the class notebook on top; the v13 collection and
+        // its documented shape are exactly what they were.
+        $this->assertSame(14, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(14, $backup['schema_version']);
         $this->assertContains('results_analysis_notes', $backup['capabilities']);
         $this->assertNotEmpty($backup['results_analysis_notes']);
 

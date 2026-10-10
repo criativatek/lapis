@@ -16,6 +16,7 @@ use App\Http\Controllers\ClassCharacterisationController;
 use App\Http\Controllers\ClassController;
 use App\Http\Controllers\ClassGroupController;
 use App\Http\Controllers\ClassificationController;
+use App\Http\Controllers\ClassNotebookController;
 use App\Http\Controllers\ClassPhotoImportController;
 use App\Http\Controllers\ClassProfileMigrationController;
 use App\Http\Controllers\ClassReassignmentController;
@@ -480,6 +481,19 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
             ->middleware('throttle:30,1')
             ->name('classes.characterisation-imports.preview');
         Route::post('classes/{class}/characterisation-imports', [CharacterisationImportController::class, 'store'])->name('classes.characterisation-imports.store');
+
+        // CADERNO DA TURMA — registos privados do professor sobre a turma,
+        // dentro da turma e sem menu próprio. A turma autoriza-se pela policy
+        // da turma; cada registo pela autoria (404 para qualquer outro, mesmo
+        // colega da mesma turma). `scopeBindings()`: um registo só resolve
+        // dentro da turma a que pertence.
+        Route::get('classes/{class}/notebook', [ClassNotebookController::class, 'index'])->name('classes.notebook.index');
+        Route::post('classes/{class}/notebook', [ClassNotebookController::class, 'store'])->name('classes.notebook.store');
+        Route::scopeBindings()->group(function () {
+            Route::put('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'update'])->name('classes.notebook.update');
+            Route::patch('classes/{class}/notebook/{notebookEntry}/pin', [ClassNotebookController::class, 'pin'])->name('classes.notebook.pin');
+            Route::delete('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'destroy'])->name('classes.notebook.destroy');
+        });
 
         Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
         Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])->name('classes.photos.store');

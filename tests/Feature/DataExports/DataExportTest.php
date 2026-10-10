@@ -440,7 +440,7 @@ class DataExportTest extends TestCase
         $zip = $this->extractZip(Storage::disk('local')->path($export->disk_path));
         $backup = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
 
-        $this->assertSame(13, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(14, BackupSchemaCompatibility::CURRENT);
         $this->assertNotEmpty($backup['interventions']);
 
         $intervention = $backup['interventions'][0];

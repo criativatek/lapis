@@ -12,6 +12,7 @@ use App\Models\ClassGroup;
 use App\Models\ClassGroupMembership;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\ClassNotebookEntry;
 use App\Models\DataExport;
 use App\Models\Domain;
 use App\Models\Enrollment;
@@ -191,6 +192,19 @@ class GenerateDataExport
             ->filter(fn (ResultsAnalysisNote $note): bool => trim((string) $note->body) !== '')
             ->values();
 
+        // Schema v14 — the teacher's OWN class notebook, and only theirs. The
+        // notebook is private to its author (ClassNotebookEntryPolicy), so the
+        // scope is `author_id = quem exporta` AND the classes this user
+        // teaches: a co-teacher, the organization owner or another
+        // organization never obtain someone else's notebook through an
+        // export. The default SoftDeletes scope stays on — an entry the
+        // teacher deleted is a decision, not a fact worth carrying away.
+        $classNotebookEntries = ClassNotebookEntry::query()
+            ->whereIn('class_id', $classIds)
+            ->where('author_id', $user->getKey())
+            ->orderBy('id')
+            ->get();
+
         $evidenceRecords = EvidenceRecord::query()->whereIn('class_id', $classIds)->with('enrollment.student')->get();
         $classifications = Classification::query()
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
@@ -279,7 +293,7 @@ class GenerateDataExport
         $authors = $this->loadReferencedAuthors(
             $instruments, $itemScores, $classifications, $selfAssessments, $evidenceRecords, $interventions,
             $interventionReviews, $interimAssessments, $reports, $lessons, $lessonPlans,
-            $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances, $resultsAnalysisNotes,
+            $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances, $resultsAnalysisNotes, $classNotebookEntries,
         );
 
         // Called ONCE per class — never inside a per-student/per-row loop —
@@ -296,7 +310,7 @@ class GenerateDataExport
         try {
             $spreadsheet->removeSheetByIndex(0);
 
-            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes);
+            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries);
 
             if ($classes->isNotEmpty()) {
                 $this->addTurmasSheet($spreadsheet, $classes);
@@ -316,6 +330,10 @@ class GenerateDataExport
 
             if ($resultsAnalysisNotes->isNotEmpty()) {
                 $this->addObservacoesResultadosSheet($spreadsheet, $resultsAnalysisNotes, $classes, $instruments);
+            }
+
+            if ($classNotebookEntries->isNotEmpty()) {
+                $this->addCadernoDaTurmaSheet($spreadsheet, $classNotebookEntries, $classes);
             }
 
             if ($classifications->isNotEmpty()) {
@@ -388,6 +406,7 @@ class GenerateDataExport
             $lessonPlans,
             $lessonAttendances,
             $resultsAnalysisNotes,
+            $classNotebookEntries,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
 
@@ -410,6 +429,7 @@ class GenerateDataExport
      * @param  Collection<int, EvidenceRecord>  $evidenceRecords
      * @param  Collection<int, Report>  $reports
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
+     * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
      */
     protected function addResumoSheet(
         Spreadsheet $spreadsheet,
@@ -422,6 +442,7 @@ class GenerateDataExport
         Collection $evidenceRecords,
         Collection $reports,
         Collection $resultsAnalysisNotes,
+        Collection $classNotebookEntries,
     ): void {
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle('Resumo');
@@ -439,6 +460,7 @@ class GenerateDataExport
             ['Nº de alunos', $students->count()],
             ['Nº de elementos de avaliação', $instruments->count()],
             ['Nº de observações de resultados', $resultsAnalysisNotes->count()],
+            ['Nº de registos do caderno da turma', $classNotebookEntries->count()],
             ['Nº de classificações', $classifications->count()],
             ['Nº de registos', $evidenceRecords->count()],
             ['Nº de relatórios', $reports->count()],
@@ -606,6 +628,48 @@ class GenerateDataExport
 
             if ($note->updated_at !== null) {
                 $this->writeDate($sheet, "F{$row}", $note->updated_at, withTime: true);
+            }
+
+            $row++;
+        }
+
+        $this->finishSheet($sheet, count($headers), $row - 1);
+    }
+
+    /**
+     * The exporter's own class notebook (schema v14) — only ever their own
+     * entries, see the query in `buildZip()`. A title is optional (`—` when
+     * there is none); the body is written as an explicit string so a text
+     * that looks like a number or a formula is never reinterpreted, and wrapped
+     * so its paragraphs stay readable.
+     *
+     * @param  Collection<int, ClassNotebookEntry>  $entries
+     * @param  Collection<int, SchoolClass>  $classes
+     */
+    protected function addCadernoDaTurmaSheet(Spreadsheet $spreadsheet, Collection $entries, Collection $classes): void
+    {
+        $headers = ['Ano letivo', 'Turma', 'Título', 'Registo', 'Fixado', 'Criado em', 'Editado em'];
+        $sheet = $this->newSheet($spreadsheet, 'Caderno da turma', $headers);
+
+        $row = 2;
+
+        foreach ($entries as $entry) {
+            /** @var ClassNotebookEntry $entry */
+            $class = $classes->firstWhere('id', $entry->class_id);
+
+            $sheet->setCellValue("A{$row}", $class === null ? '—' : $class->academicYear->label);
+            $sheet->setCellValue("B{$row}", $class === null ? '—' : $class->label);
+            $sheet->setCellValueExplicit("C{$row}", $entry->title ?? '—', 's');
+            $sheet->setCellValueExplicit("D{$row}", (string) $entry->body, 's');
+            $sheet->getStyle("D{$row}")->getAlignment()->setWrapText(true);
+            $sheet->setCellValue("E{$row}", $entry->is_pinned ? 'Sim' : 'Não');
+
+            if ($entry->created_at !== null) {
+                $this->writeDate($sheet, "F{$row}", $entry->created_at, withTime: true);
+            }
+
+            if ($entry->edited_at !== null) {
+                $this->writeDate($sheet, "G{$row}", $entry->edited_at, withTime: true);
             }
 
             $row++;
@@ -1022,6 +1086,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonSummary>  $lessonSummaries
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
+     * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
      * @return Collection<int, User>
      */
     protected function loadReferencedAuthors(
@@ -1040,6 +1105,7 @@ class GenerateDataExport
         Collection $lessonSummaries,
         Collection $lessonAttendances,
         Collection $resultsAnalysisNotes,
+        Collection $classNotebookEntries,
     ): Collection {
         $ids = $instruments->pluck('completed_by')
             ->merge($instruments->pluck('cancelled_by'))
@@ -1061,6 +1127,7 @@ class GenerateDataExport
             ->merge($lessonAttendances->pluck('updated_by'))
             ->merge($resultsAnalysisNotes->pluck('created_by'))
             ->merge($resultsAnalysisNotes->pluck('updated_by'))
+            ->merge($classNotebookEntries->pluck('author_id'))
             ->filter()->unique();
 
         return User::query()->withoutGlobalScopes()->whereIn('id', $ids)->get();
@@ -1548,6 +1615,32 @@ class GenerateDataExport
     }
 
     /**
+     * Schema v14 — never carries `id`, `organization_id`, `class_id`,
+     * `author_id`, `lock_version` or `deleted_at`. The class travels as its
+     * ulid and the author as the exporter's email: the importer only restores
+     * an entry whose email is the account confirming the import (the notebook
+     * is private to its author), and `lock_version` is this installation's own
+     * optimistic-lock counter (see `ClassNotebookEntry`).
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function classNotebookEntryRow(ClassNotebookEntry $entry, array $refs): array
+    {
+        return [
+            'ulid' => $entry->ulid,
+            'class_ulid' => $this->classUlidRef($entry->class_id, $refs),
+            'author_email' => $this->authorEmail($entry->author_id, $refs),
+            'title' => $entry->title,
+            'body' => $entry->body,
+            'is_pinned' => $entry->is_pinned,
+            'created_at' => $entry->created_at?->toIso8601String(),
+            'updated_at' => $entry->updated_at?->toIso8601String(),
+            'edited_at' => $entry->edited_at?->toIso8601String(),
+        ];
+    }
+
+    /**
      * @param  BackupRefs  $refs
      * @return array<int, array<string, mixed>>
      */
@@ -2018,6 +2111,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonPlan>  $lessonPlans
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
+     * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
      */
     protected function technicalBackup(
         Organization $organization,
@@ -2057,6 +2151,7 @@ class GenerateDataExport
         Collection $lessonPlans,
         Collection $lessonAttendances,
         Collection $resultsAnalysisNotes,
+        Collection $classNotebookEntries,
     ): string {
         $refs = $this->buildBackupRefs(
             $classes, $academicPeriods, $domains, $scales, $profiles, $profileVersions,
@@ -2081,6 +2176,7 @@ class GenerateDataExport
                 'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'cancelled_lesson_occurrences',
                 'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances',
                 'results_analysis_notes',
+                'class_notebook_entries',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -2151,6 +2247,8 @@ class GenerateDataExport
             'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),
 
             'results_analysis_notes' => $resultsAnalysisNotes->map(fn (ResultsAnalysisNote $note): array => $this->resultsAnalysisNoteRow($note, $refs))->values(),
+
+            'class_notebook_entries' => $classNotebookEntries->map(fn (ClassNotebookEntry $entry): array => $this->classNotebookEntryRow($entry, $refs))->values(),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 

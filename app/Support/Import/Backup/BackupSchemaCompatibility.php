@@ -7,7 +7,14 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (13) is what GenerateDataExport writes today. Version 13 adds the
+ * CURRENT (14) is what GenerateDataExport writes today. Version 14 adds the
+ * `class_notebook_entries` collection — a teacher's own private notebook of
+ * the class (`ClassNotebookEntry`): `ulid`, `class_ulid`, `author_email`,
+ * `title`, `body`, `is_pinned` and the three dates. Exported only for the
+ * entries the exporting account wrote, and restored only by that same
+ * account (the notebook is private to its author). Absent in a backup ≤13
+ * (read as an empty list): zero entries are restored, never an error, and
+ * nothing at the destination is ever deleted because of it. Version 13 adds the
  * `results_analysis_notes` collection — a teacher's own qualitative
  * observations for an instrument's Resultados tab (`ResultsAnalysisNote`,
  * `context_kind = 'instrument'` today). Absent in a backup ≤12 (read as an
@@ -62,7 +69,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 13;
+    public const int CURRENT = 14;
 
     public const int MINIMUM_SUPPORTED = 2;
 

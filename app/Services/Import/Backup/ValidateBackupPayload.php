@@ -9,6 +9,7 @@ use App\Models\ActivityEvaluation;
 use App\Models\AttendanceStatus;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
+use App\Models\ClassNotebookEntry;
 use App\Models\ClassStatus;
 use App\Models\DisciplinarySeverity;
 use App\Models\EnrollmentStatus;
@@ -251,6 +252,8 @@ class ValidateBackupPayload
             }),
 
             'results_analysis_notes' => $this->validResultsAnalysisNoteRows($decoded, $rowIssues),
+
+            'class_notebook_entries' => $this->validClassNotebookEntryRows($decoded, $rowIssues),
         ];
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
@@ -1855,6 +1858,132 @@ class ValidateBackupPayload
             'updated_at' => $updatedAt['value'],
             'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
             'updated_by_email' => $this->nullableString($row['updated_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * Schema v14 — the exporter's own class notebook (`ClassNotebookEntry`).
+     * Absent in a backup ≤13: `?? []`, zero entries, never an error.
+     *
+     * The whitelist is exactly the nine keys the export writes — `id`,
+     * `organization_id`, `class_id`, `author_id`, `lock_version` and
+     * `deleted_at` are dropped even if a hand-edited file carries them.
+     *
+     * EVERY reason here is a fixed sentence and NEVER repeats the title or the
+     * text: the issue lands in the preview's "Pontos a rever" list, and a
+     * notebook entry is private writing about a class.
+     *
+     * A second row with the same `ulid` in the SAME file is reported and
+     * dropped; the first one is kept — never one silently winning at write
+     * time.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validClassNotebookEntryRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['class_notebook_entries'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'class_ulid', 'author_email', 'title', 'body', 'is_pinned', 'created_at', 'updated_at', 'edited_at'];
+        $seenUlids = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $result = $this->validClassNotebookEntryRow(array_intersect_key($row, array_flip($allowedKeys)), $rowIssues);
+
+            if ($result === null) {
+                continue;
+            }
+
+            $resultUlid = is_string($result['ulid']) ? $result['ulid'] : null;
+
+            if ($resultUlid !== null && isset($seenUlids[$resultUlid])) {
+                $rowIssues[] = ['domain' => 'class_notebook_entries', 'ulid' => $resultUlid, 'reason' => $this->t('Registo do caderno duplicado neste ficheiro.')];
+
+                continue;
+            }
+
+            $seenUlids[(string) $resultUlid] = true;
+            $validated[] = $result;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validClassNotebookEntryRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $classUlid = $row['class_ulid'] ?? null;
+        $body = $row['body'] ?? null;
+        $title = $row['title'] ?? null;
+        $isPinned = $row['is_pinned'] ?? false;
+
+        $issue = function (string $reason) use ($ulid, &$rowIssues): null {
+            $rowIssues[] = ['domain' => 'class_notebook_entries', 'ulid' => $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t($reason)];
+
+            return null;
+        };
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)) {
+            return $issue('Registo do caderno com identificação ou turma em falta ou inválidas.');
+        }
+
+        // The form's own rule: a text of only spaces — NBSP, zero-width space
+        // and BOM included — is empty.
+        if (! is_string($body) || ClassNotebookEntry::isBlankBody($body)) {
+            return $issue('Registo do caderno sem texto.');
+        }
+
+        if (ClassNotebookEntry::bodyLimitViolation($body) !== null) {
+            return $issue('O texto deste registo do caderno ultrapassa o limite de 20 000 caracteres ou o espaço máximo de armazenamento.');
+        }
+
+        if ($title !== null && ! is_string($title)) {
+            return $issue('Registo do caderno com título inválido.');
+        }
+
+        $title = $title === null ? null : trim($title);
+
+        if ($title !== null && mb_strlen($title, 'UTF-8') > ClassNotebookEntry::TITLE_MAX_LENGTH) {
+            return $issue('O título deste registo do caderno ultrapassa o limite de 160 caracteres.');
+        }
+
+        if (! is_bool($isPinned)) {
+            return $issue('Registo do caderno com o indicador de fixado inválido.');
+        }
+
+        $createdAt = $this->optionalDateTimeOrInvalidate($row['created_at'] ?? null);
+        $updatedAt = $this->optionalDateTimeOrInvalidate($row['updated_at'] ?? null);
+        $editedAt = $this->optionalDateTimeOrInvalidate($row['edited_at'] ?? null);
+
+        if (! $createdAt['ok'] || ! $updatedAt['ok'] || ! $editedAt['ok']) {
+            return $issue('Registo do caderno com data de criação, de alteração ou de edição inválida.');
+        }
+
+        return [
+            'ulid' => $ulid,
+            'class_ulid' => $classUlid,
+            'author_email' => $this->nullableString($row['author_email'] ?? null),
+            'title' => $title === '' ? null : $title,
+            'body' => $body,
+            'is_pinned' => $isPinned,
+            'created_at' => $createdAt['value'],
+            'updated_at' => $updatedAt['value'],
+            'edited_at' => $editedAt['value'],
         ];
     }
 

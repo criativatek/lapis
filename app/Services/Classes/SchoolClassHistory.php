@@ -61,6 +61,10 @@ class SchoolClassHistory
         // registo de que aquilo entrou, de onde e por quem — apagá-la deixaria
         // caracterizações cuja origem já ninguém consegue explicar.
         'characterisation_import_batches' => 'importações de caracterização',
+        // Conteúdo privado de UM professor. Fica aqui (e não na cascata) para
+        // que um colega dono da turma não consiga, ao eliminá-la, apagar os
+        // registos que outro escreveu — o que o caderno promete que não acontece.
+        'class_notebook_entries' => 'registos do caderno da turma',
     ];
 
     /**

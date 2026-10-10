@@ -196,6 +196,36 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
   carregado do disco privado — nunca os dados já restaurados. Detalhe em
   [docs/data-import.md](data-import.md).
 
+## Caderno da turma (0.161.0)
+
+`class_notebook_entries` guarda texto livre que **só o autor lê** — nem os
+colegas da mesma turma, nem o responsável da organização. A única exceção é
+o suporte técnico durante um apoio pedido, que o pode ler e nunca o altera
+(decidido a 2026-10-10; o ecrã diz «Privado — acessível ao suporte durante o apoio técnico.»). O ciclo de vida
+segue o dos restantes registos pedagógicos, com três notas:
+
+- **Eliminar é soft delete**, como em `evidence_records`: o registo sai do
+  caderno e a linha fica, sem «recuperar» na interface. Nenhum job o purga.
+- **Arquivar a turma não lhe toca.** O caderno continua consultável pelo
+  autor; nada é copiado para outra turma nem para outro ano letivo.
+- **Bloqueia a eliminação definitiva da turma** (`SchoolClassHistory`,
+  FK RESTRICT, incluindo linhas eliminadas). Uma cascata faria um colega dono
+  da turma eliminar os registos privados de outro professor.
+
+Não há eventos em `audit_events` para o caderno, de propósito: a auditoria da
+organização é lida pelo responsável, e expor-lhe-ia a existência e o ritmo dos
+registos privados. A rastreabilidade fica na linha (`author_id`,
+`created_at`, `edited_at`, `deleted_at`). No encerramento de uma conta, as
+linhas ficam como todo o restante conteúdo — já ninguém as lê.
+
+**Backup (schema v14).** A exportação de dados leva o caderno de quem
+exporta — nunca o de um colega, nem para o responsável da organização — e
+nunca os registos eliminados; o restauro só os repõe na conta do autor e
+nunca faz reaparecer um registo eliminado no destino. O dump diário da base
+(`scripts/backup-database.sh`) é integral: leva a tabela inteira, eliminados
+incluídos, como leva os `evidence_records` eliminados. Detalhe em
+[backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
+
 ## A regra do ponteiro (0.101.3)
 
 > **Nunca limpar `stored_path`/`disk_path` antes de o ficheiro estar

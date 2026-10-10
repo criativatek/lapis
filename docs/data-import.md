@@ -122,7 +122,11 @@ estratégias e medidas, e relatórios finalizados. Desde a v9 (schema_version
 recorrente, ocorrências canceladas, aulas, sumários, planificações e
 assiduidade lançada. Desde a v13 (schema_version 13), também as observações
 do professor no separador Resultados de um elemento de avaliação
-(`results_analysis_notes`). A referência coleção a coleção — o que cada uma
+(`results_analysis_notes`). Desde a v14 (schema_version 14), também os
+registos do Caderno da turma (`class_notebook_entries`) — só o caderno de
+quem exporta, e só restaurados na conta do próprio autor (a autoria é o que
+decide quem lê um registo privado; ver a exceção em
+[docs/backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14)). A referência coleção a coleção — o que cada uma
 transporta e as regras de correspondência — está em
 [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.
