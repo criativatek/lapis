@@ -1146,9 +1146,9 @@ function deleteResult(student: Student): void {
                 <p class="text-sm text-muted-foreground">
                     Regista e consulta observações, informações gerais e assuntos a acompanhar sobre a turma.
                 </p>
-                <p class="flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Lock class="size-4 shrink-0" aria-hidden="true" />
-                    Visível apenas para ti.
+                <p class="flex items-start gap-1.5 text-sm text-muted-foreground">
+                    <Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    Privado — acessível ao suporte durante o apoio técnico.
                 </p>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <p class="text-sm font-medium">

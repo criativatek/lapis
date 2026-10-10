@@ -199,7 +199,9 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
 ## Caderno da turma (0.161.0)
 
 `class_notebook_entries` guarda texto livre que **só o autor lê** — nem os
-colegas da mesma turma, nem o responsável da organização. O ciclo de vida
+colegas da mesma turma, nem o responsável da organização. A única exceção é
+o suporte técnico durante um apoio pedido, que o pode ler e nunca o altera
+(decidido a 2026-10-10; o ecrã diz «Privado — acessível ao suporte durante o apoio técnico.»). O ciclo de vida
 segue o dos restantes registos pedagógicos, com três notas:
 
 - **Eliminar é soft delete**, como em `evidence_records`: o registo sai do

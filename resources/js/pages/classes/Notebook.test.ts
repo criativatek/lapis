@@ -35,7 +35,7 @@ function entryFixture(overrides: Record<string, unknown> = {}) {
     };
 }
 
-function mountPage(entries: ReturnType<typeof entryFixture>[] = [], totalEntries = entries.length, q = '') {
+function mountPage(entries: ReturnType<typeof entryFixture>[] = [], totalEntries = entries.length, q = '', canWrite = true) {
     const wrapper = mount(Notebook, {
         attachTo: document.body,
         props: {
@@ -43,7 +43,7 @@ function mountPage(entries: ReturnType<typeof entryFixture>[] = [], totalEntries
             entries: { data: entries, links: [], total: entries.length },
             filters: { q },
             totalEntries,
-            can: { write: true },
+            can: { write: canWrite },
         },
     });
 
@@ -94,8 +94,31 @@ describe('Caderno da turma', () => {
 
         expect(wrapper.text()).toContain('Caderno da turma');
         expect(wrapper.text()).toContain('Ainda não tens registos neste caderno.');
-        expect(wrapper.text()).toContain('Visível apenas para ti.');
+        expect(wrapper.text()).toContain('Privado — acessível ao suporte durante o apoio técnico.');
+        expect(wrapper.text()).not.toContain('Visível apenas para ti');
         expect(wrapper.find('input[type="search"]').exists()).toBe(false);
+    });
+
+    it('is read-only during a technical support session: the text is there, no write control is', () => {
+        // `can.write` é falso quando a sessão é de acesso técnico. O servidor
+        // recusa as escritas à mesma; aqui só se garante que o ecrã não as
+        // oferece — e que a leitura, pesquisa incluída, continua inteira.
+        const wrapper = mountPage(
+            [entryFixture({ title: 'Combinados', body: 'Entrar em silêncio.', is_pinned: true })],
+            1,
+            '',
+            false,
+        );
+
+        expect(wrapper.text()).toContain('Combinados');
+        expect(wrapper.text()).toContain('Entrar em silêncio.');
+        expect(wrapper.text()).toContain('Privado — acessível ao suporte durante o apoio técnico.');
+        expect(wrapper.find('input[type="search"]').exists()).toBe(true);
+        expect(button(wrapper, 'Adicionar registo')).toBeUndefined();
+        expect(wrapper.find('button[aria-label="Editar"]').exists()).toBe(false);
+        expect(wrapper.find('button[aria-label="Eliminar"]').exists()).toBe(false);
+        expect(wrapper.find('button[aria-label="Desafixar"]').exists()).toBe(false);
+        expect(wrapper.find('button[aria-label="Fixar no topo"]').exists()).toBe(false);
     });
 
     it('opens the composer with «Adicionar registo»', async () => {

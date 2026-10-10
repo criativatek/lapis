@@ -88,10 +88,20 @@ Em cada pedido, por esta ordem:
    **mesma turma** recebe 404 — nem a existência do registo se confirma.
 4. **Listagem e contagens** — sempre `where author_id = user.id`. Nunca há uma
    consulta ao caderno sem autor.
-5. **Escritas** (`store`, `update`, `pin`, `destroy`) — `refuseDuringImpersonation()`:
-   quem presta assistência técnica pode ver o que o professor vê (como em toda
-   a conta, nos termos do Acordo de Tratamento de Dados), mas nunca escreve no
-   caderno privado em nome dele.
+5. **Escritas** (`store`, `update`, `pin`, `destroy`) — `refuseDuringImpersonation()`,
+   no `authorize()` dos Form Requests (antes da validação) e de novo no
+   controlador.
+
+**Suporte técnico — DECIDIDO a 2026-10-10.** Durante um apoio pedido, quem
+presta assistência técnica **lê** o caderno como o professor o vê (lista,
+pesquisa, paginação, contagem no cartão da turma), nos termos do Acordo de
+Tratamento de Dados, e **nunca o altera**: criar, editar, fixar, desafixar e
+eliminar são recusados com 403 — também com dados inválidos, sem mensagem de
+validação —, e a exportação e a importação de dados também recusam a sessão
+de suporte, pelo que o caderno não sai por aí. O ecrã diz-o: «Privado — acessível ao suporte durante o apoio técnico.»
+Testes: `an_impersonation_session_can_read_the_whole_notebook` e
+`an_impersonation_session_can_never_write_to_the_notebook`
+(`ClassNotebookTest`), e o modo só de leitura do ecrã em `Notebook.test.ts`.
 
 Alunos e encarregados de educação não têm conta na aplicação — não há caminho
 nenhum até estas rotas.
@@ -100,7 +110,7 @@ nenhum até estas rotas.
 organização; um evento «registo criado no caderno da 7.º A» expunha-lhe a
 existência e o ritmo dos registos privados de outro professor. A
 rastreabilidade fica na própria linha (`author_id`, `created_at`, `edited_at`,
-`deleted_at`), que só o autor lê.
+`deleted_at`), que só o autor lê (e o suporte durante um apoio, sem poder alterar).
 
 ## 5. Eliminação, arquivo, ano letivo
 
@@ -135,7 +145,7 @@ alunos. E ainda:
 
 **Página da turma (`classes/Show.vue`)** — um cartão «Caderno da turma» logo a
 seguir ao da caracterização pedagógica, **sempre visível** (o caderno não
-precisa de alunos): texto de apoio, «Visível apenas para ti.» com cadeado, a
+precisa de alunos): texto de apoio, «Privado — acessível ao suporte durante o apoio técnico.» com cadeado, a
 contagem dos *meus* registos e o botão «Abrir caderno». Sem entrada no menu
 principal.
 
@@ -143,7 +153,7 @@ principal.
 
 - Cabeçalho: «Caderno da turma», a turma (rótulo · disciplina · ano letivo),
   «Regista e consulta observações, informações gerais e assuntos a acompanhar
-  sobre a turma.», «Visível apenas para ti.» (cadeado), «Voltar à turma», e o
+  sobre a turma.», «Privado — acessível ao suporte durante o apoio técnico.» (cadeado), «Voltar à turma», e o
   botão principal «Adicionar registo».
 - **Compositor** (no topo, abre com «Adicionar registo»): «Título» (opcional) e
   «Registo» (textarea, foco automático, parágrafos preservados). «Guardar»

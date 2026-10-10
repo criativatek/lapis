@@ -399,7 +399,9 @@ Os registos do **Caderno da turma** (`App\Models\ClassNotebookEntry`) são
 exportados e restaurados desde a v14. São texto **privado** de quem o
 escreveu — nem os colegas da mesma turma nem o responsável da organização o
 leem —, e é isso que torna esta coleção diferente das outras em dois pontos:
-quem a exporta e a quem se restaura.
+quem a exporta e a quem se restaura. (O suporte técnico pode lê-lo no ecrã
+durante um apoio pedido, mas exportar e importar dados recusam a sessão de
+suporte: o caderno nunca sai nem entra por um backup em nome do professor.)
 
 | Campo | Forma | Notas |
 |---|---|---|
@@ -469,6 +471,13 @@ linha a linha (ver [docs/deployment.md](deployment.md)).
 
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
+- **Registos eliminados nas outras coleções** — restaurar o próprio backup
+  depois de eliminar um `evidence_records` que ele contém faz falhar a
+  importação inteira (o plano não vê a linha eliminada e o `INSERT` colide
+  com o `ulid` único). Confirmado e registado na issue #61, com
+  `interventions`, `instruments` e `assessment_profiles` como suspeitas
+  ainda por reproduzir. O Caderno da turma (v14) já procura incluindo os
+  eliminados e não tem este problema.
 - Restauro de `ReportTemplate`/`ReportLibraryEntry` — hoje um relatório
   finalizado é autossuficiente (`template_snapshot`), pelo que isto só
   importaria para permitir gerar **novos** relatórios a partir de um modelo

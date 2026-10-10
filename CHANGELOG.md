@@ -25,7 +25,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.161.0] — 2026-10-09
+## [0.161.0] — 2026-10-10
 
 Caderno da turma: um espaço privado de cada professor para observações e
 informações gerais sobre a turma enquanto grupo, sem obrigar a associar o
@@ -56,18 +56,22 @@ registo a um aluno.
 
 ### Privacidade
 
-- **Visível apenas para ti.** Cada registo pertence ao professor que o criou e
-  à turma (e, por ela, ao ano letivo). Outros professores da mesma turma não o
-  consultam, pesquisam, alteram nem eliminam — nem por acesso direto ao
-  endereço, que responde como se o registo não existisse. Alunos e
+- **Privado — acessível ao suporte durante o apoio técnico.** Cada registo
+  pertence ao professor que o criou e à turma (e, por ela, ao ano letivo).
+  Outros professores da mesma turma não o consultam, pesquisam, alteram nem
+  eliminam — nem por acesso direto ao endereço, que responde como se o
+  registo não existisse. Alunos e
   encarregados de educação não têm acesso. Tudo isto é verificado no servidor,
   em todas as operações, além do isolamento entre organizações e das regras de
   acesso à turma.
 - O caderno **não gera eventos na auditoria da organização**, para que a
   existência e o ritmo dos registos privados não fiquem visíveis ao
   responsável da organização; a rastreabilidade fica no próprio registo.
-- Durante uma sessão de acesso técnico do suporte, o caderno pode ser
-  consultado mas nunca alterado.
+- **Suporte técnico: lê, nunca altera.** Durante um apoio pedido, o suporte
+  consulta o caderno como o professor o vê (lista, pesquisa, paginação); criar,
+  editar, fixar, desafixar e eliminar são recusados no servidor, e a
+  exportação e a importação de dados também recusam a sessão de suporte. O
+  ecrã diz «Privado — acessível ao suporte durante o apoio técnico.»
 
 ### Arquivo e ano letivo
 
@@ -112,6 +116,11 @@ registo a um aluno.
   `WriteClassNotebookEntries`). Testes de portabilidade com exportação e
   restauro reais, validados também em MySQL 8.0.43.
 - Desenho em `docs/superpowers/specs/2026-10-09-class-notebook-design.md`.
+- Teste-bomba de relógio corrigido (sem alteração ao produto):
+  `ProTrialLifecycleTest::trial_duration_survives_a_europe_lisbon_dst_transition…`
+  congelava o relógio em 2026-10-10 09:00 depois de criar a conta, e a partir
+  dessa manhã a subscrição Base ainda «não tinha começado» no instante
+  congelado. Falhava também no `main`; o relógio passa a ser fixado antes.
 
 ## [0.160.0] — 2026-10-08
 

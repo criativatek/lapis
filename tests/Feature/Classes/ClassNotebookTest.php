@@ -561,25 +561,84 @@ class ClassNotebookTest extends TestCase
 
     // --- Impersonação ------------------------------------------------------
 
+    /**
+     * DECIDIDO (2026-10-10): o suporte técnico LÊ o caderno durante um apoio
+     * pedido — o ecrã diz «Privado — acessível ao suporte durante o apoio
+     * técnico.» — e NUNCA o altera. Leitura: a lista, a pesquisa, a página
+     * seguinte e a contagem no cartão da turma.
+     */
     #[Test]
-    public function an_impersonation_session_can_read_but_every_write_is_refused(): void
+    public function an_impersonation_session_can_read_the_whole_notebook(): void
     {
-        $entry = $this->entry(['body' => 'Original.']);
+        $pinned = $this->entry(['title' => 'Combinados', 'body' => 'Entrar em silêncio.', 'is_pinned' => true]);
+
+        foreach (range(1, 21) as $index) {
+            $this->entry(['body' => "Registo {$index}."]);
+        }
+
         $session = ['organization_id' => $this->organization->id, 'impersonator_id' => 999];
 
         $this->actingAs($this->teacher)->withSession($session)->get($this->url())->assertOk()
-            ->assertInertia(fn (AssertableInertia $page) => $page->where('can.write', false)->has('entries.data', 1));
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('classes/Notebook')
+                ->where('can.write', false)
+                ->where('totalEntries', 22)
+                ->has('entries.data', 20)
+                ->where('entries.data.0.ulid', $pinned->ulid)
+                ->where('entries.data.0.body', 'Entrar em silêncio.'));
 
-        $this->actingAs($this->teacher)->withSession($session)->post($this->url(), ['body' => 'Novo.'])->assertForbidden();
-        $this->actingAs($this->teacher)->withSession($session)->put($this->url(suffix: "/{$entry->ulid}"), ['body' => 'Alterado.', 'lock_version' => 0])->assertForbidden();
-        $this->actingAs($this->teacher)->withSession($session)->patch($this->url(suffix: "/{$entry->ulid}/pin"), ['pinned' => true])->assertForbidden();
-        $this->actingAs($this->teacher)->withSession($session)->delete($this->url(suffix: "/{$entry->ulid}"))->assertForbidden();
+        $this->actingAs($this->teacher)->withSession($session)->get($this->url().'?q=silêncio')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('can.write', false)
+                ->has('entries.data', 1)
+                ->where('entries.data.0.ulid', $pinned->ulid));
+
+        $this->actingAs($this->teacher)->withSession($session)->get($this->url().'?page=2')->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->has('entries.data', 2));
+
+        $this->actingAs($this->teacher)->withSession($session)->get("/classes/{$this->schoolClass->ulid}")->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('notebook.count', 22));
+    }
+
+    /**
+     * …e nenhuma escrita passa: criar, editar, fixar, desafixar e eliminar,
+     * válidas ou inválidas (a recusa vem antes da validação — um pedido
+     * inválido também é 403, sem mensagem de validação). Nada muda na base.
+     * Nem pela porta lateral do backup: exportar e importar também recusam a
+     * sessão de suporte.
+     */
+    #[Test]
+    public function an_impersonation_session_can_never_write_to_the_notebook(): void
+    {
+        $entry = $this->entry(['body' => 'Original.']);
+        $pinned = $this->entry(['body' => 'Fixado.', 'is_pinned' => true]);
+        $session = ['organization_id' => $this->organization->id, 'impersonator_id' => 999];
+        $as = fn () => $this->actingAs($this->teacher)->withSession($session);
+
+        $as()->post($this->url(), ['body' => 'Novo.'])->assertForbidden()->assertSessionHasNoErrors();
+        $as()->post($this->url(), ['body' => ''])->assertForbidden()->assertSessionHasNoErrors();
+        $as()->put($this->url(suffix: "/{$entry->ulid}"), ['body' => 'Alterado.', 'lock_version' => 0])->assertForbidden()->assertSessionHasNoErrors();
+        $as()->put($this->url(suffix: "/{$entry->ulid}"), ['body' => '   '])->assertForbidden()->assertSessionHasNoErrors();
+        $as()->patch($this->url(suffix: "/{$entry->ulid}/pin"), ['pinned' => true])->assertForbidden();
+        $as()->patch($this->url(suffix: "/{$pinned->ulid}/pin"), ['pinned' => false])->assertForbidden();
+        $as()->delete($this->url(suffix: "/{$entry->ulid}"))->assertForbidden();
+
+        // A recusa é a da sessão de suporte, e não outra (a organização das
+        // fixtures está no Pro, que inclui o restauro): a mensagem prova-o.
+        $refusal = 'Não é possível realizar esta ação durante uma sessão de suporte.';
+        $as()->postJson('/data-exports')->assertForbidden()->assertJsonPath('message', $refusal);
+        $as()->postJson('/data-imports', [])->assertForbidden()->assertJsonPath('message', $refusal);
+        $as()->postJson($this->url(), ['body' => 'Novo.'])->assertForbidden()->assertJsonPath('message', $refusal);
 
         $entry->refresh();
+        $pinned->refresh();
         $this->assertSame('Original.', $entry->body);
         $this->assertFalse($entry->is_pinned);
         $this->assertNull($entry->deleted_at);
-        $this->assertSame(1, $this->rows());
+        $this->assertSame(0, $entry->lock_version);
+        $this->assertNull($entry->edited_at);
+        $this->assertTrue($pinned->is_pinned);
+        $this->assertSame(2, $this->rows());
     }
 
     // --- Eliminação definitiva da turma ------------------------------------

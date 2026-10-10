@@ -363,9 +363,12 @@ onBeforeUnmount(() => {
             <p class="text-sm text-muted-foreground">
                 Regista e consulta observações, informações gerais e assuntos a acompanhar sobre a turma.
             </p>
-            <p class="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Lock class="size-4 shrink-0" aria-hidden="true" />
-                Visível apenas para ti.
+            <!-- Privado do autor; o suporte técnico só o lê durante um apoio
+                 pedido (nunca escreve — ClassNotebookController e os Form
+                 Requests recusam a impersonação). A frase diz as duas coisas. -->
+            <p class="flex items-start gap-1.5 text-sm text-muted-foreground">
+                <Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                Privado — acessível ao suporte durante o apoio técnico.
             </p>
             <p v-if="schoolClass.archived" class="text-sm text-muted-foreground">
                 Turma arquivada — o caderno continua disponível.
