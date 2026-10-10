@@ -563,9 +563,9 @@ class ClassNotebookTest extends TestCase
 
     /**
      * DECIDIDO (2026-10-10): o suporte técnico LÊ o caderno durante um apoio
-     * pedido — o ecrã diz «Privado — acessível ao suporte durante o apoio
-     * técnico.» — e NUNCA o altera. Leitura: a lista, a pesquisa, a página
-     * seguinte e a contagem no cartão da turma.
+     * pedido e NUNCA o altera. O ecrã não tem indicação de privacidade
+     * (0.161.1): tudo no caderno é privado. Leitura: a lista, a pesquisa, a
+     * página seguinte e a contagem no cartão da turma.
      */
     #[Test]
     public function an_impersonation_session_can_read_the_whole_notebook(): void

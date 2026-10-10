@@ -89,12 +89,15 @@ describe('Caderno da turma', () => {
         expect(nav.text()).not.toContain('pagination.');
     });
 
-    it('shows the empty state and the privacy line', () => {
+    it('shows the empty state and no privacy line (everything in the notebook is private)', () => {
         const wrapper = mountPage();
 
         expect(wrapper.text()).toContain('Caderno da turma');
         expect(wrapper.text()).toContain('Ainda não tens registos neste caderno.');
-        expect(wrapper.text()).toContain('Privado — acessível ao suporte durante o apoio técnico.');
+        // 0.161.1: nenhuma indicação de privacidade — nem «Privado», nem a
+        // frase da 0.161.0, nem a da primeira versão.
+        expect(wrapper.text()).not.toContain('Privado');
+        expect(wrapper.text()).not.toContain('acessível ao suporte');
         expect(wrapper.text()).not.toContain('Visível apenas para ti');
         expect(wrapper.find('input[type="search"]').exists()).toBe(false);
     });
@@ -112,7 +115,7 @@ describe('Caderno da turma', () => {
 
         expect(wrapper.text()).toContain('Combinados');
         expect(wrapper.text()).toContain('Entrar em silêncio.');
-        expect(wrapper.text()).toContain('Privado — acessível ao suporte durante o apoio técnico.');
+        expect(wrapper.text()).not.toContain('Privado');
         expect(wrapper.find('input[type="search"]').exists()).toBe(true);
         expect(button(wrapper, 'Adicionar registo')).toBeUndefined();
         expect(wrapper.find('button[aria-label="Editar"]').exists()).toBe(false);

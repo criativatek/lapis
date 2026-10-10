@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Archive, ArchiveRestore, ClipboardList, FileUp, Footprints, Lock, Pencil, Trash2, UserPlus } from '@lucide/vue';
+import { Archive, ArchiveRestore, ClipboardList, FileUp, Footprints, Pencil, Trash2, UserPlus } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import ClassGroupsSection from '@/components/classes/ClassGroupsSection.vue';
 import type { ClassGroup } from '@/components/classes/ClassGroupsSection.vue';
@@ -1145,10 +1145,6 @@ function deleteResult(student: Student): void {
             <CardContent class="space-y-3">
                 <p class="text-sm text-muted-foreground">
                     Regista e consulta observações, informações gerais e assuntos a acompanhar sobre a turma.
-                </p>
-                <p class="flex items-start gap-1.5 text-sm text-muted-foreground">
-                    <Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    Privado — acessível ao suporte durante o apoio técnico.
                 </p>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <p class="text-sm font-medium">

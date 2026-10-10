@@ -201,7 +201,8 @@ real fica marcada como dívida técnica explícita, para trabalho futuro.
 `class_notebook_entries` guarda texto livre que **só o autor lê** — nem os
 colegas da mesma turma, nem o responsável da organização. A única exceção é
 o suporte técnico durante um apoio pedido, que o pode ler e nunca o altera
-(decidido a 2026-10-10; o ecrã diz «Privado — acessível ao suporte durante o apoio técnico.»). O ciclo de vida
+(decidido a 2026-10-10; desde a 0.161.1 o ecrã não tem indicação de privacidade,
+porque tudo no caderno é privado). O ciclo de vida
 segue o dos restantes registos pedagógicos, com três notas:
 
 - **Eliminar é soft delete**, como em `evidence_records`: o registo sai do

@@ -98,7 +98,10 @@ pesquisa, paginação, contagem no cartão da turma), nos termos do Acordo de
 Tratamento de Dados, e **nunca o altera**: criar, editar, fixar, desafixar e
 eliminar são recusados com 403 — também com dados inválidos, sem mensagem de
 validação —, e a exportação e a importação de dados também recusam a sessão
-de suporte, pelo que o caderno não sai por aí. O ecrã diz-o: «Privado — acessível ao suporte durante o apoio técnico.»
+de suporte, pelo que o caderno não sai por aí. **O ecrã não tem indicação de
+privacidade** (0.161.1, decisão do utilizador): tudo no caderno é privado, e o
+acesso do suporte é o de toda a conta, não uma particularidade do caderno. Na
+0.161.0 dizia «Privado — acessível ao suporte durante o apoio técnico.».
 Testes: `an_impersonation_session_can_read_the_whole_notebook` e
 `an_impersonation_session_can_never_write_to_the_notebook`
 (`ClassNotebookTest`), e o modo só de leitura do ecrã em `Notebook.test.ts`.
@@ -145,7 +148,7 @@ alunos. E ainda:
 
 **Página da turma (`classes/Show.vue`)** — um cartão «Caderno da turma» logo a
 seguir ao da caracterização pedagógica, **sempre visível** (o caderno não
-precisa de alunos): texto de apoio, «Privado — acessível ao suporte durante o apoio técnico.» com cadeado, a
+precisa de alunos): texto de apoio, a
 contagem dos *meus* registos e o botão «Abrir caderno». Sem entrada no menu
 principal.
 
@@ -153,7 +156,7 @@ principal.
 
 - Cabeçalho: «Caderno da turma», a turma (rótulo · disciplina · ano letivo),
   «Regista e consulta observações, informações gerais e assuntos a acompanhar
-  sobre a turma.», «Privado — acessível ao suporte durante o apoio técnico.» (cadeado), «Voltar à turma», e o
+  sobre a turma.», «Voltar à turma», e o
   botão principal «Adicionar registo».
 - **Compositor** (no topo, abre com «Adicionar registo»): «Título» (opcional) e
   «Registo» (textarea, foco automático, parágrafos preservados). «Guardar»
