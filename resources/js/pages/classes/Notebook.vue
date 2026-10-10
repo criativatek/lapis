@@ -8,7 +8,7 @@
  * foi escrito: nada aqui é limpo antes de o servidor dizer que guardou.
  */
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArrowLeft, BookOpen, Lock, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from '@lucide/vue';
+import { ArrowLeft, BookOpen, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -363,13 +363,12 @@ onBeforeUnmount(() => {
             <p class="text-sm text-muted-foreground">
                 Regista e consulta observações, informações gerais e assuntos a acompanhar sobre a turma.
             </p>
-            <!-- Privado do autor; o suporte técnico só o lê durante um apoio
-                 pedido (nunca escreve — ClassNotebookController e os Form
-                 Requests recusam a impersonação). A frase diz as duas coisas. -->
-            <p class="flex items-start gap-1.5 text-sm text-muted-foreground">
-                <Lock class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                Privado — acessível ao suporte durante o apoio técnico.
-            </p>
+            <!-- SEM INDICAÇÃO DE PRIVACIDADE NO ECRÃ (0.161.1, decisão do
+                 utilizador): tudo no caderno é privado, por isso não se diz.
+                 A privacidade continua inteira no servidor — só o autor lê;
+                 o suporte técnico lê durante um apoio pedido e nunca altera
+                 (ClassNotebookController e os Form Requests recusam a
+                 impersonação). -->
             <p v-if="schoolClass.archived" class="text-sm text-muted-foreground">
                 Turma arquivada — o caderno continua disponível.
             </p>

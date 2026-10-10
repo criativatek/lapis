@@ -25,6 +25,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.161.1] — 2026-10-10
+
+### Alterado
+
+- **Caderno da turma: sai a indicação de privacidade** (o cadeado e a frase
+  «Privado — acessível ao suporte durante o apoio técnico.»), na página do
+  caderno e no cartão da turma. Tudo no caderno é privado, por isso não é
+  preciso dizê-lo; o acesso do suporte é o de toda a conta e não uma
+  particularidade do caderno.
+- O comportamento não muda: o suporte técnico continua a poder ler o caderno
+  durante um apoio pedido e nunca o pode alterar, e os testes que o provam
+  mantêm-se.
+
 ## [0.161.0] — 2026-10-10
 
 Caderno da turma: um espaço privado de cada professor para observações e
