@@ -217,8 +217,12 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- The same numbers, in words. `sr-only` and not `hidden`: this is FOR
-             reading, just not with the eyes. -->
-        <table class="sr-only">
+             reading, just not with the eyes. The `sr-only` sits on a WRAPPER,
+             not on the table: a table ignores `width: 1px` and lays itself out
+             at its content width, and an absolutely positioned table that wide
+             widened the whole page on a phone (375px → 819px). -->
+        <div class="sr-only">
+        <table>
             <caption>{{ summary }}</caption>
             <thead>
                 <tr>
@@ -232,5 +236,6 @@ onBeforeUnmount(() => {
                 </tr>
             </tbody>
         </table>
+        </div>
     </div>
 </template>
