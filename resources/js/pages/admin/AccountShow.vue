@@ -60,7 +60,12 @@ type Account = {
     closure: ClosureStatus | null;
 };
 
-const props = defineProps<{ account: Account; plans: { key: string; name: string }[] }>();
+const props = defineProps<{
+    account: Account;
+    plans: { key: string; name: string }[];
+    /** Só quem já tem a autorização das métricas de utilização a pode dar, e só a um administrador. */
+    usage_insights: { can_manage: boolean; owner_is_admin: boolean; granted: boolean };
+}>();
 
 const base = computed(() => `/admin/accounts/${props.account.ulid}`);
 
@@ -68,6 +73,12 @@ const base = computed(() => `/admin/accounts/${props.account.ulid}`);
 // so there is one place to render them all — except adding a member, which
 // writes to `member` so its error does not clobber this one mid-form.
 const refusal = computed(() => (usePage().props.errors as Record<string, string>)?.account ?? null);
+
+const usageAccessRefusal = computed(() => (usePage().props.errors as Record<string, string>)?.granted ?? null);
+
+function setUsageAccess(granted: boolean): void {
+    router.post(`${base.value}/usage-insights`, { granted }, { preserveScroll: true });
+}
 
 const blockingEntries = computed(() => Object.entries(props.account.blocking));
 const canDelete = computed(
@@ -606,6 +617,27 @@ function destroy(): void {
             </p>
             <Button type="button" variant="outline" size="sm" @click="setTestAccount(!account.is_test_account)">
                 {{ account.is_test_account ? 'Deixar de ser conta de teste' : 'Marcar como conta de teste' }}
+            </Button>
+        </section>
+
+        <!-- Métricas de utilização -->
+        <section v-if="usage_insights.can_manage && usage_insights.owner_is_admin" class="space-y-3 rounded-lg border border-border p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="text-sm font-medium">Métricas de utilização</h2>
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="usage_insights.granted ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300' : 'bg-muted text-muted-foreground'"
+                >
+                    {{ usage_insights.granted ? 'acesso concedido' : 'sem acesso' }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                É uma autorização própria, <strong>não</strong> incluída em ser administrador da plataforma. Dá acesso ao painel interno de
+                utilização e acompanhamento; a concessão e a revogação ficam na auditoria.
+            </p>
+            <p v-if="usageAccessRefusal" role="alert" class="text-sm text-red-700 dark:text-red-400">{{ usageAccessRefusal }}</p>
+            <Button type="button" variant="outline" class="max-md:min-h-11" @click="setUsageAccess(!usage_insights.granted)">
+                {{ usage_insights.granted ? 'Revogar acesso às métricas de utilização' : 'Conceder acesso às métricas de utilização' }}
             </Button>
         </section>
 
