@@ -53,7 +53,20 @@ const props = defineProps<{
     selected: string[];
     /** Classes do botão que abre o diálogo (p. ex. alvos de 44px no telemóvel). */
     triggerClass?: string;
+    /**
+     * Para onde volta o foco ao fechar, quando o diálogo é aberto sem o seu
+     * botão (p. ex. a partir de «Mais ações»): o botão escondido não pode
+     * receber o foco, e o teclado ficaria perdido no início da página.
+     */
+    returnFocusTo?: string;
 }>();
+
+function onCloseAutoFocus(event: Event): void {
+    if (props.returnFocusTo) {
+        event.preventDefault();
+        document.querySelector<HTMLElement>(props.returnFocusTo)?.focus();
+    }
+}
 
 const open = ref(false);
 const mode = ref<Mode>('today');
@@ -228,7 +241,7 @@ function submit(): void {
                 <CheckCheck class="size-4" /> Marcar lecionadas
             </Button>
         </DialogTrigger>
-        <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-lg" @close-auto-focus="onCloseAutoFocus">
             <DialogHeader class="space-y-2">
                 <DialogTitle>{{ selectionOnly ? 'Marcar selecionadas como lecionadas' : 'Marcar aulas como lecionadas' }}</DialogTitle>
                 <DialogDescription>

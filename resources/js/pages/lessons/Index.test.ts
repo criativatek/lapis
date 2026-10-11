@@ -5,12 +5,14 @@
  * guarda de alterações por guardar. Mais o fecho rápido e o lote, que vêm de
  * antes e não podem regredir.
  */
-import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { DOMWrapper, enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
+import InsertLessonDialog from '@/components/lessons/InsertLessonDialog.vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import type { WeekLesson } from '@/lib/lessons';
+import type { SummarySearchResponse, SummarySearchResult } from '@/lib/lessonSummarySearch';
 import type { ClassViewData, TeacherClass } from '@/lib/lessonWeekView';
 import Index from './Index.vue';
 
@@ -75,14 +77,21 @@ vi.mock('@inertiajs/vue3', async () => {
 vi.mock('@/components/ui/dropdown-menu', () => {
     const passthrough = (tag: string) => defineComponent({ setup: (_, { slots }) => () => h(tag, slots.default?.()) });
 
+    const item = (role: string) =>
+        defineComponent({
+            emits: ['select'],
+            setup: (_, { slots, emit, attrs }) => () => h('div', { ...attrs, role, onClick: () => emit('select') }, slots.default?.()),
+        });
+
     return {
         DropdownMenu: passthrough('div'),
         DropdownMenuContent: passthrough('div'),
         DropdownMenuTrigger: passthrough('div'),
-        DropdownMenuItem: defineComponent({
-            emits: ['select'],
-            setup: (_, { slots, emit, attrs }) => () => h('div', { ...attrs, role: 'menuitem', onClick: () => emit('select') }, slots.default?.()),
-        }),
+        DropdownMenuLabel: passthrough('div'),
+        DropdownMenuSeparator: passthrough('hr'),
+        DropdownMenuRadioGroup: passthrough('div'),
+        DropdownMenuItem: item('menuitem'),
+        DropdownMenuRadioItem: item('menuitemradio'),
     };
 });
 
@@ -193,13 +202,18 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
+// Cada página montada reage ao URL partilhado do mock do Inertia: sem isto, as
+// páginas dos testes anteriores continuavam vivas e a fazer os seus pedidos.
+enableAutoUnmount(afterEach);
+
 /** A revalidação ao montar: uma visita SÍNCRONA ao próprio URL, só das aulas. */
 function expectRevalidation(): void {
     expect(inertia.router.reload).not.toHaveBeenCalled();
     expect(inertia.router.get).toHaveBeenCalledWith(
         inertia.page.url,
         {},
-        expect.objectContaining({ only: ['lessons', 'classView'], preserveState: true, preserveScroll: true, replace: true }),
+        // `preserveUrl`: uma pesquisa iniciada entretanto não pode ser desfeita pela resposta.
+        expect.objectContaining({ only: ['lessons', 'classView'], preserveState: true, preserveScroll: true, preserveUrl: true, replace: true }),
     );
 }
 
@@ -764,10 +778,10 @@ describe('estado, fecho rápido e lote (inalterados)', () => {
     it('a seleção só aceita aulas fecháveis, nas duas vistas, sem «Selecionar todas»', async () => {
         const wrapper = mountPage([started(), ended(), future(), closed()]);
 
-        await wrapper
-            .findAll('button')
-            .find((candidate) => candidate.text().includes('Selecionar aulas'))!
-            .trigger('click');
+        // «Selecionar aulas» vive em «Mais ações» (0.162.0).
+        const toggle = wrapper.get('[data-testid="selection-toggle"]');
+        expect(toggle.text()).toContain('Selecionar aulas');
+        await toggle.trigger('click');
 
         const checkboxes = () => wrapper.findAll('[aria-label^="Selecionar a aula"]');
         expect(checkboxes()).toHaveLength(2);
@@ -1346,6 +1360,595 @@ describe('«Aulas de hoje» — posiciona no dia certo (foco=hoje)', () => {
 
         expect(scrolled).toEqual(['dia-2026-10-08']);
         expect(requestedBy.filter((stack) => stack.includes('Index.vue') && !stack.includes('jsdom'))).toEqual([]);
+        wrapper.unmount();
+    });
+});
+
+/**
+ * 0.162.0 — PESQUISA NOS SUMÁRIOS. A pesquisa é do servidor (aqui, `fetch`
+ * simulado); a página só guarda o estado no URL — por cima do do calendário —,
+ * pede, mostra e nunca deixa uma resposta antiga tomar o lugar da mais recente.
+ */
+describe('pesquisa nos sumários — em todo o ano letivo, no servidor', () => {
+    const fetchMock = vi.fn();
+
+    function searchResult(overrides: Partial<SummarySearchResult> = {}): SummarySearchResult {
+        return {
+            ulid: 'result-1',
+            starts_at: '2026-09-22T09:30:00+01:00',
+            ends_at: '2026-09-22T10:20:00+01:00',
+            school_class: { ulid: 'class-a', label: '7.º A', is_support_class: false },
+            context_label: '7.º A',
+            class_group_id: null,
+            class_group_label: null,
+            subject: 'Matemática',
+            status: 'taught',
+            status_label: 'Lecionada',
+            outcome: 'taught',
+            outcome_label: 'Lecionada',
+            lesson_number: 3,
+            identity_tone: 'violet',
+            occurrences: 2,
+            segments: [
+                { text: 'Revisão de ', match: false },
+                { text: 'frações', match: true },
+                { text: '.\n\nExercícios com ', match: false },
+                { text: 'Frações', match: true },
+                { text: ' equivalentes.', match: false },
+            ],
+            ...overrides,
+        };
+    }
+
+    function searchResponse(
+        results: SummarySearchResult[],
+        overrides: Partial<SummarySearchResponse> = {},
+    ): SummarySearchResponse {
+        return {
+            term: 'frações',
+            academic_year: '2026/2027',
+            classes: [],
+            total: results.length,
+            occurrences: results.reduce((sum, result) => sum + result.occurrences, 0),
+            page: 1,
+            last_page: 1,
+            per_page: 20,
+            results,
+            ...overrides,
+        };
+    }
+
+    function reply(body: unknown, status = 200): Response {
+        return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const searchUrl = '/lessons?week=2026-10-05&view=semana&classes=class-a&q=fra%C3%A7%C3%B5es&q_classes=class-a&q_states=taught';
+
+    function lastReplaceUrl(): string {
+        const calls = inertia.router.replace.mock.calls;
+
+        return (calls[calls.length - 1]?.[0] as { url: string }).url;
+    }
+
+    function queryOf(url: string): Record<string, string> {
+        return Object.fromEntries(new URLSearchParams(url.slice(url.indexOf('?') + 1)));
+    }
+
+    /** Os outros pedidos da página (p. ex. «Antes desta aula», no editor) não são da pesquisa. */
+    const otherRequests = vi.fn((url: string) =>
+        Promise.resolve(reply(url.includes('preparation-context') ? { lessons: [], has_more: false } : {})),
+    );
+
+    beforeEach(() => {
+        fetchMock.mockReset();
+        fetchMock.mockImplementation(() => Promise.resolve(reply(searchResponse([searchResult()]))));
+        vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+            url.startsWith('/lessons/search?') ? fetchMock(url, init) : otherRequests(url),
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('o campo «Pesquisar nos sumários…» está à vista, na mesma linha do seletor de vista', () => {
+        const wrapper = mountPage();
+        const query = wrapper.get('[data-testid="lessons-query"]');
+
+        expect(query.find('[role="tablist"]').exists()).toBe(true);
+        expect(query.get('[data-testid="summary-search-input"]').attributes('placeholder')).toBe('Pesquisar nos sumários…');
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('Enter pesquisa logo: a pesquisa entra no URL POR CIMA do calendário, com as turmas que este filtrava e só as lecionadas', async () => {
+        const wrapper = mountPage([makeLesson()], { url: '/lessons?week=2026-10-05&view=semana&classes=class-a&states=prepared' });
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+
+        await input.setValue('frações');
+        await input.trigger('keydown', { key: 'Enter' });
+        await flushPromises();
+
+        expect(queryOf(lastReplaceUrl())).toEqual({
+            week: '2026-10-05',
+            view: 'semana',
+            classes: 'class-a',
+            states: 'prepared',
+            q: 'frações',
+            q_classes: 'class-a',
+            q_states: 'taught',
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [requested] = fetchMock.mock.calls[0] as [string];
+        expect(requested.startsWith('/lessons/search?')).toBe(true);
+        expect(queryOf(requested)).toEqual({ q: 'frações', classes: 'class-a', states: 'taught', page: '1' });
+    });
+
+    it('durante a escrita espera por uma pausa, e com um só carácter só explica', async () => {
+        vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+        vi.setSystemTime(new Date('2026-10-08T11:00:00+01:00'));
+        const wrapper = mountPage();
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+
+        await input.setValue('f');
+        vi.advanceTimersByTime(1000);
+        await nextTick();
+        expect(wrapper.text()).toContain('Escreve pelo menos dois caracteres para pesquisar.');
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+
+        await input.setValue('fra');
+        vi.advanceTimersByTime(200);
+        await input.setValue('fraç');
+        vi.advanceTimersByTime(200);
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(200);
+        expect(inertia.router.replace).toHaveBeenCalledTimes(1);
+        expect(queryOf(lastReplaceUrl()).q).toBe('fraç');
+    });
+
+    it('mostra os resultados no lugar do calendário, com o âmbito por inteiro e as aulas separadas das ocorrências', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        expect(wrapper.find('[data-testid="lesson-card"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="week-navigation"]').exists()).toBe(false);
+        expect(wrapper.find('[role="tablist"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="search-back"]').text()).toContain('Voltar ao calendário');
+        expect(wrapper.get('[data-testid="search-scope"]').text()).toContain('Ano letivo 2026/2027 · 7.º A · Aulas lecionadas');
+        expect(wrapper.get('[data-testid="search-count"]').text()).toContain('1 aula encontrada');
+        expect(wrapper.get('[data-testid="search-count"]').text()).toContain('2 ocorrências da expressão');
+
+        const card = wrapper.get('[data-testid="search-result"]');
+        expect(card.text()).toContain('Terça-feira, 22 de setembro de 2026');
+        expect(card.get('[data-testid="search-result-number"]').text()).toBe('Lição 3');
+        expect(card.get('[data-testid="lesson-state"]').text()).toBe('Lecionada');
+        expect(card.get('[data-testid="open-lesson"]').attributes('href')).toBe('/lessons/result-1');
+        expect(card.findAll('[data-testid="search-match"]').map((mark) => mark.text())).toEqual(['frações', 'Frações']);
+        // O sumário inteiro, com a estrutura de parágrafos do professor.
+        expect(card.get('[data-testid="search-result-summary"]').element.textContent).toBe(
+            'Revisão de frações.\n\nExercícios com Frações equivalentes.',
+        );
+    });
+
+    it('o destaque é texto: um sumário com HTML aparece tal como foi escrito', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(
+                reply(
+                    searchResponse([
+                        searchResult({
+                            occurrences: 1,
+                            segments: [
+                                { text: '<b>negrito</b> e ', match: false },
+                                { text: '<script>', match: true },
+                            ],
+                        }),
+                    ]),
+                ),
+            ),
+        );
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        const summary = wrapper.get('[data-testid="search-result-summary"]');
+        expect(summary.find('b').exists()).toBe(false);
+        expect(summary.find('script').exists()).toBe(false);
+        expect(summary.text()).toBe('<b>negrito</b> e <script>');
+    });
+
+    it('grupos diferentes com o mesmo número e o mesmo texto são resultados distintos, cada um com o seu grupo', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(
+                reply(
+                    searchResponse([
+                        searchResult({ ulid: 'r-t1', school_class: { ulid: 'class-b', label: '8.º B', is_support_class: false }, context_label: '8.º B · T1', class_group_id: 1, class_group_label: 'T1' }),
+                        searchResult({ ulid: 'r-t2', school_class: { ulid: 'class-b', label: '8.º B', is_support_class: false }, context_label: '8.º B · T2', class_group_id: 2, class_group_label: 'T2' }),
+                    ]),
+                ),
+            ),
+        );
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        const cards = wrapper.findAll('[data-testid="search-result"]');
+        expect(cards).toHaveLength(2);
+        expect(cards.map((card) => card.get('[data-testid="lesson-scope"]').text())).toEqual(['Grupo T1', 'Grupo T2']);
+        expect(cards.map((card) => card.get('[data-testid="search-result-number"]').text())).toEqual(['Lição 3', 'Lição 3']);
+    });
+
+    it('uma resposta antiga, mesmo chegando depois, nunca substitui a mais recente', async () => {
+        const pending: Record<string, (value: Response) => void> = {};
+        fetchMock.mockImplementation(
+            (url: string) =>
+                new Promise<Response>((resolve) => {
+                    pending[queryOf(url).q as string] = resolve;
+                }),
+        );
+        const wrapper = mountPage([makeLesson()], { url: '/lessons?week=2026-10-05&view=semana' });
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+
+        await input.setValue('fra');
+        await input.trigger('keydown', { key: 'Enter' });
+        await input.setValue('frações');
+        await input.trigger('keydown', { key: 'Enter' });
+        expect(Object.keys(pending)).toEqual(['fra', 'frações']);
+
+        pending['frações']!(reply(searchResponse([searchResult({ ulid: 'recente' })], { term: 'frações' })));
+        await flushPromises();
+        pending['fra']!(reply(searchResponse([searchResult({ ulid: 'antiga' }), searchResult({ ulid: 'antiga-2' })], { term: 'fra' })));
+        await flushPromises();
+
+        expect(wrapper.findAll('[data-testid="search-result"]').map((card) => card.attributes('data-lesson'))).toEqual(['recente']);
+    });
+
+    it('por omissão, só as lecionadas; a escolha fica lembrada para a próxima pesquisa', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="search-state-taught"]').attributes('aria-checked')).toBe('true');
+        expect(wrapper.find('[data-testid="search-prepared-note"]').exists()).toBe(false);
+
+        await wrapper.get('[data-testid="search-state-both"]').trigger('click');
+        expect(queryOf(lastReplaceUrl()).q_states).toBe('both');
+        expect(window.localStorage.getItem('lapis.lessons.search.states')).toBe('both');
+        await flushPromises();
+        expect(wrapper.get('[data-testid="search-prepared-note"]').text()).toContain('não confirma que o conteúdo foi lecionado');
+        expect(queryOf((fetchMock.mock.calls.at(-1) as [string])[0]).states).toBe('taught,prepared');
+
+        const next = mountPage();
+        const input = next.get('[data-testid="summary-search-input"]');
+        await input.setValue('equações');
+        await input.trigger('keydown', { key: 'Enter' });
+        expect(queryOf(lastReplaceUrl()).q_states).toBe('both');
+    });
+
+    it('mudar as turmas, o período ou as outras ocorrências muda só a pesquisa, e volta à primeira página', async () => {
+        const wrapper = mountPage([makeLesson()], { url: `${searchUrl}&q_page=3` });
+        await flushPromises();
+
+        await wrapper.get('[data-testid="search-class-class-b"]').trigger('click');
+        let query = queryOf(lastReplaceUrl());
+        expect(query.q_classes).toBe('class-a,class-b');
+        expect(query.classes).toBe('class-a');
+        expect(query.q_page).toBeUndefined();
+
+        await wrapper.get('[data-testid="search-from"]').setValue('2026-10-01');
+        await wrapper.get('[data-testid="search-from"]').trigger('change');
+        query = queryOf(lastReplaceUrl());
+        expect(query.q_from).toBe('2026-10-01');
+
+        await wrapper.get('[data-testid="search-other"]').trigger('click');
+        query = queryOf(lastReplaceUrl());
+        expect(query.q_other).toBe('1');
+        await flushPromises();
+        expect(queryOf((fetchMock.mock.calls.at(-1) as [string])[0])).toMatchObject({
+            classes: 'class-a,class-b',
+            states: 'taught,other',
+            from: '2026-10-01',
+            page: '1',
+        });
+        expect(wrapper.get('[data-testid="search-scope"]').text()).toContain('Aulas lecionadas e outras ocorrências · Desde 01/10/2026');
+    });
+
+    it('sem resultados, diz que não há sumários com estes critérios — nunca que não foi lecionado — e oferece incluir as preparadas', async () => {
+        fetchMock.mockImplementation(() => Promise.resolve(reply(searchResponse([]))));
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        const empty = wrapper.get('[data-testid="search-empty"]');
+        expect(empty.text()).toContain('Não foram encontrados sumários correspondentes aos critérios selecionados.');
+        expect(wrapper.text()).not.toMatch(/não foi lecionad|nunca foi dad/i);
+
+        await wrapper.get('[data-testid="search-include-prepared"]').trigger('click');
+        expect(queryOf(lastReplaceUrl()).q_states).toBe('both');
+    });
+
+    it('enquanto não chega a primeira resposta diz que está a pesquisar; uma falha diz o que aconteceu e deixa tentar outra vez', async () => {
+        let fail: (reason: unknown) => void = () => {};
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((_, reject) => (fail = reject)));
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await nextTick();
+
+        expect(wrapper.get('[data-testid="search-loading"]').text()).toContain('A pesquisar');
+
+        fail(new TypeError('Failed to fetch'));
+        await flushPromises();
+        expect(wrapper.get('[data-testid="search-error"]').text()).toContain('Não foi possível pesquisar nos sumários');
+
+        await button(wrapper, 'Tentar outra vez')!.trigger('click');
+        await flushPromises();
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(wrapper.find('[data-testid="search-error"]').exists()).toBe(false);
+        expect(wrapper.findAll('[data-testid="search-result"]')).toHaveLength(1);
+    });
+
+    it('uma recusa do servidor (422) mostra a mensagem dele, sem «Tentar outra vez»', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(reply({ message: 'x', errors: { to: ['A data final tem de ser igual ou posterior à data inicial.'] } }, 422)),
+        );
+        const wrapper = mountPage([makeLesson()], { url: `${searchUrl}&q_from=2026-11-01&q_to=2026-10-01` });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="search-error"]').text()).toContain('A data final tem de ser igual ou posterior à data inicial.');
+        expect(button(wrapper, 'Tentar outra vez')).toBeUndefined();
+    });
+
+    it('«Voltar ao calendário» retira só a pesquisa do URL: a mesma semana, a mesma vista e os mesmos filtros de antes', async () => {
+        const wrapper = mountPage([makeLesson()], { url: `${searchUrl}&q_page=2&q_from=2026-10-01` });
+        await flushPromises();
+
+        await wrapper.get('[data-testid="search-back"]').trigger('click');
+
+        expect(lastReplaceUrl()).toBe('/lessons?week=2026-10-05&view=semana&classes=class-a');
+        expect(inertia.router.get).not.toHaveBeenCalledWith(expect.stringContaining('week=2026-09'), expect.anything(), expect.anything());
+        expect(wrapper.find('[data-testid="search-results"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="lesson-card"]').exists()).toBe(true);
+        expect((wrapper.get('[data-testid="summary-search-input"]').element as HTMLInputElement).value).toBe('');
+    });
+
+    it('limpar o campo (botão ou Escape) também volta ao calendário', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        await wrapper.get('[data-testid="summary-search-clear"]').trigger('click');
+        expect(lastReplaceUrl()).toBe('/lessons?week=2026-10-05&view=semana&classes=class-a');
+
+        const again = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+        await again.get('[data-testid="summary-search-input"]').trigger('keydown', { key: 'Escape' });
+        expect(lastReplaceUrl()).toBe('/lessons?week=2026-10-05&view=semana&classes=class-a');
+    });
+
+    it('abrir uma aula guarda o URL da pesquisa, para o «Voltar» da aula regressar aos resultados', async () => {
+        const wrapper = mountPage([makeLesson()], { url: `${searchUrl}&q_page=2` });
+        await flushPromises();
+
+        await wrapper.get('[data-testid="search-result"] [data-testid="open-lesson"]').trigger('click');
+
+        expect(JSON.parse(window.sessionStorage.getItem('lapis.lessons.return') ?? '{}')).toEqual({
+            url: `${searchUrl}&q_page=2`,
+            lesson: 'result-1',
+        });
+    });
+
+    it('ao regressar, os últimos resultados aparecem logo e são revalidados no servidor', async () => {
+        const first = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+        first.unmount();
+
+        let answer: (value: Response) => void = () => {};
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => (answer = resolve)));
+        const back = mountPage([makeLesson()], { url: searchUrl });
+        await nextTick();
+
+        // Antes de o servidor responder, já lá estão (da sessão).
+        expect(back.findAll('[data-testid="search-result"]')).toHaveLength(1);
+        expect(back.find('[data-testid="search-loading"]').exists()).toBe(false);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+
+        answer(reply(searchResponse([searchResult({ segments: [{ text: 'Texto revisto com ', match: false }, { text: 'frações', match: true }] , occurrences: 1 })])));
+        await flushPromises();
+        expect(back.get('[data-testid="search-result-summary"]').text()).toBe('Texto revisto com frações');
+    });
+
+    it('a paginação mantém a expressão e os filtros, e só muda a página', async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(reply(searchResponse([searchResult()], { total: 25, occurrences: 30, last_page: 2 }))),
+        );
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="search-pagination"]').text()).toContain('Página 1 de 2');
+        expect(wrapper.get('[data-testid="search-page-previous"]').attributes('disabled')).toBeDefined();
+
+        await wrapper.get('[data-testid="search-page-next"]').trigger('click');
+
+        expect(queryOf(lastReplaceUrl())).toMatchObject({ q: 'frações', q_classes: 'class-a', q_states: 'taught', q_page: '2', week: '2026-10-05' });
+    });
+
+    it('na vista Por turma, a pesquisa começa na turma aberta', async () => {
+        const classView: ClassViewData = {
+            class: { ulid: 'class-b', label: '8.º B', subject: 'Matemática', is_support_class: false, identity_tone: 'emerald', groups: [] },
+            group: 'todos',
+            range: { key: '1', start: '2026-10-05', end: '2026-10-11', clamped: false },
+            lessons: [],
+            previous: [],
+        };
+        const wrapper = mountPage([makeLesson()], { url: '/lessons?week=2026-10-05&view=turma&class=class-b', classView });
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+
+        await input.setValue('frações');
+        await input.trigger('keydown', { key: 'Enter' });
+
+        expect(queryOf(lastReplaceUrl())).toMatchObject({ view: 'turma', class: 'class-b', q_classes: 'class-b' });
+    });
+
+    it('a resposta guardada na sessão é de QUEM e de ONDE: outra pessoa, escola ou ano nunca a vê', async () => {
+        const request = 'q=fra%C3%A7%C3%B5es&classes=class-a&states=taught&page=1';
+        window.sessionStorage.setItem(
+            'lapis.lessons.search.last',
+            JSON.stringify({ key: `7|01organizacao|2026/2027|${request}`, response: searchResponse([searchResult({ ulid: 'de-outra-pessoa' })]) }),
+        );
+        let answer: (value: Response) => void = () => {};
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => (answer = resolve)));
+
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await nextTick();
+
+        expect(wrapper.find('[data-lesson="de-outra-pessoa"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="search-loading"]').exists()).toBe(true);
+
+        answer(reply(searchResponse([searchResult()])));
+        await flushPromises();
+        expect(wrapper.findAll('[data-testid="search-result"]').map((card) => card.attributes('data-lesson'))).toEqual(['result-1']);
+    });
+
+    it('enquanto a nova pesquisa não responde, a lista anterior fica esbatida e SEM as contagens dela', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+        expect(wrapper.get('[data-testid="search-count"]').text()).toContain('1 aula encontrada');
+
+        let answer: (value: Response) => void = () => {};
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => (answer = resolve)));
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+        await input.setValue('equações');
+        await input.trigger('keydown', { key: 'Enter' });
+
+        expect(wrapper.get('[data-testid="search-count"]').text()).toBe('A pesquisar nos sumários…');
+        expect(wrapper.get('[data-testid="search-result-list"]').classes()).toContain('opacity-60');
+
+        answer(reply({ message: 'x' }, 500));
+        await flushPromises();
+        // Falhou: nada da pesquisa anterior fica debaixo da expressão nova.
+        expect(wrapper.find('[data-testid="search-result"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="search-count"]').text()).toBe('');
+        expect(wrapper.get('[data-testid="search-error"]').text()).toContain('Não foi possível pesquisar');
+    });
+
+    it('se o servidor pesquisou noutro ano letivo (mudado noutra janela), não mostra nada com o âmbito errado', async () => {
+        fetchMock.mockImplementation(() => Promise.resolve(reply(searchResponse([searchResult()], { academic_year: '2025/2026' }))));
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="search-year-changed"]').text()).toContain('O ano letivo selecionado mudou noutra janela (2025/2026)');
+        expect(wrapper.find('[data-testid="search-result"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="search-count"]').text()).toBe('');
+    });
+
+    it('uma sessão terminada diz isso mesmo e oferece recarregar, sem «Tentar outra vez»', async () => {
+        fetchMock.mockImplementation(() => Promise.resolve(reply({ message: 'Unauthenticated.' }, 401)));
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="search-error"]').text()).toContain('A tua sessão terminou');
+        expect(button(wrapper, 'Recarregar a página')).toBeDefined();
+        expect(button(wrapper, 'Tentar outra vez')).toBeUndefined();
+    });
+
+    it('turmas que a página não conhece (ligação antiga) não entram no pedido nem no âmbito', async () => {
+        const wrapper = mountPage([makeLesson()], { url: `${searchUrl.replace('q_classes=class-a', 'q_classes=turma-antiga,class-a')}` });
+        await flushPromises();
+
+        expect(queryOf((fetchMock.mock.calls.at(-1) as [string])[0]).classes).toBe('class-a');
+        expect(wrapper.get('[data-testid="search-scope"]').text()).toContain('· 7.º A ·');
+
+        const stale = mountPage([makeLesson()], { url: `${searchUrl.replace('q_classes=class-a', 'q_classes=turma-antiga')}` });
+        await flushPromises();
+        expect(queryOf((fetchMock.mock.calls.at(-1) as [string])[0]).classes).toBeUndefined();
+        expect(stale.get('[data-testid="search-scope"]').text()).toContain('Todas as turmas');
+        expect(stale.get('[data-testid="search-class-all"]').attributes('aria-pressed')).toBe('true');
+    });
+
+    it('uma escrita feita na página durante a pesquisa (as aulas recarregadas) revalida os resultados', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+        const before = fetchMock.mock.calls.length;
+
+        await wrapper.setProps({ lessons: [makeLesson({ summary_version: 4 })] });
+        await flushPromises();
+
+        expect(fetchMock.mock.calls.length).toBe(before + 1);
+    });
+
+    it('se o URL mudar por fora (uma resposta atrasada, o histórico), o campo acompanha a expressão', async () => {
+        const wrapper = mountPage([makeLesson()], { url: searchUrl });
+        await flushPromises();
+
+        inertia.page.url = searchUrl.replace('q=fra%C3%A7%C3%B5es', 'q=equa%C3%A7%C3%B5es');
+        await flushPromises();
+
+        expect((wrapper.get('[data-testid="summary-search-input"]').element as HTMLInputElement).value).toBe('equações');
+    });
+
+    it('com alterações por guardar no editor, entrar na pesquisa pergunta antes', async () => {
+        const wrapper = mountPage();
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await wrapper.get('textarea').setValue('Texto novo por guardar');
+
+        const input = wrapper.get('[data-testid="summary-search-input"]');
+        await input.setValue('frações');
+        await input.trigger('keydown', { key: 'Enter' });
+
+        expect(inertia.router.replace).not.toHaveBeenCalled();
+        expect(wrapper.text()).toContain('Tens alterações por guardar');
+    });
+});
+
+describe('a página arrumada por função (0.162.0)', () => {
+    it('cabeçalho: o título, o ano letivo, «Inserir aula» como ação principal e o menu «Mais ações»', () => {
+        inertia.page.url = '/lessons?week=2026-10-05';
+        const wrapper = mount(Index, {
+            props: {
+                lessons: [makeLesson()],
+                week: { start: '2026-10-05', end: '2026-10-11' },
+                academicYear: '2026/2027',
+                configuredClassesCount: 1,
+                today: '2026-10-08',
+                insertableClasses: [{ ulid: 'class-a', label: '7.º A', subject: 'Matemática', groups: [] }],
+                absenceReasons: [],
+                classes: teacherClasses,
+            },
+            global: { stubs: { EmptyState: true, teleport: true } },
+        });
+
+        expect(wrapper.get('h1').text()).toBe('Aulas e Sumários');
+        expect(wrapper.get('[data-testid="lessons-academic-year"]').text()).toBe('Ano letivo 2026/2027');
+        expect(wrapper.getComponent(InsertLessonDialog).props('triggerVariant')).toBe('default');
+        expect(wrapper.get('[data-testid="more-actions"]').text()).toBe('Mais ações');
+        // As ações da semana vivem no menu, e não em botões soltos no cabeçalho.
+        expect(button(wrapper, 'Selecionar aulas')).toBeUndefined();
+        expect(button(wrapper, 'Marcar lecionadas')).toBeUndefined();
+        // O menu (no mock, inline): o elemento que envolve o botão «Mais ações» e o conteúdo.
+        const moreActions = new DOMWrapper(wrapper.get('[data-testid="more-actions"]').element.parentElement!.parentElement!);
+        const menu = moreActions.findAll('[role="menuitem"]').map((item) => item.text());
+        expect(menu).toEqual(['Selecionar aulas', 'Marcar aulas como lecionadas…', 'Atualizar aulas desta semana', 'Sequências de aulas']);
+    });
+
+    it('a navegação entre semanas fica junto do calendário, com a semana e os factos dela', () => {
+        const wrapper = mountPage();
+        const navigation = wrapper.get('[data-testid="week-navigation"]');
+
+        expect(navigation.find('[aria-label="Semana anterior"]').exists()).toBe(true);
+        expect(navigation.get('[data-testid="week-label"]').text()).toContain('(semana atual)');
+        expect(wrapper.get('[data-testid="week-facts"]').text()).toContain('Esta semana:');
+    });
+
+    it('a seleção mostra uma barra contextual com «Marcar como lecionadas» e uma saída clara — também por Escape', async () => {
+        const started = makeLesson({ ulid: 'started', starts_at: '2026-10-08T10:40:00+01:00', ends_at: '2026-10-08T11:30:00+01:00' });
+        const wrapper = mountPage([started], { attach: true });
+
+        await wrapper.get('[data-testid="selection-toggle"]').trigger('click');
+        const bar = wrapper.get('[data-testid="quick-batch-bar"]');
+        expect(bar.get('[data-testid="quick-batch-confirm"]').text()).toBe('Marcar como lecionadas');
+        expect(wrapper.get('[data-testid="selection-toggle"]').text()).toBe('Sair da seleção');
+
+        await bar.get('[data-testid="quick-batch-exit"]').trigger('click');
+        expect(wrapper.find('[data-testid="quick-batch-bar"]').exists()).toBe(false);
+
+        await wrapper.get('[data-testid="selection-toggle"]').trigger('click');
+        expect(wrapper.find('[data-testid="quick-batch-bar"]').exists()).toBe(true);
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await nextTick();
+        expect(wrapper.find('[data-testid="quick-batch-bar"]').exists()).toBe(false);
         wrapper.unmount();
     });
 });

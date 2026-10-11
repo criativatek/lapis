@@ -571,6 +571,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // `lessons/next-day` pela mesma razão: leitura JSON do atalho «Aulas de
         // hoje» (próximo dia com aula), que o wildcard engoliria como uma aula.
         Route::get('lessons/next-day', [LessonWeekController::class, 'nextDay'])->name('lessons.next-day');
+        // `lessons/search` pela mesma razão: pesquisa só de leitura nos sumários
+        // do ano letivo, e o wildcard `lessons/{lesson}` tomá-la-ia por uma aula.
+        // Com limite: a pesquisa corre a cada pausa na escrita, e abortar o
+        // pedido no browser não pára a leitura no servidor.
+        Route::middleware('throttle:120,1')->get('lessons/search', [LessonWeekController::class, 'search'])->name('lessons.search');
         Route::get('lessons/sequences', [LessonSequenceController::class, 'index'])->name('lessons.sequences.index');
         Route::post('lessons/sequences', [LessonSequenceController::class, 'store'])->name('lessons.sequences.store');
         Route::put('lessons/sequences/{lessonSequence}', [LessonSequenceController::class, 'update'])->name('lessons.sequences.update');

@@ -399,6 +399,23 @@ onMounted(() => {
     }
 });
 
+/**
+ * Vinda dos resultados de uma pesquisa nos sumários (0.162.0), a saída diz
+ * para onde volta: o URL guardado leva a pesquisa (`q`), e regressar repõe a
+ * expressão, os filtros e a página de resultados.
+ */
+const returnLabel = computed(() => {
+    try {
+        const query = new URL(returnTarget.value.url, 'http://lapis.local').searchParams;
+
+        return returnTarget.value.viaHistory && (query.get('q') ?? '').trim() !== ''
+            ? 'Voltar aos resultados da pesquisa'
+            : 'Voltar às aulas da semana';
+    } catch {
+        return 'Voltar às aulas da semana';
+    }
+});
+
 function goBack(event: MouseEvent): void {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
@@ -422,7 +439,7 @@ function goBack(event: MouseEvent): void {
         <Button as-child variant="ghost" class="-ml-3 min-h-11">
             <a :href="returnTarget.url" data-testid="lesson-back" @click="goBack">
                 <ArrowLeft class="size-4" />
-                Voltar às aulas da semana
+                {{ returnLabel }}
             </a>
         </Button>
 
@@ -657,7 +674,7 @@ function goBack(event: MouseEvent): void {
         <Button as-child variant="outline" class="min-h-11 w-full sm:w-auto">
             <a :href="returnTarget.url" data-testid="lesson-back-bottom" @click="goBack">
                 <ArrowLeft class="size-4" />
-                Voltar às aulas da semana
+                {{ returnLabel }}
             </a>
         </Button>
 

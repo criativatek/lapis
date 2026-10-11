@@ -9,6 +9,7 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import UserInfo from '@/components/UserInfo.vue';
+import { forgetSummarySearch } from '@/composables/useSummarySearch';
 import { logout } from '@/routes';
 import { index as platformBackoffice } from '@/routes/admin/accounts';
 import { index as helpIndex } from '@/routes/help';
@@ -46,6 +47,9 @@ function switchTo(ulid: string): void {
 
 const handleLogout = () => {
     router.flushAll();
+    // Os últimos resultados da pesquisa nos sumários ficam na sessão do
+    // browser; num computador partilhado, não podem sobreviver à saída.
+    forgetSummarySearch();
 };
 </script>
 

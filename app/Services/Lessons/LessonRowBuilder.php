@@ -4,7 +4,6 @@ namespace App\Services\Lessons;
 
 use App\Models\AcademicYear;
 use App\Models\Lesson;
-use App\Models\LessonStatus;
 use App\Models\User;
 use App\Services\Classes\ClassArchivalWindow;
 use App\Services\Classes\ClassIdentityTones;
@@ -33,6 +32,23 @@ final class LessonRowBuilder
     ) {}
 
     /**
+     * A REGRA DE ACESSO, escrita num sítio só: as aulas das turmas que ESTE
+     * professor leciona NESTE ano letivo (dentro da organização atual, pelo
+     * escopo global do modelo). A semana, a vista da turma e a pesquisa nos
+     * sumários partem daqui — uma regra copiada seria uma regra que um dia
+     * diverge, e numa pesquisa isso é mostrar sumários de turmas alheias.
+     *
+     * @return Builder<Lesson>
+     */
+    public function accessible(User $teacher, AcademicYear $academicYear): Builder
+    {
+        return Lesson::query()
+            ->whereHas('schoolClass', fn ($query) => $query
+                ->where('academic_year_id', $academicYear->getKey())
+                ->whereHas('teachers', fn ($teachers) => $teachers->whereKey($teacher->getKey())));
+    }
+
+    /**
      * As aulas das turmas deste professor, neste ano letivo — com tudo o que a
      * linha lê já carregado.
      *
@@ -40,10 +56,7 @@ final class LessonRowBuilder
      */
     public function query(User $teacher, AcademicYear $academicYear): Builder
     {
-        return Lesson::query()
-            ->whereHas('schoolClass', fn ($query) => $query
-                ->where('academic_year_id', $academicYear->getKey())
-                ->whereHas('teachers', fn ($teachers) => $teachers->whereKey($teacher->getKey())))
+        return $this->accessible($teacher, $academicYear)
             // `classGroup` carregado com a lista inteira, e nunca lido por
             // aula: o cartão da semana mostra o rótulo em cada linha, e uma
             // consulta por linha faria de uma semana cheia trinta idas à base
@@ -135,7 +148,7 @@ final class LessonRowBuilder
                 'class_group_id' => $lesson->class_group_id,
                 'subject' => $lesson->schoolClass->subject->name,
                 'status' => $lesson->status->value,
-                'status_label' => $this->statusLabel($lesson->status),
+                'status_label' => $lesson->status->label(),
                 'has_summary' => $content !== '',
                 // O texto COMPLETO, aparado — NULL quando vazio. Substitui o
                 // excerto e o texto completo separados: truncar para a lista
@@ -164,14 +177,5 @@ final class LessonRowBuilder
                 'day_events' => $dayEvents[(int) $lesson->getKey()] ?? [],
             ];
         })->all());
-    }
-
-    private function statusLabel(LessonStatus $status): string
-    {
-        return match ($status) {
-            LessonStatus::Preparation => __('Por preparar'),
-            LessonStatus::Prepared => __('Preparada'),
-            LessonStatus::Taught => __('Lecionada'),
-        };
     }
 }
