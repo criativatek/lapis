@@ -333,7 +333,7 @@ além de `RecordScores`.
   - `GET admin/usage/users` → `admin.usage.users.index`
   - `GET admin/usage/users/{usageUser}` (ulid de `usage_user_states`) → `admin.usage.users.show`
   - `GET admin/usage/ranking` → `admin.usage.ranking`
-  - `POST admin/accounts/{organization}/usage-insights` → `admin.accounts.usage-insights` (conceder/revogar ao dono; o dono tem de ser admin da plataforma; recusa revogar-se a si próprio; `AuditLog::recordPlatform('admin.usage_insights_granted'|'admin.usage_insights_revoked', summary, ['target_user_id' => …])`).
+  - `POST admin/accounts/{organization}/usage-insights` → `admin.accounts.usage-insights` (conceder/revogar ao dono; o dono tem de ser admin da plataforma; recusa revogar-se a si próprio; `AuditLog::recordPlatform('admin.usage_insights_granted'|'admin.usage_insights_revoked', $actor, $summary, ['target_user_id' => …])`; o pedido envia `granted` (estado desejado) e um pedido que não muda nada não grava nem audita).
 - `lapis:grant-usage-insights {email} {--revoke}` (recusa conceder a quem não é admin da plataforma).
 - `lapis:make-admin --revoke` e `AdminAccountController::toggleAdmin` (revogar) também põem `can_view_usage_insights = false`.
 - `HandleInertiaRequests`: `auth.can_view_usage_insights`.

@@ -12,6 +12,8 @@ use App\Services\Audit\AuditLog;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\InterimAssessmentException;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -32,7 +34,7 @@ class InterimAssessmentController extends Controller
 {
     public function __construct(protected CaptureInterimAssessment $capture, protected AuditLog $audit) {}
 
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -75,6 +77,18 @@ class InterimAssessmentController extends Controller
             "Avaliação intercalar «{$interim->name}» guardada — {$class->label}.",
             ['class_id' => $class->id, 'interim_assessment_id' => $interim->id],
         );
+
+        // Só conta uma fotografia que difere da anterior da mesma turma e período.
+        $previous = InterimAssessment::query()
+            ->where('class_id', $class->getKey())
+            ->where('academic_period_id', $period->getKey())
+            ->whereKeyNot($interim->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        if ($previous === null || $previous->snapshot_hash !== $interim->snapshot_hash) {
+            $usage->action(UsageEventType::InterimAssessmentSaved, 'interim:'.$interim->snapshot_hash);
+        }
 
         return redirect()
             ->route('interim-assessments.show', [$class->ulid, $interim->ulid])

@@ -31,6 +31,8 @@ use App\Services\ClassService;
 use App\Services\EnrollmentHistory;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -144,7 +146,7 @@ class ClassController extends Controller
         return Inertia::render('classes/Create', $this->formOptions());
     }
 
-    public function store(ClassRequest $request): RedirectResponse
+    public function store(ClassRequest $request, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('create', SchoolClass::class);
 
@@ -160,6 +162,8 @@ class ClassController extends Controller
             "Turma {$class->label} criada.",
             ['class_id' => $class->id],
         );
+
+        $usage->action(UsageEventType::ClassCreated, $class);
 
         return to_route('classes.show', $class->ulid);
     }

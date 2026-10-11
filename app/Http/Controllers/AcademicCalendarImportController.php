@@ -20,6 +20,8 @@ use App\Services\Import\AcademicCalendar\AcademicCalendarParser;
 use App\Services\Import\AcademicCalendar\BuildAcademicCalendarImportPreview;
 use App\Support\AcademicYears\AcademicYearValidationException;
 use App\Support\Retention\ResolveSelectedAcademicYear;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -179,7 +181,7 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
         ]);
     }
 
-    public function confirm(AcademicCalendarImportConfirmRequest $request): RedirectResponse
+    public function confirm(AcademicCalendarImportConfirmRequest $request, UsageRecorder $usage): RedirectResponse
     {
         $this->refuseDuringImpersonation($request);
 
@@ -213,6 +215,14 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
             // caminho (nada é removido daqui), mas se acontecer é lida e não
             // engolida.
             return back()->withErrors(['semesters' => $exception->getMessage()]);
+        }
+
+        // Elementos = períodos, interrupções e acontecimentos CRIADOS. Sem token
+        // nesta importação, a identidade da ação é o calendário do ano letivo.
+        $createdElements = $result['periods_created'] + $result['exceptions_created'] + $result['events_created'];
+
+        if ($createdElements > 0) {
+            $usage->action(UsageEventType::CalendarImported, 'calendar:'.$academicYear->getKey(), $createdElements);
         }
 
         Inertia::flash('toast', [

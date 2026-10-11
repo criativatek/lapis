@@ -11,10 +11,12 @@ final readonly class RecordScoresResult
     /**
      * @param  list<array{enrollment_id: int, instrument_item_id: int, lock_version: int}>  $versions
      * @param  list<array{enrollment_id: int, instrument_item_id: int, result_state: string, points_earned: float|null, state_reason: string|null, lock_version: int}>  $stale
+     * @param  int  $changed  células efetivamente alteradas (novas, com outro valor/estado/motivo, ou limpas); `written` conta também as regravações iguais
      */
     public function __construct(
         public int $written,
         public array $versions,
         public array $stale,
+        public int $changed = 0,
     ) {}
 }

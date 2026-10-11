@@ -29,6 +29,7 @@ use App\Services\Assessment\Progress\StudentProgressNarrative;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\EntitlementsSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -863,8 +864,12 @@ class StudentProgressTest extends TestCase
         $enrollment = $this->enrollment();
 
         $queries = 0;
-        DB::listen(function () use (&$queries): void {
-            $queries++;
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            // A consulta de utilização (`usage_events`, 0.163.0) é telemetria
+            // da visita, não custo da página: o teto mede a leitura.
+            if (! str_contains($query->sql, 'usage_events')) {
+                $queries++;
+            }
         });
 
         $this->actingAs($this->teacher)->get("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")->assertOk();

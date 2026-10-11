@@ -36,6 +36,8 @@ use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Interventions\PedagogicalText;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -442,7 +444,7 @@ class InterventionController extends Controller
         return $value === '' ? null : mb_substr($value, 0, $max);
     }
 
-    public function store(StoreInterventionRequest $request, SchoolClass $class): RedirectResponse
+    public function store(StoreInterventionRequest $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -514,6 +516,13 @@ class InterventionController extends Controller
         foreach ($interventions as $intervention) {
             $this->record('intervention.created', $intervention, ['created_batch_ulid' => $batchUlid]);
         }
+
+        // Uma ação com N medidas criadas (um pedido com vários tipos), nunca N.
+        $usage->action(
+            UsageEventType::InterventionCreated,
+            $batchUlid !== null ? 'batch:'.$batchUlid : $interventions[0],
+            count($interventions),
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => count($interventions) === 1
             ? __('Intervenção registada.')
@@ -694,7 +703,7 @@ class InterventionController extends Controller
         return back();
     }
 
-    public function addReview(Request $request, Intervention $intervention): RedirectResponse
+    public function addReview(Request $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $intervention->schoolClass);
 
@@ -731,6 +740,8 @@ class InterventionController extends Controller
             'effectiveness' => $validated['effectiveness'] ?? null,
             'has_note' => ($validated['notes'] ?? null) !== null,
         ]);
+
+        $usage->action(UsageEventType::InterventionFollowupAdded, $intervention);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Acompanhamento registado.')]);
 

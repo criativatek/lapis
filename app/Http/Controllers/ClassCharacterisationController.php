@@ -27,6 +27,8 @@ use App\Support\Characterisation\CharacterisationSection;
 use App\Support\Interventions\ActiveSupportMeasures;
 use App\Support\Interventions\InterventionAuditProperties;
 use App\Support\Interventions\LegalFrameworkResolver;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -269,7 +271,7 @@ class ClassCharacterisationController extends Controller
     /**
      * The class's own characterisation — the secondary one.
      */
-    public function update(Request $request, SchoolClass $class): RedirectResponse
+    public function update(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -293,6 +295,9 @@ class ClassCharacterisationController extends Controller
                 "Caracterização da turma {$class->label} atualizada.",
                 ['class_id' => $class->id, 'changed' => $changed],
             );
+
+            // Elementos = secções alteradas (a lista que a gravação devolve).
+            $usage->action(UsageEventType::CharacterisationUpdated, $class, count($changed));
         }
 
         return back();
@@ -305,7 +310,7 @@ class ClassCharacterisationController extends Controller
      * request would make one teacher's save silently overwrite another's, and
      * a class is very often taught by two people.
      */
-    public function updateStudent(Request $request, SchoolClass $class, Enrollment $enrollment): RedirectResponse
+    public function updateStudent(Request $request, SchoolClass $class, Enrollment $enrollment, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -345,6 +350,8 @@ class ClassCharacterisationController extends Controller
                     'changed' => $changed,
                 ],
             );
+
+            $usage->action(UsageEventType::CharacterisationUpdated, $enrollment, count($changed));
         }
 
         return back();

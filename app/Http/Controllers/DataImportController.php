@@ -14,6 +14,10 @@ use App\Support\Import\Backup\BackupValidationException;
 use App\Support\Import\DataImportTempStorage;
 use App\Support\Retention\RetentionPolicy;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageFailureCode;
+use App\Support\Usage\UsageFeature;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -184,7 +188,7 @@ class DataImportController extends Controller
         ]);
     }
 
-    public function confirm(Request $request, DataImport $dataImport): RedirectResponse
+    public function confirm(Request $request, DataImport $dataImport, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('confirm', $dataImport);
         $this->refuseDuringImpersonation($request);
@@ -192,6 +196,9 @@ class DataImportController extends Controller
         try {
             $imported = $this->executor->execute($dataImport, $request->user());
         } catch (Throwable $exception) {
+            // Uma falha técnica do restauro, só com o código (nunca a mensagem).
+            $usage->failure(UsageFeature::ImportExport, UsageFailureCode::fromThrowable($exception), 'data-imports.confirm');
+
             // The write transaction already rolled back on its own — this is
             // bookkeeping outside it, not a retry of it. The technical detail
             // stays in the log (§91: never a stack trace in the UI); the row
@@ -233,9 +240,36 @@ class DataImportController extends Controller
             $imported->forceFill(['stored_path' => null])->save();
         }
 
+        $restoredRows = $this->restoredRows($imported->summary ?? []);
+
+        if ($restoredRows > 0) {
+            $usage->action(UsageEventType::BackupRestored, $imported, $restoredRows);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Importação concluída.')]);
 
         return to_route('data-imports.edit', $dataImport);
+    }
+
+    /**
+     * O total de linhas que o restauro criou, lido do resumo que o executor
+     * acabou de gravar: os agregados `{created, skipped}` e os `*_created`.
+     *
+     * @param  array<string, mixed>  $summary
+     */
+    protected function restoredRows(array $summary): int
+    {
+        $total = 0;
+
+        foreach ($summary as $key => $value) {
+            if (is_array($value) && is_int($value['created'] ?? null)) {
+                $total += $value['created'];
+            } elseif (is_int($value) && str_ends_with($key, '_created')) {
+                $total += $value;
+            }
+        }
+
+        return $total;
     }
 
     public function destroy(Request $request, DataImport $dataImport): RedirectResponse

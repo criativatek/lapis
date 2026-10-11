@@ -10,6 +10,8 @@ use App\Models\SheetMomentKind;
 use App\Models\User;
 use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Support\Assessment\EvaluationSheetException;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -41,7 +43,7 @@ class EvaluationSheetHistoryController extends Controller
         protected CaptureEvaluationSheet $capture,
     ) {}
 
-    public function store(Request $request, SchoolClass $class, AcademicPeriod $period): RedirectResponse
+    public function store(Request $request, SchoolClass $class, AcademicPeriod $period, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -64,7 +66,7 @@ class EvaluationSheetHistoryController extends Controller
         $moment = SheetMomentKind::fromRequest($validated['moment'] ?? null);
 
         try {
-            $this->capture->capture(
+            $export = $this->capture->capture(
                 $class,
                 $period,
                 $scope,
@@ -77,6 +79,20 @@ class EvaluationSheetHistoryController extends Controller
             // The reason names the real boundary — the fix is always a
             // different date, and the teacher needs to know which one.
             throw ValidationException::withMessages(['effective_at' => $exception->getMessage()]);
+        }
+
+        // Só conta uma pauta que difere da guardada antes para a mesma turma,
+        // período e âmbito: guardar duas vezes o mesmo conteúdo não é trabalho novo.
+        $previous = EvaluationSheetExport::query()
+            ->where('class_id', $class->getKey())
+            ->where('academic_period_id', $period->getKey())
+            ->where('scope', $scope->value)
+            ->whereKeyNot($export->getKey())
+            ->orderByDesc('id')
+            ->first();
+
+        if ($previous === null || $previous->payload_hash !== $export->payload_hash) {
+            $usage->action(UsageEventType::EvaluationSheetSaved, 'sheet:'.$export->payload_hash);
         }
 
         return redirect()

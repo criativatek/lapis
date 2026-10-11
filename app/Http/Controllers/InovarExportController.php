@@ -14,6 +14,8 @@ use App\Services\Export\InovarTemplateReader;
 use App\Services\Export\InterimSnapshotSource;
 use App\Support\Export\InovarTemplateException;
 use App\Support\Export\InovarTemplateStorage;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -108,7 +110,7 @@ class InovarExportController extends Controller
      * A refusal redirects back with the reason, which a plain navigation lands
      * on as the page it came from.
      */
-    public function generate(Request $request, SchoolClass $class, string $period, string $token): BinaryFileResponse|RedirectResponse
+    public function generate(Request $request, SchoolClass $class, string $period, string $token, UsageRecorder $usage): BinaryFileResponse|RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -171,7 +173,11 @@ class InovarExportController extends Controller
                 ],
             );
 
-            return response()->download($filled, basename($filled))->deleteFileAfterSend();
+            $response = response()->download($filled, basename($filled))->deleteFileAfterSend();
+
+            $usage->action(UsageEventType::InovarExported, 'inovar:'.$class->getKey().':'.$selected->getKey());
+
+            return $response;
         } catch (InovarTemplateException $exception) {
             return back()->withErrors(['template' => $exception->getMessage()]);
         }

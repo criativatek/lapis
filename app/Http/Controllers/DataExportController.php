@@ -8,6 +8,8 @@ use App\Models\DataExport;
 use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -78,7 +80,7 @@ class DataExportController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, UsageRecorder $usage): RedirectResponse
     {
         $this->refuseDuringImpersonation($request);
 
@@ -94,6 +96,8 @@ class DataExportController extends Controller
         if (! $export->isReady()) {
             return back()->withErrors(['export' => __('Não foi possível gerar a exportação. Tente novamente.')]);
         }
+
+        $usage->action(UsageEventType::BackupExported);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Exportação gerada. O transferível fica disponível durante 24 horas.')]);
 

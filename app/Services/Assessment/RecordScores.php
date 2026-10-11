@@ -56,6 +56,7 @@ class RecordScores
             $created = 0;
             $updated = 0;
             $cleared = 0;
+            $changed = 0;
             $versions = [];
             $stale = [];
 
@@ -94,6 +95,7 @@ class RecordScores
 
                     $written += $deleted;
                     $cleared += $deleted;
+                    $changed += $deleted;
                     $versions[] = [
                         'enrollment_id' => $cell['enrollment_id'],
                         'instrument_item_id' => $cell['instrument_item_id'],
@@ -123,7 +125,16 @@ class RecordScores
                     'assessed_at' => $carries ? Carbon::now() : null,
                     'assessed_by' => $carries ? $actor->getKey() : null,
                     'lock_version' => $currentVersion + 1,
-                ])->save();
+                ]);
+
+                // Regravar o que já lá estava escreve a linha (a versão sobe)
+                // mas não muda nenhuma célula: é isto que as métricas de
+                // utilização contam como «elementos afetados».
+                if (! $existedBefore || $score->isDirty(['result_state', 'points_earned', 'scale_level_id', 'state_reason'])) {
+                    $changed++;
+                }
+
+                $score->save();
 
                 $written++;
                 $existedBefore ? $updated++ : $created++;
@@ -172,7 +183,7 @@ class RecordScores
                 );
             }
 
-            return new RecordScoresResult($written, $versions, $stale);
+            return new RecordScoresResult($written, $versions, $stale, $changed);
         });
     }
 

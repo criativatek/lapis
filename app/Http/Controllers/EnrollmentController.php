@@ -7,6 +7,8 @@ use App\Models\SchoolClass;
 use App\Services\Audit\AuditLog;
 use App\Services\EnrollmentHistory;
 use App\Services\StudentEnrollmentService;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +20,7 @@ class EnrollmentController extends Controller
 {
     public function __construct(protected StudentEnrollmentService $service, protected AuditLog $audit) {}
 
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         // Enrolling a student is editing the class's roster.
         Gate::authorize('update', $class);
@@ -47,6 +49,8 @@ class EnrollmentController extends Controller
                 'student_created' => true,
             ],
         );
+
+        $usage->action(UsageEventType::StudentsAdded, $enrollment);
 
         return back();
     }

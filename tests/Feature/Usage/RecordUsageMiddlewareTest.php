@@ -176,6 +176,8 @@ class RecordUsageMiddlewareTest extends TestCase
     #[Test]
     public function every_usage_parameter_on_a_real_route_is_a_known_feature(): void
     {
+        $checked = 0;
+
         foreach (Route::getRoutes() as $route) {
             foreach ($route->gatherMiddleware() as $middleware) {
                 if (is_string($middleware) && str_starts_with($middleware, 'usage:')) {
@@ -183,6 +185,7 @@ class RecordUsageMiddlewareTest extends TestCase
                         continue;
                     }
 
+                    $checked++;
                     $this->assertNotNull(
                         UsageFeature::tryFrom(substr($middleware, 6)),
                         "{$route->uri()} usa um parâmetro de utilização desconhecido: {$middleware}",
@@ -191,8 +194,8 @@ class RecordUsageMiddlewareTest extends TestCase
             }
         }
 
-        // Ainda nenhuma rota real usa o middleware (é a fatia seguinte): o teste
-        // fica a guardar o dia em que usarem um parâmetro que não é uma funcionalidade.
-        $this->addToAssertionCount(1);
+        // As rotas reais usam o middleware (routes/web.php): se este número cair
+        // a zero, a medição desapareceu sem ninguém dar por isso.
+        $this->assertGreaterThan(100, $checked);
     }
 }

@@ -8,6 +8,8 @@ use App\Services\Audit\AuditLog;
 use App\Services\Reporting\Export\DocxRenderer;
 use App\Services\Reporting\Export\PdfRenderer;
 use App\Services\Reporting\Export\ReportDocumentBuilder;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 
@@ -37,7 +39,7 @@ class ReportExportController extends Controller
         protected AuditLog $audit,
     ) {}
 
-    public function pdf(Report $report, PdfRenderer $renderer): Response
+    public function pdf(Report $report, PdfRenderer $renderer, UsageRecorder $usage): Response
     {
         Gate::authorize('export', $report);
 
@@ -45,10 +47,14 @@ class ReportExportController extends Controller
 
         $this->record($report, 'pdf');
 
-        return $this->download($bytes, $report, 'pdf', 'application/pdf');
+        $response = $this->download($bytes, $report, 'pdf', 'application/pdf');
+
+        $usage->action(UsageEventType::ReportExported, $report);
+
+        return $response;
     }
 
-    public function docx(Report $report, DocxRenderer $renderer): Response
+    public function docx(Report $report, DocxRenderer $renderer, UsageRecorder $usage): Response
     {
         Gate::authorize('export', $report);
 
@@ -56,12 +62,16 @@ class ReportExportController extends Controller
 
         $this->record($report, 'docx');
 
-        return $this->download(
+        $response = $this->download(
             $bytes,
             $report,
             'docx',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         );
+
+        $usage->action(UsageEventType::ReportExported, $report);
+
+        return $response;
     }
 
     protected function loaded(Report $report): Report

@@ -239,12 +239,15 @@ utilizadores ficaram por avaliar por esse motivo.
 **Interrupções letivas.** Quando as organizações do utilizador têm interrupções
 letivas, feriados ou dias não letivos registados no calendário do ano letivo
 (`academic_calendar_exceptions`), esses dias **não contam** para os prazos dos três
-primeiros sinais, e o motivo di-lo. Sem calendário registado, os prazos são
-**dias de calendário** — e o motivo também o diz. Basta um dia ser não letivo
-numa das organizações do utilizador para não contar (é a leitura que gera menos
-sinais).
+primeiros sinais, e o motivo di-lo («sem contar 3 dias não letivos»). Quando não
+há nenhum dia não letivo registado na janela — por não haver calendário, ou por
+não haver interrupções nesses dias —, os prazos são **dias de calendário**, e o
+motivo também o diz. Basta um dia ser não letivo numa das organizações do
+utilizador para não contar (é a leitura que gera menos sinais).
 
-Contas em encerramento, desativadas ou anonimizadas não geram sinais.
+Contas em encerramento, desativadas ou anonimizadas não geram sinais. Uma conta
+que a agregação ainda não viu (criada há menos de 15 minutos) ou que se opôs à
+recolha não é avaliada.
 
 ## Ranking de utilização
 

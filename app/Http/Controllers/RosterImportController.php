@@ -21,6 +21,8 @@ use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -332,7 +334,7 @@ class RosterImportController extends Controller
         return null;
     }
 
-    public function confirm(Request $request, SchoolClass $class, string $token): RedirectResponse
+    public function confirm(Request $request, SchoolClass $class, string $token, UsageRecorder $usage): RedirectResponse
     {
         // Authorization and validation run BEFORE the try/finally below, on
         // purpose: they never touch the temp folder, so a rejected request
@@ -530,6 +532,12 @@ class RosterImportController extends Controller
                         'photos_written' => $photosWritten,
                     ],
                 );
+            }
+
+            // Uma ação com N elementos, nunca N ações. Só os alunos CRIADOS:
+            // uma reimportação que corrige alunos existentes não é contada.
+            if ($created > 0) {
+                $usage->action(UsageEventType::StudentsImported, 'roster:'.$token, $created);
             }
 
             Inertia::flash('toast', [
