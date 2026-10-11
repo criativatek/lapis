@@ -290,6 +290,13 @@ class AdminAccountController extends Controller
                 ])->sortByDesc('is_owner')->values(),
             ],
             'plans' => Plan::orderBy('id')->get(['key', 'name']),
+            // Só quem já tem a autorização das métricas de utilização a pode dar,
+            // e só a um administrador da plataforma. Nada mais viaja daqui.
+            'usage_insights' => [
+                'can_manage' => $request->user()?->canViewUsageInsights() === true,
+                'owner_is_admin' => $owner?->isPlatformAdmin() === true,
+                'granted' => $owner?->can_view_usage_insights === true,
+            ],
         ]);
     }
 

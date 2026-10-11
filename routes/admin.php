@@ -9,6 +9,8 @@ use App\Http\Controllers\Admin\AdminCommercialController;
 use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
 use App\Http\Controllers\Admin\AdminSupportController;
+use App\Http\Controllers\Admin\AdminUsageAccessController;
+use App\Http\Controllers\Admin\AdminUsageController;
 use App\Http\Controllers\Admin\AdminVoucherController;
 use Illuminate\Support\Facades\Route;
 
@@ -148,6 +150,20 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
         Route::post('ai/probe', [AdminAiController::class, 'probe'])
             ->middleware('throttle:3,1')
             ->name('ai.probe');
+
+        // Utilização e acompanhamento (docs/usage-insights.md). Só pessoal
+        // interno EXPRESSAMENTE autorizado: ser administrador não chega, é
+        // preciso `can_view_usage_insights`, verificado aqui no servidor.
+        // `users/{usageUser}` é o ulid de `usage_user_states`, nunca um id.
+        Route::middleware('usage-insights')->group(function () {
+            Route::get('usage', [AdminUsageController::class, 'overview'])->name('usage.overview');
+            Route::get('usage/users', [AdminUsageController::class, 'users'])->name('usage.users.index');
+            Route::get('usage/users/{usageUser}', [AdminUsageController::class, 'user'])->name('usage.users.show');
+            Route::get('usage/ranking', [AdminUsageController::class, 'ranking'])->name('usage.ranking');
+
+            // Conceder ou retirar a mesma autorização ao dono de uma conta.
+            Route::post('accounts/{organization}/usage-insights', [AdminUsageAccessController::class, 'update'])->name('accounts.usage-insights');
+        });
 
         // Start impersonating the org's owner (support).
         Route::post('accounts/{organization}/impersonate', [AdminImpersonateController::class, 'start'])
