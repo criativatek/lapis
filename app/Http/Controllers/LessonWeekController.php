@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Lessons\MaterializeLessonsForWeek;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
+use App\Http\Requests\Lessons\LessonSummarySearchRequest;
 use App\Http\Requests\Lessons\WeeklyLessonsRequest;
 use App\Models\AcademicYear;
 use App\Models\ClassGroup;
@@ -11,6 +12,7 @@ use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\ClassLessonsView;
+use App\Services\Lessons\LessonSummarySearch;
 use App\Services\Lessons\NextLessonDay;
 use App\Services\Lessons\WeeklyLessonsQuery;
 use App\Support\Entitlements\AccessState;
@@ -98,6 +100,12 @@ class LessonWeekController extends Controller implements HasMiddleware
                 ),
             'week' => ['start' => $weekStart->toDateString(), 'end' => $weekStart->endOfWeek()->toDateString()],
             'academicYear' => $academicYear?->label,
+            // Os limites do ano letivo selecionado: os campos de data do
+            // filtro da pesquisa nos sumários não oferecem dias fora dele.
+            'academicYearBounds' => $academicYear === null ? null : [
+                'start' => $academicYear->starts_on->toDateString(),
+                'end' => $academicYear->ends_on->toDateString(),
+            ],
             'configuredClassesCount' => $academicYear === null ? 0 : SchoolClass::query()
                 ->where('academic_year_id', $academicYear->getKey())
                 ->whereHas('teachers', fn ($query) => $query->whereKey($this->user($request)->getKey()))
@@ -169,6 +177,47 @@ class LessonWeekController extends Controller implements HasMiddleware
                 $classes,
             ),
         ]);
+    }
+
+    /**
+     * Pesquisa nos sumários de TODO o ano letivo selecionado — SÓ LEITURA, e
+     * por isso permitida durante uma impersonação e com o módulo em
+     * `ReadOnly`: nada é materializado nem auditado.
+     */
+    public function search(LessonSummarySearchRequest $request, LessonSummarySearch $summarySearch): JsonResponse
+    {
+        $academicYear = $this->selectedAcademicYear($request);
+        $term = (string) $request->validated('q');
+
+        if ($academicYear === null) {
+            return response()->json([
+                'term' => $term,
+                'academic_year' => null,
+                'classes' => [],
+                'total' => 0,
+                'occurrences' => 0,
+                'page' => 1,
+                'last_page' => 1,
+                'per_page' => LessonSummarySearch::PER_PAGE,
+                'results' => [],
+            ]);
+        }
+
+        $timezone = (string) config('app.timezone');
+        $from = $request->validated('from');
+        $to = $request->validated('to');
+        $page = $request->validated('page');
+
+        return response()->json($summarySearch->search(
+            $this->user($request),
+            $academicYear,
+            $term,
+            $request->classUlids(),
+            $request->states(),
+            is_string($from) ? CarbonImmutable::parse($from, $timezone) : null,
+            is_string($to) ? CarbonImmutable::parse($to, $timezone) : null,
+            is_numeric($page) ? (int) $page : 1,
+        ));
     }
 
     private function today(): CarbonImmutable

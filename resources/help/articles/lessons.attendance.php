@@ -21,7 +21,7 @@ return [
         'Numa aula da turma inteira aparecem os alunos inscritos na turma no dia da aula. Um aluno que entrou depois dessa data não aparece nas aulas anteriores.',
         'Numa aula de um grupo (por exemplo T1 ou T2) aparecem apenas os alunos que pertenciam a esse grupo no dia da aula. Os alunos do outro grupo não aparecem.',
         'Numa turma de apoio funciona da mesma forma: aparecem os alunos inscritos nessa turma de apoio no dia da aula.',
-        '«Marcar lecionadas» em lote regista a assiduidade apenas das aulas onde já assinalou faltas. As outras ficam lecionadas com «Assiduidade por registar» — abra cada uma e use «Registar assiduidade». O Lapispro não presume que todos estiveram presentes.',
+        '«Marcar aulas como lecionadas» em lote (em «Mais ações», ou na barra de «Selecionar aulas») regista a assiduidade apenas das aulas onde já assinalou faltas. As outras ficam lecionadas com «Assiduidade por registar» — abra cada uma e use «Registar assiduidade». O Lapispro não presume que todos estiveram presentes.',
         'Aulas lecionadas antes de existir esta funcionalidade aparecem como «Assiduidade não registada». Não são convertidas em presenças.',
         'A assiduidade de cada aluno aparece em «Evolução», na página do aluno, na secção «Assiduidade», com a data, a disciplina, a turma e a aula. Aparece também nos relatórios da turma e do aluno, na secção «Assiduidade», para o período do relatório. Em todo o lado distingue-se Presente, Falta e Assiduidade não registada.',
         'Só conta assiduidade consolidada — a que ficou registada ao marcar a aula como lecionada. Um rascunho de faltas numa aula ainda não fechada nunca conta nos totais.',

@@ -12,12 +12,21 @@
  * O sumário edita-se no próprio cartão e grava SÓ o sumário
  * (`PATCH lessons/{lesson}/summary/content`, com a versão lida). Uma gravação
  * recusada por conflito com outra janela abre a comparação; nada se perde.
+ *
+ * PESQUISA NOS SUMÁRIOS (0.162.0): «Pesquisar nos sumários…» procura em todo o
+ * ano letivo, no servidor (`GET lessons/search`), e mostra os resultados no
+ * lugar do calendário. O estado da pesquisa vive no URL POR CIMA do do
+ * calendário (`lib/lessonSummarySearch`) — sair dela é só retirar os `q*`.
+ *
+ * A página está arrumada por função, de cima para baixo: cabeçalho (título,
+ * «Inserir aula», «Mais ações»), consulta (vista e pesquisa), filtros,
+ * navegação temporal junto do calendário, e o conteúdo.
  */
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
+    ArrowLeft,
     BookOpen,
     CalendarDays,
-    CalendarPlus,
     CheckCheck,
     CheckSquare,
     ChevronLeft,
@@ -28,8 +37,7 @@ import {
     ListOrdered,
     RefreshCw,
     Rows3,
-    TextQuote,
-    WrapText,
+    X,
 } from '@lucide/vue';
 import {
     computed,
@@ -47,6 +55,9 @@ import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import type { SpecialLessonOutcome } from '@/components/lessons/LessonOutcomeDialog.vue';
 import LessonQuickActions from '@/components/lessons/LessonQuickActions.vue';
 import LessonTimetable from '@/components/lessons/LessonTimetable.vue';
+import LessonSearchField from '@/components/lessons/search/LessonSearchField.vue';
+import LessonSearchFilters from '@/components/lessons/search/LessonSearchFilters.vue';
+import LessonSearchResults from '@/components/lessons/search/LessonSearchResults.vue';
 import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue';
 import LessonClassView from '@/components/lessons/week/LessonClassView.vue';
 import LessonDayNav from '@/components/lessons/week/LessonDayNav.vue';
@@ -68,8 +79,13 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useSummarySearch } from '@/composables/useSummarySearch';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
 import {
     consumeLessonsStale,
@@ -97,6 +113,16 @@ import {
     lessonTimeRange,
 } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
+import {
+    isSearchableTerm,
+    needsSubject,
+    parseSummarySearchState,
+    rememberSummarySearchStates,
+    storedSummarySearchStates,
+    summarySearchScope,
+    summarySearchUrl,
+} from '@/lib/lessonSummarySearch';
+import type { SummarySearchState } from '@/lib/lessonSummarySearch';
 import {
     activeFilterCount,
     matchesSecondaryFilters,
@@ -136,8 +162,10 @@ const props = withDefaults(
         classes?: TeacherClass[];
         /** Só na vista por turma — montada no servidor, só de leitura. */
         classView?: ClassViewData | null;
+        /** Os limites do ano letivo selecionado — as datas do filtro da pesquisa. */
+        academicYearBounds?: { start: string; end: string } | null;
     }>(),
-    { classes: () => [], classView: null },
+    { classes: () => [], classView: null, academicYearBounds: null },
 );
 
 // ------------------------------------------- aulas com as gravações confirmadas
@@ -202,6 +230,28 @@ watch(
 const page = usePage();
 const state = computed<WeekViewState>(() => parseWeekViewState(page.url));
 const view = computed<WeekView>(() => state.value.view);
+
+/**
+ * A pesquisa nos sumários, quando há uma no URL (e um ano letivo onde
+ * procurar). As turmas que esta página não conhece (uma ligação antiga, uma
+ * turma de outro ano) saem logo aqui: o que se pede, o que se escreve no
+ * âmbito e as turmas marcadas são sempre a mesma coisa.
+ */
+const searchState = computed<SummarySearchState | null>(() => {
+    const parsed = props.academicYear ? parseSummarySearchState(page.url) : null;
+
+    if (parsed === null) {
+        return null;
+    }
+
+    const known = new Set(props.classes.map((schoolClass) => schoolClass.ulid));
+
+    return {
+        ...parsed,
+        classes: parsed.classes.filter((ulid) => known.has(ulid)),
+    };
+});
+const searching = computed(() => searchState.value !== null);
 
 /**
  * «Agora», reativo (0.147.0). Atualizado a cada minuto para que uma aula que
@@ -427,8 +477,11 @@ function storedView(): WeekView | null {
 const RETURN_KEY = 'lapis.lessons.return';
 const highlighted = ref<string | null>(null);
 
-/** Antes de abrir uma aula: de onde se saiu, para o «Voltar» da aula regressar aqui. */
-function rememberReturn(lesson: WeekLesson): void {
+/**
+ * Antes de abrir uma aula: de onde se saiu, para o «Voltar» da aula regressar
+ * aqui — também aos resultados de uma pesquisa, cujo estado vai no URL.
+ */
+function rememberReturn(lesson: { ulid: string }): void {
     try {
         window.sessionStorage.setItem(
             RETURN_KEY,
@@ -461,11 +514,12 @@ function restoreFromLesson(): void {
     const ulid = entry.lesson;
 
     // O scroll é reposto pelo histórico do Inertia; aqui só se devolve o foco
-    // ao cartão de onde se saiu, sem o deslocar.
+    // ao cartão de onde se saiu, sem o deslocar. Na pesquisa, o cartão é o do
+    // resultado (os últimos resultados estão na sessão e já foram desenhados).
     window.requestAnimationFrame(() => {
         document
             .querySelector<HTMLElement>(
-                `#aula-${ulid} [data-testid="open-lesson"]`,
+                `#aula-${ulid} [data-testid="open-lesson"], #resultado-${ulid} [data-testid="open-lesson"]`,
             )
             ?.focus({ preventScroll: true });
         highlighted.value = ulid;
@@ -1121,7 +1175,9 @@ async function positionToday(): Promise<void> {
         return;
     }
 
-    if (view.value !== 'semana' || !props.academicYear) {
+    // Durante uma pesquisa não há dias à vista para onde ir — e o atalho
+    // nunca tira ninguém dos resultados.
+    if (view.value !== 'semana' || !props.academicYear || searching.value) {
         clearTodayFocus();
 
         return;
@@ -1220,12 +1276,284 @@ function clearAllFilters(): void {
     updateFilters({ classes: [], states: [], attention: false, summary: 'todos' });
 }
 
+// ------------------------------------------------------- pesquisa nos sumários
+//
+// O campo escreve em `searchInput`; o URL só muda depois de uma pausa na
+// escrita (ou logo, com Enter), e é a mudança do URL que faz o pedido
+// (`useSummarySearch`, que só aceita a resposta do último). Entrar na pesquisa
+// passa pela guarda, como mudar de vista: o calendário — e o editor que lá
+// estiver aberto — sai do ecrã. Sair dela é retirar os `q*` do URL; a semana,
+// a vista e os filtros do calendário nunca foram tocados.
+
+const SEARCH_DELAY = 350;
+const SHORT_TERM_HINT = 'Escreve pelo menos dois caracteres para pesquisar.';
+
+const summarySearch = useSummarySearch(
+    () => searchState.value,
+    // QUEM e ONDE: a resposta guardada na sessão nunca serve a outra pessoa,
+    // outra organização ou outro ano letivo.
+    () => {
+        const auth = page.props?.auth as
+            | { user?: { id?: number } | null; organization?: { ulid?: string } | null }
+            | undefined;
+
+        return `${auth?.user?.id ?? '-'}|${auth?.organization?.ulid ?? '-'}|${props.academicYear ?? '-'}`;
+    },
+);
+const searchInput = ref(searchState.value?.term ?? '');
+/** A última expressão que ESTA página pôs no URL — para distinguir uma mudança vinda de fora. */
+let committedTerm = searchState.value?.term ?? '';
+const searchHint = ref<string | null>(null);
+const searchField = ref<InstanceType<typeof LessonSearchField> | null>(null);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+/** Onde estava o calendário quando a pesquisa começou, para lá voltar. */
+let calendarScroll: number | null = null;
+let leavingSearch = false;
+
+/** As turmas que a pesquisa oferece: todas as do professor no ano letivo, também as arquivadas. */
+const searchClasses = computed(() =>
+    [...props.classes]
+        .sort(
+            (a, b) =>
+                a.label.localeCompare(b.label, 'pt-PT', { numeric: true }) ||
+                a.subject.localeCompare(b.subject, 'pt-PT'),
+        )
+        .map((schoolClass) => ({
+            ulid: schoolClass.ulid,
+            label: schoolClass.label,
+            subject: schoolClass.subject,
+            archived: schoolClass.archived,
+            tone: tones.value.get(schoolClass.ulid) ?? ('blue' as TurmaTone),
+        })),
+);
+const showSubject = computed(() => needsSubject(props.classes));
+const searchScope = computed(() =>
+    searchState.value !== null && props.academicYear
+        ? summarySearchScope(props.academicYear, props.classes, searchState.value)
+        : [],
+);
+
+function cancelSearchTimer(): void {
+    if (searchTimer !== null) {
+        clearTimeout(searchTimer);
+        searchTimer = null;
+    }
+}
+
+// O URL mudou por fora (uma resposta atrasada, o histórico): o campo
+// acompanha-o, em vez de mostrar uma expressão e os resultados de outra.
+watch(
+    () => searchState.value?.term ?? '',
+    (term) => {
+        if (term === committedTerm) {
+            return;
+        }
+
+        committedTerm = term;
+        cancelSearchTimer();
+        searchInput.value = term;
+    },
+);
+
+// Uma escrita feita nesta página durante a pesquisa (inserir uma aula, marcar
+// como lecionadas) recarrega as aulas — e os resultados são revalidados com
+// elas, para nenhum cartão continuar a mostrar um sumário que já mudou.
+watch(
+    () => props.lessons,
+    () => {
+        if (searchState.value !== null) {
+            summarySearch.retry();
+        }
+    },
+);
+
+watch(searchInput, (value) => {
+    cancelSearchTimer();
+    searchHint.value = null;
+
+    if (value.trim() === '') {
+        if (searchState.value !== null && !leavingSearch) {
+            leaveSearch('field');
+        }
+
+        return;
+    }
+
+    if (!isSearchableTerm(value)) {
+        searchHint.value = SHORT_TERM_HINT;
+
+        return;
+    }
+
+    if (value !== searchState.value?.term) {
+        searchTimer = setTimeout(submitSearch, SEARCH_DELAY);
+    }
+});
+
+function submitSearch(): void {
+    cancelSearchTimer();
+
+    if (!isSearchableTerm(searchInput.value)) {
+        searchHint.value =
+            searchInput.value.trim() === '' ? null : SHORT_TERM_HINT;
+
+        return;
+    }
+
+    const current = searchState.value;
+
+    if (current !== null) {
+        if (searchInput.value !== current.term) {
+            committedTerm = searchInput.value;
+            updateSearch({ term: searchInput.value });
+        } else if (summarySearch.status.value === 'error') {
+            summarySearch.retry();
+        }
+
+        return;
+    }
+
+    guard.request(() => {
+        calendarScroll = window.scrollY;
+        editor.value = null;
+        selectionMode.value = false;
+        pinnedLesson.value = null;
+        cameFromTimetable.value = false;
+        todayNotice.value = null;
+
+        // Começa nas turmas que o calendário estava a mostrar: as filtradas,
+        // ou a turma aberta na vista Por turma. Nenhuma = todas.
+        const known = new Set(props.classes.map((schoolClass) => schoolClass.ulid));
+        const classes =
+            view.value === 'turma'
+                ? classViewData.value
+                    ? [classViewData.value.class.ulid]
+                    : []
+                : state.value.classes.filter((ulid) => known.has(ulid));
+
+        committedTerm = searchInput.value;
+        router.replace({
+            url: summarySearchUrl(page.url, {
+                term: searchInput.value,
+                classes,
+                states: storedSummarySearchStates(),
+                other: false,
+                from: null,
+                to: null,
+                page: 1,
+            }),
+            preserveState: true,
+            preserveScroll: true,
+        });
+    });
+}
+
+/** Muda a pesquisa em curso; qualquer mudança que não seja de página volta à primeira. */
+function updateSearch(patch: Partial<SummarySearchState>): void {
+    const current = searchState.value;
+
+    if (current === null) {
+        return;
+    }
+
+    if (patch.states) {
+        rememberSummarySearchStates(patch.states);
+    }
+
+    router.replace({
+        url: summarySearchUrl(page.url, {
+            ...current,
+            ...patch,
+            page: patch.page ?? 1,
+        }),
+        preserveState: true,
+        preserveScroll: true,
+    });
+}
+
+/**
+ * «Voltar ao calendário», e limpar o campo: retira a pesquisa do URL e repõe a
+ * posição em que o calendário estava. A semana nunca muda por causa de um
+ * resultado.
+ */
+function leaveSearch(focus: 'field' | 'view'): void {
+    cancelSearchTimer();
+    searchHint.value = null;
+    leavingSearch = true;
+    committedTerm = '';
+    searchInput.value = '';
+    const scroll = calendarScroll;
+    calendarScroll = null;
+
+    router.replace({
+        url: summarySearchUrl(page.url, null),
+        preserveState: true,
+        preserveScroll: true,
+    });
+
+    nextTick(() => {
+        leavingSearch = false;
+        window.requestAnimationFrame(() => {
+            if (scroll !== null) {
+                window.scrollTo({ top: scroll });
+            }
+
+            if (focus === 'field') {
+                searchField.value?.focus();
+            } else {
+                document
+                    .getElementById(`lessons-view-${view.value}`)
+                    ?.focus({ preventScroll: true });
+            }
+        });
+    });
+}
+
+function reloadPage(): void {
+    window.location.reload();
+}
+
+function clearSearch(): void {
+    if (searchState.value !== null) {
+        leaveSearch('field');
+
+        return;
+    }
+
+    cancelSearchTimer();
+    searchInput.value = '';
+    searchHint.value = null;
+}
+
+// ---------------------------------------------------- modo de seleção (Escape)
+
+/** Escape sai da seleção — fora de campos de texto, menus e diálogos, que usam a tecla. */
+function onWindowKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !selectionMode.value || event.defaultPrevented) {
+        return;
+    }
+
+    const target = event.target instanceof HTMLElement ? event.target : null;
+
+    if (
+        target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]') ||
+        // Só um menu ou diálogo ABERTO: um que se está a fechar (animação de
+        // saída) continua no DOM com `data-state="closed"` e não usa a tecla.
+        document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]')
+    ) {
+        return;
+    }
+
+    selectionMode.value = false;
+}
+
 // ------------------------------------------------------------------------ ciclo
 
 /** O resto do arranque: a vista guardada, o regresso ao cartão e «Aulas de hoje». */
 function continueMount(): void {
-    // Sem vista no URL, usa a última escolhida neste browser.
-    if (!page.url.includes('view=')) {
+    // Sem vista no URL, usa a última escolhida neste browser — nunca a meio de
+    // uma pesquisa, que `go()` deixaria cair.
+    if (!searching.value && !page.url.includes('view=')) {
         const stored = storedView();
 
         if (stored === 'horario') {
@@ -1243,6 +1571,7 @@ onMounted(() => {
     clock = setInterval(() => {
         now.value = new Date();
     }, 60_000);
+    window.addEventListener('keydown', onWindowKeydown);
 
     // Regresso à semana (histórico do Inertia com props antigas, ou alguma
     // alteração feita na página da aula): revalida no servidor, mantendo o
@@ -1271,6 +1600,10 @@ onMounted(() => {
     // (vista guardada, «Aulas de hoje»), espera por ela.
     let cancelled = false;
 
+    //
+    // E `preserveUrl`: é uma recarga do MESMO URL, e o que o professor fizer
+    // entretanto do lado do cliente (entrar na pesquisa, mudar-lhe a
+    // expressão, voltar ao calendário) não pode ser desfeito pela resposta.
     router.get(
         page.url,
         {},
@@ -1278,6 +1611,7 @@ onMounted(() => {
             only: ['lessons', 'classView'],
             preserveState: true,
             preserveScroll: true,
+            preserveUrl: true,
             replace: true,
             onCancel: () => {
                 cancelled = true;
@@ -1295,6 +1629,9 @@ onBeforeUnmount(() => {
     if (clock !== null) {
         clearInterval(clock);
     }
+
+    cancelSearchTimer();
+    window.removeEventListener('keydown', onWindowKeydown);
 });
 
 const weekLabel = computed(() =>
@@ -1337,97 +1674,83 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
 <template>
     <Head title="Aulas e Sumários" />
     <main class="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6">
-        <!-- Cabeçalho compacto -->
-        <div
-            class="flex items-start justify-between gap-x-3 gap-y-2 sm:flex-wrap sm:gap-x-6"
+        <!-- 1. CABEÇALHO — o título, a ação principal e «Mais ações». -->
+        <header
+            class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3"
         >
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0">
                 <h1
                     class="text-xl leading-7 font-semibold tracking-tight sm:text-[22px]"
                 >
                     Aulas e Sumários
                 </h1>
-                <p class="text-sm text-muted-foreground" aria-live="polite">
-                    Semana de {{ weekLabel
-                    }}<template v-if="isCurrentWeek"> (semana atual)</template
-                    ><template v-if="academicYear">
-                        · {{ academicYear }}</template
-                    >
+                <p
+                    v-if="academicYear"
+                    class="text-sm text-muted-foreground"
+                    data-testid="lessons-academic-year"
+                >
+                    Ano letivo {{ academicYear }}
                 </p>
             </div>
             <div
                 v-if="academicYear"
-                class="flex shrink-0 flex-wrap items-center gap-2"
+                class="flex w-full flex-wrap items-center gap-2 sm:w-auto"
             >
                 <InsertLessonDialog
                     v-if="insertableClasses.length > 0"
                     ref="insertDialog"
                     :classes="insertableClasses"
                     :default-date="week.start"
-                    trigger-class="hidden min-h-9 sm:inline-flex"
+                    trigger-variant="default"
+                    trigger-class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
                 />
-                <Button
-                    type="button"
-                    :variant="selectionMode ? 'secondary' : 'outline'"
-                    size="sm"
-                    class="hidden min-h-9 sm:inline-flex"
-                    :disabled="selectableLessons.length === 0"
-                    @click="selectionMode = !selectionMode"
-                >
-                    <CheckSquare class="size-4" aria-hidden="true" />
-                    {{
-                        selectionMode ? 'Terminar seleção' : 'Selecionar aulas'
-                    }}
-                </Button>
+                <!-- Aberto a partir de «Mais ações» e da barra da seleção; sem botão próprio. -->
                 <BatchTaughtDialog
                     ref="batchDialog"
                     :week-start="week.start"
                     :today="today"
                     :selected="selected"
-                    trigger-class="hidden min-h-9 sm:inline-flex"
+                    trigger-class="hidden"
+                    return-focus-to="[data-testid='more-actions']"
                 />
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
                         <Button
                             type="button"
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            class="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9"
-                            aria-label="Mais ações"
+                            class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
+                            data-testid="more-actions"
                         >
                             <Ellipsis class="size-4" aria-hidden="true" />
+                            Mais ações
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" class="min-w-[16rem]">
-                        <!-- No telemóvel, as ações que no ecrã largo têm botão próprio. -->
+                    <DropdownMenuContent align="end" class="min-w-[17rem]">
                         <DropdownMenuItem
-                            v-if="insertableClasses.length > 0"
-                            class="min-h-11 sm:hidden"
-                            @select="insertDialog?.show()"
-                        >
-                            <CalendarPlus class="size-4" aria-hidden="true" />
-                            Inserir aula
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            class="min-h-11 sm:hidden"
-                            :disabled="selectableLessons.length === 0"
+                            v-if="!searching"
+                            class="min-h-11 sm:min-h-9"
+                            :disabled="!selectionMode && selectableLessons.length === 0"
+                            data-testid="selection-toggle"
                             @select="selectionMode = !selectionMode"
                         >
                             <CheckSquare class="size-4" aria-hidden="true" />
                             {{
                                 selectionMode
-                                    ? 'Terminar seleção'
+                                    ? 'Sair da seleção'
                                     : 'Selecionar aulas'
                             }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                            class="min-h-11 sm:hidden"
+                            class="min-h-11 sm:min-h-9"
+                            data-testid="batch-taught-open"
                             @select="batchDialog?.show()"
                         >
                             <CheckCheck class="size-4" aria-hidden="true" />
-                            Marcar lecionadas
+                            Marcar aulas como lecionadas…
                         </DropdownMenuItem>
                         <DropdownMenuItem
+                            v-if="!searching"
                             class="min-h-11 sm:min-h-9"
                             :disabled="materializeForm.processing"
                             @select="materialize"
@@ -1448,60 +1771,46 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                 Sequências de aulas</Link
                             >
                         </DropdownMenuItem>
+                        <template v-if="!searching && view !== 'horario'">
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel
+                                class="text-xs font-semibold text-muted-foreground"
+                                >Mostrar os sumários</DropdownMenuLabel
+                            >
+                            <DropdownMenuRadioGroup :model-value="state.density">
+                                <DropdownMenuRadioItem
+                                    value="completo"
+                                    class="min-h-11 sm:min-h-9"
+                                    data-testid="density-full"
+                                    @select="setDensity('completo')"
+                                    >Texto completo</DropdownMenuRadioItem
+                                >
+                                <DropdownMenuRadioItem
+                                    value="compacto"
+                                    class="min-h-11 sm:min-h-9"
+                                    data-testid="density-compact"
+                                    @select="setDensity('compacto')"
+                                    >Compacto (duas linhas)</DropdownMenuRadioItem
+                                >
+                            </DropdownMenuRadioGroup>
+                        </template>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
-        </div>
+        </header>
         <InputError :message="materializeError" />
 
-        <!-- Semana, vista e densidade -->
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-            <nav
-                class="flex flex-1 items-center gap-1.5 sm:flex-none"
-                aria-label="Navegação entre semanas"
-            >
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="min-h-11 min-w-11 sm:min-h-9"
-                    aria-label="Semana anterior"
-                    @click="shiftWeek(-7)"
-                >
-                    <ChevronLeft class="size-4" aria-hidden="true" /><span
-                        class="hidden lg:inline"
-                        >Anterior</span
-                    >
-                </Button>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
-                    :aria-current="isCurrentWeek ? 'date' : undefined"
-                    @click="goToWeek(today)"
-                >
-                    <CalendarDays class="size-4" aria-hidden="true" /> Semana
-                    atual
-                </Button>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="min-h-11 min-w-11 sm:min-h-9"
-                    aria-label="Semana seguinte"
-                    @click="shiftWeek(7)"
-                >
-                    <span class="hidden lg:inline">Seguinte</span
-                    ><ChevronRight class="size-4" aria-hidden="true" />
-                </Button>
-            </nav>
-
+        <!-- 2. CONSULTA — a vista do calendário e a pesquisa nos sumários. -->
+        <div
+            v-if="academicYear"
+            class="mt-4 flex flex-wrap items-start gap-2 sm:gap-3"
+            data-testid="lessons-query"
+        >
             <div
-                v-if="academicYear"
+                v-if="!searching"
                 class="grid w-full grid-cols-3 gap-0.5 rounded-lg border bg-card p-0.5 sm:inline-grid sm:w-auto"
                 role="tablist"
-                aria-label="Forma de ver a semana"
+                aria-label="Forma de ver as aulas"
             >
                 <button
                     v-for="(option, index) in VIEWS"
@@ -1527,119 +1836,153 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     />{{ option.label }}
                 </button>
             </div>
-
-            <div
-                v-if="academicYear && view !== 'horario'"
-                class="hidden grid-cols-2 gap-0.5 rounded-lg border bg-card p-0.5 sm:ml-auto sm:inline-grid"
-                role="group"
-                aria-label="Sumários"
+            <Button
+                v-else
+                type="button"
+                variant="outline"
+                class="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                data-testid="search-back"
+                @click="leaveSearch('view')"
             >
-                <button
-                    type="button"
-                    :aria-pressed="state.density === 'completo'"
-                    :class="[
-                        'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-8',
-                        state.density === 'completo'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-accent',
-                    ]"
-                    data-testid="density-full"
-                    @click="setDensity('completo')"
-                >
-                    <TextQuote class="size-4" aria-hidden="true" />Texto
-                    completo
-                </button>
-                <button
-                    type="button"
-                    :aria-pressed="state.density === 'compacto'"
-                    :class="[
-                        'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:min-h-8',
-                        state.density === 'compacto'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-accent',
-                    ]"
-                    data-testid="density-compact"
-                    @click="setDensity('compacto')"
-                >
-                    <WrapText class="size-4" aria-hidden="true" />Compacto
-                </button>
-            </div>
+                <ArrowLeft class="size-4" aria-hidden="true" />
+                Voltar ao calendário
+            </Button>
+            <LessonSearchField
+                ref="searchField"
+                v-model="searchInput"
+                :hint="searchHint"
+                :class="[
+                    'w-full sm:ml-auto',
+                    searching ? 'sm:max-w-2xl sm:flex-1' : 'sm:w-80 lg:w-96',
+                ]"
+                @submit="submitSearch"
+                @clear="clearSearch"
+            />
         </div>
 
-        <template
-            v-if="
+        <!-- 3. FILTROS -->
+        <LessonSearchFilters
+            v-if="searchState"
+            class="mt-3"
+            :state="searchState"
+            :classes="searchClasses"
+            :show-subject="showSubject"
+            :bounds="academicYearBounds"
+            @update="updateSearch"
+        />
+        <LessonWeekFilters
+            v-else-if="
                 (academicYear &&
                     weekLessons.length + (classViewData?.lessons.length ?? 0) > 0) ||
                 (academicYear && view === 'turma')
             "
-        >
-            <LessonWeekFilters
-                class="mt-3"
-                :state="state"
-                :classes="filterClasses"
-                :show-classes="view !== 'turma'"
-                :visible-count="
-                    view === 'turma'
-                        ? classViewLessons.length
-                        : view === 'horario'
-                          ? weekLessons.filter((lesson) =>
-                                matchesWeekFilters(lesson, state, now),
-                            ).length
-                          : visibleWeekLessons.length
-                "
-                :total-count="
-                    view === 'turma'
-                        ? (classViewData?.lessons.length ?? 0)
-                        : weekLessons.length
-                "
-                :unit-label="
-                    view === 'turma'
-                        ? 'aulas no intervalo'
-                        : 'aulas desta semana'
-                "
-                @update="updateFilters"
+            class="mt-3"
+            :state="state"
+            :classes="filterClasses"
+            :show-classes="view !== 'turma'"
+            :visible-count="
+                view === 'turma'
+                    ? classViewLessons.length
+                    : view === 'horario'
+                      ? weekLessons.filter((lesson) =>
+                            matchesWeekFilters(lesson, state, now),
+                        ).length
+                      : visibleWeekLessons.length
+            "
+            :total-count="
+                view === 'turma'
+                    ? (classViewData?.lessons.length ?? 0)
+                    : weekLessons.length
+            "
+            :unit-label="
+                view === 'turma' ? 'aulas no intervalo' : 'aulas desta semana'
+            "
+            @update="updateFilters"
+        />
+
+        <!-- 5. CONTEÚDO DA PESQUISA — no lugar do calendário. -->
+        <LessonSearchResults
+            v-if="searchState"
+            :state="searchState"
+            :scope="searchScope"
+            :response="summarySearch.response.value"
+            :status="summarySearch.status.value"
+            :current="summarySearch.current.value"
+            :error="summarySearch.error.value"
+            :error-kind="summarySearch.errorKind.value"
+            :academic-year="academicYear ?? ''"
+            :tones="tones"
+            :show-subject="showSubject"
+            :highlighted="highlighted"
+            @page="(target) => updateSearch({ page: target })"
+            @retry="summarySearch.retry()"
+            @open="rememberReturn"
+            @include-prepared="updateSearch({ states: 'both' })"
+            @reload-page="reloadPage"
+        />
+
+        <template v-else>
+            <!-- 4. NAVEGAÇÃO TEMPORAL — junto do calendário. -->
+            <div
+                class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2"
+                data-testid="week-navigation"
             >
-                <template #actions>
-                    <div
-                        v-if="view !== 'horario'"
-                        class="grid grid-cols-2 gap-0.5 rounded-lg border bg-card p-0.5 sm:hidden"
-                        role="group"
-                        aria-label="Sumários"
+                <nav
+                    class="flex w-full items-center gap-1.5 sm:w-auto"
+                    aria-label="Navegação entre semanas"
+                >
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="min-h-11 min-w-11 sm:min-h-9"
+                        aria-label="Semana anterior"
+                        @click="shiftWeek(-7)"
                     >
-                        <button
-                            type="button"
-                            :aria-pressed="state.density === 'completo'"
-                            aria-label="Texto completo"
-                            :class="[
-                                'inline-flex min-h-11 items-center justify-center rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                                state.density === 'completo'
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'hover:bg-accent',
-                            ]"
-                            data-testid="density-full-mobile"
-                            @click="setDensity('completo')"
+                        <ChevronLeft class="size-4" aria-hidden="true" /><span
+                            class="hidden lg:inline"
+                            >Anterior</span
                         >
-                            Completo
-                        </button>
-                        <button
-                            type="button"
-                            :aria-pressed="state.density === 'compacto'"
-                            :class="[
-                                'inline-flex min-h-11 items-center justify-center rounded-md px-2.5 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                                state.density === 'compacto'
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'hover:bg-accent',
-                            ]"
-                            data-testid="density-compact-mobile"
-                            @click="setDensity('compacto')"
-                        >
-                            Compacto
-                        </button>
-                    </div>
-                </template>
-            </LessonWeekFilters>
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
+                        :aria-current="isCurrentWeek ? 'date' : undefined"
+                        @click="goToWeek(today)"
+                    >
+                        <CalendarDays class="size-4" aria-hidden="true" /> Semana
+                        atual
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="min-h-11 min-w-11 sm:min-h-9"
+                        aria-label="Semana seguinte"
+                        @click="shiftWeek(7)"
+                    >
+                        <span class="hidden lg:inline">Seguinte</span
+                        ><ChevronRight class="size-4" aria-hidden="true" />
+                    </Button>
+                </nav>
+                <p
+                    class="text-[15px] font-semibold"
+                    aria-live="polite"
+                    data-testid="week-label"
+                >
+                    Semana de {{ weekLabel
+                    }}<span
+                        v-if="isCurrentWeek"
+                        class="font-normal text-muted-foreground"
+                    >
+                        (semana atual)</span
+                    >
+                </p>
+            </div>
             <p
-                v-if="view !== 'turma' && weekLessons.length > 0"
+                v-if="academicYear && view !== 'turma' && weekLessons.length > 0"
                 class="mt-2 text-sm text-muted-foreground"
                 data-testid="week-facts"
             >
@@ -1669,54 +2012,50 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     confirmar</template
                 >.
             </p>
+
+            <LessonDayNav
+                v-if="academicYear && view !== 'horario'"
+                class="mt-3"
+                :items="dayNavItems"
+                :back-label="cameFromTimetable ? 'Voltar ao horário' : null"
+                :aria-label="
+                    view === 'turma' && classViewData && classViewData.range.key !== '1'
+                        ? 'Atalhos para as semanas'
+                        : 'Atalhos para os dias'
+                "
+                @back="backToTimetable"
+            />
+
+            <div
+                v-if="todayNotice"
+                class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card p-3 text-sm"
+                role="status"
+                data-testid="today-notice"
+            >
+                <span v-if="todayNotice.kind === 'error'"
+                    >Não foi possível encontrar a próxima aula.</span
+                >
+                <span v-else-if="todayNotice.filtered"
+                    >Não há aulas hoje nem nas próximas semanas deste ano letivo
+                    com os filtros ativos.</span
+                >
+                <span v-else
+                    >Não há aulas hoje nem nas próximas semanas deste ano
+                    letivo.</span
+                >
+                <Button
+                    v-if="todayNotice.kind === 'none' && todayNotice.filtered"
+                    type="button"
+                    variant="link"
+                    class="h-auto min-h-11 px-1 sm:min-h-0"
+                    data-testid="today-clear-filters"
+                    @click="clearAllFilters"
+                    >Limpar filtros</Button
+                >
+            </div>
         </template>
 
-        <p v-if="selectionMode" class="mt-2 text-sm text-muted-foreground">
-            Só é possível selecionar aulas por fechar que já começaram.
-        </p>
-
-        <LessonDayNav
-            v-if="academicYear && view !== 'horario'"
-            class="mt-3"
-            :items="dayNavItems"
-            :back-label="cameFromTimetable ? 'Voltar ao horário' : null"
-            :aria-label="
-                view === 'turma' && classViewData && classViewData.range.key !== '1'
-                    ? 'Atalhos para as semanas'
-                    : 'Atalhos para os dias'
-            "
-            @back="backToTimetable"
-        />
-
-        <div
-            v-if="todayNotice"
-            class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-card p-3 text-sm"
-            role="status"
-            data-testid="today-notice"
-        >
-            <span v-if="todayNotice.kind === 'error'"
-                >Não foi possível encontrar a próxima aula.</span
-            >
-            <span v-else-if="todayNotice.filtered"
-                >Não há aulas hoje nem nas próximas semanas deste ano letivo
-                com os filtros ativos.</span
-            >
-            <span v-else
-                >Não há aulas hoje nem nas próximas semanas deste ano
-                letivo.</span
-            >
-            <Button
-                v-if="todayNotice.kind === 'none' && todayNotice.filtered"
-                type="button"
-                variant="link"
-                class="h-auto min-h-11 px-1 sm:min-h-0"
-                data-testid="today-clear-filters"
-                @click="clearAllFilters"
-                >Limpar filtros</Button
-            >
-        </div>
-
-        <div class="mt-2">
+        <div v-if="!searchState" class="mt-2">
             <EmptyState
                 v-if="!academicYear"
                 title="Seleciona um ano letivo"
@@ -1946,38 +2285,60 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             </template>
         </div>
 
-        <!-- Barra do lote rápido: fixa no fundo enquanto se seleciona. -->
+        <!-- A barra contextual da seleção: fixa no fundo enquanto se seleciona,
+             com as operações e a saída (também Escape). -->
         <div
-            v-if="selectionMode && academicYear"
-            class="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 text-sm shadow-lg"
+            v-if="selectionMode && academicYear && !searching"
+            class="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card p-3 text-sm shadow-lg"
+            role="region"
+            aria-label="Seleção de aulas"
             data-testid="quick-batch-bar"
         >
-            <span role="status" aria-live="polite" class="font-medium">
-                {{ selected.length }} aula{{
-                    selected.length === 1 ? '' : 's'
-                }}
-                selecionada{{ selected.length === 1 ? '' : 's' }}
-            </span>
-            <Button
-                v-if="selected.length > 0"
-                type="button"
-                variant="ghost"
-                size="sm"
-                class="min-h-11 sm:min-h-9"
-                @click="selected = []"
-                >Limpar seleção</Button
+            <div class="grid min-w-0 gap-0.5">
+                <span role="status" aria-live="polite" class="font-medium">
+                    {{ selected.length }} aula{{
+                        selected.length === 1 ? '' : 's'
+                    }}
+                    selecionada{{ selected.length === 1 ? '' : 's' }}
+                </span>
+                <span class="text-[13px] text-muted-foreground"
+                    >Só se selecionam aulas por fechar que já começaram.</span
+                >
+            </div>
+            <div
+                class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto"
             >
-            <Button
-                type="button"
-                size="sm"
-                class="ml-auto min-h-11 sm:min-h-9"
-                :disabled="selected.length === 0"
-                data-testid="quick-batch-confirm"
-                @click="batchDialog?.openForSelection()"
-            >
-                <CheckSquare class="size-4" aria-hidden="true" /> Marcar
-                selecionadas como lecionadas
-            </Button>
+                <Button
+                    v-if="selected.length > 0"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="min-h-11 sm:min-h-9"
+                    @click="selected = []"
+                    >Limpar seleção</Button
+                >
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="min-h-11 sm:min-h-9"
+                    data-testid="quick-batch-exit"
+                    @click="selectionMode = false"
+                >
+                    <X class="size-4" aria-hidden="true" /> Sair da seleção
+                </Button>
+                <Button
+                    type="button"
+                    size="sm"
+                    class="min-h-11 flex-1 sm:min-h-9 sm:flex-none"
+                    :disabled="selected.length === 0"
+                    data-testid="quick-batch-confirm"
+                    @click="batchDialog?.openForSelection()"
+                >
+                    <CheckSquare class="size-4" aria-hidden="true" /> Marcar como
+                    lecionadas
+                </Button>
+            </div>
         </div>
 
         <LessonOutcomeDialog

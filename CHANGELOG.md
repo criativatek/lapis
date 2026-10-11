@@ -25,6 +25,58 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.162.0] — 2026-10-11
+
+### Adicionado
+
+- **Aulas e Sumários: «Pesquisar nos sumários…».** Uma palavra ou uma
+  expressão é procurada no texto completo dos sumários de **todo o ano letivo
+  selecionado** — e não só na semana à vista —, no servidor
+  (`GET lessons/search`). Os resultados aparecem no lugar do calendário,
+  mais recentes primeiro, com a turma (e a disciplina, quando é preciso
+  distinguir), o grupo, a data, o número da lição, o estado e o sumário
+  completo com as ocorrências destacadas. O número de aulas encontradas e o
+  número de ocorrências da expressão são ditos à parte; 20 aulas por página.
+- Maiúsculas, acentos e quebras de linha não contam («fracoes» encontra
+  «Frações»); uma expressão com várias palavras é procurada por essa ordem.
+  Só o texto do sumário é pesquisado — nunca as notas privadas, os recursos
+  ou o TPC. `%`, `_` e HTML são procurados e mostrados como texto.
+- Filtros da pesquisa: turmas (por omissão, as que o calendário mostrava),
+  estado — «Lecionadas» (por omissão na primeira utilização), «Preparadas» ou
+  «Ambas», com a escolha lembrada neste browser — e, em «Mais filtros», o
+  período e as aulas com professor ausente ou turma noutras atividades. O
+  âmbito está sempre escrito por cima dos resultados («Ano letivo 2026/2027 ·
+  Todas as turmas · Aulas lecionadas»).
+- Uma aula preparada diz o que estava previsto, não o que foi dado: o estado
+  está em cada cartão, e com as preparadas incluídas a página di-lo. Sem
+  resultados, diz-se que não há sumários com aqueles critérios — nunca que o
+  conteúdo não foi lecionado.
+- «Voltar ao calendário» (ou limpar o campo) repõe a semana, a vista e os
+  filtros de antes da pesquisa; a semana nunca muda por causa de um
+  resultado. Abrir uma aula e usar «Voltar aos resultados da pesquisa» repõe
+  a expressão, os filtros e a página de resultados.
+- Novo artigo de ajuda «Pesquisar nos sumários».
+
+### Segurança
+
+- Os últimos resultados da pesquisa, guardados na sessão do browser para o
+  regresso de uma aula, ficam associados ao utilizador, à organização e ao ano
+  letivo, e são apagados ao terminar a sessão. A pesquisa tem limite de
+  pedidos por minuto.
+
+### Alterado
+
+- **A página «Aulas e Sumários» arrumada por função.** Cabeçalho com o título,
+  o ano letivo, «Inserir aula» (ação principal, também no telemóvel) e
+  «Mais ações» (Selecionar aulas, Marcar aulas como lecionadas…, Atualizar
+  aulas desta semana, Sequências de aulas e sumários completos ou
+  compactos); depois a consulta (Semana / Por turma / Horário e a pesquisa),
+  os filtros, a navegação entre semanas junto do calendário — com a semana e
+  os factos dela — e o conteúdo.
+- «Selecionar aulas» passou para «Mais ações». A barra da seleção diz quantas
+  aulas estão selecionadas e quais se podem selecionar, e tem «Marcar como
+  lecionadas», «Limpar seleção» e «Sair da seleção» (também com Escape).
+
 ## [0.161.1] — 2026-10-10
 
 ### Alterado

@@ -776,6 +776,23 @@ describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () =>
         expect(mocks.visit).not.toHaveBeenCalled();
     });
 
+    it('names the search results as the way back when the teacher came from a summary search (0.162.0)', async () => {
+        const url = '/lessons?week=2026-10-05&view=semana&q=fra%C3%A7%C3%B5es&q_states=taught&q_page=2';
+        window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url, lesson: 'lesson-a' }));
+        const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+        Object.defineProperty(window.history, 'length', { configurable: true, value: 3 });
+        const wrapper = mountPage();
+        await nextTick();
+
+        const link = wrapper.get('[data-testid="lesson-back"]');
+        expect(link.text()).toBe('Voltar aos resultados da pesquisa');
+        expect(link.attributes('href')).toBe(url);
+        expect(wrapper.get('[data-testid="lesson-back-bottom"]').text()).toBe('Voltar aos resultados da pesquisa');
+
+        await link.trigger('click', { button: 0 });
+        expect(back).toHaveBeenCalledOnce();
+    });
+
     it('ignores a remembered origin that belongs to another lesson', async () => {
         window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url: '/lessons?week=2026-01-05', lesson: 'other-lesson' }));
         const wrapper = mountPage();
