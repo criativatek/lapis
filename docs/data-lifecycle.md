@@ -227,6 +227,25 @@ nunca faz reaparecer um registo eliminado no destino. O dump diário da base
 incluídos, como leva os `evidence_records` eliminados. Detalhe em
 [backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
+## Métricas de utilização (0.163.0)
+
+`usage_events` e `usage_daily_rollups` (painel interno `/admin/usage`, ver
+[usage-insights.md](usage-insights.md)) guardam, por dia, que funcionalidades
+cada conta usou e que ações concluiu — sem conteúdo nem dados de alunos.
+
+| Dados | Prazo | Quem o executa |
+| --- | --- | --- |
+| Eventos e agregados diários | **365 dias** (`retention.usage_metrics_days`) | `usage:prune`, diário às **04:05** |
+| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir | apagadas no encerramento |
+| Tudo o que é de uma conta encerrada | no fim da janela de recuperação | `retention:execute` → `AnonymiseClosedAccount` → `ForgetUsageData` |
+| Tudo o que é de quem se opôs | no momento da oposição | `lapis:usage-opt-out` → `ForgetUsageData` |
+
+É a primeira tabela do produto com eliminação **por antiguidade**, e de
+propósito: não são dados do professor nem dos alunos, são um instrumento de
+medida, e um instrumento de medida não precisa de se lembrar de tudo para
+sempre. O backup diário integral leva-as como leva o resto da base; a
+exportação «Exportar os meus dados» não (não são trabalho do professor).
+
 ## A regra do ponteiro (0.101.3)
 
 > **Nunca limpar `stored_path`/`disk_path` antes de o ficheiro estar

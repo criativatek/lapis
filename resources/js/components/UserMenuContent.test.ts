@@ -67,6 +67,7 @@ function mountMenu(auth: Partial<Auth> = {}) {
         user,
         is_platform_admin: false,
         is_support_technician: false,
+        can_view_usage_insights: false,
         organization: personalOrganization,
         organizations: [personalOrganization],
         ...auth,

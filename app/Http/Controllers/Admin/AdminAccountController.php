@@ -449,10 +449,17 @@ class AdminAccountController extends Controller
         $owner = $organization->owner;
         if ($owner !== null) {
             $grant = ! $owner->is_platform_admin;
-            $owner->forceFill([
+            $attributes = [
                 'is_platform_admin' => $grant,
                 'is_support_technician' => $grant,
-            ])->save();
+            ];
+
+            // Revogar o estatuto revoga também a autorização das métricas de utilização.
+            if (! $grant) {
+                $attributes['can_view_usage_insights'] = false;
+            }
+
+            $owner->forceFill($attributes)->save();
             $this->log($organization, $grant ? 'admin.admin_granted' : 'admin.admin_revoked',
                 ($grant ? 'Concedido' : 'Revogado')." acesso de administrador a {$owner->email}.");
         }

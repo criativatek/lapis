@@ -31,6 +31,8 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $remember_token
  * @property bool $is_platform_admin
  * @property bool $is_support_technician
+ * @property bool $can_view_usage_insights
+ * @property Carbon|null $usage_opted_out_at
  * @property Carbon|null $deactivated_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
@@ -64,6 +66,8 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
             'is_platform_admin' => 'boolean',
             'is_support_technician' => 'boolean',
+            'can_view_usage_insights' => 'boolean',
+            'usage_opted_out_at' => 'datetime',
             'deactivated_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
@@ -82,6 +86,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isSupportTechnician(): bool
     {
         return $this->is_support_technician === true;
+    }
+
+    /**
+     * Pode abrir /admin/usage. As DUAS condições: ser administrador da
+     * plataforma não chega, a autorização própria não é concedida por omissão,
+     * e uma autorização sem o estatuto de administrador não vale nada.
+     */
+    public function canViewUsageInsights(): bool
+    {
+        return $this->isPlatformAdmin() && $this->can_view_usage_insights === true;
     }
 
     /**

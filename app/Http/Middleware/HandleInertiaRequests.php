@@ -111,6 +111,9 @@ class HandleInertiaRequests extends Middleware
                 // forged `true` here buys a link to a 403.
                 'is_platform_admin' => $user?->isPlatformAdmin() ?? false,
                 'is_support_technician' => $user?->isSupportTechnician() ?? false,
+                // Do mesmo tom: se desenhar a entrada «Utilização». Apresentação,
+                // não acesso — `EnsureUsageInsightsAccess` é quem guarda /admin/usage.
+                'can_view_usage_insights' => $user?->canViewUsageInsights() ?? false,
                 // Se há uma Política de Privacidade mais recente do que o
                 // último aviso que esta pessoa fechou. Apenas isso: um booleano
                 // que decide se se desenha uma faixa informativa. Não é uma

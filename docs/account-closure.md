@@ -218,6 +218,7 @@ respeito a pessoa identificável.
 | `users` — password, `remember_token`, 2FA | **Invalidado**: password passa a um valor que não é hash válido, 2FA e token limpos |
 | `users.deactivated_at`, `anonymized_at` | **Carimbados**: `EnsureUserIsActive` recusa a sessão; `anonymized_at` é o que torna o comando idempotente |
 | `passkeys`, `sessions` (do utilizador) | **Eliminados** |
+| `usage_events`, `usage_daily_rollups`, `usage_user_states` (do utilizador) | **Eliminados** — métricas de utilização (0.163.0), via `ForgetUsageData`; ver [usage-insights.md](usage-insights.md) |
 | `student_identities` da organização pessoal | **Eliminados** — é isto que remove toda a PII de aluno |
 | `organization_identities` da organização pessoal | **Eliminados** |
 | Fotografias de aluno dessa organização | **Eliminadas** do disco |

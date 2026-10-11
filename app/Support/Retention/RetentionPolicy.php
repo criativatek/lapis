@@ -46,6 +46,15 @@ final class RetentionPolicy
         ];
     }
 
+    /**
+     * Quantos dias se guardam as métricas de utilização (`usage_events` e
+     * `usage_daily_rollups`). Executado por `usage:prune`.
+     */
+    public function usageMetricsDays(): int
+    {
+        return (int) config('retention.usage_metrics_days');
+    }
+
     public function dataExportAvailabilityHours(): int
     {
         return (int) config('retention.data_export_availability_hours');

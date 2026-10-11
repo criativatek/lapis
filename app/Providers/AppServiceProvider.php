@@ -22,6 +22,7 @@ use App\Support\Release\BuildStamp;
 use App\Support\Release\NpmSsrBundleBuilder;
 use App\Support\Ssr\ServerRenderedPages;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -49,6 +50,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
         $this->app->singleton(Limits::class);
+        $this->app->singleton(UsageRecorder::class);
 
         // THE SEAM FOR THE VERSIONED LEGAL CATALOGUE. Characterisation imports
         // read school shorthand — «MS b) + ACNS» — through this interface and

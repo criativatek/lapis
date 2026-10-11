@@ -67,6 +67,7 @@ Lapispro»**, que devolve o operador ao `/dashboard` da aplicação normal.
 | **Nova conta** (`/admin/accounts/create`) | Provisiona professor+organização+plano de uma vez. Email já verificado (contas provisionadas saltam a verificação). Password opcional — em branco gera uma temporária. |
 | **Comercial** (`/admin/commercial`) | Contas, subscrições, condição comercial e **receita real** — ver abaixo. |
 | **Email (SMTP)** (`/admin/settings`) | Configura o email do sistema **e o endereço de contacto público** — ver abaixo. |
+| **Utilização** (`/admin/usage`) | Visão geral da adoção, acompanhamento individual e ranking de utilização. **Só** com a autorização `can_view_usage_insights` — ver abaixo. |
 | **Inteligência Artificial** (`/admin/ai`) | Liga/desliga a IA, escolhe fornecedor e modelo, define timeout, teto de tokens de resposta, rate limits e quotas, guarda/substitui a credencial e testa a ligação — ver abaixo. |
 
 **Mudar plano** cria uma **nova subscrição** com `starts_at` mais recente (a antiga fica no
@@ -319,6 +320,35 @@ Para um piloto, o caminho suportado é um override por organização.
 3. Registar um professor em `/register` com email real → recebe o email de verificação.
 4. `/admin/ai` → fornecedor «Simulado», modelo qualquer, IA ativa → «Testar ligação»
    → toast verde. Recarregar: a credencial continua a dizer só «configurada».
+
+## Utilização e acompanhamento (`/admin/usage`)
+
+Painel interno para perceber a adoção e encontrar quem possa beneficiar de
+apoio. **Não avalia professores.** Definições, dados recolhidos, conservação e
+ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
+[superpowers/specs/2026-10-11-usage-insights-design.md](superpowers/specs/2026-10-11-usage-insights-design.md).
+
+- **Acesso à parte do resto do backoffice.** Ser admin da plataforma não chega:
+  é preciso `users.can_view_usage_insights`, que **não** é concedida por omissão.
+  Primeira vez: `php artisan lapis:grant-usage-insights <email>` (só aceita
+  admins; `--revoke` retira). Depois, quem já a tem pode concedê-la ou revogá-la
+  a outro admin na ficha da conta, com rasto em `audit_events` de plataforma.
+  Revogar o admin revoga também esta autorização. Todas as rotas passam por
+  `usage-insights` (`EnsureUsageInsightsAccess`).
+- **Três páginas:** Visão geral (ativos 7/30 dias, novas contas, primeiro registo
+  útil, evolução semanal e mensal, utilização por funcionalidade, sinais,
+  regresso por semana de adesão) · Acompanhamento (lista pesquisável e detalhe
+  semanal/por funcionalidade de cada pessoa) · Ranking (dias ativos, ações,
+  semanas, funcionalidades — sem pontuação composta).
+- **Segmentos:** «Principais» exclui organizações marcadas como teste e pessoal
+  interno (`is_platform_admin`/`is_support_technician`); «Teste e internas»
+  mostra-os à parte. Em produção, à data da 0.163.0, todas as organizações estão
+  marcadas como teste.
+- **Agregação a cada 15 minutos** (`usage:aggregate`); o painel diz a hora da
+  última. **Conservação de 365 dias** (`usage:prune`, 04:05).
+- **Oposição:** `php artisan lapis:usage-opt-out <email>` desliga a recolha para
+  essa pessoa e apaga o que existia (`--undo` volta a ligar).
+- Nada aqui envia emails, notificações ou contactos.
 
 ## Suporte
 

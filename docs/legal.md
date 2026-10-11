@@ -53,6 +53,31 @@ no HTML — e os testes conseguem afirmar que a secção de menores existe, que 
 descrição da IA não promete o que o produto não faz, e que nenhum placeholder
 é apresentado como facto.
 
+### Atualização de 2026-10-11 — métricas de utilização (0.163.0)
+
+A Política de Privacidade ganha a secção **«Métricas de utilização do serviço»**
+e passa à versão `2026-10-11`; os Termos e o Acordo não mudam. O painel interno
+`/admin/usage` passou a registar, para os dados da **conta**, que
+funcionalidades são abertas e que tipo de ações são concluídas, por dia — sem
+conteúdo, sem alunos, sem IP nem navegador — com fundamento em **interesse
+legítimo**. A ponderação, as definições e o que fica de fora estão em
+[usage-insights.md](usage-insights.md).
+
+- **Finalidade nova, mencionada em três sítios** da Política: «Dados técnicos»,
+  «Para que usamos os dados» e o interesse legítimo em «Com que fundamento…».
+- **O prazo publicado é o executado**: `retention.usage_metrics_days` (365), lido
+  pelo texto e por `usage:prune`. Um teste muda o valor e confirma o texto.
+- **Os sinais de acompanhamento** são descritos como sugestões internas, sem
+  efeitos na conta e sem mensagens automáticas; não há decisões automatizadas.
+- **O Acordo de Tratamento de Dados não muda**: a telemetria não leva dados de
+  alunos (contagens de elementos não identificam ninguém), e um teste com uma
+  sentinela escrita num sumário, num registo do caderno e numa intervenção
+  confirma que nada disso chega às tabelas de utilização.
+- **A secção de cookies continua verdadeira**: tudo vive no servidor; não há
+  cookie nem script de análise no navegador.
+- O aviso não bloqueante volta a aparecer a quem já o tinha fechado, porque
+  `privacy_effective_from` mudou — é o mecanismo existente, sem nova aceitação.
+
 ## Porquê três documentos
 
 Porque são três figuras jurídicas distintas, e juntá-las esconde a única que
@@ -101,7 +126,7 @@ seriam apenas menos lidas.
 |---|---|
 | Execução do contrato | Criar e manter a conta, disponibilizar o plano, suporte, encerramento |
 | Obrigação jurídica | Conservação imposta por lei, pedidos de autoridades, obrigações fiscais |
-| Interesse legítimo | Segurança das contas, prevenção de abuso, registo de atividade, cópias de segurança |
+| Interesse legítimo | Segurança das contas, prevenção de abuso, registo de atividade, cópias de segurança, métricas de utilização do serviço (0.163.0) |
 
 O interesse legítimo vem **ponderado** no texto, não apenas invocado, e a
 ponderação aponta para uma restrição concreta: o registo de atividade não guarda
@@ -171,6 +196,7 @@ a página diz que não há prazo em vez de inventar um.**
 | Ficheiros temporários de importação/exportação | 6 h (pautas, INOVAR) / 24 h (grelhas) | quatro `*:prune` horários |
 | Registos técnicos do servidor | 14 dias | `LOG_DAILY_DAYS`, rotação do Laravel |
 | Cópias de segurança | 30 diárias + 12 mensais | `scripts/backup-database.sh` |
+| Métricas de utilização (`usage_events`, `usage_daily_rollups`) | `retention.usage_metrics_days` (365 dias) | `usage:prune`, diário às 04:05 |
 
 **Não publicados, por não existir rotina:**
 
@@ -447,6 +473,14 @@ Escritos de forma prudente, e por confirmar:
     na fatia AI-complete» acima; `LegalPagesTest` impede que volte a afirmar o
     contrário. **O que fica por validar é a redação**, como em todo o resto
     desta lista — já não é uma afirmação que se saiba falsa.
+12. **Métricas de utilização e sinais de acompanhamento (0.163.0)** — o
+    fundamento adotado é o interesse legítimo, com ponderação escrita em
+    [usage-insights.md](usage-insights.md#fundamento-e-ponderação-interesse-legítimo).
+    Por validar: se os sinais de acompanhamento («sem atividade recente»,
+    «conta sem turma») constituem definição de perfis na aceção do artigo 4.º,
+    n.º 4, do Regulamento — o texto descreve-os como sugestões internas sem
+    efeitos, que é o que o código faz, mas não qualifica juridicamente — e se o
+    prazo de 365 dias é proporcionado.
 
 ## Quando o texto mudar
 

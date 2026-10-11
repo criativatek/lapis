@@ -63,4 +63,10 @@ return [
     // são apagadas — sem marcas de substituição.
     'support_resolved_months_retained' => 24,
 
+    // Métricas de utilização (docs/usage-insights.md): `usage_events` e
+    // `usage_daily_rollups` mais antigos que isto são apagados por
+    // `usage:prune`, diariamente. As datas de primeira observação
+    // (`usage_user_states`) ficam enquanto a conta existir.
+    'usage_metrics_days' => (int) env('LAPIS_USAGE_RETENTION_DAYS', 365),
+
 ];

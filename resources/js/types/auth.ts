@@ -23,6 +23,8 @@ export type Auth = {
     // do with `organization.is_owner` or the `institution_admin` module.
     is_platform_admin: boolean;
     is_support_technician: boolean;
+    // Autorização própria para ver /admin/usage; só vale a quem é admin da plataforma.
+    can_view_usage_insights: boolean;
     organization: Organization | null;
     organizations: Organization[];
 };

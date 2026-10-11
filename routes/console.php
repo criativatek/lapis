@@ -102,3 +102,24 @@ Schedule::command('support:retention')
     ->dailyAt('03:50')
     ->withoutOverlapping()
     ->onFailure($reportFailure('support:retention'));
+
+// A agregação das métricas de utilização (docs/usage-insights.md): transforma os
+// eventos em agregados diários e actualiza os primeiros passos de cada pessoa.
+// A cada 15 minutos, e o painel diz a hora da última passagem. É idempotente —
+// recalcula sempre ontem e hoje — por isso uma passagem falhada é recuperada
+// pela seguinte.
+//
+// `withoutOverlapping()` porque cada passagem apaga e reescreve os agregados do
+// dia: duas ao mesmo tempo disputariam as mesmas linhas.
+Schedule::command('usage:aggregate')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->onFailure($reportFailure('usage:aggregate'));
+
+// A conservação das métricas de utilização (365 dias por omissão). Às 04:05,
+// depois dos comandos de retenção das 03:40 e 03:50, para não competir com
+// eles na mesma base de dados.
+Schedule::command('usage:prune')
+    ->dailyAt('04:05')
+    ->withoutOverlapping()
+    ->onFailure($reportFailure('usage:prune'));

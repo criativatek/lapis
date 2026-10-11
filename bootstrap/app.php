@@ -3,9 +3,11 @@
 use App\Http\Middleware\EnsureAccountIsOperational;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureSupportTechnician;
+use App\Http\Middleware\EnsureUsageInsightsAccess;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RecordUsage;
 use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\RequireOrganization;
 use App\Http\Middleware\ResolveOrganization;
@@ -45,6 +47,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => RequireModule::class,
             'platform-admin' => EnsurePlatformAdmin::class,
             'support-technician' => EnsureSupportTechnician::class,
+            'usage-insights' => EnsureUsageInsightsAccess::class,
+            'usage' => RecordUsage::class,
         ]);
 
         // Resolve the tenant BEFORE route-model binding runs. Otherwise

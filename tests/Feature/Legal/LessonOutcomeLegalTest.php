@@ -61,7 +61,10 @@ class LessonOutcomeLegalTest extends TestCase
     #[Test]
     public function the_changed_documents_take_effect_with_this_release(): void
     {
-        $this->assertSame('2026-09-15', LegalDocuments::privacy()['effective_from']);
+        // A Política voltou a mudar na 0.163.0 (métricas de utilização): o que este
+        // teste guarda é que a versão em vigor não é ANTERIOR à que trouxe o resultado
+        // da aula. O Acordo não voltou a mudar.
+        $this->assertGreaterThanOrEqual('2026-09-15', LegalDocuments::privacy()['effective_from']);
         $this->assertSame('2026-09-15', LegalDocuments::processing()['effective_from']);
     }
 

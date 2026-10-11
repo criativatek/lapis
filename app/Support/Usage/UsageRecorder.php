@@ -1,0 +1,210 @@
+<?php
+
+namespace App\Support\Usage;
+
+use App\Models\UsageEvent;
+use App\Models\User;
+use App\Support\Tenancy\CurrentOrganization;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+/**
+ * Grava as métricas de utilização (docs/usage-insights.md).
+ *
+ * TRÊS PROMESSAS, por esta ordem:
+ *
+ * 1. NUNCA IMPEDE O TRABALHO DO PROFESSOR. Tudo o que está aqui corre dentro
+ *    de um `try/catch (Throwable)`, e o callback do `afterCommit` tem o seu
+ *    próprio. Uma falha vai para o log como `usage.record_failed`, só com o
+ *    nome do evento e a CLASSE da exceção — nunca a mensagem, que pode trazer
+ *    SQL com valores.
+ * 2. SÓ DEPOIS DO COMMIT. A escrita é um `DB::afterCommit`: uma transação
+ *    revertida não deixa rasto.
+ * 3. SÓ O QUE ESTÁ NO CATÁLOGO. Não há propriedades livres; a assinatura não
+ *    tem onde as receber.
+ *
+ * Sai em silêncio quando não há pedido com utilizador autenticado (consola,
+ * scheduler, jobs), durante um acesso técnico (impersonação), para quem se
+ * opôs à recolha, para contas desativadas ou anonimizadas, e quando não há
+ * organização resolvida.
+ */
+class UsageRecorder
+{
+    /**
+     * Uma ação concluída, contada uma vez por registo e por dia.
+     *
+     * @param  Model|string|null  $subject  O registo (ou uma chave de lote) que identifica «a mesma ação» no dia.
+     */
+    public function action(UsageEventType $type, Model|string|null $subject = null, int $items = 1): void
+    {
+        try {
+            if ($type->kind() !== UsageEventKind::Action || $type->feature() === null || $items < 1) {
+                return;
+            }
+
+            $this->record($type, $type->feature(), [
+                $type->value,
+                $this->subjectKey($subject),
+            ], itemCount: $items);
+        } catch (Throwable $exception) {
+            $this->report($type, $exception);
+        }
+    }
+
+    /** Uma consulta deliberada, no máximo uma por utilizador, funcionalidade e dia. */
+    public function view(UsageFeature $feature): void
+    {
+        try {
+            $this->record(UsageEventType::FeatureViewed, $feature, ['view', $feature->value]);
+        } catch (Throwable $exception) {
+            $this->report(UsageEventType::FeatureViewed, $exception);
+        }
+    }
+
+    /**
+     * Uma falha técnica. Repetições do mesmo pedido falhado no mesmo minuto contam uma vez.
+     */
+    public function failure(UsageFeature $feature, UsageFailureCode $code, string $operation): void
+    {
+        try {
+            $this->record(UsageEventType::OperationFailed, $feature, [
+                'failure',
+                $feature->value,
+                $operation,
+                $code->value,
+                now()->setTimezone((string) config('app.timezone'))->format('Y-m-d H:i'),
+            ], failureCode: $code, minuteKey: true);
+        } catch (Throwable $exception) {
+            $this->report(UsageEventType::OperationFailed, $exception);
+        }
+    }
+
+    /**
+     * Uma impressão digital de campos de um modelo, para só contar a gravação
+     * quando algo mudou. Nulo quando não há modelo (ainda não existia).
+     *
+     * Uma entrada de chave inteira é o NOME de um atributo lido do modelo; uma
+     * entrada de chave textual é um valor literal (para juntar o estado de um
+     * segundo modelo). Compara-se o resultado antes e depois da operação.
+     *
+     * @param  array<int|string, mixed>  $attributes
+     */
+    public function fingerprint(?Model $model, array $attributes): ?string
+    {
+        if ($model === null) {
+            return null;
+        }
+
+        $values = [];
+
+        foreach ($attributes as $key => $value) {
+            if (is_int($key)) {
+                $name = (string) $value;
+                $values[$name] = $model->getAttribute($name);
+            } else {
+                $values[$key] = $value;
+            }
+        }
+
+        return sha1((string) json_encode($values));
+    }
+
+    /**
+     * @param  list<string>  $dedupeParts  O que identifica «o mesmo registo» além de utilizador e organização.
+     */
+    private function record(
+        UsageEventType $type,
+        UsageFeature $feature,
+        array $dedupeParts,
+        ?int $itemCount = null,
+        ?UsageFailureCode $failureCode = null,
+        bool $minuteKey = false,
+    ): void {
+        if (! config('usage.enabled')) {
+            return;
+        }
+
+        $request = request();
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return;
+        }
+
+        if ($request->hasSession() && $request->session()->has('impersonator_id')) {
+            return;
+        }
+
+        if ($user->usage_opted_out_at !== null || $user->anonymized_at !== null || $user->deactivated_at !== null) {
+            return;
+        }
+
+        $tenant = app(CurrentOrganization::class);
+
+        if (! $tenant->isResolved()) {
+            return;
+        }
+
+        // O dia é o dia de calendário LOCAL, qualquer que seja o fuso do relógio.
+        $now = now()->setTimezone((string) config('app.timezone'));
+        $day = $now->toDateString();
+        $organizationId = $tenant->id();
+
+        // Consultas e ações fecham a chave com o dia; a falha já traz o minuto.
+        $parts = [$user->getKey(), $organizationId, ...$dedupeParts];
+
+        if (! $minuteKey) {
+            $parts[] = $day;
+        }
+
+        $row = [
+            'user_id' => $user->getKey(),
+            'organization_id' => $organizationId,
+            'occurred_at' => $now->format('Y-m-d H:i:s'),
+            'occurred_on' => $day,
+            'feature' => $feature->value,
+            'event' => $type->value,
+            'kind' => $type->kind()->value,
+            'item_count' => $itemCount,
+            'failure_code' => $failureCode?->value,
+            'dedupe_key' => hash_hmac('sha256', implode('|', $parts), $this->dedupeSecret()),
+            'created_at' => $now->format('Y-m-d H:i:s'),
+        ];
+
+        DB::afterCommit(function () use ($row, $type): void {
+            try {
+                UsageEvent::query()->insertOrIgnore($row);
+            } catch (Throwable $exception) {
+                $this->report($type, $exception);
+            }
+        });
+    }
+
+    private function subjectKey(Model|string|null $subject): string
+    {
+        if ($subject instanceof Model) {
+            return class_basename($subject).':'.$subject->getKey();
+        }
+
+        return $subject ?? '';
+    }
+
+    private function dedupeSecret(): string
+    {
+        return hash('sha256', 'lapis.usage.dedupe|'.config('app.key'));
+    }
+
+    private function report(UsageEventType $type, Throwable $exception): void
+    {
+        try {
+            Log::warning('usage.record_failed', [
+                'event' => $type->value,
+                'exception' => $exception::class,
+            ]);
+        } catch (Throwable) {
+            // Nem o log pode impedir o trabalho do professor.
+        }
+    }
+}
