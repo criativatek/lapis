@@ -102,7 +102,7 @@ const headCell = 'px-3 py-2 font-medium';
             </div>
             <p v-else class="text-sm text-muted-foreground">Nenhum sinal neste período.</p>
             <div v-if="not_evaluated.length" class="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-                <p class="font-medium">Por avaliar (cobertura insuficiente)</p>
+                <p class="font-medium">Por avaliar (recolha insuficiente)</p>
                 <ul class="list-inside list-disc text-muted-foreground">
                     <li v-for="item in not_evaluated" :key="item.key">{{ item.label }}</li>
                 </ul>

@@ -147,7 +147,7 @@ final class InsightsChrome
             ['term' => 'Elementos afetados', 'text' => 'Quantos registos uma ação tocou (alunos importados, células alteradas). Mostra-se à parte e nunca se soma às ações.'],
             ['term' => 'Falha técnica', 'text' => 'Operação que terminou com erro do servidor. Erros de validação, recusas de permissão, sessões expiradas e limites de pedidos não são falhas técnicas.'],
             ['term' => 'Segmentos', 'text' => '«Principal» exclui as organizações marcadas como conta de teste e o pessoal interno; «Teste e internas» mostra exatamente o que ficou de fora.'],
-            ['term' => 'Sinais', 'text' => 'Sugestões de verificação para a equipa interna, não diagnósticos: não dizem que alguém abandonou ou precisa de formação. Cobertura insuficiente não gera sinal; essas pessoas ficam «por avaliar».'],
+            ['term' => 'Sinais', 'text' => 'Sugestões de verificação para a equipa interna, não diagnósticos: não dizem que alguém abandonou ou precisa de formação. Com recolha insuficiente para a janela da regra não há sinal: a pessoa fica «por avaliar».'],
         ];
     }
 }

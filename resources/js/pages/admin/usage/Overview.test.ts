@@ -139,7 +139,7 @@ describe('Utilização — visão geral', () => {
         const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'Ver lista');
 
         expect(link?.attributes('href')).toBe('/admin/usage/users?period=30&signal=no_return');
-        expect(wrapper.text()).toContain('1 por avaliar (cobertura insuficiente)');
+        expect(wrapper.text()).toContain('1 por avaliar (recolha insuficiente)');
         expect(wrapper.text()).toContain('Sugestões de verificação, não diagnósticos. Nada é enviado automaticamente.');
     });
 });

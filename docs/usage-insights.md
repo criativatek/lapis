@@ -235,7 +235,7 @@ apenas no painel.
 | Sem atividade recente | atividade em pelo menos **2 das 4** semanas completas anteriores e nenhuma nos últimos **14 dias** | a recolha tem de cobrir as 4 semanas e os 14 dias |
 | Falhas técnicas repetidas | pelo menos **3** falhas técnicas nos últimos **7 dias** | qualquer: uma cobertura parcial só pode subcontar |
 
-**Cobertura insuficiente não gera sinal.** O painel conta à parte quantos
+**Recolha insuficiente não gera sinal.** O painel conta à parte quantos
 utilizadores ficaram por avaliar por esse motivo.
 
 **Interrupções letivas.** Quando as organizações do utilizador têm interrupções

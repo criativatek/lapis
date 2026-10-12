@@ -264,7 +264,7 @@ const headCell = 'px-3 py-2 font-medium';
                     <p class="text-sm text-muted-foreground">{{ signal.description }}</p>
                     <p class="text-2xl font-semibold tabular-nums">{{ formatNumber(signal.count) }}</p>
                     <p v-if="signal.not_evaluated > 0" class="text-xs text-muted-foreground">
-                        {{ formatNumber(signal.not_evaluated) }} por avaliar (cobertura insuficiente)
+                        {{ formatNumber(signal.not_evaluated) }} por avaliar (recolha insuficiente)
                     </p>
                     <Link
                         :href="signalHref(signal.key)"

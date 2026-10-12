@@ -49,7 +49,7 @@ describe('Utilização — detalhe', () => {
         expect(text).toContain('Turma disponível desde 25/09/2026 — configuração, não prova de utilização');
         expect(text).toContain('Escola Azul — Pro (teste)');
         expect(text).toContain('3 de 17');
-        expect(text).toContain('Por avaliar (cobertura insuficiente)');
+        expect(text).toContain('Por avaliar (recolha insuficiente)');
         expect(text).toContain('Mostra apenas contagens. Não inclui conteúdos pedagógicos nem o histórico de cliques.');
     });
 

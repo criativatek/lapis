@@ -7,7 +7,7 @@ defineProps<{ coverage: UsageCoverage }>();
 </script>
 
 <template>
-    <aside class="space-y-1 rounded-xl border border-border bg-muted/40 p-4 text-sm" aria-label="Cobertura dos dados">
+    <aside class="space-y-1 rounded-xl border border-border bg-muted/40 p-4 text-sm" aria-label="Recolha dos dados">
         <div class="flex items-start gap-2">
             <Info class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <div class="min-w-0 space-y-1">

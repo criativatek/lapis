@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  * Avaliam-se sobre TODA a atividade da pessoa (todas as organizações e
  * segmentos); quem decide quem se lista é o âmbito, não esta classe.
  *
- * Cobertura insuficiente NÃO gera sinal: a pessoa fica «por avaliar» e conta-se
+ * Recolha insuficiente NÃO gera sinal: a pessoa fica «por avaliar» e conta-se
  * à parte. Contas em encerramento, desativadas ou anonimizadas não geram sinal
  * nem contam como «por avaliar». Quem não tem linha em `usage_user_states` (a
  * agregação ainda não o viu, ou opôs-se à recolha) não é avaliado.

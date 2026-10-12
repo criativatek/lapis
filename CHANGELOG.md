@@ -56,7 +56,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   turma há 7 dias; turma disponível há 7 dias sem primeiro registo útil;
   atividade em 2 das 4 semanas anteriores e nenhuma nos últimos 14 dias; 3
   falhas técnicas em 7 dias. Cada um diz o motivo e a janela; não há sinal com
-  cobertura insuficiente (conta-se à parte); interrupções letivas, feriados e
+  recolha insuficiente (conta-se à parte); interrupções letivas, feriados e
   dias não letivos registados não contam para os prazos. Se a agregação parar
   (mais de 60 minutos), os que dependem da atividade ficam por avaliar e o
   painel avisa. Ficam só no painel — nada é enviado automaticamente.
