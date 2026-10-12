@@ -60,6 +60,21 @@ class UsageUserState extends Model
         return 'ulid';
     }
 
+    /**
+     * Uma data só existe num passo atingido (e o MySQL tem um CHECK que o
+     * exige): gravar uma data marca o passo, venha de onde vier a escrita.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $state): void {
+            foreach (UsageMilestone::cases() as $milestone) {
+                if ($state->getAttribute($milestone->stateColumn()) !== null) {
+                    $state->setAttribute($milestone->reachedColumn(), true);
+                }
+            }
+        });
+    }
+
     /** O passo foi atingido — com ou sem a data ainda guardada. */
     public function hasReached(UsageMilestone $milestone): bool
     {

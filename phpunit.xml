@@ -26,8 +26,13 @@
           test — not because any single test is heavy, but because they arrive
           last. Raised for the test process only; nothing about production
           changes, and Larastan already runs at 1G for the same kind of reason.
+
+          768M since 0.163.0: the whole suite in one process already peaked at
+          510 MB (6028 tests) and reached 512 MB with the usage-metrics tests
+          (6048), measured without a limit — growth of the suite, not a leak —
+          and failed at the very end, writing the result cache.
         -->
-        <ini name="memory_limit" value="512M"/>
+        <ini name="memory_limit" value="768M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="INERTIA_SSR_ENABLED" value="false"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

@@ -93,6 +93,21 @@ class UsageFirstStepsRetentionTest extends InsightsTestCase
     }
 
     #[Test]
+    public function a_date_is_only_ever_stored_on_a_reached_step(): void
+    {
+        // Seja qual for a escrita, uma data marca o passo como atingido (em MySQL
+        // há ainda um CHECK que recusa o contrário).
+        $state = UsageUserState::query()->create([
+            'user_id' => $this->person('Nova')->id,
+            'first_useful_record_on' => '2026-10-10',
+            'computed_at' => '2026-10-12 10:00:00',
+        ])->refresh();
+
+        $this->assertTrue($state->first_useful_record_reached);
+        $this->assertFalse($state->first_class_created_reached);
+    }
+
+    #[Test]
     public function the_dates_also_expire_with_collection_switched_off(): void
     {
         DB::table('usage_collection_periods')->update(['ended_at' => '2026-05-01 10:00:00', 'is_open' => null]);
