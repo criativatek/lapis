@@ -150,11 +150,27 @@ class FollowUpSignalsTest extends InsightsTestCase
     }
 
     #[Test]
-    public function other_kinds_of_exception_that_are_not_non_teaching_do_not_extend_the_deadline(): void
+    public function a_calendar_event_is_not_a_non_teaching_day_and_does_not_extend_the_deadline(): void
     {
+        // Um ACONTECIMENTO (uma reunião, uma visita de estudo) não é uma
+        // interrupção letiva: vive em `calendar_events`, não em
+        // `academic_calendar_exceptions`, e não pode estender o prazo. (A tabela
+        // das exceções só aceita os três tipos não letivos — o CHECK em MySQL
+        // recusa qualquer outro, e por isso o cenário «outro tipo de exceção»
+        // nem é representável.)
         $user = $this->person('Exceção Alheia', '2026-10-04 10:00:00');
         $this->state($user);
-        $this->calendarBreak($this->organizationOf($user), '2026-10-05', '2026-10-07', 'meeting');
+        DB::table('calendar_events')->insert([
+            'ulid' => (string) Str::ulid(),
+            'organization_id' => $this->organizationOf($user)->id,
+            'user_id' => $user->id,
+            'type' => 'meeting',
+            'title' => 'Reunião de conselho de turma',
+            'starts_on' => '2026-10-05',
+            'ends_on' => '2026-10-07',
+            'created_at' => '2026-10-01 09:00:00',
+            'updated_at' => '2026-10-01 09:00:00',
+        ]);
 
         $this->assertSame(['no_class'], $this->keysOf($user));
     }
@@ -437,5 +453,23 @@ class FollowUpSignalsTest extends InsightsTestCase
 
         config(['usage.signals.no_class.days' => 22]);
         $this->assertSame(['no_class'], $this->keysOf($user));
+    }
+
+    #[Test]
+    public function a_stale_aggregation_leaves_activity_signals_not_evaluated_but_still_reports_failures(): void
+    {
+        $this->startUsageCollectionAt('2026-08-01 00:00:00');
+        $user = $this->quietUser('Agregação Parada');
+        $this->rollup($user, '2026-10-08', views: 0, failures: 3);
+
+        // A última agregação foi há 90 minutos: a atividade lida pode estar parada.
+        DB::table('usage_aggregation_state')->where('id', 1)->update(['aggregated_at' => '2026-10-12 08:30:00']);
+
+        $this->assertSame(['technical_failures'], $this->keysOf($user));
+        $this->assertSame(1, $this->summary()['went_quiet']['not_evaluated']);
+        $this->assertSame(0, $this->summary()['went_quiet']['count']);
+
+        $notes = implode(' ', $this->props('admin.usage.overview')['coverage']['notes']);
+        $this->assertStringContainsString('pode estar parada', $notes);
     }
 }

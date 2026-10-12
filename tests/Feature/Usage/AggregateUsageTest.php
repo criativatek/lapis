@@ -281,4 +281,19 @@ class AggregateUsageTest extends TestCase
         $schoolClass->teachers()->attach($teacher, ['role' => $role]);
         DB::table('class_teachers')->where('class_id', $schoolClass->id)->update(['created_at' => $createdAt]);
     }
+
+    #[Test]
+    public function a_run_with_nothing_new_rewrites_no_state(): void
+    {
+        $first = app(AggregateUsage::class)->run($this->now);
+        $this->assertGreaterThanOrEqual(2, $first['states']);
+        $computedAt = DB::table('usage_user_states')->where('user_id', $this->teacher->id)->value('computed_at');
+
+        $this->travelTo(Carbon::parse('2026-10-12 10:20:00', 'Europe/Lisbon'));
+        $second = app(AggregateUsage::class)->run(CarbonImmutable::parse('2026-10-12 10:20:00', 'Europe/Lisbon'));
+
+        // Nada mudou: nenhum UPDATE, e `computed_at` continua a ser o da última alteração.
+        $this->assertSame(0, $second['states']);
+        $this->assertSame($computedAt, DB::table('usage_user_states')->where('user_id', $this->teacher->id)->value('computed_at'));
+    }
 }

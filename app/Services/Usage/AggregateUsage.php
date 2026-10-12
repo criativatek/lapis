@@ -196,7 +196,6 @@ class AggregateUsage
 
                     $values = [
                         'class_available_since' => $available->get($userId),
-                        'computed_at' => $now,
                     ];
 
                     foreach (UsageMilestone::cases() as $milestone) {
@@ -209,8 +208,16 @@ class AggregateUsage
                         $values[$column] = collect([$stored, $seen])->filter()->min();
                     }
 
-                    $state->forceFill($values)->save();
-                    $touched++;
+                    $state->forceFill($values);
+
+                    // Só se escreve o que mudou: reescrever todas as pessoas a
+                    // cada 15 minutos seriam 96 UPDATE por pessoa e por dia sem
+                    // informação nenhuma. `computed_at` é o momento da última
+                    // alteração; a hora da agregação está em usage_aggregation_state.
+                    if (! $state->exists || $state->isDirty()) {
+                        $state->forceFill(['computed_at' => $now])->save();
+                        $touched++;
+                    }
                 }
             });
 

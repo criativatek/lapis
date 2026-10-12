@@ -82,6 +82,29 @@ class UsageRecorder
     }
 
     /**
+     * Corre um cálculo AO SERVIÇO da telemetria — a impressão digital antes e
+     * depois, a gravação anterior para comparar — sem que uma falha dele chegue
+     * ao professor. Uma leitura que falhasse ANTES da operação impediria a
+     * gravação; DEPOIS, devolveria um erro sobre um trabalho já gravado. Em
+     * qualquer dos casos devolve `$fallback` e regista `usage.record_failed`.
+     *
+     * @template TValue
+     *
+     * @param  callable(): TValue  $callback
+     * @return TValue|mixed
+     */
+    public function attempt(callable $callback, mixed $fallback = null): mixed
+    {
+        try {
+            return $callback();
+        } catch (Throwable $exception) {
+            $this->report(null, $exception);
+
+            return $fallback;
+        }
+    }
+
+    /**
      * Uma impressão digital de campos de um modelo, para só contar a gravação
      * quando algo mudou. Nulo quando não há modelo (ainda não existia).
      *
@@ -196,11 +219,12 @@ class UsageRecorder
         return hash('sha256', 'lapis.usage.dedupe|'.config('app.key'));
     }
 
-    private function report(UsageEventType $type, Throwable $exception): void
+    /** Sem tipo quando a falha foi num cálculo auxiliar (`attempt()`). */
+    private function report(?UsageEventType $type, Throwable $exception): void
     {
         try {
             Log::warning('usage.record_failed', [
-                'event' => $type->value,
+                'event' => $type->value ?? 'attempt',
                 'exception' => $exception::class,
             ]);
         } catch (Throwable) {

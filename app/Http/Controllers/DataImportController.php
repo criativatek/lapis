@@ -240,7 +240,7 @@ class DataImportController extends Controller
             $imported->forceFill(['stored_path' => null])->save();
         }
 
-        $restoredRows = $this->restoredRows($imported->summary ?? []);
+        $restoredRows = (int) $usage->attempt(fn (): int => $this->restoredRows($imported->summary ?? []), 0);
 
         if ($restoredRows > 0) {
             $usage->action(UsageEventType::BackupRestored, $imported, $restoredRows);

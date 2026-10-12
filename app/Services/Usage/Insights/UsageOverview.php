@@ -226,6 +226,24 @@ final class UsageOverview
                     continue;
                 }
 
+                // Uma semana sem recolha não é «ninguém voltou»: é «não sabemos».
+                $observedDays = [];
+                $partial = false;
+                foreach (UsageDates::eachDay($start, $end->min($filters->today)) as $day) {
+                    if ($this->coverage->isDayCovered($day)) {
+                        $observedDays[] = $day;
+                        $partial = $partial || ! $this->coverage->isDayFullyCovered($day);
+                    } else {
+                        $partial = true;
+                    }
+                }
+
+                if ($observedDays === []) {
+                    $weeks[] = ['offset' => $offset, 'status' => 'no_coverage', 'returned' => null];
+
+                    continue;
+                }
+
                 $returned = 0;
                 foreach ($ids as $id) {
                     foreach (UsageDates::eachDay($start, $end) as $day) {
@@ -239,7 +257,11 @@ final class UsageOverview
 
                 $weeks[] = [
                     'offset' => $offset,
-                    'status' => $end->greaterThanOrEqualTo($filters->today) ? 'in_progress' : 'complete',
+                    'status' => match (true) {
+                        $end->greaterThanOrEqualTo($filters->today) => 'in_progress',
+                        $partial => 'partial_coverage',
+                        default => 'complete',
+                    },
                     'returned' => $returned,
                 ];
             }

@@ -83,17 +83,21 @@ class EvaluationSheetHistoryController extends Controller
 
         // Só conta uma pauta que difere da guardada antes para a mesma turma,
         // período e âmbito: guardar duas vezes o mesmo conteúdo não é trabalho novo.
-        $previous = EvaluationSheetExport::query()
-            ->where('class_id', $class->getKey())
-            ->where('academic_period_id', $period->getKey())
-            ->where('scope', $scope->value)
-            ->whereKeyNot($export->getKey())
-            ->orderByDesc('id')
-            ->first();
+        // Protegida: a pauta já está guardada, e uma falha desta leitura não pode
+        // transformar isso num erro para o professor.
+        $usage->attempt(function () use ($class, $period, $scope, $export, $usage): void {
+            $previous = EvaluationSheetExport::query()
+                ->where('class_id', $class->getKey())
+                ->where('academic_period_id', $period->getKey())
+                ->where('scope', $scope->value)
+                ->whereKeyNot($export->getKey())
+                ->orderByDesc('id')
+                ->first();
 
-        if ($previous === null || $previous->payload_hash !== $export->payload_hash) {
-            $usage->action(UsageEventType::EvaluationSheetSaved, 'sheet:'.$export->payload_hash);
-        }
+            if ($previous === null || $previous->payload_hash !== $export->payload_hash) {
+                $usage->action(UsageEventType::EvaluationSheetSaved, 'sheet:'.$export->payload_hash);
+            }
+        });
 
         return redirect()
             ->route('evaluation-sheets.history', [$class->ulid])

@@ -14,12 +14,33 @@ final class ObservedDays
     /** @var list<string> */
     private array $covered;
 
+    /** @var list<string> dias com recolha do princípio ao fim (o dia em que a recolha começou não é um deles) */
+    private array $fullyCovered;
+
+    private int $periodDays;
+
     public function __construct(UsageCoverage $coverage, UsageFilters $filters)
     {
-        $this->covered = array_map(
+        $days = $coverage->coveredDaysIn($filters->from, $filters->to);
+
+        $this->covered = array_map(fn (CarbonInterface $day): string => UsageDates::iso($day), $days);
+        $this->fullyCovered = array_values(array_map(
             fn (CarbonInterface $day): string => UsageDates::iso($day),
-            $coverage->coveredDaysIn($filters->from, $filters->to),
-        );
+            array_filter($days, fn (CarbonInterface $day): bool => $coverage->isDayFullyCovered($day)),
+        ));
+        $this->periodDays = $filters->days();
+    }
+
+    /**
+     * A conta foi observada o período INTEIRO: todos os dias com recolha do
+     * princípio ao fim e a conta já existente no início de cada um. O dia em
+     * que a recolha começou e o dia em que a conta foi criada são parciais.
+     */
+    public function isCompleteForAccount(CarbonInterface $createdAt): bool
+    {
+        $created = UsageDates::iso($createdAt);
+
+        return count(array_filter($this->fullyCovered, fn (string $day): bool => $day > $created)) === $this->periodDays;
     }
 
     /** Dias com recolha, independentemente de quem seja. */

@@ -113,6 +113,27 @@ describe('Utilização — visão geral', () => {
         expect(wrapper.text()).toContain('em curso');
     });
 
+    it('semana da coorte sem recolha diz «sem recolha», nunca «0 de N»; parcial assinala-o', async () => {
+        const wrapper = await render({
+            cohorts: [
+                {
+                    week_start: '2026-09-07',
+                    week_end: '2026-09-13',
+                    size: 3,
+                    weeks: [
+                        { offset: 0, status: 'partial_coverage', returned: 3 },
+                        { offset: 1, status: 'no_coverage', returned: null },
+                    ],
+                },
+            ],
+        });
+
+        const table = wrapper.text();
+        expect(table).toContain('sem recolha');
+        expect(table).toContain('recolha parcial');
+        expect(table).not.toContain('0 de 3');
+    });
+
     it('liga cada sinal à lista filtrada, mantendo os filtros', async () => {
         const wrapper = await render();
         const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'Ver lista');

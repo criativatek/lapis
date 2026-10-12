@@ -551,4 +551,25 @@ class UsageHooksTest extends TestCase
         $this->assertSame(UsageFeature::Lessons, $view->feature);
         $this->assertNull($view->item_count);
     }
+
+    #[Test]
+    public function recording_the_same_outcome_again_on_another_day_records_nothing_new(): void
+    {
+        $lesson = $this->makeLesson();
+
+        $this->asTeacher()
+            ->post("/lessons/{$lesson->ulid}/outcome", ['outcome' => 'class_external_activity', 'note' => 'Visita de estudo'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $this->eventsOf(UsageEventType::LessonOutcomeRecorded));
+
+        // Outro dia, o mesmo resultado. O atributo do modelo é um enum e a
+        // leitura depois da gravação é a string crua: comparar os dois dizia
+        // sempre «mudou» e contava uma gravação sem alteração.
+        $this->travelTo(Carbon::parse('2026-10-13 10:00:00', 'Europe/Lisbon'));
+        $this->asTeacher()
+            ->post("/lessons/{$lesson->ulid}/outcome", ['outcome' => 'class_external_activity', 'note' => 'Visita de estudo']);
+
+        $this->assertSame(1, $this->eventsOf(UsageEventType::LessonOutcomeRecorded));
+    }
 }

@@ -79,16 +79,19 @@ class InterimAssessmentController extends Controller
         );
 
         // Só conta uma fotografia que difere da anterior da mesma turma e período.
-        $previous = InterimAssessment::query()
-            ->where('class_id', $class->getKey())
-            ->where('academic_period_id', $period->getKey())
-            ->whereKeyNot($interim->getKey())
-            ->orderByDesc('id')
-            ->first();
+        // Protegida: a fotografia já está guardada (ver EvaluationSheetHistoryController).
+        $usage->attempt(function () use ($class, $period, $interim, $usage): void {
+            $previous = InterimAssessment::query()
+                ->where('class_id', $class->getKey())
+                ->where('academic_period_id', $period->getKey())
+                ->whereKeyNot($interim->getKey())
+                ->orderByDesc('id')
+                ->first();
 
-        if ($previous === null || $previous->snapshot_hash !== $interim->snapshot_hash) {
-            $usage->action(UsageEventType::InterimAssessmentSaved, 'interim:'.$interim->snapshot_hash);
-        }
+            if ($previous === null || $previous->snapshot_hash !== $interim->snapshot_hash) {
+                $usage->action(UsageEventType::InterimAssessmentSaved, 'interim:'.$interim->snapshot_hash);
+            }
+        });
 
         return redirect()
             ->route('interim-assessments.show', [$class->ulid, $interim->ulid])

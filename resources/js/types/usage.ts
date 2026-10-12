@@ -134,7 +134,7 @@ export type UsageCohort = {
     week_start: string;
     week_end: string;
     size: number;
-    weeks: { offset: number; status: 'complete' | 'in_progress' | 'not_started'; returned: number | null }[];
+    weeks: { offset: number; status: 'complete' | 'partial_coverage' | 'in_progress' | 'no_coverage' | 'not_started'; returned: number | null }[];
 };
 
 export type UsageOverviewProps = UsageCommonProps & {
@@ -247,7 +247,7 @@ export type UsageRankingProps = UsageCommonProps & {
     ranking: UsagePaginated<UsageRankingRow>;
     total_ranked: number;
     /** Pessoas sem atividade no período, que não são ordenadas. */
-    unranked: number;
+    unranked: number | null;
     sort_options: { key: string; label: string }[];
     age_options: { key: UsageAgeKey; label: string }[];
 };

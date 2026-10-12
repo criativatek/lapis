@@ -163,4 +163,20 @@ class InsightsAccessTest extends InsightsTestCase
                 'granted' => false,
             ]));
     }
+
+    #[Test]
+    public function an_admin_without_the_authorisation_is_not_told_who_has_it(): void
+    {
+        $holder = $this->platformAdmin(usageInsights: true, name: 'Detentora');
+        $plainAdmin = $this->platformAdmin(usageInsights: false, name: 'Admin sem autorização');
+
+        $this->actingAs($plainAdmin)
+            ->get(route('admin.accounts.show', $holder->personalOrganization()))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('usage_insights', [
+                'can_manage' => false,
+                'owner_is_admin' => false,
+                'granted' => false,
+            ]));
+    }
 }

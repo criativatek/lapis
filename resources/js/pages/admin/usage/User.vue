@@ -118,7 +118,7 @@ const headCell = 'px-3 py-2 font-medium';
                 <UsageTile label="Ações concluídas" :value="formatNumber(summary.actions)" />
                 <UsageTile label="Elementos afetados" :value="formatNumber(summary.items)" hint="contados à parte das ações" />
                 <UsageTile label="Falhas técnicas" :value="formatNumber(summary.failures)" />
-                <UsageTile label="Última atividade observada" :value="lastActivity" />
+                <UsageTile label="Última atividade observada (todas as organizações)" :value="lastActivity" />
             </div>
         </section>
 

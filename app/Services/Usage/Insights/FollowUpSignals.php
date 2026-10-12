@@ -41,6 +41,22 @@ final class FollowUpSignals
         private readonly NonTeachingDays $nonTeachingDays,
     ) {}
 
+    /**
+     * A última agregação tem menos de `usage.max_staleness_minutes` minutos.
+     */
+    public static function aggregationIsFresh(CarbonImmutable $now): bool
+    {
+        $aggregatedAt = DB::table('usage_aggregation_state')->where('id', 1)->value('aggregated_at');
+
+        if (! is_string($aggregatedAt) || $aggregatedAt === '') {
+            return false;
+        }
+
+        $at = CarbonImmutable::parse(substr($aggregatedAt, 0, 19), (string) config('app.timezone'));
+
+        return $at->greaterThanOrEqualTo($now->subMinutes((int) config('usage.max_staleness_minutes', 60)));
+    }
+
     public static function label(string $key): string
     {
         return match ($key) {
@@ -123,6 +139,12 @@ final class FollowUpSignals
             return new SignalEvaluation($signals, $notEvaluated, $counts, $notEvaluatedCounts);
         }
 
+        // Agregação parada = atividade e estado das turmas parados no tempo: os
+        // sinais que dependem deles ficam por avaliar (uma vaga de falsos «sem
+        // atividade recente» seria pior do que nenhum sinal). As falhas
+        // técnicas continuam: dados atrasados só as podem subcontar.
+        $fresh = self::aggregationIsFresh($now);
+
         $userIds = array_keys($eligible);
         $horizon = $today->subDays(self::LOOKBACK_CAP_DAYS);
         $earliest = $horizon;
@@ -144,11 +166,19 @@ final class FollowUpSignals
             $found = [];
             $pending = [];
 
-            if (isset($enabled[self::NO_CLASS]) && ($signal = $this->noClass($user, $state, $off, $today)) !== null) {
+            if (! $fresh) {
+                foreach ([self::NO_CLASS, self::NO_FIRST_RECORD, self::WENT_QUIET] as $key) {
+                    if (isset($enabled[$key])) {
+                        $pending[] = $key;
+                    }
+                }
+            }
+
+            if ($fresh && isset($enabled[self::NO_CLASS]) && ($signal = $this->noClass($user, $state, $off, $today)) !== null) {
                 $found[] = $signal;
             }
 
-            if (isset($enabled[self::NO_FIRST_RECORD])) {
+            if ($fresh && isset($enabled[self::NO_FIRST_RECORD])) {
                 $result = $this->noFirstRecord($state, $off, $today, $now);
                 if ($result instanceof Signal) {
                     $found[] = $result;
@@ -157,7 +187,7 @@ final class FollowUpSignals
                 }
             }
 
-            if (isset($enabled[self::WENT_QUIET])) {
+            if ($fresh && isset($enabled[self::WENT_QUIET])) {
                 $result = $this->wentQuiet($user, $activeDays[$userId] ?? [], $off, $today, $now);
                 if ($result instanceof Signal) {
                     $found[] = $result;

@@ -7,6 +7,7 @@ use App\Models\Plan;
 use App\Support\Retention\RetentionPolicy;
 use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageSegment;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -101,8 +102,24 @@ final class InsightsChrome
             $notes[] = 'O período foi ajustado ao prazo de conservação dos dados ('.$this->retention->usageMetricsDays().' dias): começa a '.UsageDates::short($filters->from).'.';
         }
 
+        // Uma conta que a agregação ainda não viu não tem estado: não entra na
+        // lista, no ranking nem nos sinais. Diz-se, em vez de a deixar sumir.
+        $unseen = DB::table('users')
+            ->whereNull('anonymized_at')
+            ->whereNull('usage_opted_out_at')
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('usage_user_states')->whereColumn('usage_user_states.user_id', 'users.id'))
+            ->count();
+
+        if ($unseen > 0) {
+            $notes[] = $unseen === 1
+                ? '1 conta ainda não foi vista pela agregação (é feita a cada 15 minutos) e por agora não aparece no acompanhamento, no ranking nem nos sinais.'
+                : $unseen.' contas ainda não foram vistas pela agregação (é feita a cada 15 minutos) e por agora não aparecem no acompanhamento, no ranking nem nos sinais.';
+        }
+
         if ($aggregatedAt === null) {
             $notes[] = 'A agregação diária ainda não correu: os números de atividade podem estar vazios.';
+        } elseif (! FollowUpSignals::aggregationIsFresh(CarbonImmutable::now((string) config('app.timezone')))) {
+            $notes[] = 'A última agregação tem mais de '.(int) config('usage.max_staleness_minutes', 60).' minutos ('.substr((string) $aggregatedAt, 8, 2).'/'.substr((string) $aggregatedAt, 5, 2).' às '.substr((string) $aggregatedAt, 11, 5).'): pode estar parada. Os números param nessa hora e os sinais que dependem da atividade ficam por avaliar.';
         }
 
         return [

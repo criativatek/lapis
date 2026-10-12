@@ -214,9 +214,11 @@ percentagem.
 
 Coortes por semana de adesão (segunda a domingo), só com contas criadas
 **depois** do início da recolha (as outras não têm a primeira semana observada).
-Para cada semana seguinte (1 a 4):
+Para a semana da adesão (semana 0) e para cada uma das quatro seguintes:
 
 - semana terminada → «n de N»;
+- semana terminada com dias sem recolha → «n de N», marcada **recolha parcial**;
+- semana sem nenhum dia de recolha → «sem recolha», nunca «0 de N»;
 - semana em curso → «n até agora», marcada **em curso**, nunca como falta de regresso;
 - semana que ainda não começou → «ainda não decorreu».
 
@@ -245,7 +247,16 @@ não haver interrupções nesses dias —, os prazos são **dias de calendário*
 motivo também o diz. Basta um dia ser não letivo numa das organizações do
 utilizador para não contar (é a leitura que gera menos sinais).
 
-Contas em encerramento, desativadas ou anonimizadas não geram sinais. Uma conta
+**Agregação parada.** Se a última agregação tiver mais de 60 minutos
+(`usage.max_staleness_minutes`), os três primeiros sinais ficam por avaliar — a
+atividade e o estado das turmas que leem estariam parados no tempo, e isso
+acusaria toda a gente de não ter atividade recente — e o painel avisa. O sinal
+de falhas técnicas continua: dados atrasados só o podem subcontar.
+
+Contas em encerramento, desativadas ou anonimizadas não geram sinais. Continuam
+na lista e no ranking com o estado escrito («Conta em encerramento»), porque o
+encerramento ainda é reversível; os seus dados de utilização são eliminados no
+fim da janela de recuperação, com o resto da conta. Uma conta
 que a agregação ainda não viu (criada há menos de 15 minutos) ou que se opôs à
 recolha não é avaliada.
 
@@ -347,3 +358,9 @@ ponderação está em [legal.md](legal.md#pontos-que-continuam-a-exigir-validaç
 - Uma aula marcada como lecionada individualmente e depois incluída num lote no
   mesmo dia conta nas duas ações.
 - O plano é o de hoje; não há reconstrução de planos passados.
+- A lista, o ranking e os sinais são calculados no servidor sobre todas as
+  pessoas do âmbito a cada abertura (sobre os agregados, nunca sobre dados
+  pedagógicos). É folgado para centenas de contas; com milhares, os sinais e os
+  dias não letivos devem passar a ser calculados pela agregação.
+- A última atividade da lista é a do âmbito filtrado; a do detalhe é a de todas
+  as organizações da pessoa, e o ecrã di-lo.

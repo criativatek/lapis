@@ -189,9 +189,10 @@ const partialBadge = 'mt-1 inline-block rounded-full border border-border bg-mut
 
             <UsagePagination :links="ranking.links" />
 
-            <p class="text-sm text-muted-foreground">
+            <p v-if="unranked !== null" class="text-sm text-muted-foreground">
                 {{ formatNumber(unranked) }} {{ unranked === 1 ? 'pessoa sem atividade observada no período não é ordenada' : 'pessoas sem atividade observada no período não são ordenadas' }}.
             </p>
+            <p v-else class="text-sm text-muted-foreground">Não há recolha neste período: ninguém é ordenado.</p>
         </section>
     </div>
 </template>

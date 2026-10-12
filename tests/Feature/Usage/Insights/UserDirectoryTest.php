@@ -355,4 +355,16 @@ class UserDirectoryTest extends InsightsTestCase
             $this->assertArrayNotHasKey($forbidden, $keys);
         }
     }
+
+    #[Test]
+    public function without_any_collection_in_the_period_the_status_says_so_instead_of_no_activity(): void
+    {
+        $user = $this->person('Sem Recolha', '2026-01-10 10:00:00');
+        $this->state($user);
+
+        $rows = $this->props('admin.usage.users.index', ['period' => 'custom', 'from' => '2026-08-01', 'to' => '2026-08-20'])['users']['data'];
+        $row = collect($rows)->firstWhere('name', 'Sem Recolha');
+
+        $this->assertSame('Sem recolha no período', $row['status']);
+    }
 }

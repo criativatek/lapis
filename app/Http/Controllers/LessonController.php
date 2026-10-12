@@ -39,6 +39,9 @@ class LessonController extends Controller implements HasMiddleware
 {
     use RefusesDuringImpersonation;
 
+    /** A impressão digital do sumário não se conseguiu ler (ver summaryFingerprint()). */
+    private const FINGERPRINT_UNAVAILABLE = 'unavailable';
+
     public function __construct(
         protected MarkLessonAsTaught $markLessonAsTaught,
         protected SaveLessonSummary $saveLessonSummary,
@@ -190,21 +193,32 @@ class LessonController extends Controller implements HasMiddleware
      */
     private function summaryFingerprint(Lesson $lesson): ?string
     {
-        $summary = LessonSummary::query()->where('lesson_id', $lesson->getKey())->first();
+        // Protegida: uma leitura que falhasse aqui, antes da gravação, não pode
+        // impedir o professor de guardar o sumário (UsageRecorder::attempt).
+        return $this->usage->attempt(function () use ($lesson): ?string {
+            $summary = LessonSummary::query()->where('lesson_id', $lesson->getKey())->first();
 
-        return $this->usage->fingerprint($summary, [
-            'content',
-            'private_notes',
-            'resources',
-            'homework',
-            'lesson_status' => Lesson::query()->whereKey($lesson->getKey())->value('status'),
-        ]);
+            return $this->usage->fingerprint($summary, [
+                'content',
+                'private_notes',
+                'resources',
+                'homework',
+                'lesson_status' => Lesson::query()->whereKey($lesson->getKey())->value('status'),
+            ]);
+        }, self::FINGERPRINT_UNAVAILABLE);
     }
 
     /** Só conta uma gravação que mudou alguma coisa (docs/usage-insights.md). */
     private function recordSummarySaved(Lesson $lesson, ?string $before): void
     {
-        if ($this->summaryFingerprint($lesson) !== $before) {
+        $after = $this->summaryFingerprint($lesson);
+
+        // Sem impressão digital de um dos lados não se sabe se mudou: não conta.
+        if ($before === self::FINGERPRINT_UNAVAILABLE || $after === self::FINGERPRINT_UNAVAILABLE) {
+            return;
+        }
+
+        if ($after !== $before) {
             $this->usage->action(UsageEventType::LessonSummarySaved, $lesson);
         }
     }
@@ -299,7 +313,9 @@ class LessonController extends Controller implements HasMiddleware
     {
         $this->refuseDuringImpersonation($request);
 
-        $outcomeBefore = $lesson->outcome;
+        // O valor CRU da coluna, dos dois lados: o atributo do modelo é um enum e
+        // `value()` devolve a string, e `enum !== string` diria sempre «mudou».
+        $outcomeBefore = $lesson->getRawOriginal('outcome');
 
         $this->recordLessonOutcome->execute(
             $lesson,
@@ -309,7 +325,12 @@ class LessonController extends Controller implements HasMiddleware
             $request->note(),
         );
 
-        if (Lesson::query()->whereKey($lesson->getKey())->value('outcome') !== $outcomeBefore) {
+        $outcomeAfter = $this->usage->attempt(
+            fn (): mixed => Lesson::query()->whereKey($lesson->getKey())->value('outcome'),
+            $outcomeBefore,
+        );
+
+        if ($outcomeAfter !== $outcomeBefore) {
             $this->usage->action(UsageEventType::LessonOutcomeRecorded, $lesson);
         }
 

@@ -299,6 +299,11 @@ const headCell = 'px-3 py-2 font-medium';
                                 {{ formatNumber(cohortCell(cohort, offset)?.returned ?? 0) }} de {{ formatNumber(cohort.size) }}
                                 <span v-if="cohort.size > 0" class="text-muted-foreground">({{ percent(cohortCell(cohort, offset)?.returned ?? 0, cohort.size) }})</span>
                             </template>
+                            <template v-else-if="cohortCell(cohort, offset)?.status === 'partial_coverage'">
+                                {{ formatNumber(cohortCell(cohort, offset)?.returned ?? 0) }} de {{ formatNumber(cohort.size) }}
+                                <span class="ml-1 rounded-full border border-border px-1.5 py-0.5 text-xs text-muted-foreground">recolha parcial</span>
+                            </template>
+                            <span v-else-if="cohortCell(cohort, offset)?.status === 'no_coverage'" class="text-muted-foreground">sem recolha</span>
                             <template v-else-if="cohortCell(cohort, offset)?.status === 'in_progress'">
                                 {{ formatNumber(cohortCell(cohort, offset)?.returned ?? 0) }} até agora
                                 <span class="ml-1 rounded-full border border-border px-1.5 py-0.5 text-xs text-muted-foreground">em curso</span>

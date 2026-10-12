@@ -233,4 +233,27 @@ class UsageRecorderTest extends TestCase
         $this->assertNotSame($before, $changedExtra);
         $this->assertNotSame($before, $changedField);
     }
+
+    #[Test]
+    public function a_failing_auxiliary_read_returns_the_fallback_and_is_logged_without_its_message(): void
+    {
+        Log::spy();
+
+        $result = app(UsageRecorder::class)->attempt(
+            fn () => throw new \RuntimeException('SELECT com dados que não podem ir para o log'),
+            'recurso',
+        );
+
+        $this->assertSame('recurso', $result);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'usage.record_failed'
+                && $context === ['event' => 'attempt', 'exception' => \RuntimeException::class])
+            ->once();
+    }
+
+    #[Test]
+    public function a_successful_auxiliary_read_returns_its_value(): void
+    {
+        $this->assertSame(42, app(UsageRecorder::class)->attempt(fn () => 42, 0));
+    }
 }

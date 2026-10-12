@@ -452,4 +452,26 @@ class InsightsOverviewTest extends InsightsTestCase
             $this->assertArrayHasKey($term, $definitions->all());
         }
     }
+
+    #[Test]
+    public function a_cohort_week_without_collection_is_no_coverage_and_never_zero(): void
+    {
+        // Recolha de 01/09 a 20/09 e de novo desde 05/10: 21/09–04/10 não tem recolha.
+        $this->startUsageCollectionAt('2026-09-01 00:00:00', '2026-09-21 00:00:00');
+        DB::table('usage_collection_periods')->insert(['started_at' => '2026-10-05 00:00:00', 'ended_at' => null]);
+
+        $person = $this->person('Coorte Com Buraco', '2026-09-08 10:00:00');
+        $this->rollup($person, '2026-09-09');
+
+        $weeks = collect($this->props('admin.usage.overview', ['period' => '90'])['cohorts'])
+            ->keyBy('week_start')['2026-09-07']['weeks'];
+
+        $this->assertSame([
+            ['offset' => 0, 'status' => 'complete', 'returned' => 1],
+            ['offset' => 1, 'status' => 'complete', 'returned' => 0],
+            ['offset' => 2, 'status' => 'no_coverage', 'returned' => null],
+            ['offset' => 3, 'status' => 'no_coverage', 'returned' => null],
+            ['offset' => 4, 'status' => 'complete', 'returned' => 0],
+        ], $weeks);
+    }
 }

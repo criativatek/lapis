@@ -212,4 +212,30 @@ class UsageRankingTest extends InsightsTestCase
         $this->assertNotContains('Ensaio', $this->ordered()['names']);
         $this->assertSame(['Ensaio'], $this->ordered(['segment' => 'test'])['names']);
     }
+
+    #[Test]
+    public function a_period_without_collection_ranks_nobody_and_counts_nobody(): void
+    {
+        $this->seedPeople();
+
+        $props = $this->props('admin.usage.ranking', ['period' => 'custom', 'from' => '2026-08-01', 'to' => '2026-08-20']);
+
+        $this->assertSame([], $props['ranking']['data']);
+        $this->assertNull($props['unranked']);
+    }
+
+    #[Test]
+    public function the_day_collection_started_is_partial_so_the_week_is_not_a_full_observation(): void
+    {
+        $this->startUsageCollectionAt('2026-10-06 10:00:00');
+        $old = $this->person('Antiga', '2026-01-10 10:00:00');
+        $this->state($old);
+        $this->rollup($old, '2026-10-07');
+
+        $row = collect($this->props('admin.usage.ranking', ['period' => '7'])['ranking']['data'])->firstWhere('name', 'Antiga');
+
+        $this->assertSame(7, $row['observation_days']);
+        $this->assertTrue($row['partial_observation']);
+        $this->assertSame([], $this->ordered(['period' => '7', 'age' => 'full'])['names']);
+    }
 }

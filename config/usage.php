@@ -18,6 +18,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frescura da agregação
+    |--------------------------------------------------------------------------
+    |
+    | `usage:aggregate` corre a cada 15 minutos. Se a última agregação tiver
+    | mais do que isto, a atividade e o estado das turmas que o painel lê podem
+    | estar parados (scheduler parado, comando a falhar): os sinais que
+    | dependem deles ficam «por avaliar» em vez de acusarem toda a gente de
+    | não ter atividade recente, e o painel avisa.
+    |
+    */
+
+    'max_staleness_minutes' => (int) env('LAPIS_USAGE_MAX_STALENESS_MINUTES', 60),
+
+    /*
+    |--------------------------------------------------------------------------
     | Sinais de acompanhamento
     |--------------------------------------------------------------------------
     |

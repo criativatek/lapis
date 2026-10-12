@@ -55,7 +55,9 @@ final class UsageRanking
             $accountAge = UsageDates::elapsed($user->created_at, $filters->today);
             $observationDays = $observed->forAccount($user->created_at);
 
-            if (! $this->passesAge($filters->age, $accountAge, $observationDays, $periodDays)) {
+            $complete = $observed->isCompleteForAccount($user->created_at);
+
+            if (! $this->passesAge($filters->age, $accountAge, $complete)) {
                 continue;
             }
 
@@ -72,6 +74,7 @@ final class UsageRanking
                 'activity' => $activity,
                 'account_age_days' => $accountAge,
                 'observation_days' => $observationDays,
+                'complete' => $complete,
                 'observed_weeks' => $observed->weeksForAccount($user->created_at),
                 'value' => $this->criterion($sort, $activity),
             ];
@@ -115,7 +118,7 @@ final class UsageRanking
                 'account_age_days' => $entry['account_age_days'],
                 'observation_days' => $entry['observation_days'],
                 'period_days' => $periodDays,
-                'partial_observation' => $entry['observation_days'] < $periodDays,
+                'partial_observation' => ! $entry['complete'],
                 'active_days' => $activity->activeDays,
                 'actions' => $activity->actions,
                 'items' => $activity->items,
@@ -135,7 +138,9 @@ final class UsageRanking
             'support_text' => self::SUPPORT_TEXT,
             'ranking' => $paginator,
             'total_ranked' => $total,
-            'unranked' => $unranked,
+            // Sem um único dia com recolha no período, ninguém «não teve
+            // atividade»: não se sabe. Nada se ordena e nada se conta.
+            'unranked' => $this->coverage->coveredDaysIn($filters->from, $filters->to) === [] ? null : $unranked,
             'sort_options' => [
                 ['key' => 'active_days', 'label' => 'Dias ativos no período'],
                 ['key' => 'actions', 'label' => 'Ações concluídas'],
@@ -162,10 +167,10 @@ final class UsageRanking
         };
     }
 
-    private function passesAge(string $age, int $accountAge, int $observationDays, int $periodDays): bool
+    private function passesAge(string $age, int $accountAge, bool $complete): bool
     {
         return match ($age) {
-            'full' => $observationDays === $periodDays,
+            'full' => $complete,
             'lt30' => $accountAge < 30,
             '30to90' => $accountAge >= 30 && $accountAge <= 90,
             'gt90' => $accountAge > 90,

@@ -95,7 +95,7 @@ final class UsageUserDirectory
                 'items' => $activity->items,
                 'features' => $this->featureList($activity->features),
                 'signals' => array_map(fn (Signal $signal): array => $signal->toArray(), $evaluation->for($user->id)),
-                'status' => $this->status($user, $activity, $filters),
+                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->created_at)),
                 'observation_days' => $observed->forAccount($user->created_at),
                 'period_days' => $filters->days(),
             ];
@@ -146,7 +146,7 @@ final class UsageUserDirectory
                 'name' => $user->name,
                 'email' => $user->email,
                 'joined_on' => UsageDates::iso($user->created_at),
-                'status' => $this->status($user, $activity, $filters),
+                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->created_at)),
                 'organizations' => $profile['organizations'],
                 'flags' => $profile['flags'],
             ],
@@ -268,12 +268,14 @@ final class UsageUserDirectory
     /**
      * Uma descrição do que se observa — nunca um juízo.
      */
-    private function status(User $user, UserActivity $activity, UsageFilters $filters): ?string
+    private function status(User $user, UserActivity $activity, UsageFilters $filters, int $observationDays): ?string
     {
         return match (true) {
             $user->closure_requested_at !== null => 'Conta em encerramento',
             $user->deactivated_at !== null => 'Conta desativada',
             $user->created_at->greaterThanOrEqualTo($filters->from) && $user->created_at->lessThan($filters->toExclusive()) => 'Conta criada durante o período',
+            // Sem um único dia observado não se pode dizer «sem atividade».
+            $activity->activeDays === 0 && $observationDays === 0 => 'Sem recolha no período',
             $activity->activeDays === 0 => 'Sem atividade observada no período',
             default => null,
         };
