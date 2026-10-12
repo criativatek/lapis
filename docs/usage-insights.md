@@ -39,6 +39,27 @@ autorização não é concedida por omissão.
 - A autorização é verificada **no servidor em todas as rotas** (`usage-insights`
   → `EnsureUsageInsightsAccess`). Esconder a entrada de menu é apresentação.
 
+**Ligar e desligar a recolha é outra autorização**, separada de consultar o
+painel: `can_control_usage_collection`, também só com o estatuto de
+administrador (`User::canControlUsageCollection()`), e também **não** concedida
+por omissão. Quem só consulta o painel não liga nem desliga nada, nem se pode
+atribuir esta autorização.
+
+- Primeira concessão, no servidor:
+  `php artisan lapis:grant-usage-insights <email> --collection-control`
+  (retirar: `--revoke`). Só aceita quem já é administrador da plataforma. Fica na
+  auditoria da plataforma sem causador (é a consola) e com quem a recebeu
+  (`admin.usage_collection_control_granted` / `…_revoked`, `via: console`).
+- Depois, no backoffice («Controlo da recolha de métricas», na ficha da conta),
+  só quem já a tem a concede ou retira a **outro** administrador — nunca a si
+  próprio —, com a mesma auditoria e o causador. A rota passa por
+  `usage-collection-control` (`EnsureUsageCollectionControl`).
+- `lapis:usage-collection start|stop` exige-a no `--operator`, e a própria ação
+  (`SetUsageCollection`) volta a verificá-la, lida da base, para valer em
+  qualquer ponto de entrada.
+- Revogar o estatuto de administrador (comando `lapis:make-admin --revoke` ou
+  backoffice) retira também esta autorização.
+
 **Nunca** é mostrado a colegas, ao responsável de uma organização nem ao
 administrador institucional. Não há rota fora de `/admin/usage` que devolva estas
 métricas.
@@ -166,8 +187,22 @@ importação ou por restauro de uma cópia mostra que a turma **existe** para o
 utilizador («turma disponível desde…») — não prova que ele a criou. O painel
 mostra as duas coisas em separado e nunca converte uma na outra.
 
-Os primeiros passos são datas de **primeira observação**. Numa conta criada
-antes do início da recolha, o passo pode ter acontecido antes, e o painel di-lo.
+Os primeiros passos são de **primeira observação**. Numa conta criada antes do
+início da recolha (ou que retomou a recolha), o passo pode ter acontecido antes,
+e o painel di-lo. Cada passo está num de três estados, que o painel nunca
+confunde:
+
+- **com data** — o dia da primeira observação, guardado durante o prazo dos
+  agregados (180 dias, proposta);
+- **«Atingido — data já não conservada»** — passado esse prazo, a data sai e fica
+  só o estado; o painel não mostra nenhuma data aproximada;
+- **«Ainda não observado»** — o passo não foi visto desde que a pessoa é
+  observada. A ausência de recolha diz-se à parte, na nota.
+
+Um passo atingido cuja data saiu **nunca** volta a ganhar uma: nem por eventos
+posteriores (uma turma nova não é a primeira) nem por reconstrução a partir de
+dados pedagógicos (a agregação só lê eventos de utilização para os primeiros
+passos).
 
 ## Ativação e desativação
 
@@ -185,7 +220,8 @@ php artisan lapis:usage-collection stop  --operator=<email> --note="…"
 ```
 
 - **Explícito e auditado.** Só `App\Actions\Usage\SetUsageCollection` abre e
-  fecha períodos; o operador tem de ter acesso ao painel, e cada transição fica
+  fecha períodos; o operador tem de ter a autorização de **controlo** da recolha
+  (ver «Quem tem acesso» — consultar o painel não chega), e cada transição fica
   na auditoria **de plataforma** (`admin.usage_collection_started` /
   `admin.usage_collection_stopped`, com o instante e a nota).
 - **No instante da transição.** `start` abre o período nesse segundo, sem
@@ -229,6 +265,44 @@ os processos**, sem passos à parte:
 - **Depois de `start`**: `lapis:usage-collection status`; abrir `/privacidade`
   e confirmar a secção e a data «em vigor desde»; abrir o painel e confirmar a
   nota de início da recolha.
+
+### Publicar com a recolha desligada
+
+O deploy desta versão **não** liga a recolha: as migrações não abrem período
+nenhum, e nada na configuração a liga. Depois do deploy normal (runbook em
+[deployment.md](deployment.md)):
+
+1. `php artisan migrate:status` mostra as três migrações `2026_11_18_*` como
+   `Ran`.
+2. `php artisan lapis:usage-collection status` responde «A recolha nunca foi
+   ligada.» — e `usage_collection_periods` está vazia.
+3. `php artisan schedule:list` mostra `usage:aggregate` (a cada 15 minutos) e
+   `usage:prune` (de hora a hora, aos 7). Com a recolha desligada, ambos correm
+   sem ler dados de pessoas e sem gravar nada.
+4. `/privacidade` continua na versão `2026-09-15`, sem a secção das métricas, e
+   a faixa de privacidade não reaparece a ninguém.
+5. Nenhuma autorização é concedida pelo deploy: `can_view_usage_insights` e
+   `can_control_usage_collection` nascem a `false` para toda a gente.
+
+### Primeira concessão
+
+Feita no servidor, **por email** — nunca pelo nome, que se repete em contas
+diferentes. A conta tem de ser já administradora da plataforma; o comando
+recusa as outras.
+
+```bash
+# 1. Confirmar, só em leitura, que o email é o da conta certa e que é administradora.
+php artisan tinker --execute 'echo json_encode(App\Models\User::where("email", "<email>")->first(["id","name","email","is_platform_admin","can_view_usage_insights","can_control_usage_collection"]));'
+# 2. Ver o painel (opcional, independente do controlo).
+php artisan lapis:grant-usage-insights <email>
+# 3. Ligar e desligar a recolha — NÃO liga nada; só autoriza.
+php artisan lapis:grant-usage-insights <email> --collection-control
+```
+
+A concessão do controlo fica na auditoria de plataforma como
+`admin.usage_collection_control_granted`, com `via: console`. A partir daí, quem
+tem cada autorização pode concedê-la no backoffice a outro administrador, também
+com auditoria.
 
 ## Cobertura dos dados
 
@@ -420,7 +494,8 @@ Valores **propostos e configuráveis**, por validar juridicamente (a validação
 | Eventos detalhados (`usage_events`) | **35 dias** a contar do instante do evento (`retention.usage_events_days`, `LAPIS_USAGE_EVENTS_RETENTION_DAYS`) — **agregados ou não** | `usage:prune`, de hora a hora (aos 7 minutos) |
 | Agregados diários por pessoa (`usage_daily_rollups`) | **180 dias** depois do dia a que se referem (`retention.usage_rollups_days`, `LAPIS_USAGE_ROLLUPS_RETENTION_DAYS`); é também o período mais antigo que o painel aceita | `usage:prune` |
 | Lacunas (`usage_coverage_gaps`: só o dia e o motivo) | o mesmo dos agregados | `usage:prune` |
-| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir — **proposta**, com alternativa limitada (ver «Datas dos primeiros passos») | apagadas na oposição, no pedido de encerramento e na anonimização |
+| Data de cada primeiro passo (`usage_user_states.first_*_on`) | **180 dias** — o mesmo prazo dos agregados; depois sai e fica só «atingido» | `usage:prune`, de hora a hora |
+| Estado «atingido» de cada primeiro passo (`first_*_reached`, sem data) | enquanto a conta existir | apagado na oposição, no pedido de encerramento e na anonimização |
 | Tudo o que é deste painel, para quem pediu o encerramento da conta | **eliminado no pedido**, não no dia 60; cancelar o pedido não recupera nada | `RequestPersonalAccountClosure` → `ForgetUsageData` |
 | Tudo o que é deste painel, para quem se opôs | eliminado no momento | definições da conta (ou `lapis:usage-opt-out`) → `SetUsageOptOut` → `ForgetUsageData` |
 
@@ -432,9 +507,10 @@ mais do que 35 dias e uma hora** (mais a duração da própria passagem). Antes,
 com uma passagem diária às 04:05 e o corte por dia, um evento podia chegar a 36
 dias e 4 horas.
 
-Os agregados e as lacunas são por dia: os do dia D saem na primeira passagem do
-dia D+181 (às 00:07), isto é, ficam 180 dias completos depois de D e, no máximo,
-mais uma hora.
+Os agregados, as lacunas e as datas dos primeiros passos são por dia: os do dia
+D saem na primeira passagem do dia D+181 (às 00:07), isto é, ficam 180 dias
+completos depois de D e, no máximo, mais uma hora. A data de um primeiro passo
+observado a D é substituída por «atingido» nessa mesma passagem.
 
 Se o agendador parar, nada é apagado enquanto estiver parado: o atraso é o tempo
 da paragem. Cada falha do comando é reportada (`onFailure`), como as das outras
@@ -466,14 +542,34 @@ rotinas de retenção.
 
 ### Datas dos primeiros passos
 
-`usage_user_states` guarda, por pessoa, **três datas** (`first_class_created_on`,
-`first_students_added_on`, `first_useful_record_on`: o dia, sem hora, da primeira
-vez que a recolha observou cada passo) e uma data de **configuração**
-(`class_available_since`: quando a primeira turma ficou disponível, recalculada
-em cada passagem a partir de `class_teachers`, e por isso não é uma métrica que
-se guarde). A justificação, os cálculos que as usam e a alternativa com prazo
-limitado estão em [usage-insights-decisions.md](usage-insights-decisions.md) §2.1
-— é uma proposta, por decidir.
+`usage_user_states` guarda, por pessoa e para cada primeiro passo (primeira
+turma, primeiros alunos, primeiro registo útil):
+
+- a **data** da primeira observação (`first_*_on`, o dia sem hora), durante **180
+  dias** — o prazo dos agregados, e por isso o horizonte de tudo o que o painel
+  mostra;
+- o **estado** «atingido» (`first_*_reached`), enquanto a conta existir. Uma data
+  só existe num passo atingido (CHECK em MySQL).
+
+Passados os 180 dias, `usage:prune` apaga a data e o passo fica «atingido» sem
+data — também com a recolha desligada. A agregação nunca volta a datá-lo.
+
+**Porque fica o estado:** sem ele, ao fim de 180 dias o painel esqueceria que a
+pessoa já deu o passo, e «Turma sem primeiro registo útil» acusaria de falta de
+utilização quem usa o Lapispro há um ano. O sinal só precisa do sim/não.
+
+**Os cálculos que precisam de datas não usam «atingido»:** a atividade num
+intervalo, as semanas, as coortes, o ranking e a última atividade leem os
+agregados diários, e nenhum lê a data de um primeiro passo. A visão geral conta
+«primeiro registo útil: n de N» como **estado até hoje** das contas criadas no
+período — e uma conta criada no período (no máximo 180 dias) tem ainda a data
+guardada. O detalhe de uma pessoa mostra «Atingido — data já não conservada»,
+sem data aproximada.
+
+Há ainda uma data de **configuração** (`class_available_since`: quando a primeira
+turma ficou disponível), recalculada em cada passagem a partir de
+`class_teachers`. Não é uma métrica de utilização nem um primeiro passo, e não
+dá data a nenhum.
 
 Os dados de utilização viajam no backup diário integral da base de dados, como
 o resto da base, e saem dele quando a cópia roda. **Não** fazem parte da

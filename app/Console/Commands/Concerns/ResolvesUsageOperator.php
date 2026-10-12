@@ -6,12 +6,12 @@ use App\Models\User;
 
 /**
  * O operador nomeado de uma decisão sobre as métricas de utilização: a
- * auditoria tem de registar quem a tomou, e só quem tem acesso ao painel a pode
- * tomar.
+ * auditoria tem de registar quem a tomou. Classificar exige acesso ao painel;
+ * ligar e desligar a recolha exige a autorização SEPARADA de controlo.
  */
 trait ResolvesUsageOperator
 {
-    private function resolveOperator(): ?User
+    private function resolveOperator(bool $control = false): ?User
     {
         $email = $this->option('operator');
 
@@ -29,7 +29,13 @@ trait ResolvesUsageOperator
             return null;
         }
 
-        if (! $operator->canViewUsageInsights()) {
+        if ($control && ! $operator->canControlUsageCollection()) {
+            $this->components->error('Esse utilizador não tem a autorização de controlar a recolha (consultar o painel não chega).');
+
+            return null;
+        }
+
+        if (! $control && ! $operator->canViewUsageInsights()) {
             $this->components->error('Esse utilizador não é administrador com acesso às métricas de utilização.');
 
             return null;

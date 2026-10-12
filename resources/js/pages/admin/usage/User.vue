@@ -87,9 +87,10 @@ const headCell = 'px-3 py-2 font-medium';
             <ul class="divide-y divide-border rounded-xl border border-border bg-card">
                 <li v-for="step in first_steps" :key="step.key" class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
                     <span class="font-medium">{{ step.label }}</span>
-                    <span :class="step.observed_on ? 'tabular-nums' : 'text-muted-foreground'">
-                        {{ step.observed_on ? formatDate(step.observed_on) : 'Ainda não observado' }}
-                    </span>
+                    <!-- Com data; atingido sem data (saiu pelo prazo — nunca uma data aproximada); não observado. -->
+                    <span v-if="step.observed_on" class="tabular-nums">{{ formatDate(step.observed_on) }}</span>
+                    <span v-else-if="step.reached" data-test="step-reached-without-date">Atingido — data já não conservada</span>
+                    <span v-else class="text-muted-foreground">Ainda não observado</span>
                     <span v-if="step.note" class="basis-full text-xs text-muted-foreground">{{ step.note }}</span>
                 </li>
             </ul>

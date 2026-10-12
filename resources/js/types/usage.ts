@@ -189,7 +189,8 @@ export type UsageUserDetailProps = UsageCommonProps & {
         organizations: { name: string; plan: string | null; classification: UsageClassificationKey }[];
         flags: { test: boolean; internal: boolean; unclassified: boolean };
     };
-    first_steps: { key: string; label: string; observed_on: string | null; note: string | null }[];
+    /** `reached` sem `observed_on`: atingido, com a data já fora do prazo de conservação. */
+    first_steps: { key: string; label: string; observed_on: string | null; reached: boolean; note: string | null }[];
     class_available_since: { date: string | null; label: string };
     signals: UsageSignal[];
     /** Sinais que ficaram por avaliar por falta de cobertura. */

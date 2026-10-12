@@ -165,6 +165,12 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
             // Conceder ou retirar a mesma autorização ao dono de uma conta.
             Route::post('accounts/{organization}/usage-insights', [AdminUsageAccessController::class, 'update'])->name('accounts.usage-insights');
 
+            // A autorização SEPARADA de ligar e desligar a recolha: consultar o
+            // painel não chega, é preciso já a ter (`usage-collection-control`).
+            Route::post('accounts/{organization}/usage-collection-control', [AdminUsageAccessController::class, 'updateCollectionControl'])
+                ->middleware('usage-collection-control')
+                ->name('accounts.usage-collection-control');
+
             // Classificação da organização para as métricas (independente da
             // marca comercial «conta de teste»).
             Route::post('accounts/{organization}/usage-classification', [AdminUsageClassificationController::class, 'update'])->name('accounts.usage-classification');

@@ -76,12 +76,24 @@ return new class extends Migration
             $table->ulid('ulid')->unique(); // chave de rota do detalhe
             $table->foreignId('user_id')->unique()->constrained()->cascadeOnDelete();
             $table->dateTime('class_available_since')->nullable(); // MIN(class_teachers.created_at): configuração
+            // Cada primeiro passo tem a DATA da primeira observação, guardada
+            // durante o prazo dos agregados, e o ESTADO «atingido», que fica
+            // enquanto a conta existir. `usage:prune` apaga a data ao fim do
+            // prazo e deixa só o estado; nada volta a datar um passo atingido.
             $table->date('first_class_created_on')->nullable(); // primeira OBSERVAÇÃO
+            $table->boolean('first_class_created_reached')->default(false);
             $table->date('first_students_added_on')->nullable();
+            $table->boolean('first_students_added_reached')->default(false);
             $table->date('first_useful_record_on')->nullable();
+            $table->boolean('first_useful_record_reached')->default(false);
             $table->dateTime('computed_at');
             $table->timestamps();
         });
+
+        // Uma data só existe num passo atingido.
+        foreach (['first_class_created', 'first_students_added', 'first_useful_record'] as $step) {
+            $this->addCheck('usage_user_states', "usage_user_states_{$step}_check", "{$step}_on IS NULL OR {$step}_reached = 1");
+        }
 
         // A ÚNICA fonte de verdade sobre a recolha estar ligada: haver um período
         // aberto. Só `lapis:usage-collection start|stop` escreve aqui

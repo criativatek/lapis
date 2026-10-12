@@ -359,6 +359,14 @@ ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
   também o instante a partir do qual a Política de Privacidade descreve a
   recolha. Procedimento em
   [usage-insights.md](usage-insights.md#procedimento-operacional).
+- **Controlo da recolha — autorização separada.** Ligar e desligar exige
+  `can_control_usage_collection` (e o estatuto de administrador); ver o painel
+  não chega. Primeira concessão no servidor:
+  `php artisan lapis:grant-usage-insights <email> --collection-control`; depois,
+  na ficha da conta («Controlo da recolha de métricas»), só quem já a tem a dá ou
+  retira a outro administrador — nunca a si próprio. Tudo auditado
+  (`admin.usage_collection_control_granted` / `…_revoked`); retirar o estatuto
+  de administrador retira-a também.
 - **Oposição:** nas definições da conta do próprio professor («Não registar a
   minha utilização»); por pedido escrito, `php artisan lapis:usage-opt-out
   <email>` (`--undo` volta a ligar a partir desse momento). Em ambos, o que

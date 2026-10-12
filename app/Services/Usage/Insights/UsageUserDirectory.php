@@ -158,10 +158,14 @@ final class UsageUserDirectory
                 'organizations' => $profile['organizations'],
                 'flags' => $profile['flags'],
             ],
+            // Três estados, nunca confundidos: com data; «atingido» sem data (já
+            // saiu pelo prazo — não se inventa uma aproximada); não observado.
+            // A ausência de recolha diz-se na nota.
             'first_steps' => array_map(fn (UsageMilestone $milestone): array => [
                 'key' => $milestone->value,
                 'label' => $milestone->label(),
-                'observed_on' => $state->{$milestone->stateColumn()}?->toDateString(),
+                'observed_on' => $state->observedOn($milestone),
+                'reached' => $state->hasReached($milestone),
                 'note' => $firstStepsNote,
             ], UsageMilestone::cases()),
             'class_available_since' => [

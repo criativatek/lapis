@@ -182,6 +182,8 @@ class UsageMetricsLegalTest extends TestCase
         $this->assertStringContainsString('ao fim de 120 dias', $section);
         $this->assertStringContainsString('os registos detalhados são eliminados por uma rotina que corre de hora a hora, ao fim de 20 dias, e as contagens diárias associadas a cada conta ao fim de 120 dias', $retention);
         $this->assertStringContainsString('são eliminadas no momento do pedido, e não voltam se o pedido for cancelado', $retention);
+        // A data de um primeiro passo vive o mesmo que um agregado; depois, só «atingido».
+        $this->assertStringContainsString('conserva-se durante 120 dias; depois fica apenas a indicação de que o passo foi dado, sem data, enquanto a conta existir', $retention);
 
         // O prazo dos eventos nunca é publicado maior do que o dos agregados.
         config(['retention.usage_events_days' => 400]);

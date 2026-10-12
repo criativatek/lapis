@@ -598,3 +598,27 @@ Prevalece sobre as secções 1 a 10:
   (`general` | `usage_metrics`), e o aviso não bloqueante da ativação traz o aviso
   de oposição; o perfil recebe `usageMetrics` (a secção existe a partir da
   primeira ativação).
+
+## 12. Revisão de 2026-10-12, terceira ronda (antes do merge)
+
+Prevalece sobre as secções 1 a 11:
+
+- **Primeiros passos com data limitada.** `usage_user_states` ganha
+  `first_*_reached` (boolean, CHECK `first_*_on IS NULL OR first_*_reached = 1`).
+  `usage:prune` faz, por marco, `UPDATE … SET first_*_on = NULL, first_*_reached
+  = 1 WHERE first_*_on < hoje − retention.usage_rollups_days`. A agregação salta
+  os marcos atingidos sem data (nunca os volta a datar) e marca `reached` quando
+  há data. `UsageUserState::hasReached()` / `observedOn()`; o sinal
+  `no_first_record` e a visão geral leem o estado; o detalhe envia `reached`, e o
+  ecrã mostra «Atingido — data já não conservada».
+- **Controlo da recolha separado.** `users.can_control_usage_collection`;
+  `User::canControlUsageCollection()` (administrador E a autorização);
+  `SetUsageCollection::start|stop` lança `AuthorizationException` sem ela, lida da
+  base; `lapis:usage-collection` exige-a no `--operator`. Concessão:
+  `lapis:grant-usage-insights <email> --collection-control [--revoke]`
+  (`recordPlatformWithoutCauser`, `via: console`) e
+  `POST admin/accounts/{organization}/usage-collection-control`
+  (`usage-insights` + `usage-collection-control` →
+  `EnsureUsageCollectionControl`; alvo administrador, nunca o próprio;
+  `recordPlatform`). `lapis:make-admin --revoke` e o `toggleAdmin` do backoffice
+  limpam-na.

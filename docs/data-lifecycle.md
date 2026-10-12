@@ -238,7 +238,8 @@ cada conta usou e que ações concluiu — sem conteúdo nem dados de alunos.
 | Eventos detalhados | **35 dias** (`retention.usage_events_days`, proposta) a contar do instante do evento, **agregados ou não** — no máximo 35 dias e uma hora | `usage:prune`, de **hora a hora** (aos 7 minutos) |
 | Agregados diários por pessoa | **180 dias** (`retention.usage_rollups_days`, proposta) depois do dia a que se referem | `usage:prune`, de hora a hora |
 | Dias sem dados (`usage_coverage_gaps`: só o dia e o motivo) | o mesmo dos agregados | `usage:prune`, de hora a hora |
-| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir (proposta; alternativa limitada em [usage-insights-decisions.md](usage-insights-decisions.md) §2.1) | apagadas na oposição, no pedido de encerramento e na anonimização |
+| Data de cada primeiro passo (`usage_user_states.first_*_on`) | **180 dias** (o prazo dos agregados); depois fica só «atingido», sem data | `usage:prune`, de hora a hora |
+| Estado «atingido» de cada primeiro passo (`first_*_reached`) | enquanto a conta existir | apagado na oposição, no pedido de encerramento e na anonimização |
 | Tudo o que é de quem pediu o encerramento | **no pedido** (não no dia 60); o cancelamento não recupera | `RequestPersonalAccountClosure` → `ForgetUsageData` |
 | Tudo o que é de quem se opôs | no momento da oposição | definições da conta (ou `lapis:usage-opt-out`) → `SetUsageOptOut` → `ForgetUsageData` |
 

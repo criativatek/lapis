@@ -22,7 +22,7 @@ class UsageCollection extends Command
 
     protected $signature = 'lapis:usage-collection
         {action : status, start ou stop}
-        {--operator= : Email do administrador com acesso às métricas de utilização (start e stop)}
+        {--operator= : Email do administrador com a autorização de controlar a recolha (start e stop)}
         {--note= : Porquê, nas palavras do operador}';
 
     protected $description = 'Show, start or stop the collection of usage metrics (explicit and audited)';
@@ -41,7 +41,8 @@ class UsageCollection extends Command
             return self::FAILURE;
         }
 
-        $operator = $this->resolveOperator();
+        // A autorização de CONTROLO, não a de consultar o painel.
+        $operator = $this->resolveOperator(control: true);
 
         if ($operator === null) {
             return self::FAILURE;

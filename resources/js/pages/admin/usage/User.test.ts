@@ -27,8 +27,9 @@ function props(): UsageUserDetailProps {
             flags: { test: true, internal: false, unclassified: false },
         },
         first_steps: [
-            { key: 'first_class', label: 'Primeira turma', observed_on: '2026-09-26', note: null },
-            { key: 'first_lesson', label: 'Primeira aula', observed_on: null, note: 'Conta anterior à recolha — pode ter acontecido antes.' },
+            { key: 'first_class', label: 'Primeira turma', observed_on: '2026-09-26', reached: true, note: null },
+            { key: 'first_lesson', label: 'Primeira aula', observed_on: null, reached: false, note: 'Conta anterior à recolha — pode ter acontecido antes.' },
+            { key: 'first_record', label: 'Primeiro registo útil', observed_on: null, reached: true, note: null },
         ],
         class_available_since: { date: '2026-09-25', label: 'Turma disponível desde — configuração, não prova de utilização' },
         signals: [signal],
@@ -51,6 +52,17 @@ describe('Utilização — detalhe', () => {
         expect(text).toContain('3 de 17');
         expect(text).toContain('Por avaliar (recolha insuficiente)');
         expect(text).toContain('Mostra apenas contagens. Não inclui conteúdos pedagógicos nem o histórico de cliques.');
+    });
+
+    it('um passo atingido cuja data já saiu diz-o, sem inventar uma data', () => {
+        const wrapper = mount(User, { props: props() });
+        const reached = wrapper.findAll('[data-test="step-reached-without-date"]');
+
+        expect(reached).toHaveLength(1);
+        expect(reached[0].text()).toBe('Atingido — data já não conservada');
+        // Só a data que existe é mostrada; os outros dois estados mantêm-se distintos.
+        expect(wrapper.text().match(/\d{2}\/\d{2}\/\d{4}/g)?.filter((date) => date === '26/09/2026')).toHaveLength(1);
+        expect(wrapper.text()).toContain('Ainda não observado');
     });
 
     it('mostra por baixo dos elementos afetados o que foi criado, alterado e inalterado', () => {

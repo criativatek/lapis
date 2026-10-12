@@ -274,12 +274,24 @@ class AggregateUsage
 
                     foreach (UsageMilestone::cases() as $milestone) {
                         $column = $milestone->stateColumn();
+                        $reachedColumn = $milestone->reachedColumn();
                         $stored = $state->{$column}?->toDateString();
+                        $wasReached = $state->{$reachedColumn} === true;
+
+                        // Atingido e com a data já apagada pela conservação: fica
+                        // assim. Um evento posterior não é a primeira vez, e dar-lhe
+                        // essa data seria inventar quando o passo aconteceu.
+                        if ($wasReached && $stored === null) {
+                            continue;
+                        }
+
                         $seen = $observed[$milestone->value]->get($userId);
                         $seen = is_string($seen) ? substr($seen, 0, 10) : null;
 
                         // Pegajoso: a primeira data observada nunca anda para a frente.
-                        $values[$column] = collect([$stored, $seen])->filter()->min();
+                        $date = collect([$stored, $seen])->filter()->min();
+                        $values[$column] = $date;
+                        $values[$reachedColumn] = $wasReached || $date !== null;
                     }
 
                     $state->forceFill($values);

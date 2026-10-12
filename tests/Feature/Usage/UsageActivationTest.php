@@ -49,7 +49,8 @@ class UsageActivationTest extends TestCase
         $this->travelTo(Carbon::parse('2026-10-12 10:00:00', 'Europe/Lisbon'));
         $this->teacher = User::factory()->create();
         $this->operator = User::factory()->create(['email' => 'operador@example.test']);
-        $this->operator->forceFill(['is_platform_admin' => true, 'can_view_usage_insights' => true])->save();
+        // Ligar e desligar exige a autorização de CONTROLO (ver o painel não chega).
+        $this->operator->forceFill(['is_platform_admin' => true, 'can_view_usage_insights' => true, 'can_control_usage_collection' => true])->save();
 
         Route::middleware(['web', 'auth', 'organization'])->post('/_usage/activation', function (UsageRecorder $recorder) {
             $recorder->action(UsageEventType::LessonSummarySaved, 'lesson-1');

@@ -5,6 +5,7 @@ namespace App\Services\Usage\Insights;
 use App\Models\UsageUserState;
 use App\Support\Commercial\CurrentSubscriptions;
 use App\Support\Usage\UsageCoverage;
+use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
 
 /**
@@ -66,11 +67,18 @@ final class UsageOverview
                 && $account['observed_from_creation'],
         );
 
+        // Um ESTADO até hoje («já chegou ao primeiro registo útil?»), não uma
+        // ocorrência dentro do período: conta o passo atingido, com ou sem data.
+        // Não há nenhum cálculo do painel que leia a DATA de um primeiro passo
+        // para o situar num intervalo — e, de qualquer modo, uma conta criada no
+        // período (no máximo o prazo dos agregados) ainda tem a data guardada.
         $done = 0;
         if ($afterStart !== []) {
             $done = UsageUserState::query()
                 ->whereIn('user_id', array_column($afterStart, 'id'))
-                ->whereNotNull('first_useful_record_on')
+                ->where(fn ($query) => $query
+                    ->where(UsageMilestone::FirstUsefulRecord->reachedColumn(), true)
+                    ->orWhereNotNull(UsageMilestone::FirstUsefulRecord->stateColumn()))
                 ->count();
         }
 

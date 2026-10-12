@@ -34,6 +34,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property bool $is_platform_admin
  * @property bool $is_support_technician
  * @property bool $can_view_usage_insights
+ * @property bool $can_control_usage_collection
  * @property Carbon|null $usage_opted_out_at
  * @property Carbon|null $usage_resumed_at
  * @property Carbon|null $deactivated_at
@@ -70,6 +71,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'is_platform_admin' => 'boolean',
             'is_support_technician' => 'boolean',
             'can_view_usage_insights' => 'boolean',
+            'can_control_usage_collection' => 'boolean',
             'usage_opted_out_at' => 'datetime',
             'usage_resumed_at' => 'datetime',
             'deactivated_at' => 'datetime',
@@ -100,6 +102,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function canViewUsageInsights(): bool
     {
         return $this->isPlatformAdmin() && $this->can_view_usage_insights === true;
+    }
+
+    /**
+     * Pode ligar e desligar a recolha de métricas de utilização. É outra
+     * autorização, SEPARADA de consultar o painel: ver as métricas não chega
+     * para as começar a recolher. Também exige o estatuto de administrador.
+     */
+    public function canControlUsageCollection(): bool
+    {
+        return $this->isPlatformAdmin() && $this->can_control_usage_collection === true;
     }
 
     /**

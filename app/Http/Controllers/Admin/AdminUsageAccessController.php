@@ -60,4 +60,52 @@ class AdminUsageAccessController extends Controller
 
         return back();
     }
+
+    /**
+     * Conceder ou retirar a autorização — SEPARADA — de ligar e desligar a
+     * recolha. A rota passa por `usage-collection-control`: quem só consulta o
+     * painel não chega aqui, por isso não se pode atribuir a si próprio. O alvo
+     * tem de ser administrador da plataforma, e ninguém mexe na sua própria
+     * autorização por aqui (nem para a dar nem para a tirar: há um comando).
+     */
+    public function updateCollectionControl(Request $request, Organization $organization): RedirectResponse
+    {
+        $validated = $request->validate(['granted' => ['required', 'boolean']]);
+        $grant = (bool) $validated['granted'];
+
+        $operator = $request->user();
+        $target = $organization->owner;
+
+        if ($target === null || ! $target->isPlatformAdmin()) {
+            throw ValidationException::withMessages([
+                'granted' => 'Só um administrador da plataforma pode receber esta autorização.',
+            ]);
+        }
+
+        if ($operator !== null && $target->is($operator)) {
+            throw ValidationException::withMessages([
+                'granted' => 'Ninguém altera a sua própria autorização de controlar a recolha por aqui.',
+            ]);
+        }
+
+        if ($target->can_control_usage_collection !== $grant) {
+            $target->forceFill(['can_control_usage_collection' => $grant])->save();
+
+            $this->audit->recordPlatform(
+                $grant ? 'admin.usage_collection_control_granted' : 'admin.usage_collection_control_revoked',
+                $operator,
+                $grant
+                    ? 'Concedida a autorização de ligar e desligar a recolha de métricas de utilização.'
+                    : 'Retirada a autorização de ligar e desligar a recolha de métricas de utilização.',
+                ['target_user_id' => $target->id],
+            );
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $grant ? 'Autorização concedida.' : 'Autorização retirada.',
+        ]);
+
+        return back();
+    }
 }

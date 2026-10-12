@@ -6,6 +6,7 @@ use App\Models\UsageCollectionPeriod;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,6 +31,11 @@ use Illuminate\Support\Facades\DB;
  *   recolha», nunca preenchido.
  *
  * Cada transição fica na auditoria de PLATAFORMA, com o operador e a nota.
+ *
+ * Só quem tem a autorização de CONTROLO (`User::canControlUsageCollection()`:
+ * administrador da plataforma e `can_control_usage_collection`) liga ou desliga.
+ * Consultar o painel não chega. A verificação está AQUI, e não só em quem chama,
+ * para valer em qualquer ponto de entrada.
  */
 class SetUsageCollection
 {
@@ -37,9 +43,13 @@ class SetUsageCollection
 
     /**
      * @return array{changed: bool, at: CarbonImmutable}
+     *
+     * @throws AuthorizationException
      */
     public function start(User $operator, ?string $note = null): array
     {
+        $this->authorize($operator);
+
         return DB::transaction(function () use ($operator, $note): array {
             $open = $this->openPeriod();
 
@@ -75,9 +85,13 @@ class SetUsageCollection
 
     /**
      * @return array{changed: bool, at: CarbonImmutable|null}
+     *
+     * @throws AuthorizationException
      */
     public function stop(User $operator, ?string $note = null): array
     {
+        $this->authorize($operator);
+
         return DB::transaction(function () use ($operator, $note): array {
             $now = CarbonImmutable::now((string) config('app.timezone'));
 
@@ -98,6 +112,16 @@ class SetUsageCollection
 
             return ['changed' => true, 'at' => $now];
         });
+    }
+
+    private function authorize(User $operator): void
+    {
+        // Lido da base: uma autorização retirada a meio de um processo conta já.
+        $fresh = User::query()->whereKey($operator->getKey())->first();
+
+        if ($fresh === null || ! $fresh->canControlUsageCollection()) {
+            throw new AuthorizationException('Só quem tem a autorização de controlar a recolha a pode ligar ou desligar.');
+        }
     }
 
     private function openPeriod(): ?UsageCollectionPeriod

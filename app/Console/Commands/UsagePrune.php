@@ -7,6 +7,7 @@ use App\Models\UsageEvent;
 use App\Models\UsageUserState;
 use App\Models\User;
 use App\Support\Retention\RetentionPolicy;
+use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,11 +31,11 @@ use Illuminate\Support\Facades\Log;
  *   agregação nunca volta a calcular um dia de lacuna.
  * - AGREGADOS: apagados quando o dia fica mais antigo do que
  *   `retention.usage_rollups_days` (e as lacunas com ele).
+ * - DATAS DOS PRIMEIROS PASSOS: com o mesmo prazo dos agregados, a data da
+ *   primeira observação sai e o passo fica só «atingido» (`first_*_reached`),
+ *   sem data — nenhuma passagem posterior volta a datá-lo.
  * - Como rede de segurança, tudo o que seja de quem foi anonimizado, se opôs à
  *   recolha ou pediu o encerramento da conta (eventos, agregados e estado).
- *
- * As datas de primeira observação (`usage_user_states`) de quem continua com
- * conta NÃO são tocadas aqui: ver «Datas dos primeiros passos» na documentação.
  */
 class UsagePrune extends Command
 {
@@ -59,6 +60,16 @@ class UsagePrune extends Command
         $rollups = $this->deleteInChunks(UsageDailyRollup::query()->where('day', '<', $rollupsCutoff));
         DB::table('usage_coverage_gaps')->where('day', '<', $rollupsCutoff)->delete();
 
+        // A data de um primeiro passo vive o mesmo que um agregado; o estado
+        // «atingido» fica. `toBase()`: não é uma alteração da pessoa, e o
+        // `updated_at` não deve dizer que foi.
+        $dates = 0;
+        foreach (UsageMilestone::cases() as $milestone) {
+            $dates += UsageUserState::query()->toBase()
+                ->where($milestone->stateColumn(), '<', $rollupsCutoff)
+                ->update([$milestone->stateColumn() => null, $milestone->reachedColumn() => true]);
+        }
+
         $excluded = User::query()
             ->where(fn ($query) => $query
                 ->whereNotNull('anonymized_at')
@@ -70,7 +81,7 @@ class UsagePrune extends Command
         $rollups += $this->deleteInChunks(UsageDailyRollup::query()->whereIn('user_id', $excluded));
         $states = UsageUserState::query()->whereIn('user_id', $excluded)->delete();
 
-        $this->info("{$events} evento(s), {$rollups} agregado(s) e {$states} estado(s) de utilização removido(s); {$gaps} dia(s) novo(s) sem dados.");
+        $this->info("{$events} evento(s), {$rollups} agregado(s) e {$states} estado(s) de utilização removido(s); {$dates} data(s) de primeiros passos reduzida(s) a «atingido»; {$gaps} dia(s) novo(s) sem dados.");
 
         return self::SUCCESS;
     }

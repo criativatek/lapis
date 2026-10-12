@@ -65,6 +65,11 @@ const props = defineProps<{
     plans: { key: string; name: string }[];
     /** Só quem já tem a autorização das métricas de utilização a pode dar, e só a um administrador. */
     usage_insights: { can_manage: boolean; owner_is_admin: boolean; granted: boolean };
+    /**
+     * A autorização SEPARADA de ligar e desligar a recolha: só quem já a tem a pode
+     * dar, a outro administrador (`is_self` esconde-a na própria conta).
+     */
+    usage_collection_control?: { can_manage: boolean; owner_is_admin: boolean; is_self: boolean; granted: boolean };
     /** Só vai a quem pode ver as métricas de utilização; para os outros é nulo. */
     usage_classification: {
         value: string;
@@ -84,6 +89,12 @@ const usageAccessRefusal = computed(() => (usePage().props.errors as Record<stri
 
 function setUsageAccess(granted: boolean): void {
     router.post(`${base.value}/usage-insights`, { granted }, { preserveScroll: true });
+}
+
+const collectionControl = computed(() => props.usage_collection_control ?? null);
+
+function setCollectionControl(granted: boolean): void {
+    router.post(`${base.value}/usage-collection-control`, { granted }, { preserveScroll: true });
 }
 
 const classificationForm = useForm({
@@ -697,6 +708,30 @@ function destroy(): void {
             <p v-if="usageAccessRefusal" role="alert" class="text-sm text-red-700 dark:text-red-400">{{ usageAccessRefusal }}</p>
             <Button type="button" variant="outline" class="max-md:min-h-11" @click="setUsageAccess(!usage_insights.granted)">
                 {{ usage_insights.granted ? 'Revogar acesso às métricas de utilização' : 'Conceder acesso às métricas de utilização' }}
+            </Button>
+        </section>
+
+        <!-- Controlo da recolha de métricas (autorização separada) -->
+        <section
+            v-if="collectionControl?.can_manage && collectionControl.owner_is_admin && !collectionControl.is_self"
+            class="space-y-3 rounded-lg border border-border p-4"
+            data-test="usage-collection-control"
+        >
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="text-sm font-medium">Controlo da recolha de métricas</h2>
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="collectionControl.granted ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300' : 'bg-muted text-muted-foreground'"
+                >
+                    {{ collectionControl.granted ? 'pode ligar e desligar' : 'sem controlo' }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Autorização própria, <strong>separada</strong> de ver o painel: permite ligar e desligar a recolha de métricas de
+                utilização (<code>lapis:usage-collection</code>). A concessão, a revogação e cada ativação ficam na auditoria.
+            </p>
+            <Button type="button" variant="outline" class="max-md:min-h-11" @click="setCollectionControl(!collectionControl.granted)">
+                {{ collectionControl.granted ? 'Retirar o controlo da recolha' : 'Conceder o controlo da recolha' }}
             </Button>
         </section>
 

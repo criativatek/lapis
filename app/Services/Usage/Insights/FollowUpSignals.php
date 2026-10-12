@@ -6,6 +6,7 @@ use App\Models\UsageUserState;
 use App\Models\User;
 use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageFeature;
+use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -257,7 +258,9 @@ final class FollowUpSignals
      */
     private function noFirstRecord(User $user, UsageUserState $state, array $off, CarbonImmutable $today, CarbonImmutable $now): Signal|false|null
     {
-        if ($state->class_available_since === null || $state->first_useful_record_on !== null) {
+        // «Atingido» conta, com ou sem a data ainda guardada: a data ter saído
+        // ao fim do prazo nunca faz parecer que o passo ficou por dar.
+        if ($state->class_available_since === null || $state->hasReached(UsageMilestone::FirstUsefulRecord)) {
             return null;
         }
 

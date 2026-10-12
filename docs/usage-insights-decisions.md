@@ -62,7 +62,12 @@ Política de Privacidade não muda.
 isso as contagens de cada segmento, o ranking e a lista filtrada). Nada na conta
 da organização: acesso, plano, recolha, conservação e Política não mudam.
 
-### Decisões que precisam da tua resposta
+### Decidido
+
+- **Contas novas nascem «Por classificar»** (decisão fechada). Nada é presumido
+  da origem do registo nem da atividade.
+
+### Decisão que precisa da tua resposta
 
 1. **Classificar as organizações de produção.** A lista atual foi obtida só em
    leitura (consulta `SELECT` numa transação `READ ONLY`, compatível com a
@@ -72,13 +77,6 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
    ficam «Por classificar». Depois do deploy desta versão, a classificação faz-se
    na ficha da conta ou com `lapis:usage-classify {ulid} {classificação}
    --operator=<email> --note="…"`.
-2. **Contas novas depois da ativação:** (a) nascem «Por classificar» (proposta
-   implementada; nada é presumido, mas cada registo novo precisa de uma decisão
-   para entrar na utilização real) ou (b) um registo público feito pelo
-   formulário de inscrição nasce «Utilização real» e só as provisionadas no
-   backoffice ficam por classificar. A (b) é uma presunção sobre a origem do
-   registo, não sobre a atividade — mas é uma presunção, e por isso não foi
-   implementada sem a tua decisão.
 
 ## 2. Conservação
 
@@ -88,7 +86,7 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
 |---|---|---|---|
 | `usage_events` | um evento por registo e dia (consultas: um por funcionalidade e dia); chave HMAC | deduplicação no próprio dia; agregação (hoje e ontem, ou mais dias depois de uma paragem do agendador); datas de primeira observação | poucos dias depois de agregado; margem para diagnóstico e recuperação |
 | `usage_daily_rollups` | por pessoa, organização, funcionalidade e dia: contagens | todas as páginas do painel: períodos de 7/30/90 dias, semanas, coortes, sinais (até ~6 semanas), ranking | o período mais longo que o painel deve mostrar por pessoa |
-| `usage_user_states` | por pessoa: 3 datas de primeira observação e a turma disponível desde (configuração, recalculada) | primeiros passos, sinais de conta/turma sem registo | ver §2.1 |
+| `usage_user_states` | por pessoa: 3 primeiros passos (data + estado «atingido») e a turma disponível desde (configuração, recalculada) | primeiros passos, sinais de conta/turma sem registo | data: 180 dias; estado: enquanto a conta existir (§2.1) |
 | `usage_collection_periods` | início e fim de cada período de recolha (sem pessoas) | distinguir «sem recolha» de «sem atividade» | enquanto houver dados de utilização |
 | `usage_coverage_gaps` | dias sem dados (só o dia e o motivo; sem pessoas) | não mostrar como zero um dia cujos eventos expiraram por agregar | o mesmo prazo dos agregados |
 
@@ -102,8 +100,8 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
   Cobrem o período mais longo pré-definido (90 dias) com as suas coortes e
   semanas completas, as 6 semanas dos sinais, e um semestre letivo de
   comparação. O intervalo personalizado fica limitado a este prazo.
-- **Datas de primeiros passos:** ver §2.1 — enquanto a conta existir (como está)
-  ou a alternativa limitada (recomendada).
+- **Datas de primeiros passos:** 180 dias, depois só «atingido» (§2.1,
+  implementado).
 - **Tendências de longo prazo** (comparar anos letivos): **não** com dados por
   pessoa. Se forem precisas, a proposta é uma tabela de totais **sem pessoas**
   (por semana, funcionalidade e segmento) com prazo próprio — não implementada,
@@ -132,60 +130,35 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
   encerramento; a agregação filtra essas pessoas ao ler os eventos e apaga, em
   cada passagem, qualquer agregado ou estado que lhes reste.
 
-### 2.1 Datas dos primeiros passos (proposta separada, por decidir)
+### 2.1 Datas dos primeiros passos (decidido e implementado)
 
-**Que campos se guardam** (`usage_user_states`, uma linha por pessoa):
+Para cada primeiro passo (primeira turma, primeiros alunos, primeiro registo
+útil), `usage_user_states` guarda:
 
-| Campo | O quê | É uma métrica guardada? |
+| Campo | O quê | Até quando |
 |---|---|---|
-| `first_class_created_on` | o **dia** (sem hora) em que a recolha observou pela primeira vez a pessoa criar uma turma | sim |
-| `first_students_added_on` | o dia da primeira observação de alunos adicionados (um a um, ou numa importação com pelo menos um aluno novo) | sim |
-| `first_useful_record_on` | o dia da primeira observação de um «registo útil» | sim |
-| `class_available_since` | quando a primeira turma ficou disponível para a pessoa | **não**: é configuração, recalculada em cada passagem a partir de `class_teachers` |
-| `ulid`, `computed_at` | chave da página de detalhe; quando o estado mudou | técnico |
+| `first_*_on` | o **dia** (sem hora) da primeira observação | **180 dias** — o prazo dos agregados |
+| `first_*_reached` | o estado «atingido», sem data | enquanto a conta existir |
+| `class_available_since` | quando a primeira turma ficou disponível — **configuração**, recalculada a partir de `class_teachers`; não é um primeiro passo | — |
 
-**Que cálculos as usam:**
-
-- **Sinal «Turma sem primeiro registo útil»**: precisa de saber **se** já houve um
-  registo útil (sim/não) desde que a turma ficou disponível. Usa a data só para
-  isso.
-- **Visão geral, «Primeiro registo útil: n de N»**: para as contas criadas no
-  período (no máximo 180 dias), conta quantas já chegaram ao primeiro registo —
-  outra vez sim/não.
-- **Detalhe de uma pessoa, «Primeiros passos»**: mostra as três datas. É o único
-  sítio que usa a data exata.
-- Lista, ranking e coortes **não** as usam (leem os agregados).
-
-**Porque «enquanto a conta existir» (como está).** Os marcos são *pegajosos*: os
-eventos saem aos 35 dias e os agregados aos 180, e sem guardar a primeira
-observação o painel esqueceria, ao fim de 180 dias, que uma pessoa já deu o
-passo. Uma professora com um ano de utilização passaria a aparecer como «turma
-sem primeiro registo útil» — um sinal falso, exatamente o tipo de leitura
-errada que o painel tem de evitar. Para os sinais funcionarem enquanto a pessoa
-usa o Lapispro, **pelo menos o «sim/não»** tem de existir enquanto a conta
-existir. As datas são apagadas na oposição, no pedido de encerramento e na
-anonimização.
-
-**Alternativa com conservação limitada (recomendada).** Guardar a **data exata
-durante 180 dias** a contar da observação — o mesmo prazo dos agregados, e por
-isso o horizonte de tudo o que o painel mostra — e depois **reduzi-la a «atingido»**
-(sim/não, sem data). Ganho: deixa de haver datas de comportamento por pessoa
-para lá de 180 dias. Custo: o detalhe de uma pessoa mostra «antes de
-<data-limite>» em vez do dia exato para passos com mais de 180 dias; nenhum sinal
-e nenhum número da visão geral mudam (só precisam do sim/não, e a visão geral só
-olha para contas com menos de 180 dias). Implementação: uma coluna booleana por
-marco (ou anular a data e marcar o booleano) e um passo em `usage:prune` — não
-feita, porque é uma decisão de conservação.
-
-3. **Decisão:** manter as datas enquanto a conta existir, ou adotar a
-   alternativa limitada?
+- Passados os 180 dias, `usage:prune` (de hora a hora, também com a recolha
+  desligada) apaga a data e o passo fica «atingido». O detalhe mostra «Atingido —
+  data já não conservada», nunca uma data aproximada.
+- Nada volta a datar um passo atingido: nem eventos posteriores, nem dados
+  pedagógicos.
+- O sinal «Turma sem primeiro registo útil» lê o estado, por isso a data ter
+  saído nunca o faz disparar. Os cálculos que precisam de datas (atividade num
+  intervalo, semanas, coortes, ranking) leem os agregados e não usam «atingido».
+- Oposição, pedido de encerramento e anonimização apagam data e estado; a retoma
+  começa sem nenhum.
 
 ### Precisão dos prazos (para a Política)
 
 - Eventos: limpeza de hora a hora, corte ao segundo → no máximo **35 dias e uma
   hora**.
-- Agregados e lacunas do dia D: saem na primeira passagem do dia D+181 → 180 dias
-  completos depois de D e, no máximo, mais uma hora.
+- Agregados, lacunas e datas dos primeiros passos do dia D: saem na primeira
+  passagem do dia D+181 → 180 dias completos depois de D e, no máximo, mais uma
+  hora.
 - Se o agendador parar, o atraso é o tempo da paragem (as falhas são
   reportadas).
 
@@ -233,19 +206,29 @@ bloqueante que reaparece no instante da ativação, e (adaptado) nas definiçõe
 - Desligar a recolha **não** retira a secção: as métricas já recolhidas
   continuam conservadas pelos prazos descritos.
 
-## 5. Ativação — o que falta decidir
+## 5. Quem liga e desliga (decidido e implementado)
 
-A ativação **não** foi executada em produção. Antes de um `start`:
+Uma autorização **própria**, separada de consultar o painel:
+`can_control_usage_collection`, só com o estatuto de administrador, não concedida
+por omissão, verificada no servidor em todos os pontos de entrada, auditada na
+concessão, na revogação e em cada `start`/`stop`, e retirada com o estatuto de
+administrador. Quem só consulta o painel não se pode atribuir. Procedimento da
+primeira concessão em
+[usage-insights.md](usage-insights.md#primeira-concessão).
+
+## 6. Ativação — o que falta decidir
+
+A ativação **não** foi executada em produção, e nenhuma autorização foi
+concedida. Antes de um `start`:
 
 1. A validação jurídica (abaixo) — **não concluída**.
-2. Classificar as organizações de produção (§1, decisão 1).
-3. Contas novas: «Por classificar» ou não (§1, decisão 2).
-4. Prazos 35/180 e as datas de primeiros passos (§2.1, decisão 3).
-5. O texto do aviso de oposição (§3).
-6. Quem pode ligar e desligar: hoje, qualquer administrador com acesso ao
-   painel, com auditoria. Se quiseres outra regra (por exemplo, duas pessoas),
-   diz.
-7. A data e a hora do `start`, e quem o executa — o procedimento está em
+2. Classificar as organizações de produção (§1).
+3. Confirmar os prazos de 35/180 dias e o texto do aviso de oposição (§2, §3),
+   depois da validação jurídica.
+4. A primeira concessão da autorização de controlo: o **email exato** da conta
+   administrativa que a recebe (há nomes repetidos em produção, por isso nunca
+   pelo nome).
+5. A data e a hora do `start`, e quem o executa — o procedimento está em
    [usage-insights.md](usage-insights.md#procedimento-operacional).
 
 ## Para validação jurídica (não respondido aqui)

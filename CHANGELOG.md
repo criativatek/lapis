@@ -106,6 +106,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   da conta, por quem já a tem, com auditoria de plataforma). Verificada no
   servidor em todas as rotas; revogar o administrador revoga-a também. Nunca é
   mostrada a colegas nem a responsáveis de organizações.
+- **Ligar e desligar a recolha é uma autorização separada**
+  (`can_control_usage_collection`, só com o estatuto de administrador, não
+  concedida por omissão): consultar o painel não chega. Verificada no comando e
+  na própria ação, lida da base; primeira concessão no servidor
+  (`lapis:grant-usage-insights <email> --collection-control`), depois na ficha da
+  conta só por quem já a tem e nunca a si próprio; concessão, revogação e cada
+  `start`/`stop` auditados; revogar o administrador retira-a.
 - Quatro segmentos disjuntos: **Utilização real** (inicial), Teste e
   demonstração, Interna (inclui sempre o pessoal interno) e Por classificar.
   Até alguém classificar as organizações de produção, a utilização real está
@@ -144,10 +151,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   pessoa 180 dias. Se a agregação parar mais do que o prazo, os dias que expiram
   por agregar ficam como dias sem dados (só o dia e o motivo), mostrados «sem
   recolha» e nunca usados por sinais; não há reconstituição.
-- As decisões que faltam (classificação de cada organização de produção,
-  prazos, datas de primeiros passos, aviso de oposição, ativação) e as perguntas
-  para validação jurídica — **não concluída** — estão em
-  `docs/usage-insights-decisions.md`, com as fontes oficiais consultadas.
+- **Primeiros passos com data limitada:** a data de cada primeiro passo guarda-se
+  180 dias (o prazo dos agregados); depois sai e fica só o estado «Atingido —
+  data já não conservada», enquanto a conta existir. Nenhum evento posterior nem
+  dado pedagógico volta a datá-lo; a data ter saído nunca gera um sinal de falta
+  de utilização; os cálculos que precisam de datas leem os agregados. A limpeza
+  corre também com a recolha desligada; a oposição e o pedido de encerramento
+  apagam data e estado.
+- As decisões que faltam (classificação de cada organização de produção, prazos
+  e aviso depois da validação jurídica, a primeira concessão do controlo da
+  recolha, a data do `start`) e as perguntas para validação jurídica — **não
+  concluída** — estão em `docs/usage-insights-decisions.md`, com as fontes
+  oficiais consultadas.
 
 ### Corrigido
 

@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureAccountIsOperational;
 use App\Http\Middleware\EnsurePlatformAdmin;
 use App\Http\Middleware\EnsureSupportTechnician;
+use App\Http\Middleware\EnsureUsageCollectionControl;
 use App\Http\Middleware\EnsureUsageInsightsAccess;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleAppearance;
@@ -48,6 +49,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'platform-admin' => EnsurePlatformAdmin::class,
             'support-technician' => EnsureSupportTechnician::class,
             'usage-insights' => EnsureUsageInsightsAccess::class,
+            'usage-collection-control' => EnsureUsageCollectionControl::class,
             'usage' => RecordUsage::class,
         ]);
 

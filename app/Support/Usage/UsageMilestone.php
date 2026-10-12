@@ -34,9 +34,22 @@ enum UsageMilestone: string
         ));
     }
 
-    /** A coluna de `usage_user_states` onde a primeira observação fica. */
+    /**
+     * A coluna de `usage_user_states` onde fica o DIA da primeira observação —
+     * só durante o prazo dos agregados (ver `reachedColumn()`).
+     */
     public function stateColumn(): string
     {
         return $this->value.'_on';
+    }
+
+    /**
+     * A coluna com o ESTADO «atingido», que fica enquanto a conta existir:
+     * passado o prazo, `usage:prune` apaga a data e o passo continua atingido,
+     * sem data. Nunca volta a ganhar uma.
+     */
+    public function reachedColumn(): string
+    {
+        return $this->value.'_reached';
     }
 }

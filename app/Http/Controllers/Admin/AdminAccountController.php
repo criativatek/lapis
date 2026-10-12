@@ -301,6 +301,17 @@ class AdminAccountController extends Controller
                     'granted' => $owner?->can_view_usage_insights === true,
                 ]
                 : ['can_manage' => false, 'owner_is_admin' => false, 'granted' => false],
+            // A autorização SEPARADA de ligar e desligar a recolha: só quem já a
+            // tem a pode dar (e nunca a si próprio). A quem só consulta o painel
+            // não se diz quem a tem.
+            'usage_collection_control' => $request->user()?->canControlUsageCollection() === true
+                ? [
+                    'can_manage' => true,
+                    'owner_is_admin' => $owner?->isPlatformAdmin() === true,
+                    'is_self' => $owner !== null && $owner->is($request->user()),
+                    'granted' => $owner?->can_control_usage_collection === true,
+                ]
+                : ['can_manage' => false, 'owner_is_admin' => false, 'is_self' => false, 'granted' => false],
             // A classificação para as métricas só viaja a quem pode ver as
             // métricas: a quem não pode, nem o valor lhe é dito.
             'usage_classification' => $request->user()?->canViewUsageInsights() === true
@@ -481,9 +492,11 @@ class AdminAccountController extends Controller
                 'is_support_technician' => $grant,
             ];
 
-            // Revogar o estatuto revoga também a autorização das métricas de utilização.
+            // Revogar o estatuto revoga também as duas autorizações das métricas
+            // de utilização: ver e controlar a recolha.
             if (! $grant) {
                 $attributes['can_view_usage_insights'] = false;
+                $attributes['can_control_usage_collection'] = false;
             }
 
             $owner->forceFill($attributes)->save();
