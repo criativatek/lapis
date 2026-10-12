@@ -123,10 +123,30 @@ class LegalDocuments
         return (int) config('retention.data_export_availability_hours');
     }
 
-    /** O prazo que `usage:prune` aplica todas as noites às métricas de utilização. */
-    private static function usageMetricsDays(): int
+    /*
+     * Os prazos que `usage:prune` aplica todas as noites às métricas de
+     * utilização, lidos de onde são cumpridos. O dos eventos nunca é maior do
+     * que o dos agregados — a mesma regra que RetentionPolicy::usageEventsDays()
+     * aplica à rotina.
+     */
+    private static function usageEventsDays(): int
     {
-        return (int) config('retention.usage_metrics_days');
+        return min((int) config('retention.usage_events_days'), self::usageRollupsDays());
+    }
+
+    private static function usageRollupsDays(): int
+    {
+        return (int) config('retention.usage_rollups_days');
+    }
+
+    /**
+     * A Política só descreve as métricas de utilização depois de a recolha ter
+     * sido ativada (PrivacyVersion). Antes disso não há tratamento a descrever,
+     * e descrevê-lo seria afirmar o que não acontece.
+     */
+    private static function describesUsageMetrics(): bool
+    {
+        return PrivacyVersion::describesUsageMetrics();
     }
 
     /*
@@ -285,7 +305,7 @@ class LegalDocuments
     {
         return [
             'title' => 'Política de Privacidade',
-            'effective_from' => (string) config('lapis.legal.privacy_effective_from'),
+            'effective_from' => PrivacyVersion::effectiveDate(),
             'intro' => 'Esta página descreve os tratamentos de dados pessoais pelos quais o Lapispro responde como responsável: a sua conta de professor, a segurança, o suporte e a relação comercial. Os dados dos seus alunos seguem um regime diferente, descrito no Acordo de Tratamento de Dados.',
             'related' => [
                 ['label' => 'Termos de Utilização', 'href' => '/termos'],
@@ -331,7 +351,7 @@ class LegalDocuments
                     'body' => [
                         'Sessões: para manter a sua autenticação, é guardado um registo de sessão que inclui o endereço IP e o identificador do navegador.',
                         'Registo de atividade (auditoria): que ação foi feita, por quem, sobre o quê e quando. Não inclui endereço IP nem identificador de navegador.',
-                        'Métricas de utilização do serviço: que funcionalidades usa e que tipo de ações conclui, por dia, sem o conteúdo do que escreve ou consulta — descritas na secção com esse nome.',
+                        ...(self::describesUsageMetrics() ? ['Métricas de utilização do serviço: que funcionalidades usa e que tipo de ações conclui, por dia, sem o conteúdo do que escreve ou consulta — descritas na secção com esse nome.'] : []),
                         'Registos técnicos do servidor, para diagnóstico de erros e segurança.',
                     ],
                 ],
@@ -349,7 +369,7 @@ class LegalDocuments
                         'Segurança e auditoria: proteger as contas, detetar utilização indevida e manter um registo de quem fez o quê.',
                         'Cópias de segurança, para permitir a recuperação em caso de incidente.',
                         'Suporte, quando nos contacta através de '.self::contact('support_email').' ou do formulário de contacto do nosso site. A secção «Contactos e suporte» descreve este tratamento em detalhe.',
-                        'Melhorar o serviço e oferecer apoio: perceber, através das métricas de utilização, que funcionalidades são usadas, onde a aplicação falha e quando pode ser útil oferecer ajuda. A secção «Métricas de utilização do serviço» descreve este tratamento em detalhe.',
+                        ...(self::describesUsageMetrics() ? ['Melhorar o serviço e oferecer apoio: perceber, através das métricas de utilização, que funcionalidades são usadas, onde a aplicação falha e quando pode ser útil oferecer ajuda. A secção «Métricas de utilização do serviço» descreve este tratamento em detalhe.'] : []),
                         'Gestão do plano e da relação comercial, incluindo faturação quando aplicável.',
                         'Responder a pedidos de exportação ou de eliminação de dados, e a pedidos de autoridades quando a lei o imponha.',
                         'Não usamos os dados para publicidade, para criar perfis comerciais, nem para os vender ou ceder a terceiros. Não usamos dados de alunos para desenvolver ou treinar modelos.',
@@ -360,7 +380,7 @@ class LegalDocuments
                     'body' => [
                         'Execução do contrato: criar e manter a conta, disponibilizar as funcionalidades do plano, prestar suporte e gerir o encerramento. Sem estes tratamentos não há serviço.',
                         'Cumprimento de obrigações legais: conservar o que a lei obrigue a conservar, dar resposta a pedidos legítimos de autoridades, e cumprir as obrigações fiscais e contabilísticas associadas a um plano pago.',
-                        'Interesse legítimo: manter a segurança da plataforma e das contas, prevenir e detetar utilização abusiva, manter o registo de atividade e as cópias de segurança, assegurar a integridade e a continuidade do serviço, e medir a utilização do serviço para o melhorar e para prestar apoio a quem o usa. Ponderámos este interesse contra os seus direitos e restringimos os dados ao mínimo que estas finalidades exigem — o registo de atividade, por exemplo, não guarda endereço IP nem identificador de navegador.',
+                        'Interesse legítimo: manter a segurança da plataforma e das contas, prevenir e detetar utilização abusiva, manter o registo de atividade e as cópias de segurança, '.(self::describesUsageMetrics() ? 'assegurar a integridade e a continuidade do serviço, e medir a utilização do serviço para o melhorar e para prestar apoio a quem o usa' : 'e assegurar a integridade e a continuidade do serviço').'. Ponderámos este interesse contra os seus direitos e restringimos os dados ao mínimo que estas finalidades exigem — o registo de atividade, por exemplo, não guarda endereço IP nem identificador de navegador.',
                         'Estes fundamentos aplicam-se aos dados da sua conta. Não são invocados para os dados pedagógicos dos alunos: esses são tratados por conta do responsável pelo tratamento, nos termos do Acordo de Tratamento de Dados. Os contactos de quem ainda não tem conta têm fundamento próprio, indicado na secção «Contactos e suporte».',
                         'Quando um tratamento assentar no seu consentimento, será pedido de forma separada e pode ser retirado a qualquer momento, sem afetar o que foi feito antes.',
                     ],
@@ -400,25 +420,27 @@ class LegalDocuments
                         'Pedimos-lhe que não inclua no pedido nomes de alunos, dados de saúde ou outros dados pessoais desnecessários. Se os incluir, tratamo-los apenas para lhe responder, e eliminamo-los com o pedido nos prazos indicados em «Durante quanto tempo».',
                     ],
                 ],
-                [
+                ...(self::describesUsageMetrics() ? [[
                     /*
                      * Cada frase corresponde ao que `App\Support\Usage\UsageRecorder`
                      * grava e ao que o painel `/admin/usage` mostra — ver
                      * docs/usage-insights.md. A lista do que NÃO é recolhido é
                      * garantida pelo esquema: `usage_events` não tem coluna de
-                     * texto livre nem JSON, e um teste afirma-o.
+                     * texto livre nem JSON, e um teste afirma-o. Só existe depois
+                     * de a recolha ter sido ativada (PrivacyVersion).
                      */
                     'heading' => 'Métricas de utilização do serviço',
                     'body' => [
-                        'Para percebermos como o Lapispro é usado, onde falha e quando pode ser útil oferecer ajuda, registamos de forma mínima a utilização das funcionalidades: que funcionalidade foi aberta ou que tipo de ação foi concluída (por exemplo, «sumário guardado» ou «relatório exportado»), em que dia, por que conta e em que organização, se a operação terminou com um erro técnico — identificado por um código de uma lista fechada — e, numa operação em lote, quantos elementos foram afetados.',
+                        'Para percebermos como o Lapispro é usado, onde falha e quando pode ser útil oferecer ajuda, registamos de forma mínima a utilização das funcionalidades: que funcionalidade foi aberta ou que tipo de ação foi concluída (por exemplo, «sumário guardado» ou «relatório exportado»), em que dia, por que conta e em que organização, se a operação terminou com um erro técnico — identificado por um código de uma lista fechada — e, numa operação em lote, quantos elementos foram criados, alterados ou ficaram iguais.',
                         'Não registamos o conteúdo do que escreve ou consulta: nem o texto de sumários, registos, intervenções ou do caderno da turma, nem nomes ou identificadores de alunos, classificações, anexos, termos de pesquisa, endereços de páginas ou mensagens de erro. Não medimos o tempo que passa na aplicação e não registamos cliques, teclas, capturas de ecrã nem gravações da sessão, nem o seu endereço IP ou o seu navegador. Não usamos ferramentas de análise de terceiros nem cookies para este fim: estes registos ficam no nosso servidor.',
-                        'Cada consulta conta no máximo uma vez por funcionalidade e por dia, e cada ação uma vez por registo e por dia. O acesso técnico da nossa equipa à sua conta não é contado como utilização sua.',
-                        'Com estes registos produzimos indicadores internos — por exemplo, quantas pessoas usaram cada funcionalidade numa semana, se uma conta nova chegou a criar a primeira turma, ou se houve erros técnicos repetidos — e sinais que sugerem à nossa equipa uma verificação. Esses sinais não são diagnósticos nem avaliações: não medem a qualidade do seu trabalho, não produzem qualquer efeito na sua conta e não desencadeiam mensagens automáticas. Não há decisões automatizadas.',
+                        'Cada consulta conta no máximo uma vez por funcionalidade e por dia, e cada ação uma vez por registo e por dia, só quando alguma coisa mudou: são contagens, não um registo de tudo o que faz. O acesso técnico da nossa equipa à sua conta não é contado como utilização sua.',
+                        'Com estes registos produzimos indicadores internos — por exemplo, quantas pessoas usaram cada funcionalidade numa semana, se uma conta nova chegou a criar a primeira turma, ou se houve erros técnicos repetidos —, sinais que sugerem à nossa equipa uma verificação (uma conta sem turma, uma turma sem nenhum registo, uma pausa longa depois de um período de utilização, falhas técnicas repetidas) e uma ordenação interna das contas pela regularidade de utilização: dias com atividade, ações concluídas, semanas com atividade e funcionalidades usadas, cada um à parte.',
+                        'Nem os sinais nem essa ordenação são diagnósticos ou avaliações: não medem a qualidade do seu trabalho, não produzem qualquer efeito na sua conta e não desencadeiam mensagens automáticas. Não há decisões automatizadas.',
                         'Acedem a estes indicadores apenas as pessoas da nossa equipa expressamente autorizadas para o efeito. Não são mostrados a colegas, à escola ou agrupamento, nem a quem administre a organização a que pertence.',
-                        'Fundamento: o nosso interesse legítimo em manter e melhorar o serviço e em prestar apoio a quem o usa (artigo 6.º, n.º 1, alínea f) do Regulamento). Ponderámos este interesse contra os seus direitos e reduzimos os dados ao mínimo descrito acima. Pode opor-se a este tratamento a qualquer momento, nos termos descritos em «Os seus direitos»; se a oposição proceder, deixamos de registar a sua utilização e eliminamos o que já existir.',
-                        'Estes registos são eliminados automaticamente ao fim de '.self::usageMetricsDays().' dias, e também quando a conta é encerrada, nos termos indicados em «Durante quanto tempo».',
+                        'Fundamento: o nosso interesse legítimo em manter e melhorar o serviço e em prestar apoio a quem o usa (artigo 6.º, n.º 1, alínea f) do Regulamento). Ponderámos este interesse contra os seus direitos e reduzimos os dados ao mínimo descrito acima. Pode opor-se a este tratamento a qualquer momento, escrevendo para '.self::contact('privacy_email').'; se a oposição proceder, deixamos de registar a sua utilização e eliminamos de imediato o que já existir.',
+                        'Os registos detalhados são eliminados automaticamente ao fim de '.self::usageEventsDays().' dias, e as contagens diárias associadas à sua conta ao fim de '.self::usageRollupsDays().' dias. A partir de um pedido de encerramento da conta deixamos de registar a sua utilização, e o que existir é eliminado com a conta, nos termos indicados em «Durante quanto tempo».',
                     ],
-                ],
+                ]] : []),
                 [
                     'heading' => 'Categorias especiais de dados',
                     'body' => [
@@ -472,7 +494,7 @@ class LegalDocuments
                         'Ficheiros temporários de importações e exportações não confirmadas: eliminados automaticamente algumas horas depois do último toque, também de hora a hora.',
                         'Pedidos de suporte à espera de resposta sua: enviamos um lembrete ao fim de '.self::supportReminderDays().' dias e, se não houver resposta, o pedido é encerrado automaticamente ao fim de '.self::supportAutoResolveDays().' dias. Um pedido que esteja do nosso lado, à espera que lhe respondamos, não é encerrado por inatividade.',
                         'Pedidos de suporte encerrados: o conteúdo completo — o que escreveu, as respostas e o seu nome e endereço de email — é conservado durante '.self::supportRetainedMonths().' meses a contar do encerramento. Findo esse prazo, uma rotina diária elimina as mensagens e coloca a nulo o nome, o endereço de email e o conteúdo do pedido; permanece apenas informação que não permite identificá-lo — a referência, o assunto escolhido da lista, o estado e as datas —, para sabermos quantos pedidos de cada tipo existiram. Se responder a um pedido já encerrado, ele reabre e a contagem só recomeça quando voltar a ser encerrado.',
-                        'Métricas de utilização do serviço: eliminadas por uma rotina diária ao fim de '.self::usageMetricsDays().' dias. As de uma conta encerrada são eliminadas no fim do período de recuperação, pela mesma rotina que remove os dados que a identificam. As datas em que a conta deu os primeiros passos — primeira turma, primeiros alunos, primeiro registo — conservam-se enquanto a conta existir e são eliminadas com ela.',
+                        ...(self::describesUsageMetrics() ? ['Métricas de utilização do serviço: os registos detalhados são eliminados por uma rotina diária ao fim de '.self::usageEventsDays().' dias e as contagens diárias associadas a cada conta ao fim de '.self::usageRollupsDays().' dias. As de uma conta encerrada são eliminadas no fim do período de recuperação, pela mesma rotina que remove os dados que a identificam. As datas em que a conta deu os primeiros passos — primeira turma, primeiros alunos, primeiro registo — conservam-se enquanto a conta existir e são eliminadas com ela.'] : []),
                         'Registos técnicos do servidor: rotação automática de 14 dias.',
                         'Cópias de segurança da base de dados: rotação de 30 cópias diárias e 12 mensais. Um dado eliminado da aplicação pode subsistir numa cópia de segurança até essa cópia ser substituída pela rotação.',
                         'Registo de atividade: conservado enquanto for necessário como registo de segurança de quem fez o quê. Não está definido um prazo automático de eliminação, e por isso não indicamos um.',

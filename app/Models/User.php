@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Legal\PrivacyVersion;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\Notifications\VerifyEmail;
@@ -168,17 +169,22 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
      * NÃO É UMA ACEITAÇÃO PENDENTE: fechar o aviso não consente coisa nenhuma,
      * e não o fechar não bloqueia nada. É informação, e a única coisa que este
      * método decide é se ela ainda é nova para quem está a ler.
+     *
+     * O INSTANTE em vigor vem de PrivacyVersion: é a data escrita à mão, ou o
+     * momento em que as métricas de utilização foram ativadas, se for depois —
+     * e por isso compara instantes, não só dias (quem fechou o aviso às 10h do
+     * dia em que a recolha começou às 14h volta a vê-lo).
      */
     public function shouldSeePrivacyNotice(): bool
     {
-        $emVigor = config('lapis.legal.privacy_effective_from');
+        $emVigor = PrivacyVersion::effectiveAt();
 
-        if (! is_string($emVigor) || $emVigor === '') {
+        if ($emVigor === null) {
             return false;
         }
 
         return $this->privacy_notice_dismissed_at === null
-            || $this->privacy_notice_dismissed_at->lt(Carbon::parse($emVigor));
+            || $this->privacy_notice_dismissed_at->lt($emVigor);
     }
 
     /**

@@ -7,14 +7,18 @@ return [
     | Recolha de métricas de utilização
     |--------------------------------------------------------------------------
     |
-    | Interruptor geral da recolha (docs/usage-insights.md). Desligá-lo não
-    | apaga nada: `usage:aggregate` fecha o período de recolha em curso em
-    | `usage_collection_periods`, e os dias seguintes aparecem como «sem
-    | recolha» — nunca como zeros.
+    | DESLIGADA POR OMISSÃO até à decisão de ativação
+    | (docs/usage-insights-decisions.md). Desligada, nada é gravado, a
+    | agregação não lê dados de pessoas e a Política de Privacidade não muda.
+    | Ligada, o primeiro registo possível (ou a passagem seguinte da agregação)
+    | abre o período de recolha em `usage_collection_periods`: a cobertura e a
+    | versão da Política começam nesse instante, e nada é gravado antes dele.
+    | Voltar a desligar fecha o período; os dias seguintes aparecem como «sem
+    | recolha», nunca como zeros, e não geram sinais.
     |
     */
 
-    'enabled' => (bool) env('LAPIS_USAGE_ENABLED', true),
+    'enabled' => (bool) env('LAPIS_USAGE_ENABLED', false),
 
     /*
     |--------------------------------------------------------------------------

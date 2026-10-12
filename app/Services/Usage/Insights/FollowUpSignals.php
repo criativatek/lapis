@@ -139,11 +139,12 @@ final class FollowUpSignals
             return new SignalEvaluation($signals, $notEvaluated, $counts, $notEvaluatedCounts);
         }
 
-        // Agregação parada = atividade e estado das turmas parados no tempo: os
-        // sinais que dependem deles ficam por avaliar (uma vaga de falsos «sem
-        // atividade recente» seria pior do que nenhum sinal). As falhas
+        // Agregação parada, ou recolha desligada = atividade e estado das turmas
+        // parados no tempo: os sinais que dependem deles ficam por avaliar (uma
+        // vaga de falsos «sem atividade recente» seria pior do que nenhum
+        // sinal, e um período sem recolha nunca é inatividade). As falhas
         // técnicas continuam: dados atrasados só as podem subcontar.
-        $fresh = self::aggregationIsFresh($now);
+        $fresh = self::aggregationIsFresh($now) && $this->coverage->isActive();
 
         $userIds = array_keys($eligible);
         $horizon = $today->subDays(self::LOOKBACK_CAP_DAYS);

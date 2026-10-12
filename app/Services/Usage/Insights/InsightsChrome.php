@@ -68,7 +68,7 @@ final class InsightsChrome
     {
         $startedAt = $this->coverage->startedAt();
         $startDay = $this->coverage->startDay();
-        $cutoff = $filters->today->subDays($this->retention->usageMetricsDays());
+        $cutoff = $filters->today->subDays($this->retention->usageRollupsDays());
         $aggregatedAt = DB::table('usage_aggregation_state')->where('id', 1)->value('aggregated_at');
 
         $days = UsageDates::eachDay($filters->from, $filters->to);
@@ -96,7 +96,7 @@ final class InsightsChrome
         }
 
         if ($startDay === null) {
-            $notes[] = 'Ainda não há recolha de métricas: todos os dias aparecem como «Sem recolha».';
+            $notes[] = 'A recolha de métricas ainda não foi ativada: não há dados de utilização, todos os dias aparecem como «Sem recolha» (nunca como zero) e não há sinais.';
         } elseif ($filters->from->lessThan($startDay)) {
             $lastBefore = $startDay->subDay()->min($filters->to);
             $notes[] = 'O período começa antes da recolha: de '.UsageDates::short($filters->from).' a '.UsageDates::short($lastBefore).' não há recolha e os dias aparecem como «Sem recolha», nunca como zero.';
@@ -107,7 +107,7 @@ final class InsightsChrome
         }
 
         if ($filters->adjustedToRetention) {
-            $notes[] = 'O período foi ajustado ao prazo de conservação dos dados ('.$this->retention->usageMetricsDays().' dias): começa a '.UsageDates::short($filters->from).'.';
+            $notes[] = 'O período foi ajustado ao prazo de conservação dos agregados ('.$this->retention->usageRollupsDays().' dias): começa a '.UsageDates::short($filters->from).'.';
         }
 
         // Uma conta que a agregação ainda não viu não tem estado: não entra na
@@ -124,10 +124,18 @@ final class InsightsChrome
                 : $unseen.' contas ainda não foram vistas pela agregação (é feita a cada 15 minutos) e por agora não aparecem no acompanhamento, no ranking nem nos sinais.';
         }
 
-        if ($aggregatedAt === null) {
-            $notes[] = 'A agregação diária ainda não correu: os números de atividade podem estar vazios.';
-        } elseif (! FollowUpSignals::aggregationIsFresh(CarbonImmutable::now((string) config('app.timezone')))) {
-            $notes[] = 'A última agregação tem mais de '.(int) config('usage.max_staleness_minutes', 60).' minutos ('.substr((string) $aggregatedAt, 8, 2).'/'.substr((string) $aggregatedAt, 5, 2).' às '.substr((string) $aggregatedAt, 11, 5).'): pode estar parada. Os números param nessa hora e os sinais que dependem da atividade ficam por avaliar.';
+        $periods = $this->coverage->periods();
+        $lastEnd = $periods === [] ? null : $periods[array_key_last($periods)][1];
+
+        // Sem nenhum período, a nota «ainda não foi ativada» acima já diz tudo.
+        if ($periods !== []) {
+            if (! $this->coverage->isActive()) {
+                $notes[] = 'A recolha de métricas está desligada'.($lastEnd !== null ? ' desde '.$lastEnd->format('d/m/Y').' às '.$lastEnd->format('H:i') : '').': os dias seguintes aparecem como «sem recolha», nunca como zero, e os sinais que dependem da atividade ficam por avaliar.';
+            } elseif ($aggregatedAt === null) {
+                $notes[] = 'A agregação diária ainda não correu: os números de atividade podem estar vazios.';
+            } elseif (! FollowUpSignals::aggregationIsFresh(CarbonImmutable::now((string) config('app.timezone')))) {
+                $notes[] = 'A última agregação tem mais de '.(int) config('usage.max_staleness_minutes', 60).' minutos ('.substr((string) $aggregatedAt, 8, 2).'/'.substr((string) $aggregatedAt, 5, 2).' às '.substr((string) $aggregatedAt, 11, 5).'): pode estar parada. Os números param nessa hora e os sinais que dependem da atividade ficam por avaliar.';
+            }
         }
 
         return [

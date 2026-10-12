@@ -472,4 +472,38 @@ class FollowUpSignalsTest extends InsightsTestCase
         $notes = implode(' ', $this->props('admin.usage.overview')['coverage']['notes']);
         $this->assertStringContainsString('pode estar parada', $notes);
     }
+
+    // --- Recolha desligada ---------------------------------------------------
+
+    #[Test]
+    public function with_collection_switched_off_activity_signals_are_not_evaluated_and_the_panel_says_so(): void
+    {
+        // Recolha de 01/08 a 05/10: desde então não há recolha.
+        $this->startUsageCollectionAt('2026-08-01 00:00:00', '2026-10-05 12:00:00');
+        $quiet = $this->quietUser('Recolha Desligada');
+        $noClass = $this->person('Sem Turma Desligada', '2026-09-20 10:00:00');
+        $this->state($noClass);
+
+        // Um período sem recolha nunca é inatividade.
+        $this->assertSame([], $this->keysOf($quiet));
+        $this->assertSame([], $this->keysOf($noClass));
+        $this->assertGreaterThanOrEqual(1, $this->summary()['went_quiet']['not_evaluated']);
+        $this->assertSame(0, $this->summary()['no_class']['count']);
+
+        $notes = implode(' ', $this->props('admin.usage.overview')['coverage']['notes']);
+        $this->assertStringContainsString('está desligada desde 05/10/2026 às 12:00', $notes);
+    }
+
+    #[Test]
+    public function before_any_activation_there_are_no_signals_at_all(): void
+    {
+        DB::table('usage_collection_periods')->delete();
+        $noClass = $this->person('Nunca Ativada', '2026-09-20 10:00:00');
+        $this->state($noClass);
+
+        $this->assertSame([], $this->keysOf($noClass));
+
+        $notes = implode(' ', $this->props('admin.usage.overview')['coverage']['notes']);
+        $this->assertStringContainsString('ainda não foi ativada', $notes);
+    }
 }

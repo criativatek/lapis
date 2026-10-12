@@ -47,12 +47,24 @@ final class RetentionPolicy
     }
 
     /**
-     * Quantos dias se guardam as métricas de utilização (`usage_events` e
-     * `usage_daily_rollups`). Executado por `usage:prune`.
+     * Quantos dias se guardam os eventos de utilização detalhados
+     * (`usage_events`). NUNCA mais do que os agregados: um agregado apagado não
+     * pode ser reconstituído a partir de eventos ainda guardados. Executado
+     * por `usage:prune`.
      */
-    public function usageMetricsDays(): int
+    public function usageEventsDays(): int
     {
-        return (int) config('retention.usage_metrics_days');
+        return max(1, min((int) config('retention.usage_events_days'), $this->usageRollupsDays()));
+    }
+
+    /**
+     * Quantos dias se guardam os agregados diários por pessoa
+     * (`usage_daily_rollups`). É também o período mais antigo que o painel
+     * aceita mostrar. Executado por `usage:prune`.
+     */
+    public function usageRollupsDays(): int
+    {
+        return max(1, (int) config('retention.usage_rollups_days'));
     }
 
     public function dataExportAvailabilityHours(): int

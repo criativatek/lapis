@@ -446,7 +446,7 @@ class InsightsOverviewTest extends InsightsTestCase
     #[Test]
     public function a_period_before_the_retention_limit_is_clamped_with_a_note(): void
     {
-        config(['retention.usage_metrics_days' => 20]);
+        config(['retention.usage_rollups_days' => 20]);
 
         $props = $this->props('admin.usage.overview', ['period' => '90']);
 

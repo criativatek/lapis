@@ -525,3 +525,32 @@ teste.
   catálogo fechado.
 - Conservação: `usage:prune`; `AnonymiseClosedAccount` apaga; `lapis:usage-opt-out`.
 - Agregação idempotente; recalcula ontem; estados pegajosos.
+
+## 10. Revisão de 2026-10-12 (antes do merge)
+
+O que mudou em relação às secções acima, e prevalece sobre elas:
+
+- **Recolha desligada por omissão** (`usage.enabled = false`). A migração já não
+  abre período; `UsageCoverage::ensureOpen()` abre-o no primeiro registo possível
+  (o recorder chama-o antes de gravar) ou na passagem da agregação, e
+  `isActive()` = ligada E período aberto. Com a recolha inativa, a agregação
+  ainda agrega eventos existentes, mas não lê `class_teachers` nem atualiza
+  `usage_aggregation_state`; os sinais que dependem da atividade ficam por
+  avaliar.
+- **Política dependente da ativação:** `App\Support\Legal\PrivacyVersion` —
+  `effectiveAt()` = máximo entre `privacy_effective_from` e a primeira ativação;
+  `User::shouldSeePrivacyNotice()` compara instantes.
+- **Conservação:** `retention.usage_events_days` (35) e
+  `retention.usage_rollups_days` (180) substituem `usage_metrics_days`;
+  `RetentionPolicy::usageEventsDays()` = mínimo dos dois. `usage:prune` só apaga
+  eventos de dias anteriores a `aggregated_through − 1`. A agregação nunca
+  recalcula antes do limite dos agregados, ignora quem se opôs ou foi
+  anonimizado ao ler os eventos e apaga, em cada passagem, os seus restos.
+- **Encerramento:** a recolha pára no pedido (`closure_requested_at`).
+- **Discriminação de lotes:** `items_created`, `items_changed`, `items_unchanged`
+  em `usage_events` e `usage_daily_rollups`; `item_count = created + changed`
+  (o que não se sabe fica nulo).
+- **Edições:** `report.edited`, `intervention.updated`, `instrument.updated`,
+  `calendar_event.updated` (`App\Support\Usage\UsageSnapshots`).
+- **Classificação:** `organizations.usage_classification`; o painel não lê
+  `is_test_account`. Segmentos `real | test | internal | unclassified`.

@@ -95,8 +95,8 @@ return new class extends Migration
             $table->dateTime('aggregated_at')->nullable();
         });
 
-        // A recolha começa quando esta migração corre.
-        DB::table('usage_collection_periods')->insert(['started_at' => now()]);
+        // A migração NÃO abre um período de recolha: a recolha nasce desligada
+        // e o período abre-se na ativação efetiva (UsageCoverage::ensureOpen()).
     }
 
     public function down(): void

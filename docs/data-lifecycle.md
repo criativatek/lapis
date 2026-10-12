@@ -235,7 +235,8 @@ cada conta usou e que ações concluiu — sem conteúdo nem dados de alunos.
 
 | Dados | Prazo | Quem o executa |
 | --- | --- | --- |
-| Eventos e agregados diários | **365 dias** (`retention.usage_metrics_days`) | `usage:prune`, diário às **04:05** |
+| Eventos detalhados | **35 dias** (`retention.usage_events_days`, proposta), só de dias já agregados | `usage:prune`, diário às **04:05** |
+| Agregados diários por pessoa | **180 dias** (`retention.usage_rollups_days`, proposta) | `usage:prune`, diário às **04:05** |
 | Datas de primeira observação (`usage_user_states`) | enquanto a conta existir | apagadas no encerramento |
 | Tudo o que é de uma conta encerrada | no fim da janela de recuperação | `retention:execute` → `AnonymiseClosedAccount` → `ForgetUsageData` |
 | Tudo o que é de quem se opôs | no momento da oposição | `lapis:usage-opt-out` → `ForgetUsageData` |

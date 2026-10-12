@@ -46,10 +46,20 @@ class UsageRetentionTest extends TestCase
         UsageUserState::query()->create(['user_id' => $user->id, 'computed_at' => now()]);
     }
 
+    private function aggregatedThrough(?string $day): void
+    {
+        DB::table('usage_aggregation_state')->updateOrInsert(['id' => 1], [
+            'aggregated_through' => $day,
+            'aggregated_at' => $day === null ? null : $day.' 09:45:00',
+        ]);
+    }
+
     #[Test]
     public function prune_deletes_what_is_older_than_the_window_and_keeps_the_rest(): void
     {
-        config()->set('retention.usage_metrics_days', 365);
+        config()->set('retention.usage_events_days', 365);
+        config()->set('retention.usage_rollups_days', 365);
+        $this->aggregatedThrough('2026-10-12');
         $teacher = User::factory()->create();
         $organization = $teacher->personalOrganization()->id;
 
@@ -72,7 +82,9 @@ class UsageRetentionTest extends TestCase
     #[Test]
     public function the_window_follows_the_configuration(): void
     {
-        config()->set('retention.usage_metrics_days', 30);
+        config()->set('retention.usage_events_days', 30);
+        config()->set('retention.usage_rollups_days', 365);
+        $this->aggregatedThrough('2026-10-12');
         $teacher = User::factory()->create();
         $organization = $teacher->personalOrganization()->id;
 
@@ -155,5 +167,80 @@ class UsageRetentionTest extends TestCase
     public function opting_out_an_unknown_email_fails(): void
     {
         $this->artisan('lapis:usage-opt-out', ['email' => 'ninguem@exemplo.pt'])->assertFailed();
+    }
+
+    // --- Prazos separados (docs/usage-insights-decisions.md §2) -------------
+
+    #[Test]
+    public function events_go_sooner_than_the_per_person_aggregates(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        $this->aggregatedThrough('2026-10-12');
+        $teacher = User::factory()->create();
+        $organization = $teacher->personalOrganization()->id;
+
+        // Hoje − 35 = 2026-09-07; hoje − 180 = 2026-04-15.
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-06', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-07', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedRollup($teacher, '2026-04-14');
+        $this->seedRollup($teacher, '2026-04-15');
+        $this->seedRollup($teacher, '2026-09-06');
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(['2026-09-07'], UsageEvent::query()->get()->map(fn ($event) => $event->occurred_on->toDateString())->all());
+        $this->assertEqualsCanonicalizing(['2026-04-15', '2026-09-06'], UsageDailyRollup::query()->get()->map(fn ($rollup) => $rollup->day->toDateString())->all());
+    }
+
+    #[Test]
+    public function the_events_window_is_never_longer_than_the_aggregates_window(): void
+    {
+        // Configurado ao contrário: os eventos sobreviveriam aos agregados e uma
+        // agregação posterior podia reconstituir agregados já apagados.
+        config(['retention.usage_events_days' => 400, 'retention.usage_rollups_days' => 120]);
+
+        $this->assertSame(120, app(RetentionPolicy::class)->usageEventsDays());
+    }
+
+    #[Test]
+    public function events_of_days_not_yet_aggregated_are_kept_until_they_are(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        // A agregação parou a 2026-08-22: o último dia que ainda pode voltar a ler é 2026-08-21.
+        $this->aggregatedThrough('2026-08-22');
+        $teacher = User::factory()->create();
+        $organization = $teacher->personalOrganization()->id;
+
+        $this->seedUsageEvent($teacher->id, $organization, '2026-08-20', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-08-21', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-01', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertEqualsCanonicalizing(['2026-08-21', '2026-09-01'], UsageEvent::query()->get()->map(fn ($event) => $event->occurred_on->toDateString())->all());
+    }
+
+    #[Test]
+    public function without_any_aggregation_no_event_is_deleted(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        $teacher = User::factory()->create();
+
+        $this->seedUsageEvent($teacher->id, $teacher->personalOrganization()->id, '2026-01-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(1, UsageEvent::query()->count());
+    }
+
+    #[Test]
+    public function prune_also_removes_the_state_of_whoever_objected(): void
+    {
+        $objector = User::factory()->create(['usage_opted_out_at' => now()]);
+        $this->seedState($objector);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(0, UsageUserState::query()->count());
     }
 }

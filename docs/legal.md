@@ -53,30 +53,38 @@ no HTML — e os testes conseguem afirmar que a secção de menores existe, que 
 descrição da IA não promete o que o produto não faz, e que nenhum placeholder
 é apresentado como facto.
 
-### Atualização de 2026-10-12 — métricas de utilização (0.163.0)
+### Métricas de utilização (0.163.0) — a Política muda na ativação
 
-A Política de Privacidade ganha a secção **«Métricas de utilização do serviço»**
-e passa à versão `2026-10-12`; os Termos e o Acordo não mudam. O painel interno
-`/admin/usage` passou a registar, para os dados da **conta**, que
+O painel interno `/admin/usage` pode registar, para os dados da **conta**, que
 funcionalidades são abertas e que tipo de ações são concluídas, por dia — sem
 conteúdo, sem alunos, sem IP nem navegador — com fundamento em **interesse
 legítimo**. A ponderação, as definições e o que fica de fora estão em
-[usage-insights.md](usage-insights.md).
+[usage-insights.md](usage-insights.md); o que falta decidir, em
+[usage-insights-decisions.md](usage-insights-decisions.md).
 
-- **Finalidade nova, mencionada em três sítios** da Política: «Dados técnicos»,
-  «Para que usamos os dados» e o interesse legítimo em «Com que fundamento…».
-- **O prazo publicado é o executado**: `retention.usage_metrics_days` (365), lido
-  pelo texto e por `usage:prune`. Um teste muda o valor e confirma o texto.
-- **Os sinais de acompanhamento** são descritos como sugestões internas, sem
-  efeitos na conta e sem mensagens automáticas; não há decisões automatizadas.
+- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`). Enquanto nunca
+  tiver estado ativa, a Política fica **exatamente** como estava (versão
+  `2026-09-15`): descrever um tratamento que não acontece seria afirmar o que
+  não é verdade.
+- **Na ativação**, a secção «Métricas de utilização do serviço» e as menções em
+  «Dados técnicos», «Para que usamos os dados», «Com que fundamento…» e «Durante
+  quanto tempo» aparecem, e **o instante da ativação passa a ser a versão em
+  vigor** (`App\Support\Legal\PrivacyVersion`, que lê o mesmo registo que marca
+  o início da cobertura). O aviso não bloqueante volta a aparecer a quem o tinha
+  fechado antes desse instante — a comparação é de instantes, não de dias. Não
+  há nova aceitação.
+- **O prazo publicado é o executado**: `retention.usage_events_days` (35) e
+  `retention.usage_rollups_days` (180), lidos pelo texto e por `usage:prune`. Um
+  teste muda os valores e confirma o texto, e o dos eventos nunca é publicado
+  maior do que o dos agregados.
+- **Os sinais e o ranking interno** são descritos como indicadores internos,
+  sem efeitos na conta e sem mensagens automáticas; não há decisões
+  automatizadas.
 - **O Acordo de Tratamento de Dados não muda**: a telemetria não leva dados de
-  alunos (contagens de elementos não identificam ninguém), e um teste com uma
-  sentinela escrita num sumário, num registo do caderno e numa intervenção
-  confirma que nada disso chega às tabelas de utilização.
-- **A secção de cookies continua verdadeira**: tudo vive no servidor; não há
-  cookie nem script de análise no navegador.
-- O aviso não bloqueante volta a aparecer a quem já o tinha fechado, porque
-  `privacy_effective_from` mudou — é o mecanismo existente, sem nova aceitação.
+  alunos, e um teste com uma sentinela escrita num sumário, numa entrada do
+  caderno e numa intervenção confirma que nada disso chega às tabelas de
+  utilização.
+- **A secção de cookies continua verdadeira**: tudo vive no servidor.
 
 ## Porquê três documentos
 
@@ -196,7 +204,8 @@ a página diz que não há prazo em vez de inventar um.**
 | Ficheiros temporários de importação/exportação | 6 h (pautas, INOVAR) / 24 h (grelhas) | quatro `*:prune` horários |
 | Registos técnicos do servidor | 14 dias | `LOG_DAILY_DAYS`, rotação do Laravel |
 | Cópias de segurança | 30 diárias + 12 mensais | `scripts/backup-database.sh` |
-| Métricas de utilização (`usage_events`, `usage_daily_rollups`) | `retention.usage_metrics_days` (365 dias) | `usage:prune`, diário às 04:05 |
+| Métricas de utilização — eventos detalhados (`usage_events`) | `retention.usage_events_days` (35 dias, proposta) | `usage:prune`, diário às 04:05 |
+| Métricas de utilização — agregados por pessoa (`usage_daily_rollups`) | `retention.usage_rollups_days` (180 dias, proposta) | `usage:prune`, diário às 04:05 |
 
 **Não publicados, por não existir rotina:**
 
@@ -473,14 +482,16 @@ Escritos de forma prudente, e por confirmar:
     na fatia AI-complete» acima; `LegalPagesTest` impede que volte a afirmar o
     contrário. **O que fica por validar é a redação**, como em todo o resto
     desta lista — já não é uma afirmação que se saiba falsa.
-12. **Métricas de utilização e sinais de acompanhamento (0.163.0)** — o
-    fundamento adotado é o interesse legítimo, com ponderação escrita em
+12. **Métricas de utilização, sinais e ranking (0.163.0)** — **por validar, e a
+    recolha está desligada até lá.** O fundamento adotado é o interesse
+    legítimo, com ponderação escrita em
     [usage-insights.md](usage-insights.md#fundamento-e-ponderação-interesse-legítimo).
-    Por validar: se os sinais de acompanhamento («sem atividade recente»,
-    «conta sem turma») constituem definição de perfis na aceção do artigo 4.º,
-    n.º 4, do Regulamento — o texto descreve-os como sugestões internas sem
-    efeitos, que é o que o código faz, mas não qualifica juridicamente — e se o
-    prazo de 365 dias é proporcionado.
+    As perguntas abertas — definição de perfis (art. 4.º, ponto 4), prazos (35 e
+    180 dias), informação e apresentação do direito de oposição (arts. 13.º e
+    21.º, n.º 4), contexto laboral e avaliação de impacto — estão em
+    [usage-insights-decisions.md](usage-insights-decisions.md#para-validação-jurídica-não-respondido-aqui),
+    com as fontes oficiais consultadas. Nada no repositório as dá por
+    respondidas.
 
 ## Quando o texto mudar
 

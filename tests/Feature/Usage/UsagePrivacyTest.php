@@ -74,8 +74,11 @@ class UsagePrivacyTest extends TestCase
     }
 
     #[Test]
-    public function the_collection_migration_opened_a_period(): void
+    public function the_migration_opens_no_collection_period_and_collection_is_off_by_default(): void
     {
-        $this->assertSame(1, DB::table('usage_collection_periods')->whereNull('ended_at')->count());
+        // A recolha nasce desligada até à decisão de ativação; a cobertura
+        // começa na ativação efetiva, não no deploy.
+        $this->assertSame(0, DB::table('usage_collection_periods')->count());
+        $this->assertFalse((bool) config('usage.enabled'));
     }
 }

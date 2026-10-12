@@ -148,6 +148,6 @@ class UsageInsightsRequest extends FormRequest
 
     private function retentionCutoff(): CarbonImmutable
     {
-        return UsageDates::today()->subDays(app(RetentionPolicy::class)->usageMetricsDays());
+        return UsageDates::today()->subDays(app(RetentionPolicy::class)->usageRollupsDays());
     }
 }

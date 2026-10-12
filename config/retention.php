@@ -63,10 +63,13 @@ return [
     // são apagadas — sem marcas de substituição.
     'support_resolved_months_retained' => 24,
 
-    // Métricas de utilização (docs/usage-insights.md): `usage_events` e
-    // `usage_daily_rollups` mais antigos que isto são apagados por
-    // `usage:prune`, diariamente. As datas de primeira observação
-    // (`usage_user_states`) ficam enquanto a conta existir.
-    'usage_metrics_days' => (int) env('LAPIS_USAGE_RETENTION_DAYS', 365),
+    // Métricas de utilização, prazos SEPARADOS (docs/usage-insights-decisions.md
+    // §2 — proposta, por confirmar). Os eventos detalhados só servem a
+    // deduplicação, a agregação e o diagnóstico; os agregados por pessoa servem
+    // o painel. O prazo efetivo dos eventos nunca é maior do que o dos
+    // agregados (RetentionPolicy::usageEventsDays()): um agregado apagado não
+    // pode ser reconstituído a partir de eventos ainda guardados.
+    'usage_events_days' => (int) env('LAPIS_USAGE_EVENTS_RETENTION_DAYS', 35),
+    'usage_rollups_days' => (int) env('LAPIS_USAGE_ROLLUPS_RETENTION_DAYS', 180),
 
 ];

@@ -45,6 +45,54 @@ class UsageCoverage
     }
 
     /**
+     * A recolha está ligada E há um período aberto — é isto que «ativa» quer
+     * dizer. Lido sempre da base, sem a memória da instância: a ativação pode
+     * acontecer a meio de um processo longo.
+     */
+    public function isActive(): bool
+    {
+        return (bool) config('usage.enabled')
+            && UsageCollectionPeriod::query()->whereNull('ended_at')->exists();
+    }
+
+    /**
+     * A ATIVAÇÃO EFETIVA. Chamado antes de cada registo: com a recolha ligada e
+     * nenhum período aberto, abre um agora — o primeiro registo possível marca o
+     * início da cobertura, e nada é gravado antes de existir um período. Com a
+     * recolha desligada não faz nada (fechar é da agregação, em `sync()`).
+     */
+    public function ensureOpen(CarbonInterface $now): void
+    {
+        if (! config('usage.enabled')) {
+            return;
+        }
+
+        if (! UsageCollectionPeriod::query()->whereNull('ended_at')->exists()) {
+            UsageCollectionPeriod::query()->create(['started_at' => $this->local($now)]);
+            $this->intervals = null;
+        }
+    }
+
+    /**
+     * O instante da PRIMEIRA ativação, ou nulo se a recolha nunca esteve ativa.
+     * É o que a Política de Privacidade lê para saber se descreve a recolha e
+     * desde quando (App\Support\Legal\PrivacyVersion). Sem tabela (uma base
+     * por migrar), a resposta é «nunca»: não há recolha sem tabela onde gravar.
+     */
+    public static function firstActivation(): ?CarbonImmutable
+    {
+        try {
+            $first = UsageCollectionPeriod::query()->min('started_at');
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($first) && $first !== ''
+            ? CarbonImmutable::parse($first, (string) config('app.timezone'))
+            : null;
+    }
+
+    /**
      * @return list<array{0: CarbonImmutable, 1: CarbonImmutable|null}> [início, fim|null se em curso], por ordem, com os contíguos fundidos
      */
     public function periods(): array

@@ -32,6 +32,8 @@ use Throwable;
  */
 class UsageRecorder
 {
+    public function __construct(private readonly UsageCoverage $coverage) {}
+
     /** A fotografia não se conseguiu ler (ver snapshot()). */
     public const UNAVAILABLE = 'unavailable';
 
@@ -234,7 +236,8 @@ class UsageRecorder
             return;
         }
 
-        if ($user->usage_opted_out_at !== null || $user->anonymized_at !== null || $user->deactivated_at !== null) {
+        // A partir do pedido de encerramento, nada mais é registado.
+        if ($user->usage_opted_out_at !== null || $user->anonymized_at !== null || $user->deactivated_at !== null || $user->closure_requested_at !== null) {
             return;
         }
 
@@ -246,6 +249,10 @@ class UsageRecorder
 
         // O dia é o dia de calendário LOCAL, qualquer que seja o fuso do relógio.
         $now = now()->setTimezone((string) config('app.timezone'));
+
+        // A ATIVAÇÃO EFETIVA: nada é gravado antes de existir um período de
+        // recolha aberto, e o primeiro registo possível abre-o neste instante.
+        $this->coverage->ensureOpen($now);
         $day = $now->toDateString();
         $organizationId = $tenant->id();
 

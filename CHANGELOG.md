@@ -68,9 +68,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   (uma por funcionalidade e dia; nunca recarregamentos parciais,
   pré-carregamentos ou pedidos automáticos) e ações concluídas (só depois do
   commit, uma por registo e dia, nunca gravações sem alteração; uma importação
-  de 100 alunos é 1 ação com 100 elementos). Acesso técnico do suporte, tarefas
-  agendadas e jobs nunca são registados. Uma falha na recolha nunca impede a
-  gravação do trabalho do professor.
+  de 100 alunos é 1 ação com 100 elementos). As ações são contagens
+  deduplicadas, não o registo de todas as operações. Acesso técnico do suporte,
+  tarefas agendadas e jobs nunca são registados, nem nada a partir de um pedido
+  de encerramento da conta. Uma falha na recolha nunca impede a gravação do
+  trabalho do professor.
+- **Edições reais contam:** relatórios (dados, secções, ordem, regenerar,
+  restaurar), estratégias e medidas (edição e estado), instrumentos (cabeçalho,
+  grupos e itens) e acontecimentos — só quando alguma coisa mudou, uma vez por
+  registo e por dia. As impressões digitais que o decidem são calculadas em
+  memória e nunca guardadas.
+- **Lotes discriminados:** criados, alterados e inalterados guardados à parte
+  (`items_created`, `items_changed`, `items_unchanged`). Uma reimportação da
+  lista de alunos é uma ação com os alunos criados mais os alterados; as linhas
+  iguais contam à parte e uma reimportação só com linhas iguais não conta.
+- **Classificação própria das organizações para as métricas**
+  (`usage_classification`: Por classificar · Utilização real · Teste e
+  demonstração · Interna), decidida por uma pessoa na ficha da conta ou com
+  `lapis:usage-classify`, auditada na plataforma. Todas nascem «Por
+  classificar»: nada é inferido da atividade, do nome, do plano nem da marca
+  comercial «conta de teste», que o painel deixa de ler.
 - Agregação diária a cada 15 minutos (`usage:aggregate`) — o painel diz até
   quando os dados estão atualizados e nunca lê dados pedagógicos ao abrir;
   cobertura da recolha registada (`usage_collection_periods`): antes do início
@@ -85,21 +102,34 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   da conta, por quem já a tem, com auditoria de plataforma). Verificada no
   servidor em todas as rotas; revogar o administrador revoga-a também. Nunca é
   mostrada a colegas nem a responsáveis de organizações.
-- Contas de teste e pessoal interno ficam fora das métricas principais, no
-  segmento «Teste e internas». Em produção, todas as organizações estão hoje
-  marcadas como teste.
+- Quatro segmentos disjuntos: **Utilização real** (inicial), Teste e
+  demonstração, Interna (inclui sempre o pessoal interno) e Por classificar.
+  Até alguém classificar as organizações de produção, a utilização real está
+  vazia e o painel diz quantas estão por classificar.
 
 ### Privacidade
 
-- **Política de Privacidade, versão 2026-10-12:** nova secção «Métricas de
-  utilização do serviço» (o que é e o que não é registado, finalidade, quem vê,
-  interesse legítimo ponderado, direito de oposição, prazo). O aviso não
-  bloqueante volta a aparecer a quem já o tinha fechado. Termos e Acordo de
-  Tratamento de Dados inalterados.
-- **Conservação de 365 dias** (`retention.usage_metrics_days`), executada todas
-  as noites por `usage:prune` (04:05); tudo o que é de uma conta encerrada é
-  eliminado na anonimização; `lapis:usage-opt-out <email>` executa uma oposição
-  (deixa de registar e elimina o que existia).
+- **A recolha nasce DESLIGADA** (`LAPIS_USAGE_ENABLED=false`) até à decisão de
+  ativação. Desligada, nada é gravado, a agregação não lê dados de pessoas, o
+  painel di-lo e não há sinais. Ligada, o primeiro registo possível abre o
+  período de recolha: a cobertura começa na ativação efetiva, e a migração não
+  abre período nenhum.
+- **A Política de Privacidade só muda na ativação:** até lá fica como está
+  (2026-09-15); a partir do instante da ativação ganha a secção «Métricas de
+  utilização do serviço» (o que é e não é registado, sinais, ranking interno,
+  quem vê, interesse legítimo ponderado, direito de oposição, prazos) e esse
+  instante passa a ser a versão em vigor — o aviso não bloqueante reaparece
+  nesse momento. Termos e Acordo de Tratamento de Dados inalterados.
+- **Conservação em dois prazos (proposta, configurável):** eventos detalhados
+  35 dias, só de dias já agregados; agregados por pessoa 180 dias, que é também
+  o período mais antigo que o painel aceita. Nenhuma agregação reconstitui o que
+  a conservação, a oposição ou o encerramento apagaram. Tudo o que é de uma
+  conta encerrada é eliminado na anonimização; `lapis:usage-opt-out <email>`
+  executa uma oposição.
+- As decisões que faltam (classificação de cada organização de produção,
+  prazos, encerramento, aviso de oposição) e as perguntas para validação
+  jurídica estão em `docs/usage-insights-decisions.md`, com as fontes oficiais
+  consultadas.
 
 ### Corrigido
 

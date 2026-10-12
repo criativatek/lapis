@@ -10,9 +10,8 @@ use Illuminate\Support\Str;
  * Fixa a cobertura da recolha e semeia eventos de utilização, para os testes
  * desta funcionalidade.
  *
- * A migração insere um período de recolha com a hora REAL em que correu, que
- * depende do dia em que a suite corre; cada teste tem de dizer quando a
- * recolha começou, senão a cobertura seria uma bomba-relógio.
+ * A migração NÃO abre um período (a recolha nasce desligada e abre-se na
+ * ativação efetiva); cada teste diz quando a recolha começou — e liga-a.
  */
 trait SetsUsageCoverage
 {

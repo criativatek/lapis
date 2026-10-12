@@ -12,6 +12,7 @@ use App\Support\Usage\UsageEventKind;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +53,16 @@ class AggregateUsage
             $days++;
         }
 
+        $this->forgetExcludedPeople();
+
+        // Com a recolha desligada, os eventos que já existem continuam a ser
+        // agregados (não se perde o que foi observado), mas a agregação NÃO lê
+        // dados de pessoas (turmas, primeiros passos) nem se declara em dia:
+        // os sinais que dependem disso ficam por avaliar.
+        if (! $this->coverage->isActive()) {
+            return ['days' => $days, 'states' => 0];
+        }
+
         $states = $this->refreshStates($now);
 
         DB::table(self::TABLE_STATE)->updateOrInsert(['id' => 1], [
@@ -67,7 +78,14 @@ class AggregateUsage
      */
     private function daysToRecompute(CarbonImmutable $today): array
     {
-        $cutoff = $today->subDays($this->retention->usageMetricsDays());
+        // Nunca antes do limite dos AGREGADOS: um dia mais antigo já não pode
+        // ter agregados, e recalculá-lo reconstituiria o que a conservação
+        // apagou. Do outro lado, `usage:prune` não apaga eventos de dias ainda
+        // por agregar, por isso o intervalo recalculado (de
+        // `aggregated_through − 1` em diante) nunca inclui um dia sem eventos —
+        // e uma agregação parada mais tempo do que o prazo dos eventos ainda
+        // recupera esses dias quando volta.
+        $cutoff = $today->subDays($this->retention->usageRollupsDays());
         $through = DB::table(self::TABLE_STATE)->where('id', 1)->value('aggregated_through');
 
         if (is_string($through) && $through !== '') {
@@ -106,6 +124,9 @@ class AggregateUsage
         DB::table('usage_events')
             ->where('occurred_on', '>=', $date)
             ->where('occurred_on', '<', $next)
+            // Quem se opôs ou foi anonimizado nunca volta a ter agregados, mesmo
+            // que esta passagem tenha começado antes da eliminação.
+            ->whereNotIn('user_id', $this->excludedPeople())
             ->select(['id', 'user_id', 'organization_id', 'feature', 'event', 'kind', 'item_count', 'items_created', 'items_changed', 'items_unchanged'])
             ->orderBy('id')
             ->chunkById(2000, function ($rows) use (&$groups): void {
@@ -156,6 +177,27 @@ class AggregateUsage
                 ));
             }
         });
+    }
+
+    /**
+     * Quem não pode ter métricas: anonimizado ou que se opôs à recolha.
+     */
+    private function excludedPeople(): Builder
+    {
+        return DB::table('users')
+            ->select('id')
+            ->where(fn (Builder $query) => $query->whereNotNull('anonymized_at')->orWhereNotNull('usage_opted_out_at'));
+    }
+
+    /**
+     * Apaga, em cada passagem, qualquer agregado ou estado que reste de quem foi
+     * eliminado — fecha a janela em que uma agregação a decorrer em paralelo
+     * com `ForgetUsageData` voltaria a escrever o que acabou de ser apagado.
+     */
+    private function forgetExcludedPeople(): void
+    {
+        UsageDailyRollup::query()->whereIn('user_id', $this->excludedPeople())->delete();
+        UsageUserState::query()->whereIn('user_id', $this->excludedPeople())->delete();
     }
 
     /**

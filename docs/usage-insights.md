@@ -107,6 +107,13 @@ registo e por dia**:
 - uma operação em lote é **uma** ação com N **elementos afetados**: importar 100
   alunos é 1 ação com 100 elementos, nunca 100 ações.
 
+> **As ações são contagens deduplicadas, não o registo de todas as operações.**
+> Cinco gravações do mesmo sumário no mesmo dia são uma ação; uma gravação igual
+> à anterior não é nenhuma; dez edições de um relatório num dia são uma. O número
+> de ações diz em quantos registos, e em quantos dias, houve trabalho concluído —
+> não quantas vezes se carregou em «Guardar». É também por isso que não serve
+> para medir esforço nem produtividade.
+
 **Elementos afetados** — o número de registos que uma ação tocou (alunos
 importados, células de classificação alteradas, aulas marcadas). É mostrado à
 parte das ações e nunca é somado a elas.
@@ -155,15 +162,24 @@ antes do início da recolha, o passo pode ter acontecido antes, e o painel di-lo
 
 ## Cobertura dos dados
 
-- A recolha começou com a versão **0.163.0**. **Não há histórico anterior**:
-  nada foi reconstruído a partir de outras tabelas, e os períodos anteriores ao
-  início da recolha aparecem como **«Sem recolha»**, nunca como zeros.
+- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`, valor por
+  omissão) até à decisão de ativação — ver
+  [usage-insights-decisions.md](usage-insights-decisions.md). Desligada, nada é
+  gravado, a agregação não lê dados de pessoas, o painel diz que a recolha não
+  foi ativada e não há sinais.
+- **A cobertura começa na ativação efetiva**: ligada a recolha, o primeiro
+  registo possível (ou a passagem seguinte da agregação) abre um período em
+  `usage_collection_periods` nesse instante; nada é gravado antes de existir um
+  período aberto. A migração não abre período nenhum.
+- **Não há histórico anterior**: nada foi reconstruído a partir de outras
+  tabelas, e os períodos anteriores à ativação aparecem como **«Sem recolha»**,
+  nunca como zeros.
 - O dia em que a recolha começou é **parcial**. Uma semana ou um mês que
   começou antes da recolha, ou que ainda não terminou, é marcado como parcial
   e não é comparado em silêncio com períodos completos.
-- A recolha pode ser suspensa (`LAPIS_USAGE_ENABLED=false`); a interrupção fica
-  registada em `usage_collection_periods` e os dias afetados aparecem como sem
-  recolha.
+- Voltar a desligar fecha o período na passagem seguinte da agregação (até 15
+  minutos depois); os dias seguintes aparecem como «sem recolha», nunca como
+  zeros, e os sinais que dependem da atividade ficam por avaliar.
 - Os números de atividade vêm de uma **agregação diária** feita a cada 15
   minutos (`usage:aggregate`); o painel diz a hora da última agregação. As
   contagens de contas (novas contas, adesões) são lidas no momento.
@@ -319,11 +335,26 @@ completa, menos de 30 dias, 30 a 90, mais de 90).
 
 ## Conservação
 
+Valores **propostos e configuráveis**, por confirmar — fundamentação em
+[usage-insights-decisions.md](usage-insights-decisions.md) §2.
+
 | Dados | Prazo | Quem o executa |
 |---|---|---|
-| `usage_events` e `usage_daily_rollups` | **365 dias** (`retention.usage_metrics_days`, `LAPIS_USAGE_RETENTION_DAYS`) | `usage:prune`, diário às 04:05 |
-| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir | apagadas no encerramento |
-| Tudo o que é deste painel, para uma conta encerrada | eliminado na anonimização da conta (dia 60) | `retention:execute` → `AnonymiseClosedAccount` |
+| Eventos detalhados (`usage_events`) | **35 dias** (`retention.usage_events_days`, `LAPIS_USAGE_EVENTS_RETENTION_DAYS`), só de dias já agregados | `usage:prune`, diário às 04:05 |
+| Agregados diários por pessoa (`usage_daily_rollups`) | **180 dias** (`retention.usage_rollups_days`, `LAPIS_USAGE_ROLLUPS_RETENTION_DAYS`); é também o período mais antigo que o painel aceita | `usage:prune`, diário às 04:05 |
+| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir | apagadas no encerramento e na oposição |
+| Tudo o que é deste painel, para uma conta encerrada | a recolha pára no pedido; eliminado na anonimização da conta (dia 60) | `retention:execute` → `AnonymiseClosedAccount` |
+| Tudo o que é deste painel, para quem se opôs | eliminado no momento | `lapis:usage-opt-out` → `ForgetUsageData` |
+
+**Nenhuma agregação reconstitui o que foi apagado:**
+
+- o prazo efetivo dos eventos nunca é maior do que o dos agregados;
+- a agregação nunca recalcula um dia anterior ao limite dos agregados, e
+  `usage:prune` não apaga eventos de dias ainda por agregar — o intervalo
+  recalculado nunca inclui um dia sem os seus eventos;
+- a agregação ignora, ao ler os eventos, quem se opôs ou foi anonimizado, e
+  apaga em cada passagem qualquer agregado ou estado que lhes reste (a corrida
+  com uma eliminação a decorrer).
 
 Os dados de utilização viajam no backup diário integral da base de dados, como
 o resto da base, e saem dele quando a cópia roda. **Não** fazem parte da
@@ -376,17 +407,22 @@ recolha a partir desse momento (sem recuperar nada). Não há, nesta versão, um
 interruptor no ecrã do professor.
 
 A redação pública está na Política de Privacidade (secção «Métricas de
-utilização do serviço»), versão de 2026-10-12. A validação jurídica desta
-ponderação está em [legal.md](legal.md#pontos-que-continuam-a-exigir-validação-jurídica).
+utilização do serviço»), que **só a mostra depois de a recolha ter sido
+ativada**: até lá a Política fica como estava, e o instante da ativação passa a
+ser a versão em vigor, para o aviso não bloqueante reaparecer exatamente quando
+a recolha começa (`App\Support\Legal\PrivacyVersion`). A validação jurídica
+desta ponderação continua pendente — ver
+[usage-insights-decisions.md](usage-insights-decisions.md) e
+[legal.md](legal.md#pontos-que-continuam-a-exigir-validação-jurídica).
 
 ## Limitações conhecidas desta versão
 
 - Sem tempo ativo, sem duração de sessão, sem último login — de propósito.
-- Uma reimportação da lista de alunos que só corrige alunos já existentes não é
-  contada: o código de importação não distingue linhas alteradas de linhas
-  iguais, e contar todas seria contar gravações sem alteração.
-- Edições de relatórios, de intervenções, de instrumentos e de acontecimentos
-  não são contadas nesta versão — só a criação, a finalização e a exportação.
+- As edições de relatórios, estratégias e medidas, instrumentos e
+  acontecimentos contam uma vez por registo e por dia, só se mudou alguma coisa;
+  criar e editar o mesmo registo no mesmo dia são duas ações diferentes.
+- Na importação do calendário da escola só se sabem os elementos criados; o
+  ecrã mostra só as parcelas conhecidas, nunca «inalterados 0».
 - Uma aula marcada como lecionada individualmente e depois incluída num lote no
   mesmo dia conta nas duas ações.
 - O plano é o de hoje; não há reconstrução de planos passados.

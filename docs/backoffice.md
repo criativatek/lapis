@@ -349,7 +349,13 @@ ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
   utilização») ou com `php artisan lapis:usage-classify` (`--list`; auditado como
   evento de plataforma, não na auditoria da organização).
 - **Agregação a cada 15 minutos** (`usage:aggregate`); o painel diz a hora da
-  última. **Conservação de 365 dias** (`usage:prune`, 04:05).
+  última. **Conservação proposta:** eventos 35 dias, agregados por pessoa 180
+  dias (`usage:prune`, 04:05).
+- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`) até à decisão de
+  ativação ([usage-insights-decisions.md](usage-insights-decisions.md)); o
+  painel di-lo e não há sinais. Ligada, o primeiro registo abre o período de
+  recolha e a Política de Privacidade passa a descrevê-la a partir desse
+  instante.
 - **Oposição:** `php artisan lapis:usage-opt-out <email>` desliga a recolha para
   essa pessoa e apaga o que existia (`--undo` volta a ligar).
 - Nada aqui envia emails, notificações ou contactos.
