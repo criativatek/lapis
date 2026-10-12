@@ -344,7 +344,7 @@ recolha a partir desse momento (sem recuperar nada). Não há, nesta versão, um
 interruptor no ecrã do professor.
 
 A redação pública está na Política de Privacidade (secção «Métricas de
-utilização do serviço»), versão de 2026-10-11. A validação jurídica desta
+utilização do serviço»), versão de 2026-10-12. A validação jurídica desta
 ponderação está em [legal.md](legal.md#pontos-que-continuam-a-exigir-validação-jurídica).
 
 ## Limitações conhecidas desta versão

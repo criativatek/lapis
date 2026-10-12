@@ -26,7 +26,7 @@ class UsageMetricsLegalTest extends TestCase
     #[Test]
     public function the_policy_takes_effect_with_this_release(): void
     {
-        $this->assertSame('2026-10-11', LegalDocuments::privacy()['effective_from']);
+        $this->assertSame('2026-10-12', LegalDocuments::privacy()['effective_from']);
     }
 
     #[Test]

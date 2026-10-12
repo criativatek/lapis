@@ -25,6 +25,90 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.163.0] — 2026-10-12
+
+### Adicionado
+
+- **Backoffice: «Utilização e acompanhamento» (`/admin/usage`).** Painel
+  interno para perceber a adoção do Lapispro — quem o usa, com que
+  regularidade, que funcionalidades usa e onde encontra dificuldades — e para
+  encontrar quem possa beneficiar de apoio. **Não avalia professores.**
+  Definições, dados recolhidos, conservação e ponderação em
+  `docs/usage-insights.md`.
+- **Visão geral:** utilizadores ativos nos últimos 7 e 30 dias e no período,
+  novas contas, primeiro registo útil («1 de 5», com o denominador e as contas
+  anteriores à recolha fora dele), evolução semanal (segunda a domingo, gráfico
+  e tabela) e mensal, utilização por funcionalidade (ações e elementos afetados
+  em colunas separadas, falhas técnicas), sinais de acompanhamento e regresso
+  nas semanas seguintes à adesão. Filtros: últimos 7/30/90 dias ou intervalo
+  personalizado, plano, organização e segmento.
+- **Acompanhamento:** lista pesquisável e paginada (adesão, plano, última
+  atividade observada, dias ativos de N observados, ações, funcionalidades,
+  sinais, estado descritivo) e, por pessoa, um resumo semanal e por
+  funcionalidade — só contagens, sem conteúdos nem histórico de cliques.
+- **Ranking de utilização:** por dias ativos (inicial), ações concluídas,
+  semanas com atividade ou funcionalidades utilizadas (indicador
+  complementar), sempre separados, sem pontuação composta. Empates partilham a
+  posição; contas recentes aparecem com «observação parcial (N de M dias)» e
+  filtram-se por antiguidade. «Compara a regularidade e as ações concluídas na
+  aplicação. Não avalia a qualidade do trabalho pedagógico.»
+- **Sinais de acompanhamento**, configuráveis em `config/usage.php`: conta sem
+  turma há 7 dias; turma disponível há 7 dias sem primeiro registo útil;
+  atividade em 2 das 4 semanas anteriores e nenhuma nos últimos 14 dias; 3
+  falhas técnicas em 7 dias. Cada um diz o motivo e a janela; não há sinal com
+  cobertura insuficiente (conta-se à parte); interrupções letivas, feriados e
+  dias não letivos registados não contam para os prazos. Se a agregação parar
+  (mais de 60 minutos), os que dependem da atividade ficam por avaliar e o
+  painel avisa. Ficam só no painel — nada é enviado automaticamente.
+- **Recolha mínima** em `usage_events`, com catálogo fechado
+  (`UsageEventType`): dia, funcionalidade, tipo de evento, resultado ou código
+  técnico de lista fechada e, nas operações em lote, o número de elementos
+  afetados. Sem texto livre, sem JSON, sem alunos, sem URLs, sem mensagens de
+  erro, sem IP nem navegador, sem serviços externos. Consultas deliberadas
+  (uma por funcionalidade e dia; nunca recarregamentos parciais,
+  pré-carregamentos ou pedidos automáticos) e ações concluídas (só depois do
+  commit, uma por registo e dia, nunca gravações sem alteração; uma importação
+  de 100 alunos é 1 ação com 100 elementos). Acesso técnico do suporte, tarefas
+  agendadas e jobs nunca são registados. Uma falha na recolha nunca impede a
+  gravação do trabalho do professor.
+- Agregação diária a cada 15 minutos (`usage:aggregate`) — o painel diz até
+  quando os dados estão atualizados e nunca lê dados pedagógicos ao abrir;
+  cobertura da recolha registada (`usage_collection_periods`): antes do início
+  da recolha os períodos aparecem «sem recolha», nunca como zeros, e semanas e
+  meses parciais ou em curso estão assinalados.
+
+### Segurança
+
+- O painel exige **duas** coisas: ser administrador da plataforma **e** ter a
+  autorização própria `can_view_usage_insights`, que não é concedida por
+  omissão (`php artisan lapis:grant-usage-insights <email>`; depois, na ficha
+  da conta, por quem já a tem, com auditoria de plataforma). Verificada no
+  servidor em todas as rotas; revogar o administrador revoga-a também. Nunca é
+  mostrada a colegas nem a responsáveis de organizações.
+- Contas de teste e pessoal interno ficam fora das métricas principais, no
+  segmento «Teste e internas». Em produção, todas as organizações estão hoje
+  marcadas como teste.
+
+### Privacidade
+
+- **Política de Privacidade, versão 2026-10-12:** nova secção «Métricas de
+  utilização do serviço» (o que é e o que não é registado, finalidade, quem vê,
+  interesse legítimo ponderado, direito de oposição, prazo). O aviso não
+  bloqueante volta a aparecer a quem já o tinha fechado. Termos e Acordo de
+  Tratamento de Dados inalterados.
+- **Conservação de 365 dias** (`retention.usage_metrics_days`), executada todas
+  as noites por `usage:prune` (04:05); tudo o que é de uma conta encerrada é
+  eliminado na anonimização; `lapis:usage-opt-out <email>` executa uma oposição
+  (deixa de registar e elimina o que existia).
+
+### Corrigido
+
+- **Backoffice num telemóvel:** a barra lateral fixa de 240px deixava 135px para
+  a página a 375px. Abaixo de `md` passa a barra no topo com navegação
+  deslizante; no desktop nada muda.
+- A tabela acessível dos gráficos (Estatística da turma, Evolução do aluno e o
+  novo painel) alargava a página num telemóvel; deixa de o fazer.
+
 ## [0.162.0] — 2026-10-11
 
 ### Adicionado

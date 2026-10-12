@@ -53,10 +53,10 @@ no HTML — e os testes conseguem afirmar que a secção de menores existe, que 
 descrição da IA não promete o que o produto não faz, e que nenhum placeholder
 é apresentado como facto.
 
-### Atualização de 2026-10-11 — métricas de utilização (0.163.0)
+### Atualização de 2026-10-12 — métricas de utilização (0.163.0)
 
 A Política de Privacidade ganha a secção **«Métricas de utilização do serviço»**
-e passa à versão `2026-10-11`; os Termos e o Acordo não mudam. O painel interno
+e passa à versão `2026-10-12`; os Termos e o Acordo não mudam. O painel interno
 `/admin/usage` passou a registar, para os dados da **conta**, que
 funcionalidades são abertas e que tipo de ações são concluídas, por dia — sem
 conteúdo, sem alunos, sem IP nem navegador — com fundamento em **interesse
