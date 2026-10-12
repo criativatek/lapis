@@ -9,6 +9,7 @@ use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageFeature;
 use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\URL;
 
@@ -95,8 +96,8 @@ final class UsageUserDirectory
                 'items' => $activity->items,
                 'features' => $this->featureList($activity->features),
                 'signals' => array_map(fn (Signal $signal): array => $signal->toArray(), $evaluation->for($user->id)),
-                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->created_at)),
-                'observation_days' => $observed->forAccount($user->created_at),
+                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->usageObservedSince())),
+                'observation_days' => $observed->forAccount($user->usageObservedSince()),
                 'period_days' => $filters->days(),
             ];
         }, $slice);
@@ -138,6 +139,13 @@ final class UsageUserDirectory
 
         $startedAt = $this->coverage->startedAt();
         $precedesCollection = $startedAt !== null && $user->created_at->lessThan($startedAt);
+        $resumedAt = $this->resumedAfterCreation($user);
+
+        $firstStepsNote = match (true) {
+            $resumedAt !== null => 'Recolha retomada a '.UsageDates::short($resumedAt).' — o que aconteceu antes não é conhecido.',
+            $precedesCollection => 'Conta anterior à recolha — pode ter acontecido antes.',
+            default => null,
+        };
 
         return [
             ...$this->chrome->common($filters),
@@ -146,7 +154,7 @@ final class UsageUserDirectory
                 'name' => $user->name,
                 'email' => $user->email,
                 'joined_on' => UsageDates::iso($user->created_at),
-                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->created_at)),
+                'status' => $this->status($user, $activity, $filters, $observed->forAccount($user->usageObservedSince())),
                 'organizations' => $profile['organizations'],
                 'flags' => $profile['flags'],
             ],
@@ -154,7 +162,7 @@ final class UsageUserDirectory
                 'key' => $milestone->value,
                 'label' => $milestone->label(),
                 'observed_on' => $state->{$milestone->stateColumn()}?->toDateString(),
-                'note' => $precedesCollection ? 'Conta anterior à recolha — pode ter acontecido antes.' : null,
+                'note' => $firstStepsNote,
             ], UsageMilestone::cases()),
             'class_available_since' => [
                 'date' => $state->class_available_since === null ? null : UsageDates::iso($state->class_available_since),
@@ -172,10 +180,10 @@ final class UsageUserDirectory
                 'items' => $activity->items,
                 'failures' => $activity->failures,
                 'last_activity_on' => $this->activity->lastActivityOf($user->id),
-                'observation_days' => $observed->forAccount($user->created_at),
+                'observation_days' => $observed->forAccount($user->usageObservedSince()),
                 'period_days' => $filters->days(),
             ],
-            'weeks' => $this->weeks($filters, $result['rows']),
+            'weeks' => $this->weeks($filters, $result['rows'], $resumedAt),
             'features' => $this->features($result['rows']),
         ];
     }
@@ -184,7 +192,7 @@ final class UsageUserDirectory
      * @param  list<RollupRow>  $rows
      * @return list<array<string, mixed>>
      */
-    private function weeks(UsageFilters $filters, array $rows): array
+    private function weeks(UsageFilters $filters, array $rows, ?CarbonInterface $resumedAt): array
     {
         return array_map(function (UsagePeriod $week) use ($rows): array {
             if (! $week->isObserved()) {
@@ -214,7 +222,19 @@ final class UsageUserDirectory
                 'failures' => $activity->failures,
                 'features' => $this->featureList($activity->features),
             ];
-        }, $this->periods->weeks($filters));
+        }, $this->periods->weeks($filters, $resumedAt));
+    }
+
+    /**
+     * O instante em que a recolha voltou a valer para a pessoa, se for depois
+     * de criar a conta (oposição retirada ou encerramento cancelado). Nulo para
+     * quem é observado desde a criação.
+     */
+    private function resumedAfterCreation(User $user): ?CarbonInterface
+    {
+        $since = $user->usageObservedSince();
+
+        return $user->created_at !== null && $since->greaterThan($user->created_at) ? $since : null;
     }
 
     /**
@@ -273,10 +293,16 @@ final class UsageUserDirectory
      */
     private function status(User $user, UserActivity $activity, UsageFilters $filters, int $observationDays): ?string
     {
+        $resumed = $this->resumedAfterCreation($user);
+
         return match (true) {
             $user->closure_requested_at !== null => 'Conta em encerramento',
             $user->deactivated_at !== null => 'Conta desativada',
             $user->created_at->greaterThanOrEqualTo($filters->from) && $user->created_at->lessThan($filters->toExclusive()) => 'Conta criada durante o período',
+            // Não é inatividade: antes da retoma a pessoa não era observada.
+            $resumed !== null
+                && $resumed->greaterThanOrEqualTo($filters->from)
+                && $resumed->lessThan($filters->toExclusive()) => 'Recolha retomada durante o período',
             // Sem um único dia observado não se pode dizer «sem atividade».
             $activity->activeDays === 0 && $observationDays === 0 => 'Sem recolha no período',
             $activity->activeDays === 0 => 'Sem atividade observada no período',

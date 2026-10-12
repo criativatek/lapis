@@ -296,6 +296,26 @@ class FollowUpSignalsTest extends InsightsTestCase
     }
 
     #[Test]
+    public function a_day_whose_events_expired_before_aggregation_is_never_read_as_inactivity(): void
+    {
+        $this->startUsageCollectionAt('2026-08-01 00:00:00');
+        $user = $this->quietUser();
+        // A agregação esteve parada e os eventos de 05/10 expiraram por agregar:
+        // não se sabe se houve atividade nesse dia.
+        DB::table('usage_coverage_gaps')->insert(['day' => '2026-10-05', 'reason' => 'expired_unaggregated', 'recorded_at' => '2026-10-12 09:07:00']);
+
+        $this->assertSame([], $this->keysOf($user));
+        $this->assertSame(0, $this->summary()['went_quiet']['count']);
+        $this->assertSame(1, $this->summary()['went_quiet']['not_evaluated']);
+
+        // E no painel o dia é «sem recolha», com a explicação — nunca zero.
+        $overview = $this->props('admin.usage.overview');
+        $week = collect($overview['weeks'])->firstWhere('start', '2026-10-05');
+        $this->assertSame('partial_coverage', $week['status']);
+        $this->assertNotEmpty(array_filter($overview['coverage']['notes'], fn (string $note): bool => str_contains($note, 'sem dados (05/10)')));
+    }
+
+    #[Test]
     public function without_coverage_over_the_four_weeks_it_is_not_evaluated(): void
     {
         $this->startUsageCollectionAt('2026-09-10 00:00:00');
@@ -404,7 +424,8 @@ class FollowUpSignalsTest extends InsightsTestCase
         $normal = $this->person('Normal', '2026-08-01 10:00:00');
         $this->state($normal, ['class_available_since' => '2026-08-02 10:00:00']);
 
-        $this->assertSame([], $this->keysOf($closing));
+        // Quem pediu o encerramento já não tem métricas: nem aparece.
+        $this->assertSame([], $this->props('admin.usage.users.index', ['q' => $closing->name])['users']['data']);
         $this->assertSame([], $this->keysOf($deactivated));
         // Só a conta normal, que seria avaliada, fica «por avaliar».
         $this->assertSame(1, $this->summary()['no_first_record']['not_evaluated']);

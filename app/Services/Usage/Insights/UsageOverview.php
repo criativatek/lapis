@@ -56,9 +56,14 @@ final class UsageOverview
         $startedAt = $this->coverage->startedAt();
         $newAccounts = $this->people->createdBetween($scope, $filters->from, $filters->toExclusive());
 
+        // Só quem foi observado desde a criação da conta: depois do início da
+        // recolha e sem uma retoma posterior (oposição retirada, encerramento
+        // cancelado), cujos primeiros passos não são conhecidos.
         $afterStart = array_filter(
             $newAccounts,
-            fn (array $account): bool => $startedAt !== null && $account['created_at']->greaterThanOrEqualTo($startedAt),
+            fn (array $account): bool => $startedAt !== null
+                && $account['created_at']->greaterThanOrEqualTo($startedAt)
+                && $account['observed_from_creation'],
         );
 
         $done = 0;
@@ -192,7 +197,7 @@ final class UsageOverview
 
         $byWeek = [];
         foreach ($this->people->createdBetween($scope, $filters->from, $filters->toExclusive()) as $account) {
-            if ($account['created_at']->lessThan($startedAt)) {
+            if ($account['created_at']->lessThan($startedAt) || ! $account['observed_from_creation']) {
                 continue;
             }
 

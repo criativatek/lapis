@@ -94,8 +94,10 @@ class UsageHooksPrivacyTest extends TestCase
             'enrollment_ids' => [$enrollment->id], 'domain_id' => null,
         ])->assertRedirect();
 
-        // Houve mesmo ações registadas — senão o teste não provava nada.
-        $this->assertGreaterThanOrEqual(5, UsageEvent::query()->where('kind', UsageEventKind::Action->value)->count());
+        // Houve mesmo ações registadas — senão o teste não provava nada. Quatro:
+        // sumário, entrada do caderno (criada e editada no mesmo dia é uma
+        // ação), o lote de intervenções e o registo.
+        $this->assertGreaterThanOrEqual(4, UsageEvent::query()->where('kind', UsageEventKind::Action->value)->count());
 
         app(AggregateUsage::class)->run(CarbonImmutable::parse('2026-10-13 10:00:00', 'Europe/Lisbon'));
         $this->assertGreaterThan(0, DB::table('usage_daily_rollups')->count());

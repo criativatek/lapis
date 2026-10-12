@@ -6,8 +6,12 @@ use App\Models\UsageDailyRollup;
 use App\Models\UsageEvent;
 use App\Models\UsageUserState;
 use App\Models\User;
+use App\Services\Usage\AggregateUsage;
 use App\Support\Retention\RetentionPolicy;
+use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageEventType;
+use Carbon\CarbonImmutable;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -113,7 +117,7 @@ class UsageRetentionTest extends TestCase
     }
 
     #[Test]
-    public function closing_an_account_erases_its_usage_data_and_only_its_own(): void
+    public function anonymising_a_closed_account_finds_nothing_left_and_leaves_others_alone(): void
     {
         $closing = User::factory()->create();
         $other = User::factory()->create();
@@ -158,9 +162,14 @@ class UsageRetentionTest extends TestCase
         $this->assertSame(0, UsageDailyRollup::query()->count());
         $this->assertSame(0, UsageUserState::query()->count());
 
+        $this->travelTo(Carbon::parse('2026-10-13 08:00:00', 'Europe/Lisbon'));
         $this->artisan('lapis:usage-opt-out', ['email' => $objector->email, '--undo' => true])->assertSuccessful();
 
-        $this->assertNull($objector->refresh()->usage_opted_out_at);
+        $objector->refresh();
+        $this->assertNull($objector->usage_opted_out_at);
+        // A recolha volta a valer a partir daqui, sem histórico.
+        $this->assertSame('2026-10-13 08:00:00', $objector->usage_resumed_at?->format('Y-m-d H:i:s'));
+        $this->assertSame(0, UsageEvent::query()->count());
     }
 
     #[Test]
@@ -202,35 +211,149 @@ class UsageRetentionTest extends TestCase
         $this->assertSame(120, app(RetentionPolicy::class)->usageEventsDays());
     }
 
+    // --- O prazo dos eventos é um limite efetivo ------------------------------
+
     #[Test]
-    public function events_of_days_not_yet_aggregated_are_kept_until_they_are(): void
+    public function the_limit_is_exact_to_the_second_at_each_pass(): void
     {
         config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
-        // A agregação parou a 2026-08-22: o último dia que ainda pode voltar a ler é 2026-08-21.
+        $this->aggregatedThrough('2026-10-12');
+        $teacher = User::factory()->create();
+        $organization = $teacher->personalOrganization()->id;
+
+        // Agora − 35 dias = 2026-09-07 10:00:00.
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-07', UsageEventType::FeatureViewed, ['feature' => 'lessons', 'occurred_at' => '2026-09-07 09:59:59']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-07', UsageEventType::FeatureViewed, ['feature' => 'records', 'occurred_at' => '2026-09-07 10:00:00']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-07', UsageEventType::FeatureViewed, ['feature' => 'reports', 'occurred_at' => '2026-09-07 10:30:00']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+        $this->assertEqualsCanonicalizing(['records', 'reports'], UsageEvent::query()->toBase()->pluck('feature')->all());
+
+        // A passagem da hora seguinte leva os que entretanto passaram o prazo:
+        // nenhum evento vive mais do que o prazo e uma hora.
+        $this->travelTo(Carbon::parse('2026-10-12 11:00:00', 'Europe/Lisbon'));
+        $this->artisan('usage:prune')->assertSuccessful();
+        $this->assertSame(0, UsageEvent::query()->count());
+    }
+
+    #[Test]
+    public function the_prune_runs_every_hour(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($event) => str_contains((string) $event->command, 'usage:prune'));
+
+        $this->assertNotNull($event);
+        $this->assertSame('7 * * * *', $event->expression);
+    }
+
+    #[Test]
+    public function a_prolonged_aggregation_failure_does_not_extend_the_events_life_and_leaves_a_gap(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        // A agregação parou a 2026-08-22 às 09:45: esse dia ficou a meio, os
+        // seguintes nunca foram agregados. Agora − 35 dias = 2026-09-07 10:00.
         $this->aggregatedThrough('2026-08-22');
         $teacher = User::factory()->create();
         $organization = $teacher->personalOrganization()->id;
 
         $this->seedUsageEvent($teacher->id, $organization, '2026-08-20', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
-        $this->seedUsageEvent($teacher->id, $organization, '2026-08-21', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-08-22', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
         $this->seedUsageEvent($teacher->id, $organization, '2026-09-01', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedRollup($teacher, '2026-08-20'); // agregado a tempo
+        $this->seedRollup($teacher, '2026-08-22'); // a meio, quando a agregação parou
 
         $this->artisan('usage:prune')->assertSuccessful();
 
-        $this->assertEqualsCanonicalizing(['2026-08-21', '2026-09-01'], UsageEvent::query()->get()->map(fn ($event) => $event->occurred_on->toDateString())->all());
+        // Os eventos saem ao prazo, agregados ou não.
+        $this->assertSame(['2026-09-10'], UsageEvent::query()->get()->map(fn ($event) => $event->occurred_on->toDateString())->all());
+        // Os dias que expiraram por agregar ficam como lacuna — só o dia e o motivo.
+        $this->assertSame(['2026-08-22', '2026-09-01'], DB::table('usage_coverage_gaps')->orderBy('day')->pluck('day')->map(fn ($day) => substr((string) $day, 0, 10))->all());
+        $this->assertSame(['id', 'day', 'reason', 'recorded_at'], DB::getSchemaBuilder()->getColumnListing('usage_coverage_gaps'));
+        $this->assertSame(['expired_unaggregated'], DB::table('usage_coverage_gaps')->distinct()->pluck('reason')->all());
+        // O agregado a meio sai; o que foi agregado a tempo fica.
+        $this->assertSame(['2026-08-20'], UsageDailyRollup::query()->get()->map(fn ($rollup) => $rollup->day->toDateString())->all());
     }
 
     #[Test]
-    public function without_any_aggregation_no_event_is_deleted(): void
+    public function after_recovery_a_gap_is_never_recomputed_nor_shown_as_zero(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        $this->aggregatedThrough('2026-08-22');
+        $teacher = User::factory()->create();
+        $organization = $teacher->personalOrganization()->id;
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-01', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $organization, '2026-09-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+        // A agregação volta.
+        app(AggregateUsage::class)->run(CarbonImmutable::now('Europe/Lisbon'));
+
+        $days = UsageDailyRollup::query()->get()->map(fn ($rollup) => $rollup->day->toDateString())->all();
+        $this->assertSame(['2026-09-10'], $days, 'Um dia de lacuna voltou a ter agregados.');
+
+        $coverage = app(UsageCoverage::class);
+        $this->assertFalse($coverage->isDayCovered(CarbonImmutable::parse('2026-09-01', 'Europe/Lisbon')), 'A lacuna aparece como dia observado (zero).');
+        $this->assertTrue($coverage->isDayCovered(CarbonImmutable::parse('2026-09-02', 'Europe/Lisbon')));
+        $this->assertFalse($coverage->fullyCoveredSince(CarbonImmutable::parse('2026-08-25', 'Europe/Lisbon'), now()), 'Uma janela com lacuna conta como observada por inteiro.');
+        $this->assertTrue($coverage->fullyCoveredSince(CarbonImmutable::parse('2026-09-02', 'Europe/Lisbon'), now()));
+    }
+
+    #[Test]
+    public function without_any_aggregation_expired_events_still_go_and_their_days_become_gaps(): void
     {
         config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
         $teacher = User::factory()->create();
 
-        $this->seedUsageEvent($teacher->id, $teacher->personalOrganization()->id, '2026-01-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+        $this->seedUsageEvent($teacher->id, $teacher->personalOrganization()->id, '2026-08-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
 
         $this->artisan('usage:prune')->assertSuccessful();
 
-        $this->assertSame(1, UsageEvent::query()->count());
+        $this->assertSame(0, UsageEvent::query()->count());
+        $this->assertSame(['2026-08-10'], DB::table('usage_coverage_gaps')->pluck('day')->map(fn ($day) => substr((string) $day, 0, 10))->all());
+    }
+
+    #[Test]
+    public function a_day_aggregated_in_time_never_becomes_a_gap(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        $this->aggregatedThrough('2026-10-12');
+        $teacher = User::factory()->create();
+        $this->seedUsageEvent($teacher->id, $teacher->personalOrganization()->id, '2026-08-10', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(0, UsageEvent::query()->count());
+        $this->assertSame(0, DB::table('usage_coverage_gaps')->count());
+    }
+
+    #[Test]
+    public function with_collection_off_the_limit_still_applies(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        $this->startUsageCollectionAt('2026-08-01 00:00:00', '2026-08-20 18:00:00');
+        $this->aggregatedThrough('2026-10-12');
+        $teacher = User::factory()->create();
+        $this->seedUsageEvent($teacher->id, $teacher->personalOrganization()->id, '2026-08-19', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(0, UsageEvent::query()->count());
+    }
+
+    #[Test]
+    public function gaps_leave_together_with_the_aggregates_window(): void
+    {
+        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
+        // Hoje − 180 = 2026-04-15.
+        DB::table('usage_coverage_gaps')->insert([
+            ['day' => '2026-04-14', 'reason' => 'expired_unaggregated', 'recorded_at' => '2026-05-20 10:00:00'],
+            ['day' => '2026-04-15', 'reason' => 'expired_unaggregated', 'recorded_at' => '2026-05-21 10:00:00'],
+        ]);
+
+        $this->artisan('usage:prune')->assertSuccessful();
+
+        $this->assertSame(['2026-04-15'], DB::table('usage_coverage_gaps')->pluck('day')->map(fn ($day) => substr((string) $day, 0, 10))->all());
     }
 
     #[Test]

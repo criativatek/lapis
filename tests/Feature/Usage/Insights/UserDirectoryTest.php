@@ -172,7 +172,9 @@ class UserDirectoryTest extends InsightsTestCase
 
         $statuses = collect($this->rows())->pluck('status', 'name')->all();
 
-        $this->assertSame('Conta em encerramento', $statuses['Em Encerramento']);
+        // Quem pediu o encerramento já não tem métricas (apagadas no pedido) e
+        // sai da lista, em vez de aparecer sem atividade.
+        $this->assertArrayNotHasKey('Em Encerramento', $statuses);
         $this->assertSame('Conta desativada', $statuses['Desativada']);
         $this->assertSame('Conta criada durante o período', $statuses['Nova no Período']);
         $this->assertSame('Sem atividade observada no período', $statuses['Parada']);

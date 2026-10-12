@@ -46,8 +46,10 @@ final class ScopePeople
 
     /**
      * Quem do âmbito criou a conta no intervalo (lido no momento, de `users`).
+     * `observed_from_creation` é falso para quem retomou a recolha depois de
+     * criar a conta: os primeiros passos dessa pessoa não são conhecidos.
      *
-     * @return list<array{id: int, created_at: CarbonImmutable}>
+     * @return list<array{id: int, created_at: CarbonImmutable, observed_from_creation: bool}>
      */
     public function createdBetween(InsightsScope $scope, CarbonInterface $from, CarbonInterface $toExclusive): array
     {
@@ -58,10 +60,14 @@ final class ScopePeople
                 ->whereIn('id', $chunk)
                 ->where('created_at', '>=', $from)
                 ->where('created_at', '<', $toExclusive)
-                ->get(['id', 'created_at']);
+                ->get(['id', 'created_at', 'usage_resumed_at']);
 
             foreach ($users as $user) {
-                $result[] = ['id' => $user->id, 'created_at' => CarbonImmutable::instance($user->created_at)];
+                $result[] = [
+                    'id' => $user->id,
+                    'created_at' => CarbonImmutable::instance($user->created_at),
+                    'observed_from_creation' => $user->usageObservedSince()->equalTo($user->created_at),
+                ];
             }
         }
 

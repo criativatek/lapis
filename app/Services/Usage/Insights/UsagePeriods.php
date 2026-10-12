@@ -39,9 +39,10 @@ final class UsagePeriods
     public function __construct(private readonly UsageCoverage $coverage) {}
 
     /**
+     * @param  CarbonInterface|null  $observedSince  Para uma pessoa que retomou a recolha: antes deste instante, nada dela foi observado.
      * @return list<UsagePeriod>
      */
-    public function weeks(UsageFilters $filters): array
+    public function weeks(UsageFilters $filters, ?CarbonInterface $observedSince = null): array
     {
         $periods = [];
 
@@ -52,6 +53,7 @@ final class UsagePeriods
                 $start->addDays(6),
                 UsageDates::iso($start),
                 'Semana de '.UsageDates::short($start),
+                $observedSince === null ? null : UsageDates::iso($observedSince),
             );
         }
 
@@ -81,14 +83,17 @@ final class UsagePeriods
     /**
      * Uma semana ou um mês: a parte que está dentro do período e o seu estado.
      */
-    private function build(UsageFilters $filters, CarbonImmutable $start, CarbonImmutable $end, string $key, string $label): UsagePeriod
+    private function build(UsageFilters $filters, CarbonImmutable $start, CarbonImmutable $end, string $key, string $label, ?string $sinceDay = null): UsagePeriod
     {
         $from = $start->max($filters->from);
         $to = $end->min($filters->to);
 
+        // O dia da retoma é parcial; os anteriores não foram observados.
         $days = UsageDates::eachDay($from, $to);
-        $covered = array_values(array_filter($days, fn (CarbonInterface $day): bool => $this->coverage->isDayCovered($day)));
-        $fullyCovered = count(array_filter($days, fn (CarbonInterface $day): bool => $this->coverage->isDayFullyCovered($day)));
+        $covered = array_values(array_filter($days, fn (CarbonInterface $day): bool => $this->coverage->isDayCovered($day)
+            && ($sinceDay === null || UsageDates::iso($day) >= $sinceDay)));
+        $fullyCovered = count(array_filter($days, fn (CarbonInterface $day): bool => $this->coverage->isDayFullyCovered($day)
+            && ($sinceDay === null || UsageDates::iso($day) > $sinceDay)));
 
         $status = match (true) {
             $covered === [] => self::NO_COVERAGE,

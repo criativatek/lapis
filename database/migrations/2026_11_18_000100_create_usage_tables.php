@@ -83,15 +83,30 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        // A ÚNICA fonte de verdade sobre a recolha estar ligada: haver um período
+        // aberto. Só `lapis:usage-collection start|stop` escreve aqui
+        // (App\Actions\Usage\SetUsageCollection), com auditoria de plataforma.
         Schema::create('usage_collection_periods', function (Blueprint $table) {
             $table->id();
             $table->dateTime('started_at');
             $table->dateTime('ended_at')->nullable();
             // `true` enquanto o período está aberto, NULL depois de fechado: com
-            // o índice único, dois pedidos que tentem abrir a recolha ao mesmo
-            // tempo (ou um pedido e a agregação) não criam dois períodos.
+            // o índice único, dois `start` ao mesmo tempo não criam dois períodos.
             $table->boolean('is_open')->nullable()->unique();
         });
+
+        // Dias em que houve recolha mas os eventos expiraram ANTES de serem
+        // agregados (agregação parada mais tempo do que o prazo dos eventos).
+        // Guarda só o dia e o motivo — nada do que expirou. Para a cobertura,
+        // um dia destes é «sem recolha», nunca zero, e não alimenta sinais.
+        Schema::create('usage_coverage_gaps', function (Blueprint $table) {
+            $table->id();
+            $table->date('day')->unique();
+            $table->string('reason', 32);
+            $table->dateTime('recorded_at');
+        });
+
+        $this->addCheck('usage_coverage_gaps', 'usage_coverage_gaps_reason_check', "reason IN ('expired_unaggregated')");
 
         Schema::create('usage_aggregation_state', function (Blueprint $table) {
             $table->unsignedTinyInteger('id')->primary(); // sempre 1
@@ -100,12 +115,13 @@ return new class extends Migration
         });
 
         // A migração NÃO abre um período de recolha: a recolha nasce desligada
-        // e o período abre-se na ativação efetiva (UsageCoverage::ensureOpen()).
+        // e só um operador a liga, explicitamente (`lapis:usage-collection start`).
     }
 
     public function down(): void
     {
         Schema::dropIfExists('usage_aggregation_state');
+        Schema::dropIfExists('usage_coverage_gaps');
         Schema::dropIfExists('usage_collection_periods');
         Schema::dropIfExists('usage_user_states');
         Schema::dropIfExists('usage_daily_rollups');

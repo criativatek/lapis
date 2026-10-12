@@ -20,32 +20,46 @@ use Throwable;
  *    próprio. Uma falha vai para o log como `usage.record_failed`, só com o
  *    nome do evento e a CLASSE da exceção — nunca a mensagem, que pode trazer
  *    SQL com valores.
- * 2. SÓ DEPOIS DO COMMIT. A escrita é um `DB::afterCommit`: uma transação
- *    revertida não deixa rasto.
+ * 2. SÓ DEPOIS DO COMMIT, E SÓ SE AINDA FOR PERMITIDO. A escrita é um
+ *    `DB::afterCommit`: uma transação revertida não deixa rasto. E a própria
+ *    escrita volta a perguntar à base, no mesmo comando SQL, se há um período
+ *    de recolha aberto e se a pessoa não se opôs, não pediu o encerramento nem
+ *    retomou a recolha depois do evento — um pedido em curso quando a recolha
+ *    é desligada, ou quando a pessoa se opõe, não grava nada.
  * 3. SÓ O QUE ESTÁ NO CATÁLOGO. Não há propriedades livres; a assinatura não
  *    tem onde as receber.
  *
- * Sai em silêncio quando não há pedido com utilizador autenticado (consola,
- * scheduler, jobs), durante um acesso técnico (impersonação), para quem se
- * opôs à recolha, para contas desativadas ou anonimizadas, e quando não há
+ * Sai em silêncio quando a recolha está desligada (não há período aberto),
+ * quando não há pedido com utilizador autenticado (consola, scheduler, jobs),
+ * durante um acesso técnico (impersonação), para quem se opôs à recolha, para
+ * contas desativadas, anonimizadas ou com encerramento pedido, e quando não há
  * organização resolvida.
+ *
+ * Registado como `scoped`: a memória do estado da recolha vale para um pedido
+ * (ou um job), nunca para a vida de um processo.
  */
 class UsageRecorder
 {
+    /** O estado da recolha lido neste pedido (nulo = ainda por ler). */
+    private ?bool $collecting = null;
+
     public function __construct(private readonly UsageCoverage $coverage) {}
 
     /** A fotografia não se conseguiu ler (ver snapshot()). */
     public const UNAVAILABLE = 'unavailable';
 
     /**
-     * Uma ação concluída, contada uma vez por registo e por dia.
+     * Uma ação concluída, contada UMA VEZ POR REGISTO E POR DIA — criar e
+     * editar o mesmo registo no mesmo dia é uma ação. A identidade é o tipo de
+     * registo do catálogo (`UsageEventType::record()`) mais o registo, nunca o
+     * tipo de evento.
      *
      * Um lote pode discriminar o que lhe aconteceu (`created`, `changed`,
      * `unchanged`): os elementos afetados são então criados + alterados, e os
      * inalterados dizem só quantos vieram no lote sem mudar nada. Se nada foi
      * criado nem alterado, não houve ação e nada se grava.
      *
-     * @param  Model|string|null  $subject  O registo (ou uma chave de lote) que identifica «a mesma ação» no dia.
+     * @param  Model|string|null  $subject  O registo (um modelo, ou a chave de um registo composto ou de um lote).
      */
     public function action(
         UsageEventType $type,
@@ -68,12 +82,13 @@ class UsageRecorder
                 $items = ($created ?? 0) + ($changed ?? 0);
             }
 
-            if ($type->kind() !== UsageEventKind::Action || $type->feature() === null || $items < 1) {
+            if ($type->kind() !== UsageEventKind::Action || $type->feature() === null || $type->record() === null || $items < 1) {
                 return;
             }
 
             $this->record($type, $type->feature(), [
-                $type->value,
+                'action',
+                $type->record(),
                 $this->subjectKey($subject),
             ], itemCount: $items, breakdown: $broken ? [
                 'items_created' => $created,
@@ -235,17 +250,24 @@ class UsageRecorder
      * a registar: recolha desligada, sem pedido com utilizador (consola,
      * agendador, jobs), acesso técnico, oposição, conta anonimizada,
      * desativada ou com encerramento pedido, ou sem organização resolvida.
+     *
+     * Isto decide se vale a pena PREPARAR um registo; a escrita volta a
+     * confirmar o estado na base (ver `write()`).
      */
     private function recordingUser(): ?User
     {
-        if (! config('usage.enabled')) {
-            return null;
-        }
-
         $request = request();
         $user = $request->user();
 
         if (! $user instanceof User) {
+            return null;
+        }
+
+        // Uma leitura por pedido: o estado pode mudar a meio, mas a escrita
+        // confirma-o de novo no próprio comando SQL.
+        $this->collecting ??= $this->coverage->isActive();
+
+        if (! $this->collecting) {
             return null;
         }
 
@@ -288,10 +310,6 @@ class UsageRecorder
 
         // O dia é o dia de calendário LOCAL, qualquer que seja o fuso do relógio.
         $now = now()->setTimezone((string) config('app.timezone'));
-
-        // A ATIVAÇÃO EFETIVA: nada é gravado antes de existir um período de
-        // recolha aberto, e o primeiro registo possível abre-o neste instante.
-        $this->coverage->ensureOpen($now);
         $day = $now->toDateString();
         $organizationId = $tenant->id();
 
@@ -321,17 +339,62 @@ class UsageRecorder
 
         DB::afterCommit(function () use ($row, $type): void {
             try {
-                UsageEvent::query()->insertOrIgnore($row);
+                $this->write($row);
             } catch (Throwable $exception) {
                 $this->report($type, $exception);
             }
         });
     }
 
+    /**
+     * Grava o evento SE, no momento da escrita, ainda for permitido — tudo num
+     * só `INSERT … SELECT`, para não haver intervalo entre a pergunta e a
+     * escrita:
+     *
+     * - há um período de recolha aberto, e começou antes do evento (um `stop`
+     *   seguido de `start` não recebe eventos do período anterior);
+     * - a pessoa não se opôs, não pediu o encerramento, não foi desativada nem
+     *   anonimizada;
+     * - a pessoa não retomou a recolha DEPOIS do evento (um pedido que estava a
+     *   meio quando se opôs não reconstitui nada quando ela volta a aceitar).
+     *
+     * O índice único de `dedupe_key` faz o resto: o segundo pedido com a mesma
+     * identidade, mesmo em paralelo, não grava.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function write(array $row): void
+    {
+        $columns = array_keys($row);
+
+        $allowed = DB::table('usage_collection_periods as p')
+            ->selectRaw(implode(', ', array_fill(0, count($columns), '?')), array_values($row))
+            ->where('p.is_open', true)
+            ->where('p.started_at', '<=', $row['occurred_at'])
+            ->whereNotExists(fn ($query) => $query
+                ->selectRaw('1')
+                ->from('users as u')
+                ->where('u.id', $row['user_id'])
+                ->where(fn ($blocked) => $blocked
+                    ->whereNotNull('u.usage_opted_out_at')
+                    ->orWhereNotNull('u.closure_requested_at')
+                    ->orWhereNotNull('u.deactivated_at')
+                    ->orWhereNotNull('u.anonymized_at')
+                    ->orWhere('u.usage_resumed_at', '>', $row['occurred_at'])))
+            ->limit(1);
+
+        UsageEvent::query()->toBase()->insertOrIgnoreUsing($columns, $allowed);
+    }
+
+    /**
+     * O registo dentro do seu tipo. Um modelo é `Classe#id` — a classe separa,
+     * no mesmo tipo de registo, a caracterização da turma 5 da do aluno 5; uma
+     * chave textual (registo composto ou lote) nunca tem `#`.
+     */
     private function subjectKey(Model|string|null $subject): string
     {
         if ($subject instanceof Model) {
-            return class_basename($subject).':'.$subject->getKey();
+            return class_basename($subject).'#'.$subject->getKey();
         }
 
         return $subject ?? '';

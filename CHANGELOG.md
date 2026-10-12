@@ -67,17 +67,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   erro, sem IP nem navegador, sem serviços externos. Consultas deliberadas
   (uma por funcionalidade e dia; nunca recarregamentos parciais,
   pré-carregamentos ou pedidos automáticos) e ações concluídas (só depois do
-  commit, uma por registo e dia, nunca gravações sem alteração; uma importação
-  de 100 alunos é 1 ação com 100 elementos). As ações são contagens
-  deduplicadas, não o registo de todas as operações. Acesso técnico do suporte,
-  tarefas agendadas e jobs nunca são registados, nem nada a partir de um pedido
-  de encerramento da conta. Uma falha na recolha nunca impede a gravação do
-  trabalho do professor.
+  commit, nunca gravações sem alteração; uma importação de 100 alunos é 1 ação
+  com 100 elementos). **Uma ação por pessoa, organização, registo e dia, seja
+  criação ou edição**: criar um relatório e editá-lo três vezes no mesmo dia é
+  uma ação, e registos diferentes com o mesmo id nunca se fundem (o tipo de
+  registo vem do catálogo, `UsageEventType::record()`). A identidade é uma chave
+  única, por isso dois pedidos em paralelo gravam uma linha, e os agregados e o
+  ranking contam pela mesma definição. As ações são contagens deduplicadas, não
+  o registo de todas as operações. Acesso técnico do suporte, tarefas agendadas
+  e jobs nunca são registados, nem nada a partir de um pedido de encerramento da
+  conta. Uma falha na recolha nunca impede a gravação do trabalho do professor.
 - **Edições reais contam:** relatórios (dados, secções, ordem, regenerar,
   restaurar), estratégias e medidas (edição e estado), instrumentos (cabeçalho,
-  grupos e itens) e acontecimentos — só quando alguma coisa mudou, uma vez por
-  registo e por dia. As impressões digitais que o decidem são calculadas em
-  memória e nunca guardadas.
+  grupos e itens) e acontecimentos — só quando alguma coisa mudou, e na mesma
+  ação que a criação se for no mesmo dia. As impressões digitais que o decidem
+  são calculadas em memória e nunca guardadas.
 - **Lotes discriminados:** criados, alterados e inalterados guardados à parte
   (`items_created`, `items_changed`, `items_unchanged`). Uma reimportação da
   lista de alunos é uma ação com os alunos criados mais os alterados; as linhas
@@ -109,27 +113,41 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Privacidade
 
-- **A recolha nasce DESLIGADA** (`LAPIS_USAGE_ENABLED=false`) até à decisão de
-  ativação. Desligada, nada é gravado, a agregação não lê dados de pessoas, o
-  painel di-lo e não há sinais. Ligada, o primeiro registo possível abre o
-  período de recolha: a cobertura começa na ativação efetiva, e a migração não
-  abre período nenhum.
+- **A recolha nasce DESLIGADA e só se liga explicitamente:** `php artisan
+  lapis:usage-collection start|stop --operator=<email>` (e `status`), com
+  auditoria de plataforma. A única fonte de verdade é haver um período aberto
+  em `usage_collection_periods` — não há chave de configuração. O período abre
+  e fecha no instante da transição (não no primeiro evento, nem na agregação
+  seguinte); repetir não duplica; religar deixa o intervalo como «sem
+  recolha». Desligar bloqueia logo: a escrita de cada evento, depois do commit,
+  confirma no mesmo comando SQL que a recolha continua ligada. Efeito imediato
+  em todos os processos, sem caches a refazer.
 - **A Política de Privacidade só muda na ativação:** até lá fica como está
-  (2026-09-15); a partir do instante da ativação ganha a secção «Métricas de
-  utilização do serviço» (o que é e não é registado, sinais, ranking interno,
-  quem vê, interesse legítimo ponderado, direito de oposição, prazos) e esse
-  instante passa a ser a versão em vigor — o aviso não bloqueante reaparece
-  nesse momento. Termos e Acordo de Tratamento de Dados inalterados.
-- **Conservação em dois prazos (proposta, configurável):** eventos detalhados
-  35 dias, só de dias já agregados; agregados por pessoa 180 dias, que é também
-  o período mais antigo que o painel aceita. Nenhuma agregação reconstitui o que
-  a conservação, a oposição ou o encerramento apagaram. Tudo o que é de uma
-  conta encerrada é eliminado na anonimização; `lapis:usage-opt-out <email>`
-  executa uma oposição.
+  (2026-09-15); a partir do instante do primeiro `start` ganha a secção
+  «Métricas de utilização do serviço» (o que é e não é registado, sinais,
+  ranking interno, quem vê, interesse legítimo ponderado, direito de oposição,
+  prazos) e esse instante passa a ser a versão em vigor — o aviso não bloqueante
+  reaparece nesse momento, com o aviso de oposição. Desligar não retira a
+  secção. Termos e Acordo de Tratamento de Dados inalterados.
+- **«Não registar a minha utilização»** nas definições da conta: pára a
+  recolha e elimina de imediato eventos, agregados e primeiros passos, sem tocar
+  em dados pedagógicos nem no acesso; nenhum pedido em curso nem agregação
+  posterior os reconstitui; quem se opôs sai de todos os números do painel e
+  nunca aparece inativo. Voltar a aceitar recomeça a recolha nesse instante, sem
+  histórico, com cobertura própria. `lapis:usage-opt-out` continua para pedidos
+  por escrito.
+- **O pedido de encerramento da conta elimina as métricas de imediato** (não no
+  dia 60); cancelar não as recupera.
+- **Conservação com limite efetivo (proposta, configurável):** eventos
+  detalhados 35 dias, agregados ou não — `usage:prune` passa a correr de hora a
+  hora, por isso nenhum evento vive mais de 35 dias e uma hora; agregados por
+  pessoa 180 dias. Se a agregação parar mais do que o prazo, os dias que expiram
+  por agregar ficam como dias sem dados (só o dia e o motivo), mostrados «sem
+  recolha» e nunca usados por sinais; não há reconstituição.
 - As decisões que faltam (classificação de cada organização de produção,
-  prazos, encerramento, aviso de oposição) e as perguntas para validação
-  jurídica estão em `docs/usage-insights-decisions.md`, com as fontes oficiais
-  consultadas.
+  prazos, datas de primeiros passos, aviso de oposição, ativação) e as perguntas
+  para validação jurídica — **não concluída** — estão em
+  `docs/usage-insights-decisions.md`, com as fontes oficiais consultadas.
 
 ### Corrigido
 

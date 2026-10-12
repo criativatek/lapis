@@ -297,7 +297,9 @@ class EvaluationSheetInovarExportController extends Controller
                 'level_cell_count' => count($levelCells),
             ]);
 
-            $usage->action(UsageEventType::InovarExported, 'inovar:'.$class->getKey().':'.$period->getKey());
+            // A pauta para o INOVAR — outro registo que a exportação das
+            // classificações da mesma turma e período.
+            $usage->action(UsageEventType::InovarExported, 'evaluation-sheet:'.$class->getKey().':'.$period->getKey());
 
             return $response;
         } catch (InovarTemplateException $exception) {

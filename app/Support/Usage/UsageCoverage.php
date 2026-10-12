@@ -5,12 +5,21 @@ namespace App\Support\Usage;
 use App\Models\UsageCollectionPeriod;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Em que dias houve recolha (docs/usage-insights.md, «Cobertura dos dados»).
  *
- * Um dia fora de qualquer período de `usage_collection_periods` é «sem recolha»
- * e nunca zero: quem lê esta classe devolve `null`, não `0`. O dia em que a
+ * A recolha está LIGADA quando há um período aberto em
+ * `usage_collection_periods` — é a única fonte de verdade, sem nenhuma chave de
+ * configuração a contradizê-la. Só `App\Actions\Usage\SetUsageCollection`
+ * (`lapis:usage-collection start|stop`) abre e fecha períodos, no instante da
+ * transição: nenhum evento, pedido ou agregação o faz.
+ *
+ * Um dia fora de qualquer período é «sem recolha» e nunca zero: quem lê esta
+ * classe devolve `null`, não `0`. O mesmo vale para um dia de
+ * `usage_coverage_gaps` — houve recolha, mas os eventos expiraram antes de
+ * serem agregados, e o que não se sabe não se mostra como zero. O dia em que a
  * recolha começa (ou termina) está coberto mas não COMPLETAMENTE coberto.
  *
  * Tudo no fuso da aplicação, e os dias são dias de calendário locais: soma-se
@@ -22,61 +31,36 @@ class UsageCoverage
     /** @var list<array{0: CarbonImmutable, 1: CarbonImmutable|null}>|null */
     private ?array $intervals = null;
 
-    /**
-     * Abre um período se a recolha está ligada e nenhum está aberto; fecha o
-     * aberto se a recolha foi desligada.
-     */
-    public function sync(CarbonInterface $now): void
-    {
-        $now = $this->local($now);
-        $open = UsageCollectionPeriod::query()->whereNull('ended_at')->get();
-
-        if (config('usage.enabled')) {
-            if ($open->isEmpty()) {
-                $this->ensureOpen($now);
-            }
-        } else {
-            foreach ($open as $period) {
-                $period->forceFill(['ended_at' => $now, 'is_open' => null])->save();
-            }
-        }
-
-        $this->intervals = null;
-    }
+    /** @var list<string>|null */
+    private ?array $gapDays = null;
 
     /**
-     * A recolha está ligada E há um período aberto — é isto que «ativa» quer
-     * dizer. Lido sempre da base, sem a memória da instância: a ativação pode
-     * acontecer a meio de um processo longo.
+     * A recolha está ligada: há um período aberto. Lido sempre da base, sem a
+     * memória da instância — um `stop` a meio de um processo longo conta já.
      */
     public function isActive(): bool
     {
-        return (bool) config('usage.enabled')
-            && UsageCollectionPeriod::query()->whereNull('ended_at')->exists();
+        try {
+            return UsageCollectionPeriod::query()->where('is_open', true)->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
-    /**
-     * A ATIVAÇÃO EFETIVA. Chamado antes de cada registo: com a recolha ligada e
-     * nenhum período aberto, abre um agora — o primeiro registo possível marca o
-     * início da cobertura, e nada é gravado antes de existir um período. Com a
-     * recolha desligada não faz nada (fechar é da agregação, em `sync()`).
-     */
-    public function ensureOpen(CarbonInterface $now): void
+    /** O fim do último período fechado, ou nulo se nenhum foi fechado. */
+    public function lastEndedAt(): ?CarbonImmutable
     {
-        if (! config('usage.enabled')) {
-            return;
-        }
+        $ended = UsageCollectionPeriod::query()->max('ended_at');
 
-        if (! UsageCollectionPeriod::query()->whereNull('ended_at')->exists()) {
-            // `insertOrIgnore` sobre o índice único de `is_open`: se outro pedido
-            // abriu a recolha entretanto, este não abre um segundo período.
-            UsageCollectionPeriod::query()->insertOrIgnore([
-                'started_at' => $this->local($now)->format('Y-m-d H:i:s'),
-                'ended_at' => null,
-                'is_open' => true,
-            ]);
-            $this->intervals = null;
-        }
+        return is_string($ended) && $ended !== '' ? CarbonImmutable::parse($ended, (string) config('app.timezone')) : null;
+    }
+
+    /** O início do período aberto, ou nulo com a recolha desligada. */
+    public function openSince(): ?CarbonImmutable
+    {
+        $started = UsageCollectionPeriod::query()->where('is_open', true)->value('started_at');
+
+        return $started === null ? null : $this->local(CarbonImmutable::parse($started, (string) config('app.timezone')));
     }
 
     /**
@@ -99,7 +83,10 @@ class UsageCoverage
     }
 
     /**
-     * @return list<array{0: CarbonImmutable, 1: CarbonImmutable|null}> [início, fim|null se em curso], por ordem, com os contíguos fundidos
+     * Os períodos de recolha, por ordem, com os contíguos fundidos e SEM os dias
+     * de `usage_coverage_gaps` (cada um parte o período em que cai).
+     *
+     * @return list<array{0: CarbonImmutable, 1: CarbonImmutable|null}> [início, fim|null se em curso]
      */
     public function periods(): array
     {
@@ -129,13 +116,39 @@ class UsageCoverage
             $merged[] = [$start, $end];
         }
 
-        return $this->intervals = $merged;
+        return $this->intervals = $this->withoutGaps($merged);
     }
 
-    /** O instante em que a recolha começou pela primeira vez. */
+    /**
+     * Os dias (AAAA-MM-DD) em que houve recolha mas os eventos expiraram antes
+     * de serem agregados.
+     *
+     * @return list<string>
+     */
+    public function gaps(): array
+    {
+        if ($this->gapDays !== null) {
+            return $this->gapDays;
+        }
+
+        try {
+            $days = DB::table('usage_coverage_gaps')->orderBy('day')->pluck('day')->all();
+        } catch (\Throwable) {
+            $days = [];
+        }
+
+        return $this->gapDays = array_values(array_map(fn (mixed $day): string => substr((string) $day, 0, 10), $days));
+    }
+
+    /**
+     * O instante em que a recolha começou pela primeira vez — a ativação, não o
+     * primeiro dia com dados (que uma lacuna pode ter levado).
+     */
     public function startedAt(): ?CarbonImmutable
     {
-        return $this->periods()[0][0] ?? null;
+        $first = self::firstActivation();
+
+        return $first === null ? null : $this->local($first);
     }
 
     /** O dia (meia-noite local) em que a recolha começou pela primeira vez. */
@@ -190,6 +203,49 @@ class UsageCoverage
     public function fullyCoveredSince(CarbonInterface $instant, CarbonInterface $to): bool
     {
         return $this->coversWholeSpan($this->local($instant), $this->local($to));
+    }
+
+    /**
+     * @param  list<array{0: CarbonImmutable, 1: CarbonImmutable|null}>  $intervals
+     * @return list<array{0: CarbonImmutable, 1: CarbonImmutable|null}>
+     */
+    private function withoutGaps(array $intervals): array
+    {
+        $gaps = $this->gaps();
+
+        if ($gaps === []) {
+            return $intervals;
+        }
+
+        $timezone = (string) config('app.timezone');
+
+        foreach ($gaps as $gap) {
+            $gapStart = CarbonImmutable::parse($gap, $timezone)->startOfDay();
+            $gapEnd = $gapStart->addDay();
+            $split = [];
+
+            foreach ($intervals as [$from, $to]) {
+                $overlaps = $from->lessThan($gapEnd) && ($to === null || $to->greaterThan($gapStart));
+
+                if (! $overlaps) {
+                    $split[] = [$from, $to];
+
+                    continue;
+                }
+
+                if ($from->lessThan($gapStart)) {
+                    $split[] = [$from, $gapStart];
+                }
+
+                if ($to === null || $to->greaterThan($gapEnd)) {
+                    $split[] = [$gapEnd, $to];
+                }
+            }
+
+            $intervals = $split;
+        }
+
+        return $intervals;
     }
 
     private function coversWholeSpan(CarbonImmutable $start, CarbonImmutable $end): bool

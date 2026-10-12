@@ -13,25 +13,22 @@ use Carbon\CarbonImmutable;
  * uma exceção, e é a razão desta classe: as métricas de utilização
  * (docs/usage-insights.md) só são descritas na Política quando a recolha foi
  * ATIVADA, e o instante dessa ativação é o mesmo registo que marca o início da
- * cobertura (`usage_collection_periods`). Quando é posterior à data escrita, é
- * ele que passa a ser a versão em vigor — por isso o aviso não bloqueante volta
- * a aparecer a toda a gente no momento em que a recolha começa, e não antes nem
- * depois, sem que alguém tenha de se lembrar de mudar uma data no deploy.
+ * cobertura (`usage_collection_periods`, escrito por `lapis:usage-collection
+ * start`). Quando é posterior à data escrita, é ele que passa a ser a versão em
+ * vigor — por isso o aviso não bloqueante volta a aparecer a toda a gente no
+ * momento em que a recolha começa, e não antes nem depois, sem que alguém tenha
+ * de se lembrar de mudar uma data no deploy.
+ *
+ * Desligar a recolha NÃO tira a secção da Política: os períodos fechados
+ * continuam a existir, e as métricas já recolhidas continuam conservadas pelos
+ * prazos descritos.
  */
 final class PrivacyVersion
 {
-    private const MEMO = 'lapis.privacy.usage_metrics_activated_at';
-
     /** O instante a partir do qual a versão atual vale, ou nulo sem data configurada. */
     public static function effectiveAt(): ?CarbonImmutable
     {
-        $configured = config('lapis.legal.privacy_effective_from');
-        $timezone = (string) config('app.timezone');
-
-        $written = is_string($configured) && $configured !== ''
-            ? CarbonImmutable::parse($configured, $timezone)->startOfDay()
-            : null;
-
+        $written = self::writtenAt();
         $activation = self::usageMetricsActivatedAt();
 
         if ($written === null) {
@@ -54,24 +51,41 @@ final class PrivacyVersion
     }
 
     /**
-     * Lida UMA vez por pedido: o aviso não bloqueante pergunta-o em cada
-     * resposta Inertia, e a página da Política fá-lo meia dúzia de vezes. A
-     * memória é do pedido, nunca do processo — um período aberto a meio de
-     * outro pedido nunca fica escondido por uma resposta antiga.
+     * A versão em vigor é a que a ativação das métricas criou — o aviso não
+     * bloqueante diz isso mesmo, e não a novidade de uma versão anterior.
+     */
+    public static function latestChangeIsUsageMetrics(): bool
+    {
+        $written = self::writtenAt();
+        $activation = self::usageMetricsActivatedAt();
+
+        return $activation !== null && ($written === null || $activation->greaterThan($written));
+    }
+
+    private static function writtenAt(): ?CarbonImmutable
+    {
+        $configured = config('lapis.legal.privacy_effective_from');
+
+        return is_string($configured) && $configured !== ''
+            ? CarbonImmutable::parse($configured, (string) config('app.timezone'))->startOfDay()
+            : null;
+    }
+
+    /**
+     * Lida UMA vez por pedido (ou por job): o aviso não bloqueante pergunta-o em
+     * cada resposta Inertia, e a página da Política fá-lo meia dúzia de vezes.
+     * A memória é `scoped` — nunca do processo —, por isso uma ativação a meio
+     * da vida de um worker conta no job seguinte.
      */
     private static function usageMetricsActivatedAt(): ?CarbonImmutable
     {
-        $request = app()->bound('request') ? app('request') : null;
+        $memo = app(PrivacyVersionMemo::class);
 
-        if ($request !== null && $request->attributes->has(self::MEMO)) {
-            $memo = $request->attributes->get(self::MEMO);
-
-            return $memo instanceof CarbonImmutable ? $memo : null;
+        if (! $memo->resolved) {
+            $memo->activatedAt = UsageCoverage::firstActivation();
+            $memo->resolved = true;
         }
 
-        $activation = UsageCoverage::firstActivation();
-        $request?->attributes->set(self::MEMO, $activation ?? false);
-
-        return $activation;
+        return $memo->activatedAt;
     }
 }

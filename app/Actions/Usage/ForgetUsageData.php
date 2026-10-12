@@ -9,9 +9,11 @@ use App\Models\User;
 
 /**
  * Apaga tudo o que as métricas de utilização guardam sobre uma pessoa: eventos,
- * agregados e datas de primeira observação. Usada no encerramento da conta
- * (`AnonymiseClosedAccount`, dentro da transação) e na oposição à recolha
- * (`lapis:usage-opt-out`).
+ * agregados e datas de primeira observação. Usada na oposição à recolha
+ * (`SetUsageOptOut`), no PEDIDO de encerramento da conta
+ * (`RequestPersonalAccountClosure`) e, por segurança, na anonimização
+ * (`AnonymiseClosedAccount`) — sempre dentro da transação de quem chama, com a
+ * linha da pessoa bloqueada.
  */
 class ForgetUsageData
 {

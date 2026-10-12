@@ -174,7 +174,8 @@ public function fingerprint(?Model $model, array $attributes): ?string; // sha1 
 
 Guardas — se alguma falhar, sai em silêncio:
 
-1. `config('usage.enabled')`;
+1. a recolha está ligada (há um período aberto — secção 11; já não é
+   `config('usage.enabled')`);
 2. há pedido HTTP com utilizador autenticado (`request()->user()`); sem
    utilizador (consola, scheduler, jobs) não grava;
 3. não há `impersonator_id` na sessão (`$request->hasSession()` primeiro);
@@ -530,23 +531,22 @@ teste.
 
 O que mudou em relação às secções acima, e prevalece sobre elas:
 
-- **Recolha desligada por omissão** (`usage.enabled = false`). A migração já não
-  abre período; `UsageCoverage::ensureOpen()` abre-o no primeiro registo possível
-  (o recorder chama-o antes de gravar) ou na passagem da agregação, e
-  `isActive()` = ligada E período aberto. Com a recolha inativa, a agregação
-  ainda agrega eventos existentes, mas não lê `class_teachers` nem atualiza
-  `usage_aggregation_state`; os sinais que dependem da atividade ficam por
-  avaliar.
+- **Recolha desligada por omissão** — a forma de a ligar e desligar foi
+  substituída na secção 11 (já não há `usage.enabled` nem `ensureOpen()`). Com a
+  recolha inativa, a agregação ainda agrega eventos existentes, mas não lê
+  `class_teachers` nem atualiza `aggregated_at`; os sinais que dependem da
+  atividade ficam por avaliar.
 - **Política dependente da ativação:** `App\Support\Legal\PrivacyVersion` —
   `effectiveAt()` = máximo entre `privacy_effective_from` e a primeira ativação;
   `User::shouldSeePrivacyNotice()` compara instantes.
 - **Conservação:** `retention.usage_events_days` (35) e
   `retention.usage_rollups_days` (180) substituem `usage_metrics_days`;
-  `RetentionPolicy::usageEventsDays()` = mínimo dos dois. `usage:prune` só apaga
-  eventos de dias anteriores a `aggregated_through − 1`. A agregação nunca
-  recalcula antes do limite dos agregados, ignora quem se opôs ou foi
+  `RetentionPolicy::usageEventsDays()` = mínimo dos dois. (A espera pela
+  agregação antes de apagar eventos foi substituída na secção 11.) A agregação
+  nunca recalcula antes do limite dos agregados, ignora quem se opôs ou foi
   anonimizado ao ler os eventos e apaga, em cada passagem, os seus restos.
-- **Encerramento:** a recolha pára no pedido (`closure_requested_at`).
+- **Encerramento:** a recolha pára no pedido (`closure_requested_at`); a
+  eliminação passou para o próprio pedido na secção 11.
 - **Discriminação de lotes:** `items_created`, `items_changed`, `items_unchanged`
   em `usage_events` e `usage_daily_rollups`; `item_count = created + changed`
   (o que não se sabe fica nulo).
@@ -554,3 +554,47 @@ O que mudou em relação às secções acima, e prevalece sobre elas:
   `calendar_event.updated` (`App\Support\Usage\UsageSnapshots`).
 - **Classificação:** `organizations.usage_classification`; o painel não lê
   `is_test_account`. Segmentos `real | test | internal | unclassified`.
+
+## 11. Revisão de 2026-10-12, segunda ronda (antes do merge)
+
+Prevalece sobre as secções 1 a 10:
+
+- **Deduplicação por registo.** `dedupe_key` de uma ação =
+  `[user, org, 'action', UsageEventType::record(), subjectKey, dia]` — o tipo de
+  registo do catálogo em vez do tipo de evento. `subjectKey` = `Classe#id` para um
+  modelo ou a chave textual dada (registo composto ou lote; nunca tem `#`). Os
+  tipos que partilham um registo estão fixados em `UsageDedupeTest`; num registo
+  partilhado só o tipo de criação pode ser útil ou marco, e fica a primeira linha
+  do dia. Ganchos com chave nova: pauta (`turma:período:âmbito`), intercalar
+  (`turma:período`), acompanhamento (a revisão criada), INOVAR
+  (`classifications:…` / `evaluation-sheet:…`).
+- **Ativação explícita.** Fonte única: um período aberto em
+  `usage_collection_periods`. `App\Actions\Usage\SetUsageCollection::start|stop`
+  (comando `lapis:usage-collection status|start|stop --operator= --note=`) abre e
+  fecha no instante, idempotente, com `recordPlatform('admin.usage_collection_started'
+  | 'admin.usage_collection_stopped')`. Removidos `usage.enabled`,
+  `LAPIS_USAGE_ENABLED`, `UsageCoverage::sync()` e `ensureOpen()`.
+- **Escrita condicional.** O callback depois do commit faz
+  `insertOrIgnoreUsing(colunas, SELECT ?,… FROM usage_collection_periods WHERE
+  is_open AND started_at <= occurred_at AND NOT EXISTS (users bloqueados ou com
+  usage_resumed_at > occurred_at) LIMIT 1)`. `UsageRecorder` e
+  `PrivacyVersionMemo` são `scoped`.
+- **Conservação efetiva.** `usage:prune` de hora a hora (`hourlyAt(7)`): apaga
+  eventos com `occurred_at < agora − N dias`, agregados ou não; antes, regista
+  em `usage_coverage_gaps(day, reason, recorded_at)` os dias com eventos a
+  expirar e `occurred_on >= aggregated_through` (ou todos, sem agregação) e apaga
+  os agregados desses dias. `UsageCoverage::periods()` subtrai as lacunas; a
+  agregação salta-as e varre agregados que lhes tenham sido escritos.
+- **Oposição e encerramento.** `App\Actions\Usage\SetUsageOptOut` (definições:
+  `PUT /settings/usage-metrics`, `UsageMetricsController`; e
+  `lapis:usage-opt-out`), com a linha da pessoa bloqueada. `users.usage_resumed_at`
+  marca a retoma (oposição retirada ou encerramento cancelado);
+  `User::usageObservedSince()` = máximo entre a criação e a retoma, e é o início
+  de observação que `ObservedDays`, `UsagePeriods::weeks()`, os sinais e as
+  coortes usam. `RequestPersonalAccountClosure` chama `ForgetUsageData`; o
+  cancelamento grava a retoma. Quem se opôs ou pediu o encerramento sai do
+  âmbito (`InsightsScope`).
+- **Informação.** `HandleInertiaRequests` partilha `auth.privacy_notice_topic`
+  (`general` | `usage_metrics`), e o aviso não bloqueante da ativação traz o aviso
+  de oposição; o perfil recebe `usageMetrics` (a secção existe a partir da
+  primeira ativação).

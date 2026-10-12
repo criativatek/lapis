@@ -2,16 +2,16 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\Usage\ForgetUsageData;
+use App\Actions\Usage\SetUsageOptOut;
 use App\Models\User;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /**
- * Executa uma oposição procedente à recolha de métricas de utilização
+ * Executa uma oposição recebida por outro canal (por exemplo, por email para o
+ * contacto de privacidade) pela MESMA ação que as definições da conta usam
  * (docs/usage-insights.md, «Direito de oposição»): grava `usage_opted_out_at` e
- * apaga o que já existia sobre a pessoa. `--undo` volta a ligar a recolha a
- * partir desse momento, sem recuperar nada.
+ * apaga o que já existia sobre a pessoa. `--undo` volta a ligar a recolha para
+ * a pessoa a partir desse momento, sem recuperar nada.
  */
 class UsageOptOut extends Command
 {
@@ -19,7 +19,7 @@ class UsageOptOut extends Command
 
     protected $description = 'Record a person\'s objection to usage metrics and erase what was collected about them';
 
-    public function handle(ForgetUsageData $forget): int
+    public function handle(SetUsageOptOut $optOut): int
     {
         $user = User::where('email', $this->argument('email'))->first();
 
@@ -30,18 +30,15 @@ class UsageOptOut extends Command
         }
 
         if ($this->option('undo')) {
-            $user->forceFill(['usage_opted_out_at' => null])->save();
-            $this->info("A recolha de métricas de utilização voltou a ligar-se para {$user->email}.");
+            $optOut->optIn($user);
+            $this->info("A recolha de métricas de utilização voltou a valer para {$user->email}, a partir de agora e sem histórico.");
 
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($user, $forget): void {
-            $user->forceFill(['usage_opted_out_at' => now()])->save();
-            $forget->forUser($user);
-        });
+        $optOut->optOut($user);
 
-        $this->info("{$user->email} opôs-se à recolha: dados de utilização eliminados e recolha desligada.");
+        $this->info("{$user->email} opôs-se à recolha: dados de utilização eliminados e recolha desligada para esta pessoa.");
 
         return self::SUCCESS;
     }

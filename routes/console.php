@@ -116,10 +116,12 @@ Schedule::command('usage:aggregate')
     ->withoutOverlapping()
     ->onFailure($reportFailure('usage:aggregate'));
 
-// A conservação das métricas de utilização (35 dias para os eventos e 180 para os agregados, por omissão (proposta)). Às 04:05,
-// depois dos comandos de retenção das 03:40 e 03:50, para não competir com
-// eles na mesma base de dados.
+// A conservação das métricas de utilização (35 dias para os eventos e 180 para
+// os agregados, por omissão — proposta por validar). De hora a hora, aos 7
+// minutos (fora das passagens da agregação), para o prazo ser um limite
+// efetivo: nenhum evento passa do prazo mais de uma hora. Corre também com a
+// recolha desligada, e não depende de a agregação estar em dia.
 Schedule::command('usage:prune')
-    ->dailyAt('04:05')
+    ->hourlyAt(7)
     ->withoutOverlapping()
     ->onFailure($reportFailure('usage:prune'));

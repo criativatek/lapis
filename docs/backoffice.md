@@ -349,15 +349,20 @@ ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
   utilização») ou com `php artisan lapis:usage-classify` (`--list`; auditado como
   evento de plataforma, não na auditoria da organização).
 - **Agregação a cada 15 minutos** (`usage:aggregate`); o painel diz a hora da
-  última. **Conservação proposta:** eventos 35 dias, agregados por pessoa 180
-  dias (`usage:prune`, 04:05).
-- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`) até à decisão de
-  ativação ([usage-insights-decisions.md](usage-insights-decisions.md)); o
-  painel di-lo e não há sinais. Ligada, o primeiro registo abre o período de
-  recolha e a Política de Privacidade passa a descrevê-la a partir desse
-  instante.
-- **Oposição:** `php artisan lapis:usage-opt-out <email>` desliga a recolha para
-  essa pessoa e apaga o que existia (`--undo` volta a ligar).
+  última. **Conservação proposta:** eventos 35 dias (agregados ou não), agregados
+  por pessoa 180 dias (`usage:prune`, de hora a hora).
+- **A recolha nasce desligada** até à decisão de ativação
+  ([usage-insights-decisions.md](usage-insights-decisions.md)); o painel di-lo e
+  não há sinais. Liga-se e desliga-se só com
+  `php artisan lapis:usage-collection start|stop --operator=<email>` (auditado
+  na plataforma; `status` só lê), com efeito imediato. O primeiro `start` é
+  também o instante a partir do qual a Política de Privacidade descreve a
+  recolha. Procedimento em
+  [usage-insights.md](usage-insights.md#procedimento-operacional).
+- **Oposição:** nas definições da conta do próprio professor («Não registar a
+  minha utilização»); por pedido escrito, `php artisan lapis:usage-opt-out
+  <email>` (`--undo` volta a ligar a partir desse momento). Em ambos, o que
+  existia é apagado de imediato e a pessoa sai de todos os números do painel.
 - Nada aqui envia emails, notificações ou contactos.
 
 ## Suporte

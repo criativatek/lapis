@@ -102,8 +102,27 @@ final class InsightsChrome
             $notes[] = 'O período começa antes da recolha: de '.UsageDates::short($filters->from).' a '.UsageDates::short($lastBefore).' não há recolha e os dias aparecem como «Sem recolha», nunca como zero.';
         }
 
-        if ($startDay !== null && $filters->from->greaterThanOrEqualTo($startDay) && count($covered) < count($days)) {
-            $notes[] = 'Há dias do período em que a recolha esteve suspensa; aparecem como «Sem recolha».';
+        $fromIso = UsageDates::iso($filters->from);
+        $toIso = UsageDates::iso($filters->to);
+        $gapDays = array_values(array_filter($this->coverage->gaps(), fn (string $day): bool => $day >= $fromIso && $day <= $toIso));
+
+        if ($startDay !== null && $filters->from->greaterThanOrEqualTo($startDay) && count($covered) + count($gapDays) < count($days)) {
+            $notes[] = 'Há dias do período em que a recolha esteve desligada; aparecem como «Sem recolha».';
+        }
+
+        if ($gapDays !== []) {
+            $notes[] = (count($gapDays) === 1 ? '1 dia do período ficou' : count($gapDays).' dias do período ficaram')
+                .' sem dados ('.implode(', ', array_map(fn (string $day): string => UsageDates::short(UsageDates::day($day)), $gapDays)).')'
+                .': a agregação esteve parada mais tempo do que o prazo dos eventos, e o que foi recolhido expirou antes de ser contado. Aparecem como «Sem recolha», nunca como zero, e não entram nos sinais.';
+        }
+
+        // Quem se opôs à recolha não entra em número nenhum — nem como inativo.
+        $optedOut = DB::table('users')->whereNull('anonymized_at')->whereNotNull('usage_opted_out_at')->count();
+
+        if ($optedOut > 0) {
+            $notes[] = $optedOut === 1
+                ? '1 pessoa opôs-se à recolha: não tem métricas e fica fora de todos os números, sem contar como inativa.'
+                : $optedOut.' pessoas opuseram-se à recolha: não têm métricas e ficam fora de todos os números, sem contar como inativas.';
         }
 
         if ($filters->adjustedToRetention) {
@@ -115,6 +134,7 @@ final class InsightsChrome
         $unseen = DB::table('users')
             ->whereNull('anonymized_at')
             ->whereNull('usage_opted_out_at')
+            ->whereNull('closure_requested_at')
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('usage_user_states')->whereColumn('usage_user_states.user_id', 'users.id'))
             ->count();
 
@@ -124,11 +144,11 @@ final class InsightsChrome
                 : $unseen.' contas ainda não foram vistas pela agregação (é feita a cada 15 minutos) e por agora não aparecem no acompanhamento, no ranking nem nos sinais.';
         }
 
-        $periods = $this->coverage->periods();
-        $lastEnd = $periods === [] ? null : $periods[array_key_last($periods)][1];
+        // O fim real do último período, e não o corte de uma lacuna.
+        $lastEnd = $this->coverage->lastEndedAt();
 
         // Sem nenhum período, a nota «ainda não foi ativada» acima já diz tudo.
-        if ($periods !== []) {
+        if ($startedAt !== null) {
             if (! $this->coverage->isActive()) {
                 $notes[] = 'A recolha de métricas está desligada'.($lastEnd !== null ? ' desde '.$lastEnd->format('d/m/Y').' às '.$lastEnd->format('H:i') : '').': os dias seguintes aparecem como «sem recolha», nunca como zero, e os sinais que dependem da atividade ficam por avaliar.';
             } elseif ($aggregatedAt === null) {

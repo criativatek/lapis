@@ -91,6 +91,58 @@ enum UsageEventType: string
         };
     }
 
+    /**
+     * O TIPO DE REGISTO sobre que a ação atua — a primeira metade da identidade
+     * de «uma ação por registo e por dia» (a outra é o registo, dado pelo
+     * gancho). Tipos de evento que atuam sobre o MESMO registo partilham o
+     * valor: criar um relatório e editá-lo três vezes no mesmo dia é uma ação.
+     * Registos diferentes nunca o partilham, por isso dois registos com o mesmo
+     * id em entidades diferentes nunca se fundem (o instrumento 5 e as
+     * classificações do instrumento 5 são duas ações).
+     *
+     * Num registo partilhado, a ação do dia fica com o tipo da PRIMEIRA
+     * operação. Por isso, em cada grupo, o único tipo que pode ser registo útil
+     * (ou marco) é o de CRIAÇÃO — que vem sempre primeiro. UsageEventTypeTest
+     * fixa os grupos.
+     *
+     * Nulo para consultas e falhas, que não são ações.
+     */
+    public function record(): ?string
+    {
+        return match ($this) {
+            self::FeatureViewed, self::OperationFailed => null,
+            self::ClassCreated => 'class',
+            self::StudentsAdded => 'enrollment',
+            self::StudentsImported => 'roster_import',
+            self::LessonSummarySaved => 'lesson_summary',
+            self::LessonAttendanceRecorded => 'lesson_attendance',
+            // O estado da aula: lecionada, ou o que aconteceu em vez disso.
+            self::LessonTaught, self::LessonOutcomeRecorded => 'lesson',
+            self::LessonSequenceApplied => 'lesson_sequence_application',
+            self::InstrumentCreated, self::InstrumentUpdated => 'instrument',
+            self::ScoresRecorded => 'instrument_scores',
+            self::ClassificationDecided => 'classification',
+            self::ClassificationsPublished => 'classification_publication',
+            self::EvaluationSheetSaved => 'evaluation_sheet',
+            self::InterimAssessmentSaved => 'interim_assessment',
+            self::RecordCreated => 'evidence',
+            self::HomeworkBatchSaved => 'homework',
+            self::InterventionCreated, self::InterventionUpdated => 'intervention',
+            self::InterventionFollowupAdded => 'intervention_followup',
+            self::CharacterisationUpdated => 'characterisation',
+            self::CharacterisationImported => 'characterisation_import',
+            self::NotebookEntryCreated, self::NotebookEntryUpdated => 'notebook_entry',
+            self::ReportCreated, self::ReportEdited, self::ReportFinalized => 'report',
+            self::ReportExported => 'report_export',
+            self::TimetableImported => 'timetable_import',
+            self::CalendarImported => 'calendar_import',
+            self::BackupExported => 'backup_export',
+            self::BackupRestored => 'backup_restore',
+            self::InovarExported => 'inovar_export',
+            self::CalendarEventCreated, self::CalendarEventUpdated => 'calendar_event',
+        };
+    }
+
     /** «Registo útil»: prova que a pessoa trabalhou na aplicação, não que a configurou. */
     public function isUsefulRecord(): bool
     {

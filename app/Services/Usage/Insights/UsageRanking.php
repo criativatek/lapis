@@ -53,9 +53,9 @@ final class UsageRanking
 
         foreach ($users as $userId => $user) {
             $accountAge = UsageDates::elapsed($user->created_at, $filters->today);
-            $observationDays = $observed->forAccount($user->created_at);
+            $observationDays = $observed->forAccount($user->usageObservedSince());
 
-            $complete = $observed->isCompleteForAccount($user->created_at);
+            $complete = $observed->isCompleteForAccount($user->usageObservedSince());
 
             if (! $this->passesAge($filters->age, $accountAge, $complete)) {
                 continue;
@@ -75,7 +75,7 @@ final class UsageRanking
                 'account_age_days' => $accountAge,
                 'observation_days' => $observationDays,
                 'complete' => $complete,
-                'observed_weeks' => $observed->weeksForAccount($user->created_at),
+                'observed_weeks' => $observed->weeksForAccount($user->usageObservedSince()),
                 'value' => $this->criterion($sort, $activity),
             ];
         }

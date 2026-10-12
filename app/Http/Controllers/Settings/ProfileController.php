@@ -9,9 +9,12 @@ use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\User;
 use App\Support\Accounts\AccountClosureException;
+use App\Support\Legal\PrivacyVersion;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Retention\RetentionPolicy;
+use App\Support\Usage\UsageCoverage;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,7 +47,35 @@ class ProfileController extends Controller
                 ? $this->closureStatus->personal($user->closure_requested_at, $user->scheduled_deletion_at)
                 : null,
             'closureRetentionDays' => $this->retentionPolicy->personalAccountClosureDays(),
+            'usageMetrics' => $this->usageMetrics($user),
         ]);
+    }
+
+    /**
+     * «Não registar a minha utilização». Aparece quando a Política descreve as
+     * métricas — isto é, a partir da primeira ativação da recolha, e também
+     * depois de a recolha ser desligada — ou quando a pessoa já se opôs. Não
+     * aparece durante o encerramento da conta: aí nada é registado e as
+     * métricas já foram eliminadas.
+     *
+     * @return array{opted_out: bool, opted_out_at: string|null, resumed_at: string|null, collecting: bool}|null
+     */
+    private function usageMetrics(User $user): ?array
+    {
+        if ($user->isClosureRequested()) {
+            return null;
+        }
+
+        if (! PrivacyVersion::describesUsageMetrics() && $user->usage_opted_out_at === null) {
+            return null;
+        }
+
+        return [
+            'opted_out' => $user->usage_opted_out_at !== null,
+            'opted_out_at' => $user->usage_opted_out_at?->toIso8601String(),
+            'resumed_at' => $user->usage_resumed_at?->toIso8601String(),
+            'collecting' => app(UsageCoverage::class)->isActive(),
+        ];
     }
 
     /**

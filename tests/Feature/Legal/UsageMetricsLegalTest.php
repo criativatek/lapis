@@ -156,8 +156,14 @@ class UsageMetricsLegalTest extends TestCase
         $this->assertStringContainsString('interesse legítimo', $text);
         $this->assertStringContainsString('alínea f)', $text);
         $this->assertStringContainsString('Ponderámos este interesse', $text);
-        $this->assertStringContainsString('Pode opor-se a este tratamento', $text);
-        $this->assertStringContainsString('eliminamos de imediato', $text);
+        // O aviso de oposição proposto, literal (por validar juridicamente).
+        $this->assertStringContainsString('Pode opor-se à recolha de métricas de utilização nas definições da sua conta. Ao fazê-lo, a recolha é interrompida e as métricas associadas à sua conta são eliminadas, sem afetar o acesso às funcionalidades do Lapispro.', $text);
+        $this->assertStringContainsString('recomeça a partir desse momento, sem recuperar o que foi eliminado', $text);
+        // O encerramento elimina no pedido, não no dia 60, e o cancelamento não recupera.
+        $this->assertStringContainsString('Quando pede o encerramento da conta, deixamos de registar a sua utilização e eliminamos de imediato as métricas associadas à sua conta; se cancelar o pedido, não são recuperadas.', $text);
+
+        $rights = implode(' ', $this->sectionBody('Os seus direitos'));
+        $this->assertStringContainsString('com exceção da oposição às métricas de utilização, que se exerce nas definições da conta', $rights);
 
         $bases = implode(' ', $this->sectionBody('Com que fundamento tratamos os dados da sua conta'));
         $this->assertStringContainsString('medir a utilização do serviço', $bases);
@@ -174,7 +180,8 @@ class UsageMetricsLegalTest extends TestCase
 
         $this->assertStringContainsString('ao fim de 20 dias', $section);
         $this->assertStringContainsString('ao fim de 120 dias', $section);
-        $this->assertStringContainsString('os registos detalhados são eliminados por uma rotina diária ao fim de 20 dias e as contagens diárias associadas a cada conta ao fim de 120 dias', $retention);
+        $this->assertStringContainsString('os registos detalhados são eliminados por uma rotina que corre de hora a hora, ao fim de 20 dias, e as contagens diárias associadas a cada conta ao fim de 120 dias', $retention);
+        $this->assertStringContainsString('são eliminadas no momento do pedido, e não voltam se o pedido for cancelado', $retention);
 
         // O prazo dos eventos nunca é publicado maior do que o dos agregados.
         config(['retention.usage_events_days' => 400]);

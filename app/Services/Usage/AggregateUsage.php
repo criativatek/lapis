@@ -45,8 +45,8 @@ class AggregateUsage
         $now = $now->setTimezone((string) config('app.timezone'));
         $today = $now->startOfDay();
 
-        $this->coverage->sync($now);
-
+        // A agregação NÃO liga nem desliga a recolha: só lê o estado. A
+        // transição é de `lapis:usage-collection`, no instante em que acontece.
         $days = 0;
         foreach ($this->daysToRecompute($today) as $day) {
             $this->aggregateDay($day);
@@ -89,12 +89,11 @@ class AggregateUsage
     {
         // Nunca antes do limite dos AGREGADOS: um dia mais antigo já não pode
         // ter agregados, e recalculá-lo reconstituiria o que a conservação
-        // apagou. Do outro lado, `usage:prune` não apaga eventos de dias ainda
-        // por agregar, por isso o intervalo recalculado (de
-        // `aggregated_through − 1` em diante) nunca inclui um dia sem eventos —
-        // e uma agregação parada mais tempo do que o prazo dos eventos ainda
-        // recupera esses dias quando volta.
+        // apagou. E nunca um dia de `usage_coverage_gaps`: os eventos desse dia
+        // expiraram antes de serem agregados (`usage:prune` apaga-os ao prazo,
+        // agregados ou não), e recalculá-lo daria zeros onde houve atividade.
         $cutoff = $today->subDays($this->retention->usageRollupsDays());
+        $gaps = array_flip($this->coverage->gaps());
         $through = DB::table(self::TABLE_STATE)->where('id', 1)->value('aggregated_through');
 
         if (is_string($through) && $through !== '') {
@@ -112,7 +111,9 @@ class AggregateUsage
         $days = [];
         // addDay() sobre datas: nunca addHours(24), que falha na mudança de hora.
         for ($day = $start; $day->lessThanOrEqualTo($today); $day = $day->addDay()) {
-            $days[] = $day;
+            if (! isset($gaps[$day->toDateString()])) {
+                $days[] = $day;
+            }
         }
 
         return $days;
@@ -179,6 +180,12 @@ class AggregateUsage
         DB::transaction(function () use ($date, $next, $groups): void {
             UsageDailyRollup::query()->where('day', '>=', $date)->where('day', '<', $next)->delete();
 
+            // `usage:prune` pode ter marcado o dia como lacuna enquanto os
+            // eventos eram lidos: nesse caso o que se leu está incompleto.
+            if (DB::table('usage_coverage_gaps')->where('day', '>=', $date)->where('day', '<', $next)->exists()) {
+                return;
+            }
+
             foreach (array_chunk(array_values($groups), 500) as $chunk) {
                 UsageDailyRollup::query()->insert(array_map(
                     fn (array $group): array => $group + ['day' => $date],
@@ -189,43 +196,47 @@ class AggregateUsage
     }
 
     /**
-     * Quem não pode ter métricas: anonimizado ou que se opôs à recolha.
+     * Quem não pode ter métricas: anonimizado, que se opôs à recolha ou que
+     * pediu o encerramento da conta (ForgetUsageData já apagou tudo dessa
+     * pessoa; isto impede que uma passagem o reconstitua).
      */
     private function excludedPeople(): Builder
     {
         return DB::table('users')
             ->select('id')
-            ->where(fn (Builder $query) => $query->whereNotNull('anonymized_at')->orWhereNotNull('usage_opted_out_at'));
+            ->where(fn (Builder $query) => $query
+                ->whereNotNull('anonymized_at')
+                ->orWhereNotNull('usage_opted_out_at')
+                ->orWhereNotNull('closure_requested_at'));
     }
 
     /**
      * Apaga, em cada passagem, qualquer agregado ou estado que reste de quem foi
      * eliminado — fecha a janela em que uma agregação a decorrer em paralelo
-     * com `ForgetUsageData` voltaria a escrever o que acabou de ser apagado.
+     * com `ForgetUsageData` voltaria a escrever o que acabou de ser apagado. E
+     * os agregados de um dia que entretanto ficou lacuna (ver aggregateDay()).
      */
     private function forgetExcludedPeople(): void
     {
         UsageDailyRollup::query()->whereIn('user_id', $this->excludedPeople())->delete();
         UsageUserState::query()->whereIn('user_id', $this->excludedPeople())->delete();
+        UsageDailyRollup::query()->whereIn('day', DB::table('usage_coverage_gaps')->select('day'))->delete();
     }
 
     /**
-     * Cria ou atualiza o estado de cada pessoa elegível e apaga o de quem foi
-     * anonimizado ou se opôs.
+     * Cria ou atualiza o estado de cada pessoa elegível e apaga o de quem não
+     * pode ter métricas.
      */
     private function refreshStates(CarbonImmutable $now): int
     {
-        UsageUserState::query()
-            ->whereIn('user_id', User::query()
-                ->where(fn ($query) => $query->whereNotNull('anonymized_at')->orWhereNotNull('usage_opted_out_at'))
-                ->select('id'))
-            ->delete();
+        UsageUserState::query()->whereIn('user_id', $this->excludedPeople())->delete();
 
         $touched = 0;
 
         User::query()
             ->whereNull('anonymized_at')
             ->whereNull('usage_opted_out_at')
+            ->whereNull('closure_requested_at')
             ->chunkById(500, function ($users) use ($now, &$touched): void {
                 $ids = $users->pluck('id')->all();
 

@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Usage;
 
+use App\Models\User;
+use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageEventKind;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageFeature;
 use App\Support\Usage\UsageMilestone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
@@ -45,6 +48,25 @@ class UsagePrivacyTest extends TestCase
         );
         $this->assertEqualsCanonicalizing(['id', 'started_at', 'ended_at', 'is_open'], Schema::getColumnListing('usage_collection_periods'));
         $this->assertEqualsCanonicalizing(['id', 'aggregated_through', 'aggregated_at'], Schema::getColumnListing('usage_aggregation_state'));
+        // Uma lacuna guarda o dia e o motivo — nada do que expirou.
+        $this->assertEqualsCanonicalizing(['id', 'day', 'reason', 'recorded_at'], Schema::getColumnListing('usage_coverage_gaps'));
+    }
+
+    #[Test]
+    public function the_privacy_notice_announces_the_metrics_and_how_to_object_when_collection_starts(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-12 10:00:00', 'Europe/Lisbon'));
+        $teacher = User::factory()->create();
+        $teacher->forceFill(['privacy_notice_dismissed_at' => '2026-09-20 10:00:00'])->save();
+
+        $this->actingAs($teacher)->get('/settings/profile')
+            ->assertInertia(fn ($page) => $page->where('auth.should_see_privacy_notice', false)->where('auth.privacy_notice_topic', null));
+
+        DB::table('usage_collection_periods')->insert(['started_at' => '2026-10-12 09:00:00', 'ended_at' => null, 'is_open' => true]);
+        app()->forgetScopedInstances();
+
+        $this->actingAs($teacher)->get('/settings/profile')
+            ->assertInertia(fn ($page) => $page->where('auth.should_see_privacy_notice', true)->where('auth.privacy_notice_topic', 'usage_metrics'));
     }
 
     #[Test]
@@ -76,9 +98,9 @@ class UsagePrivacyTest extends TestCase
     #[Test]
     public function the_migration_opens_no_collection_period_and_collection_is_off_by_default(): void
     {
-        // A recolha nasce desligada até à decisão de ativação; a cobertura
-        // começa na ativação efetiva, não no deploy.
+        // A recolha nasce desligada até à decisão de ativação, e só um
+        // `lapis:usage-collection start` a liga — não o deploy, nem um evento.
         $this->assertSame(0, DB::table('usage_collection_periods')->count());
-        $this->assertFalse((bool) config('usage.enabled'));
+        $this->assertFalse(app(UsageCoverage::class)->isActive());
     }
 }

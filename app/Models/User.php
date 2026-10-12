@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\Legal\PrivacyVersion;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -34,6 +35,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property bool $is_support_technician
  * @property bool $can_view_usage_insights
  * @property Carbon|null $usage_opted_out_at
+ * @property Carbon|null $usage_resumed_at
  * @property Carbon|null $deactivated_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
@@ -69,6 +71,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'is_support_technician' => 'boolean',
             'can_view_usage_insights' => 'boolean',
             'usage_opted_out_at' => 'datetime',
+            'usage_resumed_at' => 'datetime',
             'deactivated_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
@@ -97,6 +100,21 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function canViewUsageInsights(): bool
     {
         return $this->isPlatformAdmin() && $this->can_view_usage_insights === true;
+    }
+
+    /**
+     * Desde quando a utilização desta pessoa PODE ter sido observada: a criação
+     * da conta ou, se a recolha voltou a valer para ela depois de uma oposição
+     * ou de um encerramento cancelado, esse instante. Antes disso não há
+     * histórico (foi eliminado), e o painel diz «sem recolha», nunca zero.
+     */
+    public function usageObservedSince(): CarbonImmutable
+    {
+        $created = CarbonImmutable::instance($this->created_at ?? now());
+
+        return $this->usage_resumed_at !== null && $this->usage_resumed_at->greaterThan($created)
+            ? CarbonImmutable::instance($this->usage_resumed_at)
+            : $created;
     }
 
     /**

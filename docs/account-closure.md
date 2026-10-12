@@ -69,9 +69,18 @@ alguma organização `institutional`, o pedido é recusado com uma mensagem
 explícita — nunca se fica sem responsável. A pessoa tem de transferir a
 responsabilidade primeiro (`TeamController::transferOwnership`, Fatia 4).
 
+**Métricas de utilização (0.163.0):** o pedido é a única coisa que elimina
+logo — as métricas de utilização da pessoa (`usage_events`,
+`usage_daily_rollups`, `usage_user_states`), via `ForgetUsageData`, na mesma
+transação e com a linha da pessoa bloqueada. Não são trabalho do professor nem
+são precisas para recuperar a conta, por isso não esperam pelo dia 60. A partir
+do pedido nada mais é registado. Ver [usage-insights.md](usage-insights.md).
+
 **Cancelar:** `DELETE /settings/account-closure` →
 `App\Actions\Accounts\CancelPersonalAccountClosure`. Recusado fora da janela
-de recuperação (`AccountClosureException::noLongerRecoverable`).
+de recuperação (`AccountClosureException::noLongerRecoverable`). As métricas
+eliminadas no pedido **não** voltam; a recolha recomeça no cancelamento
+(`users.usage_resumed_at`), salvo se a pessoa se tiver oposto antes.
 
 **UI:** `resources/js/components/AccountClosure.vue`, na página
 `/settings/profile`, no lugar do antigo botão de eliminação imediata em
@@ -218,7 +227,7 @@ respeito a pessoa identificável.
 | `users` — password, `remember_token`, 2FA | **Invalidado**: password passa a um valor que não é hash válido, 2FA e token limpos |
 | `users.deactivated_at`, `anonymized_at` | **Carimbados**: `EnsureUserIsActive` recusa a sessão; `anonymized_at` é o que torna o comando idempotente |
 | `passkeys`, `sessions` (do utilizador) | **Eliminados** |
-| `usage_events`, `usage_daily_rollups`, `usage_user_states` (do utilizador) | **Eliminados** — métricas de utilização (0.163.0), via `ForgetUsageData`; a recolha já tinha parado no pedido de encerramento. Ver [usage-insights.md](usage-insights.md) |
+| `usage_events`, `usage_daily_rollups`, `usage_user_states` (do utilizador) | **Já eliminados no pedido de encerramento** (métricas de utilização, 0.163.0); a anonimização volta a chamar `ForgetUsageData` por segurança, e não encontra nada. Ver [usage-insights.md](usage-insights.md) |
 | `student_identities` da organização pessoal | **Eliminados** — é isto que remove toda a PII de aluno |
 | `organization_identities` da organização pessoal | **Eliminados** |
 | Fotografias de aluno dessa organização | **Eliminadas** do disco |

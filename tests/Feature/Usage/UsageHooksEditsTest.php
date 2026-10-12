@@ -257,6 +257,37 @@ class UsageHooksEditsTest extends TestCase
     }
 
     #[Test]
+    public function creating_an_intervention_and_editing_it_the_same_day_is_one_action(): void
+    {
+        $enrollment = $this->enroll('Aluno Medida');
+        $this->asTeacher()->postJson("/classes/{$this->schoolClass->ulid}/interventions", [
+            'target_type' => 'student',
+            'enrollment_ids' => [$enrollment->id],
+            'intervention_types' => ['pedagogical_differentiation'],
+            'domain_relation' => 'none',
+            'description' => 'Descrição inicial.',
+            'started_on' => '2026-10-01',
+            'available_for_reports' => true,
+        ])->assertRedirect();
+        $intervention = $this->inTenant($this->organization, fn (): Intervention => Intervention::query()->firstOrFail());
+
+        $this->asTeacher()->putJson("/interventions/{$intervention->ulid}", $this->interventionPayload($intervention, ['description' => 'Corrigida.']))->assertRedirect();
+        $this->asTeacher()->patchJson("/interventions/{$intervention->ulid}", ['status' => 'concluded'])->assertRedirect();
+
+        // Uma só ação no dia, com o tipo da criação (registo útil).
+        $event = UsageEvent::query()->where('kind', 'action')->sole();
+        $this->assertSame(UsageEventType::InterventionCreated, $event->event);
+
+        // Cada acompanhamento é um registo novo: dois no mesmo dia são duas ações.
+        foreach (['2026-10-12', '2026-10-12'] as $day) {
+            $this->asTeacher()->postJson("/interventions/{$intervention->ulid}/reviews", [
+                'reviewed_on' => $day, 'effectiveness' => null, 'notes' => null,
+            ])->assertRedirect();
+        }
+        $this->assertSame(2, $this->eventsOf(UsageEventType::InterventionFollowupAdded));
+    }
+
+    #[Test]
     public function an_invalid_intervention_edit_and_a_support_session_record_nothing(): void
     {
         $intervention = $this->makeIntervention();

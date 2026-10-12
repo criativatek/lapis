@@ -10,8 +10,9 @@ use Illuminate\Support\Str;
  * Fixa a cobertura da recolha e semeia eventos de utilização, para os testes
  * desta funcionalidade.
  *
- * A migração NÃO abre um período (a recolha nasce desligada e abre-se na
- * ativação efetiva); cada teste diz quando a recolha começou — e liga-a.
+ * A migração NÃO abre um período (a recolha nasce desligada e só
+ * `lapis:usage-collection start` a liga); cada teste diz quando a recolha
+ * começou. Um período aberto É a recolha ligada — não há outra chave.
  */
 trait SetsUsageCoverage
 {
@@ -20,10 +21,6 @@ trait SetsUsageCoverage
      */
     protected function startUsageCollectionAt(string $instant, ?string $endedAt = null): void
     {
-        // A recolha tem de estar ligada para os testes que a exercitam,
-        // qualquer que seja o valor por omissão da configuração.
-        config(['usage.enabled' => true]);
-
         DB::table('usage_collection_periods')->delete();
         DB::table('usage_collection_periods')->insert([
             'started_at' => $instant,

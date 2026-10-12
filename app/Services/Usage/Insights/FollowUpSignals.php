@@ -182,7 +182,7 @@ final class FollowUpSignals
             }
 
             if ($fresh && isset($enabled[self::NO_FIRST_RECORD])) {
-                $result = $this->noFirstRecord($state, $off, $today, $now);
+                $result = $this->noFirstRecord($user, $state, $off, $today, $now);
                 if ($result instanceof Signal) {
                     $found[] = $result;
                 } elseif ($result === false) {
@@ -199,7 +199,7 @@ final class FollowUpSignals
                 }
             }
 
-            if (isset($enabled[self::TECHNICAL_FAILURES]) && ($signal = $this->technicalFailures($failures[$userId] ?? [], $today)) !== null) {
+            if (isset($enabled[self::TECHNICAL_FAILURES]) && ($signal = $this->technicalFailures($user, $failures[$userId] ?? [], $today)) !== null) {
                 $found[] = $signal;
             }
 
@@ -255,7 +255,7 @@ final class FollowUpSignals
      * @param  array<string, true>  $off
      * @return Signal|false|null Signal = sinal; false = por avaliar (cobertura); null = nada
      */
-    private function noFirstRecord(UsageUserState $state, array $off, CarbonImmutable $today, CarbonImmutable $now): Signal|false|null
+    private function noFirstRecord(User $user, UsageUserState $state, array $off, CarbonImmutable $today, CarbonImmutable $now): Signal|false|null
     {
         if ($state->class_available_since === null || $state->first_useful_record_on !== null) {
             return null;
@@ -268,9 +268,10 @@ final class FollowUpSignals
             return null;
         }
 
-        // Se a recolha começou DEPOIS de a turma ficar disponível, não se sabe o
-        // que aconteceu entre as duas coisas: por avaliar, não sinal.
-        if (! $this->coverage->fullyCoveredSince(CarbonImmutable::instance($state->class_available_since), $now)) {
+        // Se a recolha começou DEPOIS de a turma ficar disponível — para todos,
+        // ou para esta pessoa, que retomou a recolha depois de uma oposição —,
+        // não se sabe o que aconteceu entre as duas coisas: por avaliar, não sinal.
+        if (! $this->observedThroughout($user, CarbonImmutable::instance($state->class_available_since), $now)) {
             return false;
         }
 
@@ -325,7 +326,7 @@ final class FollowUpSignals
             return null;
         }
 
-        if (! $this->coverage->fullyCoveredSince($firstMonday, $now)) {
+        if (! $this->observedThroughout($user, $firstMonday, $now)) {
             return false;
         }
 
@@ -372,7 +373,7 @@ final class FollowUpSignals
     /**
      * @param  array<string, int>  $byFeature  funcionalidade => falhas na janela
      */
-    private function technicalFailures(array $byFeature, CarbonImmutable $today): ?Signal
+    private function technicalFailures(User $user, array $byFeature, CarbonImmutable $today): ?Signal
     {
         $days = (int) config('usage.signals.technical_failures.days');
         $threshold = (int) config('usage.signals.technical_failures.threshold');
@@ -383,7 +384,14 @@ final class FollowUpSignals
         }
 
         $from = $today->subDays($days - 1);
+        // O início da observação: o da recolha ou, se for mais tarde, o da
+        // retoma da recolha para esta pessoa.
         $startDay = $this->coverage->startDay();
+        $startLabel = 'início da recolha';
+        if ($user->usage_resumed_at !== null && ($startDay === null || UsageDates::day($user->usage_resumed_at)->greaterThan($startDay))) {
+            $startDay = UsageDates::day($user->usage_resumed_at);
+            $startLabel = 'retoma da recolha';
+        }
         $startedInside = $startDay !== null && $startDay->greaterThan($from);
         if ($startedInside) {
             $from = $startDay;
@@ -404,13 +412,28 @@ final class FollowUpSignals
                 $total,
                 $total === 1 ? 'falha técnica' : 'falhas técnicas',
                 $startedInside
-                    ? 'desde '.UsageDates::short($from).' (início da recolha) até '.UsageDates::short($today)
+                    ? 'desde '.UsageDates::short($from).' ('.$startLabel.') até '.UsageDates::short($today)
                     : 'entre '.UsageDates::short($from).' e '.UsageDates::short($today),
                 implode(', ', $parts),
             ),
             UsageDates::iso($from),
             UsageDates::iso($today),
         );
+    }
+
+    /**
+     * A pessoa foi observada sem buracos de `$instant` até agora: a recolha
+     * cobriu todo o intervalo (sem períodos desligados nem lacunas) E a pessoa
+     * não retomou a recolha depois de `$instant` — quem se opôs e voltou a
+     * aceitar não tem histórico anterior, e a falta dele nunca é inatividade.
+     */
+    private function observedThroughout(User $user, CarbonImmutable $instant, CarbonImmutable $now): bool
+    {
+        if ($user->usage_resumed_at !== null && $user->usage_resumed_at->greaterThan($instant)) {
+            return false;
+        }
+
+        return $this->coverage->fullyCoveredSince($instant, $now);
     }
 
     /**

@@ -62,21 +62,32 @@ legítimo**. A ponderação, as definições e o que fica de fora estão em
 [usage-insights.md](usage-insights.md); o que falta decidir, em
 [usage-insights-decisions.md](usage-insights-decisions.md).
 
-- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`). Enquanto nunca
-  tiver estado ativa, a Política fica **exatamente** como estava (versão
-  `2026-09-15`): descrever um tratamento que não acontece seria afirmar o que
-  não é verdade.
+- **A recolha nasce desligada** e só um `php artisan lapis:usage-collection
+  start` explícito e auditado a liga. Enquanto nunca tiver estado ativa, a
+  Política fica **exatamente** como estava (versão `2026-09-15`): descrever um
+  tratamento que não acontece seria afirmar o que não é verdade.
 - **Na ativação**, a secção «Métricas de utilização do serviço» e as menções em
-  «Dados técnicos», «Para que usamos os dados», «Com que fundamento…» e «Durante
-  quanto tempo» aparecem, e **o instante da ativação passa a ser a versão em
-  vigor** (`App\Support\Legal\PrivacyVersion`, que lê o mesmo registo que marca
-  o início da cobertura). O aviso não bloqueante volta a aparecer a quem o tinha
-  fechado antes desse instante — a comparação é de instantes, não de dias. Não
-  há nova aceitação.
+  «Dados técnicos», «Para que usamos os dados», «Com que fundamento…», «Durante
+  quanto tempo» e «Os seus direitos» aparecem, e **o instante da ativação passa a
+  ser a versão em vigor** (`App\Support\Legal\PrivacyVersion`, que lê o mesmo
+  registo que marca o início da cobertura). O aviso não bloqueante volta a
+  aparecer a quem o tinha fechado antes desse instante — a comparação é de
+  instantes, não de dias — e diz que passámos a registar métricas e como se opor.
+  Não há nova aceitação. Desligar a recolha **não** retira a secção: as métricas
+  já recolhidas continuam conservadas pelos prazos descritos.
+- **Oposição nas definições da conta** («Não registar a minha utilização»), com
+  eliminação imediata e sem efeito no acesso; continua possível por escrito. O
+  **pedido de encerramento** elimina as métricas logo, e o cancelamento não as
+  recupera. O texto do aviso de oposição é uma **proposta de comunicação**, por
+  validar juridicamente:
+  «Pode opor-se à recolha de métricas de utilização nas definições da sua conta.
+  Ao fazê-lo, a recolha é interrompida e as métricas associadas à sua conta são
+  eliminadas, sem afetar o acesso às funcionalidades do Lapispro.»
 - **O prazo publicado é o executado**: `retention.usage_events_days` (35) e
-  `retention.usage_rollups_days` (180), lidos pelo texto e por `usage:prune`. Um
-  teste muda os valores e confirma o texto, e o dos eventos nunca é publicado
-  maior do que o dos agregados.
+  `retention.usage_rollups_days` (180), lidos pelo texto e por `usage:prune`, que
+  corre de hora a hora e apaga os eventos ao prazo mesmo que a agregação esteja
+  parada. Um teste muda os valores e confirma o texto, e o dos eventos nunca é
+  publicado maior do que o dos agregados.
 - **Os sinais e o ranking interno** são descritos como indicadores internos,
   sem efeitos na conta e sem mensagens automáticas; não há decisões
   automatizadas.
@@ -204,8 +215,8 @@ a página diz que não há prazo em vez de inventar um.**
 | Ficheiros temporários de importação/exportação | 6 h (pautas, INOVAR) / 24 h (grelhas) | quatro `*:prune` horários |
 | Registos técnicos do servidor | 14 dias | `LOG_DAILY_DAYS`, rotação do Laravel |
 | Cópias de segurança | 30 diárias + 12 mensais | `scripts/backup-database.sh` |
-| Métricas de utilização — eventos detalhados (`usage_events`) | `retention.usage_events_days` (35 dias, proposta) | `usage:prune`, diário às 04:05 |
-| Métricas de utilização — agregados por pessoa (`usage_daily_rollups`) | `retention.usage_rollups_days` (180 dias, proposta) | `usage:prune`, diário às 04:05 |
+| Métricas de utilização — eventos detalhados (`usage_events`) | `retention.usage_events_days` (35 dias, proposta) | `usage:prune`, de hora a hora |
+| Métricas de utilização — agregados por pessoa (`usage_daily_rollups`) | `retention.usage_rollups_days` (180 dias, proposta) | `usage:prune`, de hora a hora |
 
 **Não publicados, por não existir rotina:**
 
@@ -487,8 +498,10 @@ Escritos de forma prudente, e por confirmar:
     legítimo, com ponderação escrita em
     [usage-insights.md](usage-insights.md#fundamento-e-ponderação-interesse-legítimo).
     As perguntas abertas — definição de perfis (art. 4.º, ponto 4), prazos (35 e
-    180 dias), informação e apresentação do direito de oposição (arts. 13.º e
-    21.º, n.º 4), contexto laboral e avaliação de impacto — estão em
+    180 dias, e as datas de primeiros passos), informação e apresentação do
+    direito de oposição (arts. 13.º e 21.º, n.º 4, incluindo o texto do aviso
+    proposto), a oposição em autosserviço, contexto laboral e avaliação de
+    impacto — estão em
     [usage-insights-decisions.md](usage-insights-decisions.md#para-validação-jurídica-não-respondido-aqui),
     com as fontes oficiais consultadas. Nada no repositório as dá por
     respondidas.

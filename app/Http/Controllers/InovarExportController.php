@@ -175,7 +175,7 @@ class InovarExportController extends Controller
 
             $response = response()->download($filled, basename($filled))->deleteFileAfterSend();
 
-            $usage->action(UsageEventType::InovarExported, 'inovar:'.$class->getKey().':'.$selected->getKey());
+            $usage->action(UsageEventType::InovarExported, 'classifications:'.$class->getKey().':'.$selected->getKey());
 
             return $response;
         } catch (InovarTemplateException $exception) {

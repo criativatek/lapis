@@ -519,8 +519,15 @@ class UsageHooksTest extends TestCase
         $this->asTeacher()->put("{$url}/{$entryUlid}", ['title' => 'Título', 'body' => 'Corpo.', 'lock_version' => 0])->assertRedirect();
         $this->assertSame(0, $this->eventsOf(UsageEventType::NotebookEntryUpdated));
 
-        // Editar com alteração: um evento.
+        // Editar com alteração no MESMO dia: o mesmo registo, a mesma ação.
         $this->asTeacher()->put("{$url}/{$entryUlid}", ['title' => 'Título', 'body' => 'Corpo alterado.', 'lock_version' => 0])->assertRedirect();
+        $this->assertSame(0, $this->eventsOf(UsageEventType::NotebookEntryUpdated));
+        $this->assertSame(1, UsageEvent::query()->where('kind', 'action')->count());
+
+        // No dia seguinte, a edição é uma ação nova.
+        $this->travelTo(Carbon::parse('2026-10-13 09:00:00', 'Europe/Lisbon'));
+        $lockVersion = $this->inTenant($this->organization, fn () => ClassNotebookEntry::query()->firstOrFail()->lock_version);
+        $this->asTeacher()->put("{$url}/{$entryUlid}", ['title' => 'Título', 'body' => 'Corpo de novo.', 'lock_version' => $lockVersion])->assertRedirect();
         $this->assertSame(1, $this->eventsOf(UsageEventType::NotebookEntryUpdated));
     }
 

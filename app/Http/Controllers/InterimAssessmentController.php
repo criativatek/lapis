@@ -88,8 +88,10 @@ class InterimAssessmentController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
+            // O registo é a avaliação intercalar da turma no período — refazer a
+            // fotografia no mesmo dia é uma ação.
             if ($previous === null || $previous->snapshot_hash !== $interim->snapshot_hash) {
-                $usage->action(UsageEventType::InterimAssessmentSaved, 'interim:'.$interim->snapshot_hash);
+                $usage->action(UsageEventType::InterimAssessmentSaved, $class->getKey().':'.$period->getKey());
             }
         });
 

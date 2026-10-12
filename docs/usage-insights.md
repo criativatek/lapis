@@ -98,9 +98,14 @@ painel não a deduz de nada.
 
 **Ação concluída** — uma operação **confirmada** pelo servidor (depois de a
 gravação ficar efetivamente feita) sobre um registo, contada **uma vez por
-registo e por dia**:
+pessoa, organização, registo e dia — seja criação ou edição**:
 
 - gravar o mesmo sumário cinco vezes no mesmo dia é **uma** ação;
+- criar um relatório e editá-lo três vezes no mesmo dia é **uma** ação; editá-lo
+  no dia seguinte é outra;
+- registos diferentes nunca se fundem, mesmo com o mesmo id: o instrumento 5 e
+  as classificações do instrumento 5 são duas ações, a caracterização da turma 5
+  e a do aluno 5 também;
 - uma gravação que não altera nada **não conta** (o servidor compara antes e
   depois);
 - uma tentativa falhada, um erro de validação ou um cancelamento **não conta**;
@@ -140,7 +145,11 @@ pedido falhado no mesmo minuto contam uma vez.
 | Importação e exportação | lista de alunos importada (lote) · horário importado (lote) · calendário da escola importado (lote) · cópia de segurança exportada · cópia de segurança restaurada (lote) · exportação INOVAR | — |
 | Calendário | acontecimento criado · acontecimento editado (só se os campos ou as turmas mudaram) | — |
 
-As edições são ações de **uma linha por registo e por dia**, nunca «registo útil»: o primeiro registo útil continua a ser criação ou registo. A comparação antes/depois é feita em memória e nunca é guardada.
+**A identidade de uma ação** é o *tipo de registo* do catálogo (`UsageEventType::record()`) mais o registo, nunca o tipo de evento. Os tipos que atuam sobre o mesmo registo partilham-no — e são só estes: relatório (criado, editado, finalizado), instrumento (criado, editado), medida (criada, editada), entrada do caderno (criada, editada), acontecimento (criado, editado) e o estado da aula (lecionada, resultado registado). Num registo partilhado, a ação do dia fica com o tipo da **primeira** operação; por isso, em cada grupo, só o tipo de criação pode ser «registo útil» ou marco, e uma edição a seguir nunca o apaga (`UsageDedupeTest` fixa os grupos). A identidade é um resumo HMAC na coluna única `dedupe_key`: dois pedidos em paralelo sobre o mesmo registo gravam uma linha, e os agregados e o ranking contam linhas, por isso seguem a mesma definição.
+
+Exemplos de registo: a pauta é a da turma, do período e do âmbito (guardar três versões diferentes no mesmo dia é uma ação); a avaliação intercalar é a da turma no período; cada acompanhamento de uma medida é um registo novo; a exportação INOVAR das classificações e a da pauta são registos diferentes.
+
+As edições nunca são «registo útil»: o primeiro registo útil continua a ser criação ou registo. A comparação antes/depois é feita em memória e nunca é guardada.
 
 **Lotes discriminados.** Uma ação em lote pode dizer o que aconteceu aos elementos: `criados`, `alterados` e `inalterados`. Os *elementos afetados* são criados + alterados; os inalterados dizem só quantos vieram no lote sem mudar nada. A lista de alunos reimportada compara a matrícula e a identidade antes e depois (em memória) e conta uma ação `lista de alunos importada` só se algum aluno foi criado ou alterado; uma reimportação só com linhas iguais não conta, e uma sem alunos criados não marca «primeiros alunos adicionados». O horário (criados / já existentes) e o calendário (criados) usam o que o controlador já sabe.
 
@@ -160,26 +169,85 @@ mostra as duas coisas em separado e nunca converte uma na outra.
 Os primeiros passos são datas de **primeira observação**. Numa conta criada
 antes do início da recolha, o passo pode ter acontecido antes, e o painel di-lo.
 
+## Ativação e desativação
+
+**A única fonte de verdade é a base de dados**: a recolha está ligada enquanto
+houver um período aberto em `usage_collection_periods`. Não há chave de
+configuração nem variável de ambiente para isto — não há duas fontes que se
+possam contradizer. A migração não abre período nenhum: **a recolha nasce
+desligada** até à decisão de ativação — ver
+[usage-insights-decisions.md](usage-insights-decisions.md).
+
+```bash
+php artisan lapis:usage-collection status                       # só lê
+php artisan lapis:usage-collection start --operator=<email> --note="…"
+php artisan lapis:usage-collection stop  --operator=<email> --note="…"
+```
+
+- **Explícito e auditado.** Só `App\Actions\Usage\SetUsageCollection` abre e
+  fecha períodos; o operador tem de ter acesso ao painel, e cada transição fica
+  na auditoria **de plataforma** (`admin.usage_collection_started` /
+  `admin.usage_collection_stopped`, com o instante e a nota).
+- **No instante da transição.** `start` abre o período nesse segundo, sem
+  esperar por atividade; `stop` fecha-o nesse segundo, sem esperar pela
+  agregação. Nenhum evento e nenhuma passagem da agregação abrem ou fecham
+  períodos.
+- **Repetir não duplica.** `start` com a recolha ligada e `stop` com ela
+  desligada não escrevem nem auditam; dois `start` em simultâneo esbarram no
+  índice único de `is_open`.
+- **Desligar bloqueia de imediato.** O recorder prepara o registo durante o
+  pedido, mas a escrita (depois do commit) é um único `INSERT … SELECT` que só
+  insere se, nesse momento, houver um período aberto que tenha começado antes do
+  evento — um pedido que estava a meio quando a recolha foi desligada não grava
+  nada.
+- **Religar preserva o intervalo.** Um `start` depois de um `stop` abre um
+  período novo; o intervalo desligado fica «sem recolha», nunca preenchido.
+- **A informação ao titular começa com a recolha.** O instante do primeiro
+  `start` é a versão em vigor da Política de Privacidade, que passa a ter a
+  secção «Métricas de utilização do serviço»; o aviso não bloqueante reaparece
+  a toda a gente com o aviso de oposição, e a opção «Não registar a minha
+  utilização» aparece nas definições. Desligar **não** tira a secção: as
+  métricas já recolhidas continuam conservadas pelos prazos descritos.
+
+### Procedimento operacional
+
+O estado é lido da base em cada pedido, por isso **o efeito é imediato em todos
+os processos**, sem passos à parte:
+
+- **Caches.** Nada a refazer: `config:cache`, `route:cache` e `view:cache` não
+  guardam o estado. A memória do estado vive no pedido (instâncias `scoped`:
+  `UsageRecorder`, `PrivacyVersionMemo`), nunca no processo.
+- **Processos persistentes.** PHP-FPM lê o estado em cada pedido. Um worker de
+  filas esquece as instâncias `scoped` antes de cada job (e o recorder não grava
+  fora de pedidos com utilizador). O agendador lança cada comando num processo
+  novo. Não é preciso `queue:restart` nem reiniciar o FPM para ligar ou
+  desligar — só num deploy de código, como sempre.
+- **Antes de `start`**: confirmar que o agendador corre `usage:aggregate` (15 em
+  15 minutos) e `usage:prune` (de hora a hora, aos 7 minutos), com
+  `php artisan schedule:list`; classificar as organizações; ter a validação
+  jurídica e a decisão de ativação por escrito.
+- **Depois de `start`**: `lapis:usage-collection status`; abrir `/privacidade`
+  e confirmar a secção e a data «em vigor desde»; abrir o painel e confirmar a
+  nota de início da recolha.
+
 ## Cobertura dos dados
 
-- **A recolha nasce desligada** (`LAPIS_USAGE_ENABLED=false`, valor por
-  omissão) até à decisão de ativação — ver
-  [usage-insights-decisions.md](usage-insights-decisions.md). Desligada, nada é
-  gravado, a agregação não lê dados de pessoas, o painel diz que a recolha não
-  foi ativada e não há sinais.
-- **A cobertura começa na ativação efetiva**: ligada a recolha, o primeiro
-  registo possível (ou a passagem seguinte da agregação) abre um período em
-  `usage_collection_periods` nesse instante; nada é gravado antes de existir um
-  período aberto. A migração não abre período nenhum.
+- Desligada a recolha, nada é gravado, a agregação não lê dados de pessoas, o
+  painel diz que a recolha está desligada e não há sinais.
 - **Não há histórico anterior**: nada foi reconstruído a partir de outras
   tabelas, e os períodos anteriores à ativação aparecem como **«Sem recolha»**,
   nunca como zeros.
 - O dia em que a recolha começou é **parcial**. Uma semana ou um mês que
   começou antes da recolha, ou que ainda não terminou, é marcado como parcial
   e não é comparado em silêncio com períodos completos.
-- Voltar a desligar fecha o período na passagem seguinte da agregação (até 15
-  minutos depois); os dias seguintes aparecem como «sem recolha», nunca como
-  zeros, e os sinais que dependem da atividade ficam por avaliar.
+- Os dias depois de um `stop` aparecem como «sem recolha», nunca como zeros, e
+  os sinais que dependem da atividade ficam por avaliar.
+- **Lacunas.** Um dia cujos eventos expiraram antes de serem agregados
+  (`usage_coverage_gaps`, ver «Conservação») é «sem recolha» para o painel e
+  para os sinais, e o painel diz quais são.
+- **Cobertura própria de cada pessoa.** Quem retirou a oposição, ou cancelou um
+  pedido de encerramento, é observado só a partir desse instante
+  (`users.usage_resumed_at`): os dias anteriores são «sem recolha» para ela.
 - Os números de atividade vêm de uma **agregação diária** feita a cada 15
   minutos (`usage:aggregate`); o painel diz a hora da última agregação. As
   contagens de contas (novas contas, adesões) são lidas no momento.
@@ -243,7 +311,8 @@ histórico.
 
 **Nunca são recolhidos**: o acesso técnico do suporte (impersonação), tarefas
 agendadas, jobs, comandos, pedidos automáticos e pré-carregamentos, nem a
-atividade de quem se opôs à recolha (`usage_opted_out_at`).
+atividade de quem se opôs à recolha (`usage_opted_out_at`) ou pediu o
+encerramento da conta.
 
 > Em produção, até alguém classificar as organizações, o segmento «Utilização
 > real» fica vazio e os dados aparecem em «Por classificar».
@@ -301,12 +370,18 @@ atividade e o estado das turmas que leem estariam parados no tempo, e isso
 acusaria toda a gente de não ter atividade recente — e o painel avisa. O sinal
 de falhas técnicas continua: dados atrasados só o podem subcontar.
 
-Contas em encerramento, desativadas ou anonimizadas não geram sinais. Continuam
-na lista e no ranking com o estado escrito («Conta em encerramento»), porque o
-encerramento ainda é reversível; os seus dados de utilização são eliminados no
-fim da janela de recuperação, com o resto da conta. Uma conta
-que a agregação ainda não viu (criada há menos de 15 minutos) ou que se opôs à
-recolha não é avaliada.
+Contas desativadas ou anonimizadas não geram sinais. **Quem se opôs à recolha
+ou pediu o encerramento da conta não entra em número nenhum** — nem na lista,
+nem no ranking (nem contado como «sem atividade»), nem nos denominadores, nem
+nos sinais, nem como «por avaliar»: as suas métricas foram eliminadas, e contá-lo
+fá-lo-ia parecer inativo por ter exercido um direito. O painel diz só quantas
+pessoas se opuseram. Uma conta que a agregação ainda não viu (criada há menos de
+15 minutos) não é avaliada.
+
+**Lacunas e retomas.** Um dia de lacuna ou anterior à retoma da recolha de uma
+pessoa conta como recolha insuficiente: «Turma sem primeiro registo útil» e «Sem
+atividade recente» ficam por avaliar se a janela da regra os incluir, e o motivo
+de «Falhas técnicas repetidas» diz «desde … (retoma da recolha)».
 
 ## Ranking de utilização
 
@@ -329,32 +404,76 @@ alunos. Empates partilham a posição. Utilizadores sem atividade no período n�
 são ordenados (aparecem contados à parte).
 
 Cada linha mostra os **dias de observação** — os dias do período em que havia
-recolha e a conta já existia. Uma conta recente aparece como «observação parcial
-(12 de 30 dias)» e pode ser filtrada à parte (antiguidade: com observação
-completa, menos de 30 dias, 30 a 90, mais de 90).
+recolha e a conta já existia (ou, para quem retomou a recolha, desde a retoma).
+Uma conta recente aparece como «observação parcial (12 de 30 dias)» e pode ser
+filtrada à parte (antiguidade: com observação completa, menos de 30 dias, 30 a
+90, mais de 90).
 
 ## Conservação
 
-Valores **propostos e configuráveis**, por confirmar — fundamentação em
+Valores **propostos e configuráveis**, por validar juridicamente (a validação
+**não** está concluída) — fundamentação em
 [usage-insights-decisions.md](usage-insights-decisions.md) §2.
 
 | Dados | Prazo | Quem o executa |
 |---|---|---|
-| Eventos detalhados (`usage_events`) | **35 dias** (`retention.usage_events_days`, `LAPIS_USAGE_EVENTS_RETENTION_DAYS`), só de dias já agregados | `usage:prune`, diário às 04:05 |
-| Agregados diários por pessoa (`usage_daily_rollups`) | **180 dias** (`retention.usage_rollups_days`, `LAPIS_USAGE_ROLLUPS_RETENTION_DAYS`); é também o período mais antigo que o painel aceita | `usage:prune`, diário às 04:05 |
-| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir | apagadas no encerramento e na oposição |
-| Tudo o que é deste painel, para uma conta encerrada | a recolha pára no pedido; eliminado na anonimização da conta (dia 60) | `retention:execute` → `AnonymiseClosedAccount` |
-| Tudo o que é deste painel, para quem se opôs | eliminado no momento | `lapis:usage-opt-out` → `ForgetUsageData` |
+| Eventos detalhados (`usage_events`) | **35 dias** a contar do instante do evento (`retention.usage_events_days`, `LAPIS_USAGE_EVENTS_RETENTION_DAYS`) — **agregados ou não** | `usage:prune`, de hora a hora (aos 7 minutos) |
+| Agregados diários por pessoa (`usage_daily_rollups`) | **180 dias** depois do dia a que se referem (`retention.usage_rollups_days`, `LAPIS_USAGE_ROLLUPS_RETENTION_DAYS`); é também o período mais antigo que o painel aceita | `usage:prune` |
+| Lacunas (`usage_coverage_gaps`: só o dia e o motivo) | o mesmo dos agregados | `usage:prune` |
+| Datas de primeira observação (`usage_user_states`) | enquanto a conta existir — **proposta**, com alternativa limitada (ver «Datas dos primeiros passos») | apagadas na oposição, no pedido de encerramento e na anonimização |
+| Tudo o que é deste painel, para quem pediu o encerramento da conta | **eliminado no pedido**, não no dia 60; cancelar o pedido não recupera nada | `RequestPersonalAccountClosure` → `ForgetUsageData` |
+| Tudo o que é deste painel, para quem se opôs | eliminado no momento | definições da conta (ou `lapis:usage-opt-out`) → `SetUsageOptOut` → `ForgetUsageData` |
+
+### Precisão dos prazos
+
+A limpeza corre de hora a hora, e o prazo dos eventos conta-se ao segundo
+(`occurred_at` mais antigo do que agora − 35 dias). Por isso **nenhum evento vive
+mais do que 35 dias e uma hora** (mais a duração da própria passagem). Antes,
+com uma passagem diária às 04:05 e o corte por dia, um evento podia chegar a 36
+dias e 4 horas.
+
+Os agregados e as lacunas são por dia: os do dia D saem na primeira passagem do
+dia D+181 (às 00:07), isto é, ficam 180 dias completos depois de D e, no máximo,
+mais uma hora.
+
+Se o agendador parar, nada é apagado enquanto estiver parado: o atraso é o tempo
+da paragem. Cada falha do comando é reportada (`onFailure`), como as das outras
+rotinas de retenção.
+
+### A limpeza não depende da agregação
+
+- Os eventos saem ao prazo, mesmo com a agregação parada e mesmo com a recolha
+  desligada.
+- Se a agregação esteve parada mais tempo do que o prazo, os dias cujos eventos
+  expiram **sem terem sido agregados** — o dia D com `aggregated_through ≤ D` —
+  ficam registados em `usage_coverage_gaps`, só com o dia e o motivo
+  (`expired_unaggregated`). Nada do que expirou é guardado, e os agregados
+  parciais desses dias (de uma passagem a meio do dia) saem.
+- Para o painel e para os sinais, uma lacuna é um dia **sem recolha**: nunca
+  zero, nunca inatividade. O painel lista os dias e explica porquê.
+- **Sem reconstituição**: quando a agregação volta, recalcula a partir de onde
+  parou mas salta os dias de lacuna, e em cada passagem apaga agregados que
+  uma corrida com a limpeza lhes tenha escrito.
 
 **Nenhuma agregação reconstitui o que foi apagado:**
 
 - o prazo efetivo dos eventos nunca é maior do que o dos agregados;
-- a agregação nunca recalcula um dia anterior ao limite dos agregados, e
-  `usage:prune` não apaga eventos de dias ainda por agregar — o intervalo
-  recalculado nunca inclui um dia sem os seus eventos;
-- a agregação ignora, ao ler os eventos, quem se opôs ou foi anonimizado, e
-  apaga em cada passagem qualquer agregado ou estado que lhes reste (a corrida
-  com uma eliminação a decorrer).
+- a agregação nunca recalcula um dia anterior ao limite dos agregados, nem um
+  dia de lacuna;
+- a agregação ignora, ao ler os eventos, quem se opôs, pediu o encerramento ou
+  foi anonimizado, e apaga em cada passagem qualquer agregado ou estado que lhes
+  reste (a corrida com uma eliminação a decorrer).
+
+### Datas dos primeiros passos
+
+`usage_user_states` guarda, por pessoa, **três datas** (`first_class_created_on`,
+`first_students_added_on`, `first_useful_record_on`: o dia, sem hora, da primeira
+vez que a recolha observou cada passo) e uma data de **configuração**
+(`class_available_since`: quando a primeira turma ficou disponível, recalculada
+em cada passagem a partir de `class_teachers`, e por isso não é uma métrica que
+se guarde). A justificação, os cálculos que as usam e a alternativa com prazo
+limitado estão em [usage-insights-decisions.md](usage-insights-decisions.md) §2.1
+— é uma proposta, por decidir.
 
 Os dados de utilização viajam no backup diário integral da base de dados, como
 o resto da base, e saem dele quando a cópia roda. **Não** fazem parte da
@@ -375,8 +494,14 @@ exportação é sobre o trabalho do professor).
   acontecimento ou a matrícula) só são calculadas quando o pedido pode registar
   — recolha ligada, sem acesso técnico, sem oposição, sem encerramento pedido,
   com organização resolvida (`UsageRecorder::isRecording()`).
+- **A escrita confirma o estado.** Depois do commit, o evento é gravado por um
+  único `INSERT … SELECT` que só insere se, nesse instante, houver um período de
+  recolha aberto (iniciado antes do evento) e a pessoa não se tiver oposto, não
+  tiver pedido o encerramento, não estiver desativada ou anonimizada e não tiver
+  retomado a recolha depois do evento. Um pedido a meio quando a recolha é
+  desligada, ou quando a pessoa se opõe, não grava nada.
 - Só pode haver **um** período de recolha aberto: um índice único
-  (`usage_collection_periods.is_open`) impede que dois pedidos simultâneos o
+  (`usage_collection_periods.is_open`) impede que dois `start` simultâneos o
   abram duas vezes.
 - O painel lê apenas tabelas de utilização agregadas e as tabelas de contas;
   nunca consulta conteúdos pedagógicos ao abrir. A disponibilidade de turmas é
@@ -406,13 +531,42 @@ pontuação composta e pelo acesso restrito a quem foi autorizado.
 fornecedor saiba que partes são usadas e onde falham; não espera ser avaliado
 pelo uso, nem ser contactado automaticamente — e não é.
 
-**Direito de oposição.** O titular pode opor-se (Política de Privacidade, «Os
-seus direitos»). Uma oposição procedente executa-se com
-`php artisan lapis:usage-opt-out <email>`: grava `users.usage_opted_out_at`, a
-recolha deixa de registar o que essa pessoa faz, e os seus eventos, agregados e
-datas de primeiros passos são eliminados no mesmo passo. `--undo` volta a ligar a
-recolha a partir desse momento (sem recuperar nada). Não há, nesta versão, um
-interruptor no ecrã do professor.
+**Direito de oposição.** O titular opõe-se nas **definições da conta** — «Não
+registar a minha utilização», secção «Métricas de utilização» do perfil
+(`PUT /settings/usage-metrics`, só a própria pessoa e nunca durante um acesso de
+suporte). Na mesma transação, com a linha da pessoa bloqueada
+(`App\Actions\Usage\SetUsageOptOut`):
+
+- grava `users.usage_opted_out_at`, e a recolha deixa de registar o que a pessoa
+  faz;
+- elimina os seus eventos, agregados e datas de primeiros passos;
+- um pedido que estava a meio não grava depois (a escrita confirma a oposição),
+  e a agregação ignora-a e volta a apagar os restos em cada passagem;
+- **nada mais muda**: dados pedagógicos, funcionalidades e acesso ficam iguais,
+  e a pessoa sai de todos os números do painel — nunca aparece inativa nem «por
+  avaliar» por se ter oposto.
+
+Voltar a desmarcar liga a recolha **a partir desse instante**
+(`users.usage_resumed_at`), sem histórico: o que foi eliminado não volta, e um
+pedido de antes da oposição que só escrevesse depois não é aceite. Para essa
+pessoa, os dias anteriores são «sem recolha», os primeiros passos dizem «Recolha
+retomada a …» e os sinais que precisariam do passado ficam por avaliar.
+
+Uma oposição recebida por outro canal (email para o contacto de privacidade)
+executa-se com `php artisan lapis:usage-opt-out <email>` (`--undo` para
+retomar), que usa a mesma ação.
+
+**Encerramento da conta.** O pedido de encerramento pára a recolha e elimina de
+imediato as métricas da pessoa (`RequestPersonalAccountClosure`), não no dia 60.
+Cancelar o pedido não as recupera; a recolha recomeça a partir do cancelamento,
+com cobertura própria, salvo se a pessoa se tiver oposto antes.
+
+**Aviso proposto** (texto de comunicação, **não** validação jurídica), na
+Política, no aviso não bloqueante da ativação e nas definições:
+
+> «Pode opor-se à recolha de métricas de utilização nas definições da sua conta.
+> Ao fazê-lo, a recolha é interrompida e as métricas associadas à sua conta são
+> eliminadas, sem afetar o acesso às funcionalidades do Lapispro.»
 
 A redação pública está na Política de Privacidade (secção «Métricas de
 utilização do serviço»), que **só a mostra depois de a recolha ter sido
@@ -426,13 +580,13 @@ desta ponderação continua pendente — ver
 ## Limitações conhecidas desta versão
 
 - Sem tempo ativo, sem duração de sessão, sem último login — de propósito.
-- As edições de relatórios, estratégias e medidas, instrumentos e
-  acontecimentos contam uma vez por registo e por dia, só se mudou alguma coisa;
-  criar e editar o mesmo registo no mesmo dia são duas ações diferentes.
+- Um lote é um registo próprio (a operação conjunta). Editar depois, no mesmo
+  dia, um dos elementos que o lote criou ou tocou é uma ação sobre outro registo
+  e conta à parte — por exemplo, criar duas medidas de uma vez e corrigir uma
+  delas, ou marcar as aulas do dia em lote e depois registar o resultado de uma.
+  Uma criação individual seguida de edições, no mesmo dia, é sempre uma ação.
 - Na importação do calendário da escola só se sabem os elementos criados; o
   ecrã mostra só as parcelas conhecidas, nunca «inalterados 0».
-- Uma aula marcada como lecionada individualmente e depois incluída num lote no
-  mesmo dia conta nas duas ações.
 - O plano é o de hoje; não há reconstrução de planos passados.
 - A lista, o ranking e os sinais são calculados no servidor sobre todas as
   pessoas do âmbito a cada abertura (sobre os agregados, nunca sobre dados

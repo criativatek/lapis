@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Usage;
 
+use App\Actions\Usage\SetUsageCollection;
+use App\Models\AuditEvent;
 use App\Models\UsageDailyRollup;
 use App\Models\UsageEvent;
 use App\Models\UsageUserState;
 use App\Models\User;
 use App\Services\Usage\AggregateUsage;
+use App\Support\Legal\LegalDocuments;
+use App\Support\Legal\PrivacyVersion;
+use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
@@ -20,15 +25,20 @@ use Tests\Feature\Usage\Concerns\SetsUsageCoverage;
 use Tests\TestCase;
 
 /**
- * A recolha nasce DESLIGADA até à decisão de ativação, e a cobertura começa na
- * ativação efetiva (docs/usage-insights-decisions.md §5). E nenhuma passagem
- * da agregação reconstitui o que a conservação ou a eliminação apagaram (§2).
+ * Ativação e desativação EXPLÍCITAS (docs/usage-insights.md, «Ativação e
+ * desativação»): a recolha nasce desligada, só `lapis:usage-collection
+ * start|stop` a liga e desliga, com auditoria, e o período abre e fecha no
+ * instante da transição — não no primeiro evento, nem na agregação seguinte. A
+ * única fonte de verdade é a base de dados. E nenhuma passagem da agregação
+ * reconstitui o que a conservação ou a eliminação apagaram.
  */
 class UsageActivationTest extends TestCase
 {
     use RefreshDatabase, SetsUsageCoverage;
 
     private User $teacher;
+
+    private User $operator;
 
     private static int $snapshotCalls = 0;
 
@@ -38,9 +48,22 @@ class UsageActivationTest extends TestCase
 
         $this->travelTo(Carbon::parse('2026-10-12 10:00:00', 'Europe/Lisbon'));
         $this->teacher = User::factory()->create();
+        $this->operator = User::factory()->create(['email' => 'operador@example.test']);
+        $this->operator->forceFill(['is_platform_admin' => true, 'can_view_usage_insights' => true])->save();
 
         Route::middleware(['web', 'auth', 'organization'])->post('/_usage/activation', function (UsageRecorder $recorder) {
             $recorder->action(UsageEventType::LessonSummarySaved, 'lesson-1');
+
+            return response('ok');
+        });
+
+        // Um pedido que prepara o registo com a recolha ligada e só escreve
+        // depois do commit — e, entretanto, a recolha é desligada.
+        Route::middleware(['web', 'auth', 'organization'])->post('/_usage/in-flight-stop', function (UsageRecorder $recorder) {
+            DB::transaction(function () use ($recorder): void {
+                $recorder->action(UsageEventType::LessonSummarySaved, 'lesson-2');
+                app(SetUsageCollection::class)->stop(User::query()->where('email', 'operador@example.test')->firstOrFail());
+            });
 
             return response('ok');
         });
@@ -70,56 +93,245 @@ class UsageActivationTest extends TestCase
         return app(AggregateUsage::class)->run(CarbonImmutable::parse($at, 'Europe/Lisbon'));
     }
 
-    // --- Ativação -----------------------------------------------------------
+    private function start(): void
+    {
+        $this->artisan('lapis:usage-collection', ['action' => 'start', '--operator' => 'operador@example.test'])->assertSuccessful();
+        // Um pedido novo — a memória do estado é por pedido.
+        app()->forgetScopedInstances();
+    }
+
+    private function stop(): void
+    {
+        $this->artisan('lapis:usage-collection', ['action' => 'stop', '--operator' => 'operador@example.test'])->assertSuccessful();
+        app()->forgetScopedInstances();
+    }
+
+    // --- Desligada por omissão ----------------------------------------------
 
     #[Test]
-    public function switched_off_by_default_nothing_is_recorded_and_no_period_opens(): void
+    public function switched_off_by_default_nothing_is_recorded_and_no_event_opens_a_period(): void
     {
-        $this->assertFalse((bool) config('usage.enabled'));
+        $this->assertSame(0, DB::table('usage_collection_periods')->count(), 'A migração abriu um período.');
 
         $this->actingAs($this->teacher)->post('/_usage/activation')->assertOk();
 
         $this->assertSame(0, UsageEvent::query()->count());
+        $this->assertSame(0, DB::table('usage_collection_periods')->count(), 'Um evento abriu a recolha.');
+        $this->assertFalse(PrivacyVersion::describesUsageMetrics());
+    }
+
+    #[Test]
+    public function there_is_no_configuration_switch_to_contradict_the_database(): void
+    {
+        $this->assertNull(config('usage.enabled'), 'Voltou a haver uma chave de configuração para a recolha.');
+
+        // Mesmo que alguém a ponha, não liga nada.
+        config(['usage.enabled' => true]);
+        $this->actingAs($this->teacher)->post('/_usage/activation')->assertOk();
+
+        $this->assertSame(0, UsageEvent::query()->count());
+    }
+
+    // --- Ativação -----------------------------------------------------------
+
+    #[Test]
+    public function start_opens_the_period_at_that_instant_without_any_activity_and_is_audited(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-12 10:07:00', 'Europe/Lisbon'));
+
+        $this->start();
+
+        $period = DB::table('usage_collection_periods')->sole();
+        $this->assertSame('2026-10-12 10:07:00', substr((string) $period->started_at, 0, 19));
+        $this->assertNull($period->ended_at);
+        $this->assertSame(0, UsageEvent::query()->count(), 'A ativação não precisa de atividade.');
+        $this->assertTrue(app(UsageCoverage::class)->isActive());
+
+        $audit = AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_collection_started')->sole();
+        $this->assertSame($this->operator->id, $audit->causer_id);
+        $this->assertNull($audit->organization_id);
+    }
+
+    #[Test]
+    public function the_privacy_policy_describes_the_metrics_from_the_activation_instant(): void
+    {
+        $this->assertFalse(PrivacyVersion::describesUsageMetrics());
+
+        $this->travelTo(Carbon::parse('2026-10-12 10:07:00', 'Europe/Lisbon'));
+        $this->start();
+
+        $this->assertTrue(PrivacyVersion::describesUsageMetrics());
+        $this->assertSame('2026-10-12 10:07:00', PrivacyVersion::effectiveAt()?->format('Y-m-d H:i:s'));
+        $this->assertTrue(PrivacyVersion::latestChangeIsUsageMetrics());
+    }
+
+    #[Test]
+    public function repeating_start_opens_no_second_period_and_audits_nothing_new(): void
+    {
+        $this->start();
+        $this->travelTo(Carbon::parse('2026-10-12 11:00:00', 'Europe/Lisbon'));
+        $this->start();
+
+        $this->assertSame(1, DB::table('usage_collection_periods')->count());
+        $this->assertSame('2026-10-12 10:00:00', substr((string) DB::table('usage_collection_periods')->value('started_at'), 0, 19));
+        $this->assertSame(1, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_collection_started')->count());
+    }
+
+    #[Test]
+    public function only_a_named_operator_with_access_to_the_panel_can_switch_it(): void
+    {
+        $this->artisan('lapis:usage-collection', ['action' => 'start'])->assertFailed();
+        $this->artisan('lapis:usage-collection', ['action' => 'start', '--operator' => $this->teacher->email])->assertFailed();
+
         $this->assertSame(0, DB::table('usage_collection_periods')->count());
     }
 
     #[Test]
-    public function the_first_possible_record_opens_the_period_at_that_instant(): void
+    public function status_only_reads(): void
     {
-        config(['usage.enabled' => true]);
-        $this->travelTo(Carbon::parse('2026-10-12 10:07:00', 'Europe/Lisbon'));
+        $this->artisan('lapis:usage-collection', ['action' => 'status'])->assertSuccessful();
+        $this->assertSame(0, DB::table('usage_collection_periods')->count());
+
+        $this->start();
+        $this->artisan('lapis:usage-collection', ['action' => 'status'])
+            ->expectsOutputToContain('LIGADA')
+            ->assertSuccessful();
+    }
+
+    #[Test]
+    public function once_started_a_request_records(): void
+    {
+        $this->start();
 
         $this->actingAs($this->teacher)->post('/_usage/activation')->assertOk();
 
         $this->assertSame(1, UsageEvent::query()->count());
-        $period = DB::table('usage_collection_periods')->sole();
-        $this->assertSame('2026-10-12 10:07:00', substr((string) $period->started_at, 0, 19));
-        $this->assertNull($period->ended_at);
+    }
 
-        // Um segundo registo não abre outro período.
-        $this->travelTo(Carbon::parse('2026-10-12 11:00:00', 'Europe/Lisbon'));
+    // --- Desativação --------------------------------------------------------
+
+    #[Test]
+    public function stop_closes_the_period_at_that_instant_and_blocks_new_events_immediately(): void
+    {
+        $this->start();
+        $this->travelTo(Carbon::parse('2026-10-12 12:34:56', 'Europe/Lisbon'));
+        $this->stop();
+
+        $period = DB::table('usage_collection_periods')->sole();
+        $this->assertSame('2026-10-12 12:34:56', substr((string) $period->ended_at, 0, 19));
+        $this->assertNull($period->is_open);
+        $this->assertSame(1, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_collection_stopped')->count());
+
+        // Nenhuma passagem da agregação é precisa para isto valer.
         $this->actingAs($this->teacher)->post('/_usage/activation')->assertOk();
-        $this->assertSame(1, DB::table('usage_collection_periods')->count());
+        $this->assertSame(0, UsageEvent::query()->count());
     }
 
     #[Test]
-    public function switching_off_closes_the_period_and_the_aggregation_reads_nobody(): void
+    public function a_request_in_flight_when_collection_stops_writes_nothing_after_its_commit(): void
     {
-        $this->startUsageCollectionAt('2026-10-01 00:00:00');
+        $this->start();
+
+        $this->actingAs($this->teacher)->post('/_usage/in-flight-stop')->assertOk();
+
+        $this->assertSame(0, UsageEvent::query()->count(), 'O callback depois do commit gravou com a recolha já desligada.');
+    }
+
+    #[Test]
+    public function repeating_stop_changes_nothing(): void
+    {
+        $this->start();
+        $this->travelTo(Carbon::parse('2026-10-12 12:00:00', 'Europe/Lisbon'));
+        $this->stop();
+        $this->travelTo(Carbon::parse('2026-10-12 13:00:00', 'Europe/Lisbon'));
+        $this->stop();
+
+        $this->assertSame('2026-10-12 12:00:00', substr((string) DB::table('usage_collection_periods')->value('ended_at'), 0, 19));
+        $this->assertSame(1, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_collection_stopped')->count());
+    }
+
+    #[Test]
+    public function switching_off_keeps_the_privacy_information_about_what_is_still_retained(): void
+    {
+        $this->start();
+        $this->travelTo(Carbon::parse('2026-10-13 09:00:00', 'Europe/Lisbon'));
+        $this->stop();
+
+        $this->assertTrue(PrivacyVersion::describesUsageMetrics());
+        $this->get('/privacidade')->assertOk();
+        $headings = array_column(LegalDocuments::privacy()['sections'], 'heading');
+        $this->assertContains('Métricas de utilização do serviço', $headings);
+    }
+
+    // --- Reativação ---------------------------------------------------------
+
+    #[Test]
+    public function reactivation_opens_a_new_period_and_keeps_the_gap(): void
+    {
+        $this->start();
+        $this->travelTo(Carbon::parse('2026-10-14 18:00:00', 'Europe/Lisbon'));
+        $this->stop();
+        $this->travelTo(Carbon::parse('2026-10-20 08:30:00', 'Europe/Lisbon'));
+        $this->start();
+
+        $periods = DB::table('usage_collection_periods')->orderBy('started_at')->get();
+        $this->assertCount(2, $periods);
+        $this->assertSame('2026-10-14 18:00:00', substr((string) $periods[0]->ended_at, 0, 19));
+        $this->assertSame('2026-10-20 08:30:00', substr((string) $periods[1]->started_at, 0, 19));
+
+        $coverage = app(UsageCoverage::class);
+        $this->assertTrue($coverage->isDayCovered(CarbonImmutable::parse('2026-10-14', 'Europe/Lisbon')));
+        $this->assertFalse($coverage->isDayCovered(CarbonImmutable::parse('2026-10-17', 'Europe/Lisbon')), 'O intervalo desligado foi preenchido.');
+        $this->assertTrue($coverage->isDayCovered(CarbonImmutable::parse('2026-10-20', 'Europe/Lisbon')));
+        $this->assertFalse($coverage->isDayFullyCovered(CarbonImmutable::parse('2026-10-20', 'Europe/Lisbon')));
+        // A Política continua a datar da primeira ativação.
+        $this->assertSame('2026-10-12 10:00:00', PrivacyVersion::effectiveAt()?->format('Y-m-d H:i:s'));
+    }
+
+    // --- A agregação só lê o estado -----------------------------------------
+
+    #[Test]
+    public function the_aggregation_neither_opens_nor_closes_periods(): void
+    {
+        $this->aggregate();
+        $this->assertSame(0, DB::table('usage_collection_periods')->count());
+
+        $this->start();
+        $this->aggregate('2026-10-12 11:00:00');
+        $this->assertNull(DB::table('usage_collection_periods')->value('ended_at'));
+    }
+
+    #[Test]
+    public function with_collection_off_the_aggregation_reads_nobody(): void
+    {
+        $this->startUsageCollectionAt('2026-10-01 00:00:00', '2026-10-12 09:00:00');
         $this->seedUsageEvent($this->teacher->id, $this->teacher->personalOrganization()->id, '2026-10-11', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
 
-        config(['usage.enabled' => false]);
         $result = $this->aggregate();
 
-        // O período fecha nesse instante…
-        $period = DB::table('usage_collection_periods')->sole();
-        $this->assertSame('2026-10-12 10:00:00', substr((string) $period->ended_at, 0, 19));
-        // …o que já tinha sido observado continua agregado…
+        // O que já tinha sido observado continua agregado…
         $this->assertSame(1, UsageDailyRollup::query()->count());
         // …mas sem ler dados de pessoas (turmas, primeiros passos) nem se declarar em dia.
         $this->assertSame(0, $result['states']);
         $this->assertSame(0, UsageUserState::query()->count());
         $this->assertNull(DB::table('usage_aggregation_state')->where('id', 1)->value('aggregated_at'));
+    }
+
+    // --- Processos persistentes ---------------------------------------------
+
+    #[Test]
+    public function the_state_is_remembered_per_request_or_job_never_per_process(): void
+    {
+        $first = app(UsageRecorder::class);
+        $this->assertSame($first, app(UsageRecorder::class), 'Dentro do mesmo pedido o recorder é o mesmo.');
+        $this->assertFalse(PrivacyVersion::describesUsageMetrics());
+
+        app(SetUsageCollection::class)->start($this->operator);
+        // Um worker esquece as instâncias `scoped` antes de cada job.
+        app()->forgetScopedInstances();
+
+        $this->assertNotSame($first, app(UsageRecorder::class));
+        $this->assertTrue(PrivacyVersion::describesUsageMetrics());
     }
 
     #[Test]
@@ -176,29 +388,11 @@ class UsageActivationTest extends TestCase
         $this->assertSame(['2026-08-20'], $days, 'Um dia anterior ao limite dos agregados foi reconstituído.');
     }
 
-    #[Test]
-    public function a_stalled_aggregation_still_recovers_days_older_than_the_events_window(): void
-    {
-        config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
-        $this->startUsageCollectionAt('2026-01-01 00:00:00');
-        // A agregação parou a 2026-08-22; os eventos desses dias foram guardados
-        // por `usage:prune` à espera dela (são mais antigos do que 35 dias).
-        DB::table('usage_aggregation_state')->updateOrInsert(['id' => 1], ['aggregated_through' => '2026-08-22', 'aggregated_at' => '2026-08-22 09:45:00']);
-        $this->seedUsageEvent($this->teacher->id, $this->teacher->personalOrganization()->id, '2026-08-25', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
-
-        $this->artisan('usage:prune')->assertSuccessful();
-        $this->aggregate();
-
-        $this->assertSame(1, UsageDailyRollup::query()->where('day', '>=', '2026-08-25')->where('day', '<', '2026-08-26')->count());
-    }
-
-    // --- Nada é lido quando nada vai ser registado (revisão, I1) ----------------
+    // --- Nada é lido quando nada vai ser registado ----------------------------
 
     #[Test]
     public function with_collection_off_an_edit_hook_reads_nothing(): void
     {
-        $this->assertFalse((bool) config('usage.enabled'));
-
         $this->actingAs($this->teacher)->post('/_usage/snapshot')->assertOk();
 
         $this->assertSame(0, self::$snapshotCalls, 'Com a recolha desligada, um gancho leu dados para uma impressão digital.');
@@ -227,15 +421,14 @@ class UsageActivationTest extends TestCase
         $this->assertSame(1, self::$snapshotCalls);
     }
 
-    // --- O prazo dos eventos vale com a recolha desligada (revisão, I2) -------
+    // --- O prazo dos eventos vale com a recolha desligada ---------------------
 
     #[Test]
     public function switched_off_for_longer_than_the_events_window_old_events_still_go(): void
     {
         config(['retention.usage_events_days' => 35, 'retention.usage_rollups_days' => 180]);
-        // Recolha de 01/08 a 20/08, desligada desde então; a agregação parou com ela.
+        // Recolha de 01/08 a 20/08, desligada desde então.
         $this->startUsageCollectionAt('2026-08-01 00:00:00', '2026-08-20 18:00:00');
-        config(['usage.enabled' => false]);
         // A última passagem antes de desligar foi a 19/08 (o próprio dia do evento ainda por fechar).
         DB::table('usage_aggregation_state')->updateOrInsert(['id' => 1], ['aggregated_through' => '2026-08-19', 'aggregated_at' => '2026-08-20 17:45:00']);
         $this->seedUsageEvent($this->teacher->id, $this->teacher->personalOrganization()->id, '2026-08-19', UsageEventType::FeatureViewed, ['feature' => 'lessons']);
@@ -245,13 +438,14 @@ class UsageActivationTest extends TestCase
         $this->artisan('usage:prune')->assertSuccessful();
 
         $this->assertSame(0, UsageEvent::query()->count(), 'Um evento sobreviveu ao prazo de 35 dias com a recolha desligada.');
-        // O agregado desse dia (180 dias) continua.
+        // O agregado desse dia (180 dias) continua, e não é uma lacuna: foi agregado a tempo.
         $this->assertSame(1, UsageDailyRollup::query()->count());
+        $this->assertSame(0, DB::table('usage_coverage_gaps')->count());
         // E a hora da agregação não mudou: sem recolha, os sinais não estão em dia.
         $this->assertSame('2026-08-20 17:45:00', substr((string) DB::table('usage_aggregation_state')->where('id', 1)->value('aggregated_at'), 0, 19));
     }
 
-    // --- Um só período aberto (revisão, M1) -----------------------------------
+    // --- Um só período aberto -------------------------------------------------
 
     #[Test]
     public function the_database_refuses_a_second_open_period(): void
@@ -260,23 +454,5 @@ class UsageActivationTest extends TestCase
 
         $this->expectException(QueryException::class);
         DB::table('usage_collection_periods')->insert(['started_at' => '2026-10-12 09:00:01', 'ended_at' => null, 'is_open' => true]);
-    }
-
-    #[Test]
-    public function closing_a_period_frees_the_open_slot_for_the_next_activation(): void
-    {
-        config(['usage.enabled' => true]);
-        $this->aggregate('2026-10-12 09:00:00');
-        config(['usage.enabled' => false]);
-        $this->aggregate('2026-10-12 10:00:00');
-        config(['usage.enabled' => true]);
-        $this->aggregate('2026-10-12 11:00:00');
-
-        $periods = DB::table('usage_collection_periods')->orderBy('started_at')->get();
-        $this->assertCount(2, $periods);
-        $this->assertNull($periods[0]->is_open);
-        $this->assertNotNull($periods[0]->ended_at);
-        $this->assertSame(1, (int) $periods[1]->is_open);
-        $this->assertNull($periods[1]->ended_at);
     }
 }

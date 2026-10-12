@@ -94,8 +94,11 @@ class EvaluationSheetHistoryController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
+            // O registo é a pauta da turma, do período e do âmbito — não cada
+            // versão guardada: guardar três versões diferentes no mesmo dia é
+            // uma ação.
             if ($previous === null || $previous->payload_hash !== $export->payload_hash) {
-                $usage->action(UsageEventType::EvaluationSheetSaved, 'sheet:'.$export->payload_hash);
+                $usage->action(UsageEventType::EvaluationSheetSaved, $class->getKey().':'.$period->getKey().':'.$scope->value);
             }
         });
 

@@ -19,7 +19,9 @@ use Illuminate\Support\Facades\DB;
  *   `unclassified` exigem também que a pessoa não seja pessoal interno;
  *   `internal` é organização interna OU pessoal interno em qualquer
  *   organização. Os quatro são disjuntos.
- * - Contas anonimizadas ficam sempre de fora.
+ * - Contas anonimizadas ficam sempre de fora, e também quem se opôs à recolha
+ *   ou pediu o encerramento da conta: não têm métricas, e contá-las (num
+ *   denominador, numa lista, num sinal) fá-las-ia parecer inativas.
  * - Utilizadores do âmbito: membros de organizações do âmbito que cumprem o
  *   segmento.
  *
@@ -138,7 +140,9 @@ final class InsightsScope
             $query->whereIn($organizationColumn, $organizationIds);
         }
 
-        $query->whereNull('u.anonymized_at');
+        $query->whereNull('u.anonymized_at')
+            ->whereNull('u.usage_opted_out_at')
+            ->whereNull('u.closure_requested_at');
 
         $isStaff = fn (Builder $inner) => $inner
             ->where('u.is_platform_admin', true)

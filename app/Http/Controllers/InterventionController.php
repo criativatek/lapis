@@ -735,8 +735,8 @@ class InterventionController extends Controller
             'clear_review' => ['sometimes', 'boolean'],
         ]);
 
-        DB::transaction(function () use ($intervention, $validated): void {
-            $intervention->reviews()->create([
+        $review = DB::transaction(function () use ($intervention, $validated): InterventionReview {
+            $review = $intervention->reviews()->create([
                 'reviewed_on' => $validated['reviewed_on'],
                 'effectiveness' => $validated['effectiveness'] ?? null,
                 'notes' => $validated['notes'] ?? null,
@@ -748,6 +748,8 @@ class InterventionController extends Controller
             } elseif (($validated['review_on'] ?? null) !== null) {
                 $intervention->forceFill(['review_on' => $validated['review_on']])->save();
             }
+
+            return $review;
         });
 
         // The rating is a decision and travels; the note is prose about a child
@@ -758,7 +760,8 @@ class InterventionController extends Controller
             'has_note' => ($validated['notes'] ?? null) !== null,
         ]);
 
-        $usage->action(UsageEventType::InterventionFollowupAdded, $intervention);
+        // Cada acompanhamento é um registo novo (não uma edição da medida).
+        $usage->action(UsageEventType::InterventionFollowupAdded, $review);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Acompanhamento registado.')]);
 

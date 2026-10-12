@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Actions\Usage\SetUsageClassification;
+use App\Console\Commands\Concerns\ResolvesUsageOperator;
 use App\Models\Organization;
-use App\Models\User;
 use App\Support\Commercial\CurrentSubscriptions;
 use App\Support\Usage\UsageClassification;
 use Illuminate\Console\Command;
@@ -16,6 +16,8 @@ use Illuminate\Console\Command;
  */
 class UsageClassify extends Command
 {
+    use ResolvesUsageOperator;
+
     protected $signature = 'lapis:usage-classify
         {organization? : ULID da organização}
         {classification? : unclassified, real, test ou internal}
@@ -93,32 +95,5 @@ class UsageClassify extends Command
         );
 
         return self::SUCCESS;
-    }
-
-    private function resolveOperator(): ?User
-    {
-        $email = $this->option('operator');
-
-        if (! is_string($email) || trim($email) === '') {
-            $this->components->error('Falta --operator=<email>. A auditoria tem de registar quem tomou a decisão.');
-
-            return null;
-        }
-
-        $operator = User::query()->where('email', trim($email))->first();
-
-        if ($operator === null) {
-            $this->components->error('Não existe utilizador com esse email.');
-
-            return null;
-        }
-
-        if (! $operator->canViewUsageInsights()) {
-            $this->components->error('Esse utilizador não é administrador com acesso às métricas de utilização.');
-
-            return null;
-        }
-
-        return $operator;
     }
 }

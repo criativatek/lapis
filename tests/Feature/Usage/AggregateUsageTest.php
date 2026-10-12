@@ -211,27 +211,6 @@ class AggregateUsageTest extends TestCase
     }
 
     #[Test]
-    public function sync_opens_and_closes_collection_periods_following_the_switch(): void
-    {
-        $coverage = new UsageCoverage;
-        DB::table('usage_collection_periods')->delete();
-
-        config()->set('usage.enabled', true);
-        $coverage->sync($this->now);
-        $coverage->sync($this->now);
-        $this->assertSame(1, DB::table('usage_collection_periods')->whereNull('ended_at')->count());
-
-        config()->set('usage.enabled', false);
-        $coverage->sync($this->now->addDay());
-        $this->assertSame(0, DB::table('usage_collection_periods')->whereNull('ended_at')->count());
-        $this->assertSame(1, DB::table('usage_collection_periods')->count());
-
-        config()->set('usage.enabled', true);
-        $coverage->sync($this->now->addDays(2));
-        $this->assertSame(2, DB::table('usage_collection_periods')->count());
-    }
-
-    #[Test]
     public function coverage_answers_per_day_and_is_never_a_zero(): void
     {
         $this->startUsageCollectionAt('2026-10-05 15:00:00', '2026-10-08 12:00:00');

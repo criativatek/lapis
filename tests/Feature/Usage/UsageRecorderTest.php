@@ -186,7 +186,8 @@ class UsageRecorderTest extends TestCase
     #[Test]
     public function collection_switched_off_records_nothing(): void
     {
-        config()->set('usage.enabled', false);
+        // Desligada = nenhum período aberto (não há chave de configuração).
+        DB::table('usage_collection_periods')->update(['ended_at' => now(), 'is_open' => null]);
 
         $this->asTeacher()->post('/_usage/summary')->assertOk();
 
