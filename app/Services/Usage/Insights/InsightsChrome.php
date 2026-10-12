@@ -35,7 +35,7 @@ final class InsightsChrome
     }
 
     /**
-     * @return array{plans: list<array{key: string, label: string}>, organizations: list<array{ulid: string, name: string, is_test_account: bool}>, segments: list<array{key: string, label: string}>, signal_options: list<array{key: string, label: string}>}
+     * @return array{plans: list<array{key: string, label: string}>, organizations: list<array{ulid: string, name: string, classification: string}>, segments: list<array{key: string, label: string, description: string}>, signal_options: list<array{key: string, label: string}>}
      */
     public function options(): array
     {
@@ -43,15 +43,15 @@ final class InsightsChrome
             'plans' => array_values(Plan::query()->orderBy('sort_order')->orderBy('id')->get(['key', 'name'])
                 ->map(fn (Plan $plan): array => ['key' => $plan->key, 'label' => $plan->name])
                 ->all()),
-            'organizations' => array_values(Organization::query()->orderBy('name')->get(['ulid', 'name', 'is_test_account'])
+            'organizations' => array_values(Organization::query()->orderBy('name')->get(['ulid', 'name', 'usage_classification'])
                 ->map(fn (Organization $organization): array => [
                     'ulid' => $organization->ulid,
                     'name' => $organization->name,
-                    'is_test_account' => (bool) $organization->is_test_account,
+                    'classification' => (string) $organization->usage_classification,
                 ])
                 ->all()),
             'segments' => array_map(
-                fn (UsageSegment $segment): array => ['key' => $segment->value, 'label' => $segment->label()],
+                fn (UsageSegment $segment): array => ['key' => $segment->value, 'label' => $segment->label(), 'description' => $segment->description()],
                 UsageSegment::cases(),
             ),
             'signal_options' => array_map(
@@ -82,6 +82,14 @@ final class InsightsChrome
         };
 
         $notes = [];
+
+        $unclassified = Organization::query()->where('usage_classification', 'unclassified')->count();
+
+        if ($unclassified > 0) {
+            $notes[] = $unclassified === 1
+                ? '1 organização está por classificar e não entra na utilização real.'
+                : $unclassified.' organizações estão por classificar e não entram na utilização real.';
+        }
 
         if ($startedAt !== null && $startDay !== null && $filters->from->lessThanOrEqualTo($startDay) && $filters->to->greaterThanOrEqualTo($startDay)) {
             $notes[] = 'A recolha de métricas começou a '.$startedAt->format('d/m/Y').' às '.$startedAt->format('H:i').'. Esse dia é parcial e não há dados de utilização anteriores.';
@@ -146,7 +154,7 @@ final class InsightsChrome
             ['term' => 'Ação concluída', 'text' => 'Operação confirmada pelo servidor sobre um registo, contada uma vez por registo e por dia. Gravar sem alterar nada, uma tentativa falhada ou um erro de validação não contam.'],
             ['term' => 'Elementos afetados', 'text' => 'Quantos registos uma ação tocou (alunos importados, células alteradas). Mostra-se à parte e nunca se soma às ações.'],
             ['term' => 'Falha técnica', 'text' => 'Operação que terminou com erro do servidor. Erros de validação, recusas de permissão, sessões expiradas e limites de pedidos não são falhas técnicas.'],
-            ['term' => 'Segmentos', 'text' => '«Principal» exclui as organizações marcadas como conta de teste e o pessoal interno; «Teste e internas» mostra exatamente o que ficou de fora.'],
+            ['term' => 'Segmentos', 'text' => 'Cada organização é classificada à mão (utilização real, teste e demonstração, interna); nada é inferido da atividade nem da marca comercial de conta de teste. «Por classificar» mostra as que ninguém classificou e não entram na utilização real. O pessoal interno conta sempre como interno.'],
             ['term' => 'Sinais', 'text' => 'Sugestões de verificação para a equipa interna, não diagnósticos: não dizem que alguém abandonou ou precisa de formação. Com recolha insuficiente para a janela da regra não há sinal: a pessoa fica «por avaliar».'],
         ];
     }

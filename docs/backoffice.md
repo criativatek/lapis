@@ -340,10 +340,14 @@ ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
   regresso por semana de adesão) · Acompanhamento (lista pesquisável e detalhe
   semanal/por funcionalidade de cada pessoa) · Ranking (dias ativos, ações,
   semanas, funcionalidades — sem pontuação composta).
-- **Segmentos:** «Principais» exclui organizações marcadas como teste e pessoal
-  interno (`is_platform_admin`/`is_support_technician`); «Teste e internas»
-  mostra-os à parte. Em produção, à data da 0.163.0, todas as organizações estão
-  marcadas como teste.
+- **Segmentos:** quatro, por classificação explícita da organização
+  (`usage_classification`: por classificar, real, teste e demonstração, interna),
+  independente da marca comercial `is_test_account`, que o painel não lê. «Utilização
+  real» é o inicial; o pessoal interno (`is_platform_admin`/`is_support_technician`)
+  conta sempre como «Interno». Todas as organizações nascem «Por classificar» e nada é
+  inferido: classifica-se na ficha da conta («Classificação para métricas de
+  utilização») ou com `php artisan lapis:usage-classify` (`--list`; auditado como
+  evento de plataforma, não na auditoria da organização).
 - **Agregação a cada 15 minutos** (`usage:aggregate`); o painel diz a hora da
   última. **Conservação de 365 dias** (`usage:prune`, 04:05).
 - **Oposição:** `php artisan lapis:usage-opt-out <email>` desliga a recolha para

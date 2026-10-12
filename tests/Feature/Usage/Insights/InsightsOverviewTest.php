@@ -67,26 +67,86 @@ class InsightsOverviewTest extends InsightsTestCase
     }
 
     #[Test]
-    public function the_main_segment_leaves_out_test_organizations_and_internal_staff_and_the_test_segment_shows_them(): void
+    public function each_segment_shows_only_its_own_classification_and_internal_staff_are_always_internal(): void
     {
         $real = $this->person('Professora Real');
         $trial = $this->person('Professora de Ensaio');
         $this->markTest($this->organizationOf($trial));
-        $internal = $this->platformAdmin(name: 'Pessoal Interno');
+        $team = $this->person('Equipa');
+        $this->classify($this->organizationOf($team), 'internal');
+        $pending = $this->person('Por Classificar');
+        $this->classify($this->organizationOf($pending), 'unclassified');
+        $admin = $this->platformAdmin(name: 'Admin em Org Real');
+        $realSchool = Organization::factory()->institutional()->withMember($admin)->create();
+        $this->classify($realSchool, 'real');
         $support = $this->person('Técnica de Suporte');
         $support->forceFill(['is_support_technician' => true])->save();
 
-        foreach ([$real, $trial, $internal, $support] as $person) {
+        foreach ([$real, $trial, $team, $pending, $support] as $person) {
             $this->rollup($person, '2026-10-10');
         }
+        $this->rollup($admin, '2026-10-10', organization: $realSchool);
 
-        $main = $this->props('admin.usage.overview');
-        $test = $this->props('admin.usage.overview', ['segment' => 'test']);
+        $count = fn (string $segment): int => $this->props('admin.usage.overview', ['segment' => $segment])['headline']['active_period'];
 
-        $this->assertSame(1, $main['headline']['active_period']);
-        $this->assertSame(3, $test['headline']['active_period']);
-        $this->assertSame('main', $main['filters']['segment']);
-        $this->assertSame('test', $test['filters']['segment']);
+        // real: só a Professora Real (o admin e a técnica são pessoal interno).
+        $this->assertSame(1, $count('real'));
+        $this->assertSame(1, $count('test'));
+        $this->assertSame(1, $count('unclassified'));
+        // internal: Equipa (org interna) + admin numa org real + técnica de suporte.
+        $this->assertSame(3, $count('internal'));
+        $this->assertSame('real', $this->props('admin.usage.overview')['filters']['segment']);
+    }
+
+    #[Test]
+    public function the_commercial_test_mark_does_not_take_a_real_organization_out_of_real_usage(): void
+    {
+        $teacher = $this->person('Parceira Convidada');
+        $organization = $this->organizationOf($teacher);
+        $organization->forceFill(['is_test_account' => true])->save();
+        $this->rollup($teacher, '2026-10-10');
+
+        $this->assertSame(1, $this->props('admin.usage.overview')['headline']['active_period']);
+        $this->assertSame(0, $this->props('admin.usage.overview', ['segment' => 'test'])['headline']['active_period']);
+    }
+
+    #[Test]
+    public function an_organization_that_is_only_commercially_a_test_account_is_unclassified_for_metrics(): void
+    {
+        $teacher = $this->person('Só Marca Comercial');
+        $organization = $this->organizationOf($teacher);
+        $this->classify($organization, 'unclassified');
+        $organization->forceFill(['is_test_account' => true])->save();
+        $this->rollup($teacher, '2026-10-10');
+
+        $this->assertSame(0, $this->props('admin.usage.overview')['headline']['active_period']);
+        $this->assertSame(1, $this->props('admin.usage.overview', ['segment' => 'unclassified'])['headline']['active_period']);
+    }
+
+    #[Test]
+    public function the_main_segment_value_is_no_longer_accepted(): void
+    {
+        $this->actingAs($this->operator)->get(route('admin.usage.overview', ['segment' => 'main']))->assertSessionHasErrors('segment');
+    }
+
+    #[Test]
+    public function the_chrome_describes_the_four_segments_and_notes_unclassified_organizations(): void
+    {
+        $this->person('Uma');
+        $this->classify($this->organizationOf($this->person('Outra')), 'unclassified');
+
+        $props = $this->props('admin.usage.overview');
+
+        $this->assertSame(['real', 'test', 'internal', 'unclassified'], array_column($props['options']['segments'], 'key'));
+        foreach ($props['options']['segments'] as $segment) {
+            $this->assertNotSame('', $segment['description']);
+        }
+        // A de «Outra» e a do próprio operador.
+        $this->assertContains('2 organizações estão por classificar e não entram na utilização real.', $props['coverage']['notes']);
+
+        Organization::query()->update(['usage_classification' => 'real']);
+        $notes = $this->props('admin.usage.overview')['coverage']['notes'];
+        $this->assertSame([], array_values(array_filter($notes, fn (string $note): bool => str_contains($note, 'por classificar'))));
     }
 
     #[Test]
@@ -328,8 +388,9 @@ class InsightsOverviewTest extends InsightsTestCase
         $this->markTest($this->organizationOf($trial));
 
         $this->assertSame(1, $this->props('admin.usage.overview')['headline']['new_accounts']);
-        // «Teste e internas»: a conta de ensaio e a do próprio operador (pessoal interno).
-        $this->assertSame(2, $this->props('admin.usage.overview', ['segment' => 'test'])['headline']['new_accounts']);
+        $this->assertSame(1, $this->props('admin.usage.overview', ['segment' => 'test'])['headline']['new_accounts']);
+        // A conta do próprio operador (pessoal interno) é interna.
+        $this->assertSame(1, $this->props('admin.usage.overview', ['segment' => 'internal'])['headline']['new_accounts']);
     }
 
     #[Test]
@@ -430,7 +491,7 @@ class InsightsOverviewTest extends InsightsTestCase
         $options = $this->props('admin.usage.overview')['options'];
 
         $this->assertContains('pro', array_column($options['plans'], 'key'));
-        $this->assertNotEmpty(array_filter($options['organizations'], fn (array $organization): bool => $organization['is_test_account']));
+        $this->assertNotEmpty(array_filter($options['organizations'], fn (array $organization): bool => $organization['classification'] === 'test'));
         $this->assertSame(
             ['no_class', 'no_first_record', 'went_quiet', 'technical_failures'],
             array_column($options['signal_options'], 'key'),

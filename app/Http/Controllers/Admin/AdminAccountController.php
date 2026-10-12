@@ -30,6 +30,7 @@ use App\Support\Commercial\FounderSeats;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageClassification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -300,6 +301,22 @@ class AdminAccountController extends Controller
                     'granted' => $owner?->can_view_usage_insights === true,
                 ]
                 : ['can_manage' => false, 'owner_is_admin' => false, 'granted' => false],
+            // A classificação para as métricas só viaja a quem pode ver as
+            // métricas: a quem não pode, nem o valor lhe é dito.
+            'usage_classification' => $request->user()?->canViewUsageInsights() === true
+                ? [
+                    'value' => $organization->usage_classification,
+                    'classified_at' => $organization->usage_classified_at?->toDateTimeString(),
+                    'options' => array_map(
+                        fn (UsageClassification $classification): array => [
+                            'key' => $classification->value,
+                            'label' => $classification->label(),
+                            'description' => $classification->description(),
+                        ],
+                        UsageClassification::cases(),
+                    ),
+                ]
+                : null,
         ]);
     }
 

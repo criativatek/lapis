@@ -4,7 +4,7 @@ import { computed, reactive } from 'vue';
 import UsageSegmented from '@/components/admin/usage/UsageSegmented.vue';
 import { Button } from '@/components/ui/button';
 import { commonQuery } from '@/lib/usageFormat';
-import type { UsageFilterOptions, UsageFilters, UsagePeriodKey, UsageSegmentKey } from '@/types/usage';
+import type { UsageClassificationKey, UsageFilterOptions, UsageFilters, UsagePeriodKey, UsageSegmentKey } from '@/types/usage';
 
 /**
  * Os filtros comuns às quatro páginas. Mudar uma opção aplica logo; o período
@@ -26,9 +26,11 @@ const PERIODS: { value: UsagePeriodKey; label: string }[] = [
     { value: 'custom', label: 'Personalizado' },
 ];
 
-const SEGMENT_HELP: Record<UsageSegmentKey, string> = {
-    main: 'Principais: contas reais, sem contas de teste nem marcas internas.',
-    test: 'Teste e internas: contas de teste e equipa interna, que ficam fora dos números principais.',
+const CLASSIFICATION_SUFFIX: Record<UsageClassificationKey, string> = {
+    real: '',
+    test: ' (teste)',
+    internal: ' (interna)',
+    unclassified: ' (por classificar)',
 };
 
 const form = reactive({
@@ -42,6 +44,8 @@ const form = reactive({
 
 const errors = computed(() => (usePage().props.errors ?? {}) as Record<string, string>);
 const errorMessages = computed(() => Object.values(errors.value).filter((message) => typeof message === 'string' && message !== ''));
+
+const segmentHelp = computed(() => props.options.segments.find((segment) => segment.key === form.segment)?.description ?? '');
 
 const segmentOptions = computed(() => props.options.segments.map((segment) => ({ key: segment.key, label: segment.label })));
 
@@ -103,7 +107,7 @@ const fieldClass =
                 <select v-model="form.organization" :class="fieldClass" @change="apply">
                     <option value="">Todas</option>
                     <option v-for="organization in options.organizations" :key="organization.ulid" :value="organization.ulid">
-                        {{ organization.name }}{{ organization.is_test_account ? ' (teste)' : '' }}
+                        {{ organization.name }}{{ CLASSIFICATION_SUFFIX[organization.classification] }}
                     </option>
                 </select>
             </label>
@@ -124,7 +128,7 @@ const fieldClass =
         <div class="space-y-2">
             <p class="text-sm font-medium">Segmento</p>
             <UsageSegmented :model-value="form.segment" :options="segmentOptions" label="Segmento" @update:model-value="setSegment" />
-            <p class="text-xs text-muted-foreground">{{ SEGMENT_HELP[form.segment] }}</p>
+            <p class="text-xs text-muted-foreground">{{ segmentHelp }}</p>
         </div>
 
         <div v-if="errorMessages.length" role="alert" class="rounded-md border border-border bg-muted px-3 py-2 text-sm">

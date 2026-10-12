@@ -29,6 +29,9 @@ use Illuminate\Support\Carbon;
  * @property bool $is_test_account An account that exists to try the product out, and
  *                                 to which nothing was ever promised. Says nothing
  *                                 about what it may do — see `SetTestAccount`.
+ * @property string $usage_classification Para as métricas de utilização (`UsageClassification`);
+ *                                        nasce `unclassified` e só `SetUsageClassification` a escreve.
+ * @property Carbon|null $usage_classified_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
  * @property Carbon|null $created_at
@@ -38,7 +41,8 @@ use Illuminate\Support\Carbon;
 // never be able to declare itself a test account — not through a stray
 // `$request->all()`, not by a caller copying another organization's attributes.
 // It is written in exactly one place, `SetTestAccount`, which demands an
-// operator and leaves an audit trail.
+// operator and leaves an audit trail. `usage_classification` and
+// `usage_classified_at` are absent for the same reason (`SetUsageClassification`).
 #[Fillable(['name', 'type', 'owner_id', 'timezone', 'locale', 'jurisdiction'])]
 class Organization extends Model
 {
@@ -66,6 +70,7 @@ class Organization extends Model
         return [
             'type' => OrganizationType::class,
             'is_test_account' => 'boolean',
+            'usage_classified_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
         ];

@@ -73,7 +73,7 @@ class UserDirectoryTest extends InsightsTestCase
         $this->assertSame('2026-06-01', $row['joined_on']);
         $this->assertSame(['Pro'], $row['plans']);
         $this->assertSame(1, $row['organizations']);
-        $this->assertSame(['test' => false, 'internal' => false], $row['flags']);
+        $this->assertSame(['test' => false, 'internal' => false, 'unclassified' => false], $row['flags']);
         $this->assertSame('2026-10-08', $row['last_activity_on']);
         $this->assertSame([2, 2, 7], [$row['active_days'], $row['actions'], $row['items']]);
         $this->assertSame([['key' => 'lessons', 'label' => 'Aulas e sumários'], ['key' => 'reports', 'label' => 'Relatórios']], $row['features']);
@@ -197,17 +197,18 @@ class UserDirectoryTest extends InsightsTestCase
     }
 
     #[Test]
-    public function internal_and_test_flags_show_in_the_test_segment(): void
+    public function internal_and_test_flags_show_in_their_segments(): void
     {
         $trial = $this->listed('Ensaio');
         $this->markTest($this->organizationOf($trial));
         $staff = $this->listed('Pessoal');
         $staff->forceFill(['is_support_technician' => true])->save();
 
-        $rows = collect($this->rows(['segment' => 'test']))->keyBy('name');
+        $rows = collect($this->rows(['segment' => 'test']))->keyBy('name')
+            ->merge(collect($this->rows(['segment' => 'internal']))->keyBy('name'));
 
-        $this->assertSame(['test' => true, 'internal' => false], $rows['Ensaio']['flags']);
-        $this->assertSame(['test' => false, 'internal' => true], $rows['Pessoal']['flags']);
+        $this->assertSame(['test' => true, 'internal' => false, 'unclassified' => false], $rows['Ensaio']['flags']);
+        $this->assertSame(['test' => false, 'internal' => true, 'unclassified' => false], $rows['Pessoal']['flags']);
     }
 
     #[Test]
@@ -251,8 +252,8 @@ class UserDirectoryTest extends InsightsTestCase
         $this->assertSame($state->ulid, $props['user']['ulid']);
         $this->assertSame('Pessoa Detalhada', $props['user']['name']);
         $this->assertSame('2026-06-01', $props['user']['joined_on']);
-        $this->assertSame([['name' => $this->organizationOf($user)->name, 'plan' => 'Pro', 'is_test_account' => false]], $props['user']['organizations']);
-        $this->assertSame(['test' => false, 'internal' => false], $props['user']['flags']);
+        $this->assertSame([['name' => $this->organizationOf($user)->name, 'plan' => 'Pro', 'classification' => 'real']], $props['user']['organizations']);
+        $this->assertSame(['test' => false, 'internal' => false, 'unclassified' => false], $props['user']['flags']);
 
         $steps = collect($props['first_steps'])->keyBy('key');
         $this->assertSame('2026-09-03', $steps['first_class_created']['observed_on']);

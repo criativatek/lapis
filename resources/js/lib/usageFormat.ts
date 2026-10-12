@@ -78,7 +78,7 @@ export function commonQuery(filters: UsageFilters): Query {
         query.organization = filters.organization;
     }
 
-    if (filters.segment !== 'main') {
+    if (filters.segment !== 'real') {
         query.segment = filters.segment;
     }
 

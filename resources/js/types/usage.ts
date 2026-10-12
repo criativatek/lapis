@@ -7,7 +7,9 @@
  * mostra uma percentagem mostra o denominador ao lado.
  */
 
-export type UsageSegmentKey = 'main' | 'test';
+export type UsageSegmentKey = 'real' | 'test' | 'internal' | 'unclassified';
+
+export type UsageClassificationKey = 'unclassified' | 'real' | 'test' | 'internal';
 
 export type UsagePeriodKey = '7' | '30' | '90' | 'custom';
 
@@ -37,8 +39,8 @@ export type UsageFilters = {
 
 export type UsageFilterOptions = {
     plans: { key: string; label: string }[];
-    organizations: { ulid: string; name: string; is_test_account: boolean }[];
-    segments: { key: UsageSegmentKey; label: string }[];
+    organizations: { ulid: string; name: string; classification: UsageClassificationKey }[];
+    segments: { key: UsageSegmentKey; label: string; description: string }[];
     signal_options: { key: string; label: string }[];
 };
 
@@ -159,7 +161,7 @@ export type UsageUserRow = {
     joined_on: string;
     plans: string[];
     organizations: number;
-    flags: { test: boolean; internal: boolean };
+    flags: { test: boolean; internal: boolean; unclassified: boolean };
     last_activity_on: string | null;
     active_days: number;
     actions: number;
@@ -184,8 +186,8 @@ export type UsageUserDetailProps = UsageCommonProps & {
         email: string;
         joined_on: string;
         status: string | null;
-        organizations: { name: string; plan: string | null; is_test_account: boolean }[];
-        flags: { test: boolean; internal: boolean };
+        organizations: { name: string; plan: string | null; classification: UsageClassificationKey }[];
+        flags: { test: boolean; internal: boolean; unclassified: boolean };
     };
     first_steps: { key: string; label: string; observed_on: string | null; note: string | null }[];
     class_available_since: { date: string | null; label: string };

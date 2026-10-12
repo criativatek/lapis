@@ -65,6 +65,12 @@ const props = defineProps<{
     plans: { key: string; name: string }[];
     /** Só quem já tem a autorização das métricas de utilização a pode dar, e só a um administrador. */
     usage_insights: { can_manage: boolean; owner_is_admin: boolean; granted: boolean };
+    /** Só vai a quem pode ver as métricas de utilização; para os outros é nulo. */
+    usage_classification: {
+        value: string;
+        classified_at: string | null;
+        options: { key: string; label: string; description: string }[];
+    } | null;
 }>();
 
 const base = computed(() => `/admin/accounts/${props.account.ulid}`);
@@ -78,6 +84,22 @@ const usageAccessRefusal = computed(() => (usePage().props.errors as Record<stri
 
 function setUsageAccess(granted: boolean): void {
     router.post(`${base.value}/usage-insights`, { granted }, { preserveScroll: true });
+}
+
+const classificationForm = useForm({
+    classification: props.usage_classification?.value ?? 'unclassified',
+    note: '',
+});
+
+const classificationLabel = computed(
+    () => props.usage_classification?.options.find((option) => option.key === props.usage_classification?.value)?.label ?? '',
+);
+
+function saveClassification(): void {
+    classificationForm.post(`${base.value}/usage-classification`, {
+        preserveScroll: true,
+        onSuccess: () => classificationForm.reset('note'),
+    });
 }
 
 const blockingEntries = computed(() => Object.entries(props.account.blocking));
@@ -618,6 +640,43 @@ function destroy(): void {
             <Button type="button" variant="outline" size="sm" @click="setTestAccount(!account.is_test_account)">
                 {{ account.is_test_account ? 'Deixar de ser conta de teste' : 'Marcar como conta de teste' }}
             </Button>
+        </section>
+
+        <!-- Classificação para métricas de utilização -->
+        <section v-if="usage_classification" class="space-y-3 rounded-lg border border-border p-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-medium">Classificação para métricas de utilização</h2>
+                <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ classificationLabel }}</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Serve só para o painel de utilização, é independente da «conta de teste» comercial e <strong>não</strong> altera nada na
+                conta. Nada é inferido: quem decide é uma pessoa, e uma organização por classificar não entra na utilização real.
+            </p>
+            <form class="space-y-3" @submit.prevent="saveClassification">
+                <fieldset class="space-y-2">
+                    <legend class="sr-only">Classificação</legend>
+                    <label v-for="option in usage_classification.options" :key="option.key" class="flex items-start gap-2 text-sm">
+                        <input v-model="classificationForm.classification" type="radio" name="classification" :value="option.key" class="mt-1" />
+                        <span>
+                            <span class="font-medium">{{ option.label }}</span>
+                            <span class="block text-muted-foreground">{{ option.description }}</span>
+                        </span>
+                    </label>
+                </fieldset>
+                <label class="block space-y-1 text-sm">
+                    <span class="font-medium">Nota (opcional)</span>
+                    <input
+                        v-model="classificationForm.note"
+                        type="text"
+                        maxlength="500"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm max-md:h-11"
+                    />
+                </label>
+                <p v-if="classificationForm.errors.classification || classificationForm.errors.note" role="alert" class="text-sm text-red-700 dark:text-red-400">
+                    {{ classificationForm.errors.classification ?? classificationForm.errors.note }}
+                </p>
+                <Button type="submit" variant="outline" class="max-md:min-h-11" :disabled="classificationForm.processing">Guardar classificação</Button>
+            </form>
         </section>
 
         <!-- Métricas de utilização -->

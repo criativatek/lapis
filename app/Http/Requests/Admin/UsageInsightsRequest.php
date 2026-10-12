@@ -125,7 +125,7 @@ class UsageInsightsRequest extends FormRequest
             adjustedToRetention: $adjusted,
             plan: $this->validated('plan') ?: null,
             organization: $this->validated('organization') ?: null,
-            segment: $segment === null ? UsageSegment::Main : UsageSegment::from((string) $segment),
+            segment: $segment === null ? UsageSegment::Real : UsageSegment::from((string) $segment),
             search: trim((string) ($this->validated('q') ?? '')),
             signal: $this->validated('signal') ?: null,
             sort: is_string($sort) && in_array($sort, $sorts, true) ? $sort : $sorts[0],

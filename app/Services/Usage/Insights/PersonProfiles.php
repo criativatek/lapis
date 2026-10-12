@@ -19,7 +19,7 @@ final class PersonProfiles
 
     /**
      * @param  iterable<User>  $users
-     * @return array<int, array{organizations: list<array{name: string, plan: string|null, is_test_account: bool}>, plans: list<string>, flags: array{test: bool, internal: bool}}>
+     * @return array<int, array{organizations: list<array{name: string, plan: string|null, classification: string}>, plans: list<string>, flags: array{test: bool, internal: bool, unclassified: bool}}>
      */
     public function for(iterable $users): array
     {
@@ -31,7 +31,7 @@ final class PersonProfiles
                 ->join('organizations as o', 'o.id', '=', 'm.organization_id')
                 ->whereIn('m.user_id', $chunk->values()->all())
                 ->orderBy('o.name')
-                ->get(['m.user_id', 'o.id as organization_id', 'o.name', 'o.is_test_account']);
+                ->get(['m.user_id', 'o.id as organization_id', 'o.name', 'o.usage_classification']);
 
             foreach ($rows as $row) {
                 $memberships[(int) $row->user_id][] = $row;
@@ -46,27 +46,28 @@ final class PersonProfiles
         foreach ($users as $userId => $user) {
             $organizations = [];
             $planNames = [];
-            $anyTest = false;
+            $classifications = [];
 
             foreach ($memberships[$userId] ?? [] as $row) {
                 $plan = $plans->get((int) $row->organization_id)?->plan?->name;
                 $organizations[] = [
                     'name' => (string) $row->name,
                     'plan' => $plan,
-                    'is_test_account' => (bool) $row->is_test_account,
+                    'classification' => (string) $row->usage_classification,
                 ];
                 if ($plan !== null) {
                     $planNames[$plan] = true;
                 }
-                $anyTest = $anyTest || (bool) $row->is_test_account;
+                $classifications[(string) $row->usage_classification] = true;
             }
 
             $result[$userId] = [
                 'organizations' => $organizations,
                 'plans' => array_keys($planNames),
                 'flags' => [
-                    'test' => $anyTest,
-                    'internal' => $user->is_platform_admin || $user->is_support_technician,
+                    'test' => isset($classifications['test']),
+                    'internal' => $user->is_platform_admin || $user->is_support_technician || isset($classifications['internal']),
+                    'unclassified' => isset($classifications['unclassified']),
                 ],
             ];
         }

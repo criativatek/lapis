@@ -61,12 +61,16 @@ abstract class InsightsTestCase extends TestCase
     }
 
     /**
-     * Um professor com a sua organização pessoal, criado em `$createdAt`.
+     * Um professor com a sua organização pessoal, criado em `$createdAt`. A
+     * organização nasce `real`, para que os testes que não falam de
+     * classificação continuem a medir a utilização real; quem testa a
+     * classificação usa `classify()` / `markTest()`.
      */
     protected function person(string $name, string $createdAt = '2026-08-01 09:00:00'): User
     {
         $user = User::factory()->create(['name' => $name, 'email' => str($name)->slug().'@exemplo.pt']);
         DB::table('users')->where('id', $user->id)->update(['created_at' => $createdAt]);
+        $this->classify($user->personalOrganization(), 'real');
 
         return $user->refresh();
     }
@@ -76,9 +80,16 @@ abstract class InsightsTestCase extends TestCase
         return $user->personalOrganization()->refresh();
     }
 
+    /** Marca a organização como `test` para as métricas (ou volta a `real`). */
     protected function markTest(Organization $organization, bool $isTest = true): void
     {
-        $organization->forceFill(['is_test_account' => $isTest])->save();
+        $this->classify($organization, $isTest ? 'test' : 'real');
+    }
+
+    /** A classificação das métricas, escrita diretamente (o escritor tem os seus testes). */
+    protected function classify(Organization $organization, string $classification): void
+    {
+        $organization->forceFill(['usage_classification' => $classification])->save();
     }
 
     /**

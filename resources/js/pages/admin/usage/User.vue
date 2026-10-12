@@ -9,13 +9,20 @@ import UsageSignalBadge from '@/components/admin/usage/UsageSignalBadge.vue';
 import UsageTile from '@/components/admin/usage/UsageTile.vue';
 import TableShell from '@/components/TableShell.vue';
 import { dash, formatDate, formatNumber, formatRange, itemsBreakdown, listQuery, NO_ACTIVITY, statusLabel, withQuery } from '@/lib/usageFormat';
-import type { UsageUserDetailProps } from '@/types/usage';
+import type { UsageClassificationKey, UsageUserDetailProps } from '@/types/usage';
 
 /**
  * Detalhe de uma pessoa: contagens e datas observadas, nunca conteúdos
  * pedagógicos nem o histórico de cliques.
  */
 const props = defineProps<UsageUserDetailProps>();
+
+const CLASSIFICATION_SUFFIX: Record<UsageClassificationKey, string> = {
+    real: 'utilização real',
+    test: 'teste',
+    internal: 'interna',
+    unclassified: 'por classificar',
+};
 
 const backHref = computed(() => withQuery('/admin/usage/users', listQuery(props.filters)));
 
@@ -56,7 +63,7 @@ const headCell = 'px-3 py-2 font-medium';
                     <dd>
                         <ul v-if="user.organizations.length" class="space-y-0.5">
                             <li v-for="(organization, index) in user.organizations" :key="index">
-                                {{ organization.name }} — {{ organization.plan ?? 'sem plano' }}<span v-if="organization.is_test_account" class="text-muted-foreground"> (teste)</span>
+                                {{ organization.name }} — {{ organization.plan ?? 'sem plano' }}<span v-if="organization.classification !== 'real'" class="text-muted-foreground"> ({{ CLASSIFICATION_SUFFIX[organization.classification] }})</span>
                             </li>
                         </ul>
                         <span v-else>—</span>
@@ -64,8 +71,9 @@ const headCell = 'px-3 py-2 font-medium';
                 </div>
             </dl>
 
-            <div v-if="user.flags.test || user.flags.internal" class="flex flex-wrap gap-1">
-                <span v-if="user.flags.test" class="rounded-full border border-border px-2 py-0.5 text-xs">conta de teste</span>
+            <div v-if="user.flags.test || user.flags.internal || user.flags.unclassified" class="flex flex-wrap gap-1">
+                <span v-if="user.flags.test" class="rounded-full border border-border px-2 py-0.5 text-xs">teste e demonstração</span>
+                <span v-if="user.flags.unclassified" class="rounded-full border border-border px-2 py-0.5 text-xs">por classificar</span>
                 <span v-if="user.flags.internal" class="rounded-full border border-border px-2 py-0.5 text-xs">equipa interna</span>
             </div>
         </section>

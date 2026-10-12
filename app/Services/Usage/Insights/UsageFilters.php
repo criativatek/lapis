@@ -41,7 +41,7 @@ final readonly class UsageFilters
     /**
      * Um período predefinido, para usos fora de um pedido (testes, comandos).
      */
-    public static function preset(int $days, ?CarbonImmutable $today = null, UsageSegment $segment = UsageSegment::Main): self
+    public static function preset(int $days, ?CarbonImmutable $today = null, UsageSegment $segment = UsageSegment::Real): self
     {
         $today ??= UsageDates::today();
 

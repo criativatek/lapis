@@ -27,7 +27,7 @@ function props(): UsageUsersProps {
                     joined_on: '2026-09-25',
                     plans: ['Pro'],
                     organizations: 1,
-                    flags: { test: false, internal: false },
+                    flags: { test: false, internal: false, unclassified: false },
                     last_activity_on: null,
                     active_days: 0,
                     actions: 0,

@@ -23,8 +23,8 @@ function props(): UsageUserDetailProps {
             email: 'ana@example.pt',
             joined_on: '2026-09-25',
             status: 'Conta criada durante o período',
-            organizations: [{ name: 'Escola Azul', plan: 'Pro', is_test_account: true }],
-            flags: { test: true, internal: false },
+            organizations: [{ name: 'Escola Azul', plan: 'Pro', classification: 'test' }],
+            flags: { test: true, internal: false, unclassified: false },
         },
         first_steps: [
             { key: 'first_class', label: 'Primeira turma', observed_on: '2026-09-26', note: null },

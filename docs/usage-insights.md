@@ -185,24 +185,52 @@ antes do início da recolha, o passo pode ter acontecido antes, e o painel di-lo
 
 A tabela `sessions` também não serve: só guarda a sessão ativa.
 
-## Exclusões das métricas principais
+## Classificação das organizações e segmentos
 
-São excluídos **por classificação explícita**, e consultáveis em separado no
-segmento **«Teste e internas»**:
+O painel separa a atividade por **classificação explícita** de cada organização
+(`organizations.usage_classification`), decidida por uma pessoa:
 
-- atividade em organizações marcadas como conta de teste (`is_test_account`);
-- atividade de pessoal interno (`is_platform_admin` ou `is_support_technician`).
+| Classificação | Quer dizer |
+|---|---|
+| `unclassified` — Por classificar | Ninguém decidiu ainda. É o valor de todas as organizações, existentes e novas. |
+| `real` — Utilização real | Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais. |
+| `test` — Teste e demonstração | Dados fictícios, QA, demonstrações e ensaios. |
+| `internal` — Interna | Organizações da própria equipa, usadas para operação. |
 
-A classificação é lida no momento da consulta: marcar ou desmarcar uma
-organização muda a classificação de todo o seu histórico.
+**`is_test_account` não é lido.** Essa marca é comercial («ninguém prometeu nada
+a esta conta») e só o pré-voo comercial a usa; «teste» comercial não quer dizer
+dados fictícios (em produção as organizações estão todas marcadas, incluindo
+professores parceiros que usam o produto a sério). A classificação das métricas
+é independente dela e não altera nada na conta.
+
+**Nada é inferido.** Não há backfill nem dedução a partir do nome, do email, do
+plano ou da atividade: todas as organizações nascem `unclassified` e só uma
+pessoa as classifica, na ficha da conta («Classificação para métricas de
+utilização», só para quem tem `can_view_usage_insights`) ou por
+`php artisan lapis:usage-classify` (`--list` para ver; `{organização}
+{classificação} --operator=<email> --note=` para aplicar). Cada decisão fica na
+auditoria **de plataforma** (`admin.usage_classification_set`), nunca na da
+organização.
+
+Os segmentos do painel são quatro e não se sobrepõem (inicial: `real`):
+
+- **Utilização real** — organizações `real`, sem o pessoal interno;
+- **Teste e demonstração** — organizações `test`;
+- **Interno** — organizações `internal` e a atividade do pessoal interno
+  (`is_platform_admin` ou `is_support_technician`) em qualquer organização;
+- **Por classificar** — organizações `unclassified`, sem o pessoal interno.
+
+O painel avisa quando há organizações por classificar («N organizações estão por
+classificar e não entram na utilização real»). A classificação é lida no momento
+da consulta: reclassificar uma organização muda o segmento de todo o seu
+histórico.
 
 **Nunca são recolhidos**: o acesso técnico do suporte (impersonação), tarefas
 agendadas, jobs, comandos, pedidos automáticos e pré-carregamentos, nem a
 atividade de quem se opôs à recolha (`usage_opted_out_at`).
 
-> Em produção, à data desta versão, **todas** as organizações estão marcadas
-> como conta de teste (decisão de 2026-08-29). Até alguma deixar de o ser, o
-> segmento principal fica vazio e os dados aparecem em «Teste e internas».
+> Em produção, até alguém classificar as organizações, o segmento «Utilização
+> real» fica vazio e os dados aparecem em «Por classificar».
 
 ## Filtros
 

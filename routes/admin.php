@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\AdminImpersonateController;
 use App\Http\Controllers\Admin\AdminSettingsController;
 use App\Http\Controllers\Admin\AdminSupportController;
 use App\Http\Controllers\Admin\AdminUsageAccessController;
+use App\Http\Controllers\Admin\AdminUsageClassificationController;
 use App\Http\Controllers\Admin\AdminUsageController;
 use App\Http\Controllers\Admin\AdminVoucherController;
 use Illuminate\Support\Facades\Route;
@@ -163,6 +164,10 @@ Route::middleware(['auth', 'verified', 'platform-admin'])
 
             // Conceder ou retirar a mesma autorização ao dono de uma conta.
             Route::post('accounts/{organization}/usage-insights', [AdminUsageAccessController::class, 'update'])->name('accounts.usage-insights');
+
+            // Classificação da organização para as métricas (independente da
+            // marca comercial «conta de teste»).
+            Route::post('accounts/{organization}/usage-classification', [AdminUsageClassificationController::class, 'update'])->name('accounts.usage-classification');
         });
 
         // Start impersonating the org's owner (support).

@@ -13,8 +13,12 @@ use Illuminate\Support\Facades\DB;
  *
  * - Organizações: os filtros de organização e de plano. O plano é o plano EM
  *   VIGOR hoje (`CurrentSubscriptions`); mudanças passadas não se reconstroem.
- * - Segmento `main`: organização que não é conta de teste E pessoa que não é
- *   pessoal interno. `test` é o complemento exato.
+ * - Segmento: pela classificação EXPLÍCITA da organização
+ *   (`organizations.usage_classification`, decidida por uma pessoa; nunca
+ *   `is_test_account`, que é uma marca comercial). `real`, `test` e
+ *   `unclassified` exigem também que a pessoa não seja pessoal interno;
+ *   `internal` é organização interna OU pessoal interno em qualquer
+ *   organização. Os quatro são disjuntos.
  * - Contas anonimizadas ficam sempre de fora.
  * - Utilizadores do âmbito: membros de organizações do âmbito que cumprem o
  *   segmento.
@@ -136,17 +140,23 @@ final class InsightsScope
 
         $query->whereNull('u.anonymized_at');
 
-        if ($this->filters->segment === UsageSegment::Main) {
-            $query->where('o.is_test_account', false)
-                ->where('u.is_platform_admin', false)
-                ->where('u.is_support_technician', false);
+        $isStaff = fn (Builder $inner) => $inner
+            ->where('u.is_platform_admin', true)
+            ->orWhere('u.is_support_technician', true);
 
-            return;
-        }
+        $notStaff = fn (Builder $inner) => $inner
+            ->where('u.is_platform_admin', false)
+            ->where('u.is_support_technician', false);
 
-        $query->where(fn (Builder $inner) => $inner
-            ->where('o.is_test_account', true)
-            ->orWhere('u.is_platform_admin', true)
-            ->orWhere('u.is_support_technician', true));
+        match ($this->filters->segment) {
+            // Os três primeiros excluem o pessoal interno, que é sempre
+            // `internal`: assim os segmentos nunca se sobrepõem.
+            UsageSegment::Real => $query->where('o.usage_classification', 'real')->where($notStaff),
+            UsageSegment::Test => $query->where('o.usage_classification', 'test')->where($notStaff),
+            UsageSegment::Unclassified => $query->where('o.usage_classification', 'unclassified')->where($notStaff),
+            UsageSegment::Internal => $query->where(fn (Builder $inner) => $inner
+                ->where('o.usage_classification', 'internal')
+                ->orWhere($isStaff)),
+        };
     }
 }
