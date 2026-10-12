@@ -21,6 +21,10 @@ trait SetsUsageCoverage
      */
     protected function startUsageCollectionAt(string $instant, ?string $endedAt = null): void
     {
+        // A recolha tem de estar ligada para os testes que a exercitam,
+        // qualquer que seja o valor por omissão da configuração.
+        config(['usage.enabled' => true]);
+
         DB::table('usage_collection_periods')->delete();
         DB::table('usage_collection_periods')->insert([
             'started_at' => $instant,

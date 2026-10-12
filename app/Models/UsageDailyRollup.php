@@ -23,10 +23,13 @@ use Illuminate\Support\Carbon;
  * @property int $actions
  * @property int $useful_actions
  * @property int $items
+ * @property int $items_created
+ * @property int $items_changed
+ * @property int $items_unchanged
  * @property int $failures
  */
 #[Fillable([
-    'day', 'user_id', 'organization_id', 'feature', 'views', 'actions', 'useful_actions', 'items', 'failures',
+    'day', 'user_id', 'organization_id', 'feature', 'views', 'actions', 'useful_actions', 'items', 'items_created', 'items_changed', 'items_unchanged', 'failures',
 ])]
 class UsageDailyRollup extends Model
 {
@@ -44,6 +47,9 @@ class UsageDailyRollup extends Model
             'actions' => 'integer',
             'useful_actions' => 'integer',
             'items' => 'integer',
+            'items_created' => 'integer',
+            'items_changed' => 'integer',
+            'items_unchanged' => 'integer',
             'failures' => 'integer',
         ];
     }

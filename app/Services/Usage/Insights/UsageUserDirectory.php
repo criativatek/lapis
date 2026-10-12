@@ -249,6 +249,9 @@ final class UsageUserDirectory
                 'view_days' => count($viewDays),
                 'actions' => array_sum(array_map(fn (RollupRow $row): int => $row->actions, $mine)),
                 'items' => array_sum(array_map(fn (RollupRow $row): int => $row->items, $mine)),
+                'items_created' => array_sum(array_map(fn (RollupRow $row): int => $row->itemsCreated, $mine)),
+                'items_changed' => array_sum(array_map(fn (RollupRow $row): int => $row->itemsChanged, $mine)),
+                'items_unchanged' => array_sum(array_map(fn (RollupRow $row): int => $row->itemsUnchanged, $mine)),
                 'failures' => array_sum(array_map(fn (RollupRow $row): int => $row->failures, $mine)),
             ];
         }

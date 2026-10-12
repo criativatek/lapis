@@ -135,7 +135,7 @@ class InsightsOverviewTest extends InsightsTestCase
         $features = collect($this->props('admin.usage.overview')['features'])->keyBy('key');
 
         $this->assertSame(
-            ['key' => 'lessons', 'label' => 'Aulas e sumários', 'users' => 2, 'users_with_actions' => 1, 'actions' => 2, 'items' => 5, 'failures' => 1],
+            ['key' => 'lessons', 'label' => 'Aulas e sumários', 'users' => 2, 'users_with_actions' => 1, 'actions' => 2, 'items' => 5, 'items_created' => 0, 'items_changed' => 0, 'items_unchanged' => 0, 'failures' => 1],
             $features['lessons'],
         );
         $this->assertSame(1, $features['reports']['users']);

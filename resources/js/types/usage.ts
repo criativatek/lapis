@@ -119,6 +119,10 @@ export type UsageFeatureRow = {
     users_with_actions: number;
     actions: number;
     items: number;
+    /** Discriminação dos elementos afetados, quando as ações a trazem. */
+    items_created: number;
+    items_changed: number;
+    items_unchanged: number;
     failures: number;
 };
 
@@ -215,6 +219,9 @@ export type UsageUserDetailProps = UsageCommonProps & {
         view_days: number;
         actions: number;
         items: number;
+        items_created: number;
+        items_changed: number;
+        items_unchanged: number;
         failures: number;
     }[];
 };

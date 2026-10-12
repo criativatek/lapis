@@ -15,6 +15,9 @@ final readonly class RollupRow
         public int $actions,
         public int $items,
         public int $failures,
+        public int $itemsCreated = 0,
+        public int $itemsChanged = 0,
+        public int $itemsUnchanged = 0,
     ) {}
 
     /** Consulta ou ação concluída — uma falha sozinha não torna ninguém ativo. */

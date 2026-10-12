@@ -211,8 +211,15 @@ class TimetableImportController extends Controller implements HasMiddleware
 
         // Esta importação não tem token: a identidade da ação é o conjunto de
         // tempos que ela criou (um reenvio igual não cria nenhum, logo não conta).
+        // Os conflitos ficam de fora: não são tempos, são recusas.
         if ($created > 0) {
-            $usage->action(UsageEventType::TimetableImported, 'timetable:'.sha1(implode(',', $createdSlotIds)), $created);
+            $usage->action(
+                UsageEventType::TimetableImported,
+                'timetable:'.sha1(implode(',', $createdSlotIds)),
+                created: $created,
+                changed: 0,
+                unchanged: $existed,
+            );
         }
 
         Inertia::flash('toast', [

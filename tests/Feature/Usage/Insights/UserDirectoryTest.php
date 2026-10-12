@@ -278,7 +278,7 @@ class UserDirectoryTest extends InsightsTestCase
         $features = collect($props['features'])->keyBy('key');
         $this->assertSame(['lessons', 'reports'], $features->keys()->all());
         $this->assertSame(
-            ['key' => 'lessons', 'label' => 'Aulas e sumários', 'active_days' => 3, 'view_days' => 3, 'actions' => 2, 'items' => 6, 'failures' => 0],
+            ['key' => 'lessons', 'label' => 'Aulas e sumários', 'active_days' => 3, 'view_days' => 3, 'actions' => 2, 'items' => 6, 'items_created' => 0, 'items_changed' => 0, 'items_unchanged' => 0, 'failures' => 0],
             $features['lessons'],
         );
         $this->assertSame(1, $features['reports']['failures']);

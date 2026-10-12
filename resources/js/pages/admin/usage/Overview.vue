@@ -9,7 +9,7 @@ import UsageHeader from '@/components/admin/usage/UsageHeader.vue';
 import UsageTile from '@/components/admin/usage/UsageTile.vue';
 import TableShell from '@/components/TableShell.vue';
 import { categoryAxis, chromeColours } from '@/lib/chartTheme';
-import { commonQuery, dash, formatNumber, formatRange, ofTotal, statusLabel, withQuery } from '@/lib/usageFormat';
+import { commonQuery, dash, formatNumber, formatRange, itemsBreakdown, ofTotal, statusLabel, withQuery } from '@/lib/usageFormat';
 import type { UsageOverviewProps, WeekStatus } from '@/types/usage';
 
 /**
@@ -244,7 +244,10 @@ const headCell = 'px-3 py-2 font-medium';
                         <td :class="numberCell">{{ formatNumber(feature.users) }}</td>
                         <td :class="numberCell">{{ formatNumber(feature.users_with_actions) }}</td>
                         <td :class="numberCell">{{ formatNumber(feature.actions) }}</td>
-                        <td :class="numberCell">{{ formatNumber(feature.items) }}</td>
+                        <td :class="numberCell">
+                            {{ formatNumber(feature.items) }}
+                            <span v-if="itemsBreakdown(feature)" class="block text-xs font-normal text-muted-foreground">{{ itemsBreakdown(feature) }}</span>
+                        </td>
                         <td :class="numberCell">{{ formatNumber(feature.failures) }}</td>
                     </tr>
                     <tr v-if="features.length === 0">

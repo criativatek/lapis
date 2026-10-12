@@ -31,6 +31,25 @@ export function formatNumber(value: number | null | undefined): string {
     return value === null || value === undefined ? '—' : value.toLocaleString('pt-PT');
 }
 
+/**
+ * «criados 2 · alterados 1 · inalterados 3» — a discriminação dos elementos
+ * afetados em lotes que a trazem. Nula quando nenhuma ação a discriminou.
+ */
+export function itemsBreakdown(row: { items_created?: number; items_changed?: number; items_unchanged?: number }): string | null {
+    // Só as parcelas com valor: nos agregados, um zero e um «não se sabe» (uma
+    // importação que só conhece os criados) somam o mesmo, e escrever
+    // «inalterados 0» afirmaria um facto que ninguém verificou.
+    const parts = [
+        ['criados', row.items_created ?? 0],
+        ['alterados', row.items_changed ?? 0],
+        ['inalterados', row.items_unchanged ?? 0],
+    ] as const;
+
+    const shown = parts.filter(([, value]) => value > 0).map(([label, value]) => `${label} ${formatNumber(value)}`);
+
+    return shown.length === 0 ? null : shown.join(' · ');
+}
+
 /** «4 de 9 · 44%» — a percentagem só existe com denominador. */
 export function ofTotal(done: number, of: number): string {
     if (of <= 0) {

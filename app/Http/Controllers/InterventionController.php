@@ -38,6 +38,7 @@ use App\Support\Interventions\PedagogicalText;
 use App\Support\Tenancy\CurrentOrganization;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -564,7 +565,7 @@ class InterventionController extends Controller
      * A full edit. Status changes keep their own lighter endpoint below, so the
      * quick "Concluir" action does not have to resend the whole record.
      */
-    public function update(UpdateInterventionRequest $request, Intervention $intervention): RedirectResponse
+    public function update(UpdateInterventionRequest $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         $class = $intervention->schoolClass;
         Gate::authorize('update', $class);
@@ -589,6 +590,8 @@ class InterventionController extends Controller
         $previousLabel = $intervention->intervention_type_label;
         $typeChanged = $previousType !== $type;
         $labelWasTypeDerived = $previousType !== null && $previousLabel === $previousType->label();
+
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
         DB::transaction(function () use ($intervention, $validated, $type, $framing, $reasoning, $typeChanged, $labelWasTypeDerived, $previousLabel): void {
             $participantIds = $validated['enrollment_ids'] ?? [];
@@ -635,6 +638,12 @@ class InterventionController extends Controller
 
         $this->record('intervention.updated', $intervention->refresh());
 
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InterventionUpdated, $intervention);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Intervenção atualizada.')]);
 
         return back();
@@ -645,7 +654,7 @@ class InterventionController extends Controller
      * one-off (registered and never touched again) or followed over time. This
      * is deliberately a separate, optional action — never part of registering.
      */
-    public function updateStatus(Request $request, Intervention $intervention): RedirectResponse
+    public function updateStatus(Request $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $intervention->schoolClass);
 
@@ -661,6 +670,8 @@ class InterventionController extends Controller
 
         $status = InterventionStatus::from($validated['status']);
         $was = $intervention->status;
+
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
         DB::transaction(function () use ($intervention, $status, $validated): void {
             $intervention->fill([
@@ -697,6 +708,12 @@ class InterventionController extends Controller
             $intervention->refresh(),
             ['from' => $was->value, 'to' => $status->value],
         );
+
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InterventionUpdated, $intervention);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Estado atualizado.')]);
 

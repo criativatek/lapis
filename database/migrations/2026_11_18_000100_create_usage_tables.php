@@ -29,6 +29,11 @@ return new class extends Migration
             $table->string('event', 48);
             $table->string('kind', 8); // view | action | failure
             $table->unsignedInteger('item_count')->nullable(); // só kind=action, >= 1
+            // Discriminação de um lote (só kind=action): item_count = criados + alterados,
+            // e os inalterados são os que vieram no lote sem mudar nada.
+            $table->unsignedInteger('items_created')->nullable();
+            $table->unsignedInteger('items_changed')->nullable();
+            $table->unsignedInteger('items_unchanged')->nullable();
             $table->string('failure_code', 24)->nullable(); // só kind=failure
             $table->char('dedupe_key', 64)->unique();
             $table->timestamp('created_at')->nullable();
@@ -43,6 +48,9 @@ return new class extends Migration
         $this->addCheck('usage_events', 'usage_events_failure_code_check', "(kind = 'failure') = (failure_code IS NOT NULL)");
         $this->addCheck('usage_events', 'usage_events_item_count_positive_check', 'item_count IS NULL OR item_count > 0');
 
+        $this->addCheck('usage_events', 'usage_events_batch_breakdown_kind_check', "(items_created IS NULL AND items_changed IS NULL AND items_unchanged IS NULL) OR kind = 'action'");
+        $this->addCheck('usage_events', 'usage_events_batch_breakdown_sum_check', 'items_created IS NULL OR items_changed IS NULL OR item_count = items_created + items_changed');
+
         Schema::create('usage_daily_rollups', function (Blueprint $table) {
             $table->id();
             $table->date('day');
@@ -53,6 +61,9 @@ return new class extends Migration
             $table->unsignedInteger('actions')->default(0);
             $table->unsignedInteger('useful_actions')->default(0);
             $table->unsignedInteger('items')->default(0);
+            $table->unsignedInteger('items_created')->default(0);
+            $table->unsignedInteger('items_changed')->default(0);
+            $table->unsignedInteger('items_unchanged')->default(0);
             $table->unsignedInteger('failures')->default(0);
 
             $table->unique(['day', 'user_id', 'organization_id', 'feature'], 'usage_rollups_identity_unique');

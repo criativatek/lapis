@@ -153,6 +153,9 @@ final class UsageOverview
             'users_with_actions' => $row['users_with_actions'],
             'actions' => $row['actions'],
             'items' => $row['items'],
+            'items_created' => $row['items_created'],
+            'items_changed' => $row['items_changed'],
+            'items_unchanged' => $row['items_unchanged'],
             'failures' => $row['failures'],
         ], $this->activity->byFeature($scope, $filters->from, $filters->to));
     }

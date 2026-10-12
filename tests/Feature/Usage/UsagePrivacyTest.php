@@ -26,7 +26,7 @@ class UsagePrivacyTest extends TestCase
         $this->assertEqualsCanonicalizing(
             [
                 'id', 'user_id', 'organization_id', 'occurred_at', 'occurred_on', 'feature', 'event',
-                'kind', 'item_count', 'failure_code', 'dedupe_key', 'created_at',
+                'kind', 'item_count', 'items_created', 'items_changed', 'items_unchanged', 'failure_code', 'dedupe_key', 'created_at',
             ],
             Schema::getColumnListing('usage_events'),
         );
@@ -36,7 +36,7 @@ class UsagePrivacyTest extends TestCase
     public function the_rollup_state_and_period_tables_hold_no_free_text_either(): void
     {
         $this->assertEqualsCanonicalizing(
-            ['id', 'day', 'user_id', 'organization_id', 'feature', 'views', 'actions', 'useful_actions', 'items', 'failures'],
+            ['id', 'day', 'user_id', 'organization_id', 'feature', 'views', 'actions', 'useful_actions', 'items', 'items_created', 'items_changed', 'items_unchanged', 'failures'],
             Schema::getColumnListing('usage_daily_rollups'),
         );
         $this->assertEqualsCanonicalizing(

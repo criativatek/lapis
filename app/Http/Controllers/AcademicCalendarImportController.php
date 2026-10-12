@@ -222,7 +222,7 @@ class AcademicCalendarImportController extends Controller implements HasMiddlewa
         $createdElements = $result['periods_created'] + $result['exceptions_created'] + $result['events_created'];
 
         if ($createdElements > 0) {
-            $usage->action(UsageEventType::CalendarImported, 'calendar:'.$academicYear->getKey(), $createdElements);
+            $usage->action(UsageEventType::CalendarImported, 'calendar:'.$academicYear->getKey(), created: $createdElements);
         }
 
         Inertia::flash('toast', [

@@ -8,7 +8,7 @@ import UsageHeader from '@/components/admin/usage/UsageHeader.vue';
 import UsageSignalBadge from '@/components/admin/usage/UsageSignalBadge.vue';
 import UsageTile from '@/components/admin/usage/UsageTile.vue';
 import TableShell from '@/components/TableShell.vue';
-import { dash, formatDate, formatNumber, formatRange, listQuery, NO_ACTIVITY, statusLabel, withQuery } from '@/lib/usageFormat';
+import { dash, formatDate, formatNumber, formatRange, itemsBreakdown, listQuery, NO_ACTIVITY, statusLabel, withQuery } from '@/lib/usageFormat';
 import type { UsageUserDetailProps } from '@/types/usage';
 
 /**
@@ -174,7 +174,10 @@ const headCell = 'px-3 py-2 font-medium';
                         <td :class="numberCell">{{ formatNumber(feature.active_days) }}</td>
                         <td :class="numberCell">{{ formatNumber(feature.view_days) }}</td>
                         <td :class="numberCell">{{ formatNumber(feature.actions) }}</td>
-                        <td :class="numberCell">{{ formatNumber(feature.items) }}</td>
+                        <td :class="numberCell">
+                            {{ formatNumber(feature.items) }}
+                            <span v-if="itemsBreakdown(feature)" class="block text-xs font-normal text-muted-foreground">{{ itemsBreakdown(feature) }}</span>
+                        </td>
                         <td :class="numberCell">{{ formatNumber(feature.failures) }}</td>
                     </tr>
                     <tr v-if="features.length === 0">

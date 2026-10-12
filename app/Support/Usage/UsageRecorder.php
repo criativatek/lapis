@@ -32,14 +32,40 @@ use Throwable;
  */
 class UsageRecorder
 {
+    /** A fotografia não se conseguiu ler (ver snapshot()). */
+    public const UNAVAILABLE = 'unavailable';
+
     /**
      * Uma ação concluída, contada uma vez por registo e por dia.
      *
+     * Um lote pode discriminar o que lhe aconteceu (`created`, `changed`,
+     * `unchanged`): os elementos afetados são então criados + alterados, e os
+     * inalterados dizem só quantos vieram no lote sem mudar nada. Se nada foi
+     * criado nem alterado, não houve ação e nada se grava.
+     *
      * @param  Model|string|null  $subject  O registo (ou uma chave de lote) que identifica «a mesma ação» no dia.
      */
-    public function action(UsageEventType $type, Model|string|null $subject = null, int $items = 1): void
-    {
+    public function action(
+        UsageEventType $type,
+        Model|string|null $subject = null,
+        int $items = 1,
+        ?int $created = null,
+        ?int $changed = null,
+        ?int $unchanged = null,
+    ): void {
         try {
+            $broken = $created !== null || $changed !== null || $unchanged !== null;
+
+            // O que não foi passado fica NULO, não zero: «não sei quantos ficaram
+            // iguais» não é «nenhum ficou igual». Os elementos afetados são os
+            // criados mais os alterados que se conhecem.
+            if ($broken) {
+                $created = $created === null ? null : max(0, $created);
+                $changed = $changed === null ? null : max(0, $changed);
+                $unchanged = $unchanged === null ? null : max(0, $unchanged);
+                $items = ($created ?? 0) + ($changed ?? 0);
+            }
+
             if ($type->kind() !== UsageEventKind::Action || $type->feature() === null || $items < 1) {
                 return;
             }
@@ -47,7 +73,11 @@ class UsageRecorder
             $this->record($type, $type->feature(), [
                 $type->value,
                 $this->subjectKey($subject),
-            ], itemCount: $items);
+            ], itemCount: $items, breakdown: $broken ? [
+                'items_created' => $created,
+                'items_changed' => $changed,
+                'items_unchanged' => $unchanged,
+            ] : []);
         } catch (Throwable $exception) {
             $this->report($type, $exception);
         }
@@ -135,7 +165,50 @@ class UsageRecorder
     }
 
     /**
+     * Uma fotografia do estado de um conjunto de registos, calculada em memória
+     * (nunca guardada) para só contar uma edição que mudou mesmo alguma coisa.
+     * Devolve UNAVAILABLE quando a leitura falha; `changed()` trata isso como
+     * «não mudou», de qualquer dos lados.
+     *
+     * @param  callable(): mixed  $compute
+     */
+    public function snapshot(callable $compute): string
+    {
+        $result = $this->attempt(
+            fn (): string => sha1((string) json_encode($compute(), JSON_INVALID_UTF8_SUBSTITUTE)),
+            self::UNAVAILABLE,
+        );
+
+        return is_string($result) ? $result : self::UNAVAILABLE;
+    }
+
+    public function changed(string $before, string $after): bool
+    {
+        return $before !== self::UNAVAILABLE && $after !== self::UNAVAILABLE && $before !== $after;
+    }
+
+    /**
+     * Os atributos de um registo sem identificadores nem marcas de tempo, para
+     * entrar numa fotografia. Vazio quando o registo não existe.
+     *
+     * @param  list<string>  $except
+     * @return array<string, mixed>
+     */
+    public function stateOf(?Model $model, array $except = []): array
+    {
+        if ($model === null) {
+            return [];
+        }
+
+        return array_diff_key(
+            $model->getAttributes(),
+            array_flip(['id', 'ulid', 'created_at', 'updated_at', ...$except]),
+        );
+    }
+
+    /**
      * @param  list<string>  $dedupeParts  O que identifica «o mesmo registo» além de utilizador e organização.
+     * @param  array<string, int>  $breakdown  A discriminação de um lote, quando há.
      */
     private function record(
         UsageEventType $type,
@@ -144,6 +217,7 @@ class UsageRecorder
         ?int $itemCount = null,
         ?UsageFailureCode $failureCode = null,
         bool $minuteKey = false,
+        array $breakdown = [],
     ): void {
         if (! config('usage.enabled')) {
             return;
@@ -191,6 +265,9 @@ class UsageRecorder
             'event' => $type->value,
             'kind' => $type->kind()->value,
             'item_count' => $itemCount,
+            'items_created' => $breakdown['items_created'] ?? null,
+            'items_changed' => $breakdown['items_changed'] ?? null,
+            'items_unchanged' => $breakdown['items_unchanged'] ?? null,
             'failure_code' => $failureCode?->value,
             'dedupe_key' => hash_hmac('sha256', implode('|', $parts), $this->dedupeSecret()),
             'created_at' => $now->format('Y-m-d H:i:s'),

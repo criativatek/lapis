@@ -90,12 +90,12 @@ final class UsageActivity
      * A atividade por funcionalidade. `failures` conta todas as falhas, mesmo
      * de quem não foi «ativo» nessa funcionalidade.
      *
-     * @return list<array{feature: UsageFeature, users: int, users_with_actions: int, actions: int, items: int, failures: int}>
+     * @return list<array{feature: UsageFeature, users: int, users_with_actions: int, actions: int, items: int, items_created: int, items_changed: int, items_unchanged: int, failures: int}>
      */
     public function byFeature(InsightsScope $scope, CarbonInterface $from, CarbonInterface $to): array
     {
         $rows = $this->interval($scope->rollups(), $from, $to)
-            ->selectRaw('r.feature as feature, r.user_id as user_id, sum(r.views) as views, sum(r.actions) as actions, sum(r.items) as items, sum(r.failures) as failures')
+            ->selectRaw('r.feature as feature, r.user_id as user_id, sum(r.views) as views, sum(r.actions) as actions, sum(r.items) as items, sum(r.items_created) as items_created, sum(r.items_changed) as items_changed, sum(r.items_unchanged) as items_unchanged, sum(r.failures) as failures')
             ->groupBy('r.feature', 'r.user_id')
             ->get();
 
@@ -110,6 +110,9 @@ final class UsageActivity
                 'users_with_actions' => $mine->filter(fn (object $row): bool => (int) $row->actions > 0)->count(),
                 'actions' => (int) $mine->sum(fn (object $row): int => (int) $row->actions),
                 'items' => (int) $mine->sum(fn (object $row): int => (int) $row->items),
+                'items_created' => (int) $mine->sum(fn (object $row): int => (int) $row->items_created),
+                'items_changed' => (int) $mine->sum(fn (object $row): int => (int) $row->items_changed),
+                'items_unchanged' => (int) $mine->sum(fn (object $row): int => (int) $row->items_unchanged),
                 'failures' => (int) $mine->sum(fn (object $row): int => (int) $row->failures),
             ];
         }
@@ -249,7 +252,7 @@ final class UsageActivity
     private function rows(Builder $query): array
     {
         $rows = $query
-            ->selectRaw('r.user_id as user_id, r.day as day, r.feature as feature, sum(r.views) as views, sum(r.actions) as actions, sum(r.items) as items, sum(r.failures) as failures')
+            ->selectRaw('r.user_id as user_id, r.day as day, r.feature as feature, sum(r.views) as views, sum(r.actions) as actions, sum(r.items) as items, sum(r.items_created) as items_created, sum(r.items_changed) as items_changed, sum(r.items_unchanged) as items_unchanged, sum(r.failures) as failures')
             ->groupBy('r.user_id', 'r.day', 'r.feature')
             ->get()
             ->map(fn (object $row): RollupRow => new RollupRow(
@@ -260,6 +263,9 @@ final class UsageActivity
                 actions: (int) $row->actions,
                 items: (int) $row->items,
                 failures: (int) $row->failures,
+                itemsCreated: (int) $row->items_created,
+                itemsChanged: (int) $row->items_changed,
+                itemsUnchanged: (int) $row->items_unchanged,
             ));
 
         return array_values($rows->all());

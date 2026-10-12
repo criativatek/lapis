@@ -35,7 +35,7 @@ function props(): UsageUserDetailProps {
         not_evaluated: [{ key: 'drop', label: 'Quebra de regularidade' }],
         summary: { active_days: 3, active_weeks: 2, actions: 5, items: 9, failures: 0, last_activity_on: '2026-10-08', observation_days: 17, period_days: 30 },
         weeks: [{ start: '2026-10-05', end: '2026-10-11', status: 'in_progress', active_days: 2, actions: 3, items: 4, failures: 0, features: [{ key: 'lessons', label: 'Aulas' }] }],
-        features: [{ key: 'lessons', label: 'Aulas', active_days: 2, view_days: 1, actions: 3, items: 4, failures: 0 }],
+        features: [{ key: 'lessons', label: 'Aulas', active_days: 2, view_days: 1, actions: 3, items: 4, items_created: 3, items_changed: 1, items_unchanged: 2, failures: 0 }],
     };
 }
 
@@ -51,6 +51,10 @@ describe('Utilização — detalhe', () => {
         expect(text).toContain('3 de 17');
         expect(text).toContain('Por avaliar (recolha insuficiente)');
         expect(text).toContain('Mostra apenas contagens. Não inclui conteúdos pedagógicos nem o histórico de cliques.');
+    });
+
+    it('mostra por baixo dos elementos afetados o que foi criado, alterado e inalterado', () => {
+        expect(mount(User, { props: props() }).text()).toContain('criados 3 · alterados 1 · inalterados 2');
     });
 
     it('volta ao acompanhamento com os filtros', () => {

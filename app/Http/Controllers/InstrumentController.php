@@ -30,6 +30,7 @@ use App\Support\Help\HelpCenter;
 use App\Support\Tenancy\CurrentOrganization;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -238,10 +239,14 @@ class InstrumentController extends Controller
         ]);
     }
 
-    public function update(InstrumentRequest $request, Instrument $instrument): RedirectResponse
+    public function update(InstrumentRequest $request, Instrument $instrument, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $instrument->schoolClass);
         $this->ensureNotCancelled($instrument);
+
+        // O instrumento, os grupos e os itens (conteúdo, não ids) antes de
+        // escrever: o construtor pode recriar itens com ids novos.
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::instrument($instrument->getKey()));
 
         try {
             $this->builder->update(
@@ -257,6 +262,12 @@ class InstrumentController extends Controller
         }
 
         $instrument->refresh();
+
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::instrument($instrument->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InstrumentUpdated, $instrument);
+        }
 
         $this->audit->record(
             'instrument.updated',

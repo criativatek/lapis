@@ -124,14 +124,18 @@ pedido falhado no mesmo minuto contam uma vez.
 |---|---|---|
 | Turmas e alunos | turma criada · aluno adicionado | — |
 | Aulas e sumários | sumário guardado (inclui preparar a aula) · assiduidade registada · aula marcada como lecionada (individual ou em lote) · resultado da aula registado · sequência aplicada (lote) | sumário, assiduidade |
-| Avaliação | instrumento criado · classificações lançadas (elementos = células alteradas) · classificação decidida · classificações publicadas (lote) · pauta guardada no histórico · avaliação intercalar guardada | instrumento, classificações, decisão, pauta |
+| Avaliação | instrumento criado · classificações lançadas (elementos = células alteradas) · classificação decidida · classificações publicadas (lote) · pauta guardada no histórico · avaliação intercalar guardada · instrumento editado (só se o instrumento, os grupos ou os itens mudaram) | instrumento, classificações, decisão, pauta |
 | Registos | registo criado (elementos = alunos abrangidos) · trabalhos de casa em lote | ambos |
-| Estratégias e medidas | medida criada (elementos = medidas criadas) · acompanhamento registado | ambos |
+| Estratégias e medidas | medida criada (elementos = medidas criadas) · acompanhamento registado · medida editada (só se algum campo mudou, incluindo o estado) | ambos (a edição não) |
 | Caracterização pedagógica | caracterização atualizada (elementos = secções alteradas) · importação confirmada (lote) | atualização |
 | Caderno da turma | entrada criada · entrada editada | entrada criada |
-| Relatórios | relatório criado · relatório finalizado · relatório exportado | relatório criado |
+| Relatórios | relatório criado · relatório finalizado · relatório exportado · relatório editado (só se o relatório ou alguma secção mudou: texto, ordem, regenerar, repor) | relatório criado |
 | Importação e exportação | lista de alunos importada (lote) · horário importado (lote) · calendário da escola importado (lote) · cópia de segurança exportada · cópia de segurança restaurada (lote) · exportação INOVAR | — |
-| Calendário | acontecimento criado | — |
+| Calendário | acontecimento criado · acontecimento editado (só se os campos ou as turmas mudaram) | — |
+
+As edições são ações de **uma linha por registo e por dia**, nunca «registo útil»: o primeiro registo útil continua a ser criação ou registo. A comparação antes/depois é feita em memória e nunca é guardada.
+
+**Lotes discriminados.** Uma ação em lote pode dizer o que aconteceu aos elementos: `criados`, `alterados` e `inalterados`. Os *elementos afetados* são criados + alterados; os inalterados dizem só quantos vieram no lote sem mudar nada. A lista de alunos reimportada compara a matrícula e a identidade antes e depois (em memória) e conta uma ação `lista de alunos importada` só se algum aluno foi criado ou alterado; uma reimportação só com linhas iguais não conta, e uma sem alunos criados não marca «primeiros alunos adicionados». O horário (criados / já existentes) e o calendário (criados) usam o que o controlador já sabe.
 
 ### Primeiros passos
 

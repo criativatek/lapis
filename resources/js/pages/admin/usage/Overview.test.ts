@@ -39,7 +39,7 @@ function props(overrides: Partial<UsageOverviewProps> = {}): UsageOverviewProps 
             { start: '2026-10-05', end: '2026-10-11', status: 'in_progress', active_users: 3, active_user_days: 6, actions: 7, items: 8 },
         ],
         months: [{ month: '2026-09', label: 'setembro de 2026', status: 'partial_coverage', active_users: 5 }],
-        features: [{ key: 'lessons', label: 'Aulas', users: 5, users_with_actions: 3, actions: 20, items: 40, failures: 0 }],
+        features: [{ key: 'lessons', label: 'Aulas', users: 5, users_with_actions: 3, actions: 20, items: 40, items_created: 0, items_changed: 0, items_unchanged: 0, failures: 0 }],
         signals: [{ key: 'no_return', label: 'Sem regresso', description: 'Conta sem regresso.', count: 2, not_evaluated: 1 }],
         cohorts: [
             {
@@ -67,6 +67,20 @@ async function render(overrides: Partial<UsageOverviewProps> = {}) {
 }
 
 describe('Utilização — visão geral', () => {
+    it('mostra a discriminação dos elementos afetados quando as ações a trazem', async () => {
+        const wrapper = await render({
+            features: [{ key: 'import_export', label: 'Importar', users: 1, users_with_actions: 1, actions: 1, items: 3, items_created: 2, items_changed: 1, items_unchanged: 3, failures: 0 }],
+        });
+
+        expect(wrapper.text()).toContain('criados 2 · alterados 1 · inalterados 3');
+    });
+
+    it('não inventa uma discriminação quando nenhuma ação a trouxe', async () => {
+        const wrapper = await render();
+
+        expect(wrapper.text()).not.toContain('inalterados');
+    });
+
     it('mostra «sem recolha» e nenhuma barra para uma semana sem cobertura', async () => {
         const wrapper = await render();
         const data = JSON.parse(wrapper.get('[data-test="chart"]').text());

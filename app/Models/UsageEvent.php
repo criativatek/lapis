@@ -32,13 +32,16 @@ use Illuminate\Support\Carbon;
  * @property UsageEventType $event
  * @property UsageEventKind $kind
  * @property int|null $item_count
+ * @property int|null $items_created
+ * @property int|null $items_changed
+ * @property int|null $items_unchanged
  * @property UsageFailureCode|null $failure_code
  * @property string $dedupe_key
  * @property Carbon|null $created_at
  */
 #[Fillable([
     'user_id', 'organization_id', 'occurred_at', 'occurred_on', 'feature', 'event',
-    'kind', 'item_count', 'failure_code', 'dedupe_key', 'created_at',
+    'kind', 'item_count', 'items_created', 'items_changed', 'items_unchanged', 'failure_code', 'dedupe_key', 'created_at',
 ])]
 class UsageEvent extends Model
 {
@@ -64,6 +67,9 @@ class UsageEvent extends Model
             'kind' => UsageEventKind::class,
             'failure_code' => UsageFailureCode::class,
             'item_count' => 'integer',
+            'items_created' => 'integer',
+            'items_changed' => 'integer',
+            'items_unchanged' => 'integer',
         ];
     }
 

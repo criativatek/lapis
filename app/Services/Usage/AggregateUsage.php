@@ -100,13 +100,13 @@ class AggregateUsage
         // em SQLite, guarde ele o dia como 'Y-m-d' ou 'Y-m-d 00:00:00'.
         $next = $day->addDay()->toDateString();
 
-        /** @var array<string, array{user_id: int, organization_id: int, feature: string, views: int, actions: int, useful_actions: int, items: int, failures: int}> $groups */
+        /** @var array<string, array{user_id: int, organization_id: int, feature: string, views: int, actions: int, useful_actions: int, items: int, items_created: int, items_changed: int, items_unchanged: int, failures: int}> $groups */
         $groups = [];
 
         DB::table('usage_events')
             ->where('occurred_on', '>=', $date)
             ->where('occurred_on', '<', $next)
-            ->select(['id', 'user_id', 'organization_id', 'feature', 'event', 'kind', 'item_count'])
+            ->select(['id', 'user_id', 'organization_id', 'feature', 'event', 'kind', 'item_count', 'items_created', 'items_changed', 'items_unchanged'])
             ->orderBy('id')
             ->chunkById(2000, function ($rows) use (&$groups): void {
                 foreach ($rows as $row) {
@@ -120,6 +120,9 @@ class AggregateUsage
                         'actions' => 0,
                         'useful_actions' => 0,
                         'items' => 0,
+                        'items_created' => 0,
+                        'items_changed' => 0,
+                        'items_unchanged' => 0,
                         'failures' => 0,
                     ];
 
@@ -132,6 +135,9 @@ class AggregateUsage
                     } elseif ($kind === UsageEventKind::Action) {
                         $groups[$key]['actions']++;
                         $groups[$key]['items'] += (int) $row->item_count;
+                        $groups[$key]['items_created'] += (int) $row->items_created;
+                        $groups[$key]['items_changed'] += (int) $row->items_changed;
+                        $groups[$key]['items_unchanged'] += (int) $row->items_unchanged;
 
                         if (UsageEventType::tryFrom((string) $row->event)?->isUsefulRecord() === true) {
                             $groups[$key]['useful_actions']++;
@@ -183,6 +189,10 @@ class AggregateUsage
                 foreach (UsageMilestone::cases() as $milestone) {
                     $observed[$milestone->value] = DB::table('usage_events')
                         ->whereIn('user_id', $ids)
+                        // Uma reimportação só com alterações não prova que se
+                        // adicionaram alunos: sem discriminação (nulo) conta,
+                        // com discriminação só se algum foi criado.
+                        ->where(fn ($query) => $query->whereNull('items_created')->orWhere('items_created', '>', 0))
                         ->whereIn('event', array_map(fn (UsageEventType $type): string => $type->value, $milestone->events()))
                         ->groupBy('user_id')
                         ->selectRaw('user_id, MIN(occurred_on) as first_on')

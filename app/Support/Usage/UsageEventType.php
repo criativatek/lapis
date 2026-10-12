@@ -44,6 +44,10 @@ enum UsageEventType: string
     case BackupRestored = 'backup.restored';
     case InovarExported = 'inovar.exported';
     case CalendarEventCreated = 'calendar_event.created';
+    case ReportEdited = 'report.edited';
+    case InterventionUpdated = 'intervention.updated';
+    case InstrumentUpdated = 'instrument.updated';
+    case CalendarEventUpdated = 'calendar_event.updated';
 
     public function kind(): UsageEventKind
     {
@@ -66,23 +70,24 @@ enum UsageEventType: string
             self::LessonOutcomeRecorded,
             self::LessonSequenceApplied => UsageFeature::Lessons,
             self::InstrumentCreated,
+            self::InstrumentUpdated,
             self::ScoresRecorded,
             self::ClassificationDecided,
             self::ClassificationsPublished,
             self::EvaluationSheetSaved,
             self::InterimAssessmentSaved => UsageFeature::Assessment,
             self::RecordCreated, self::HomeworkBatchSaved => UsageFeature::Records,
-            self::InterventionCreated, self::InterventionFollowupAdded => UsageFeature::Interventions,
+            self::InterventionCreated, self::InterventionFollowupAdded, self::InterventionUpdated => UsageFeature::Interventions,
             self::CharacterisationUpdated, self::CharacterisationImported => UsageFeature::Characterisation,
             self::NotebookEntryCreated, self::NotebookEntryUpdated => UsageFeature::ClassNotebook,
-            self::ReportCreated, self::ReportFinalized, self::ReportExported => UsageFeature::Reports,
+            self::ReportCreated, self::ReportFinalized, self::ReportExported, self::ReportEdited => UsageFeature::Reports,
             self::StudentsImported,
             self::TimetableImported,
             self::CalendarImported,
             self::BackupExported,
             self::BackupRestored,
             self::InovarExported => UsageFeature::ImportExport,
-            self::CalendarEventCreated => UsageFeature::Calendar,
+            self::CalendarEventCreated, self::CalendarEventUpdated => UsageFeature::Calendar,
         };
     }
 
@@ -156,6 +161,10 @@ enum UsageEventType: string
             self::BackupRestored => 'Cópia de segurança restaurada',
             self::InovarExported => 'Exportação INOVAR',
             self::CalendarEventCreated => 'Acontecimento criado',
+            self::ReportEdited => 'Relatório editado',
+            self::InterventionUpdated => 'Medida editada',
+            self::InstrumentUpdated => 'Instrumento editado',
+            self::CalendarEventUpdated => 'Acontecimento editado',
         };
     }
 }
