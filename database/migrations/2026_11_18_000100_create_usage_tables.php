@@ -87,6 +87,10 @@ return new class extends Migration
             $table->id();
             $table->dateTime('started_at');
             $table->dateTime('ended_at')->nullable();
+            // `true` enquanto o período está aberto, NULL depois de fechado: com
+            // o índice único, dois pedidos que tentem abrir a recolha ao mesmo
+            // tempo (ou um pedido e a agregação) não criam dois períodos.
+            $table->boolean('is_open')->nullable()->unique();
         });
 
         Schema::create('usage_aggregation_state', function (Blueprint $table) {

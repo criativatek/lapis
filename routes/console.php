@@ -116,7 +116,7 @@ Schedule::command('usage:aggregate')
     ->withoutOverlapping()
     ->onFailure($reportFailure('usage:aggregate'));
 
-// A conservação das métricas de utilização (365 dias por omissão). Às 04:05,
+// A conservação das métricas de utilização (35 dias para os eventos e 180 para os agregados, por omissão (proposta)). Às 04:05,
 // depois dos comandos de retenção das 03:40 e 03:50, para não competir com
 // eles na mesma base de dados.
 Schedule::command('usage:prune')

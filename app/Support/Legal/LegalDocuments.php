@@ -2,6 +2,8 @@
 
 namespace App\Support\Legal;
 
+use App\Support\Retention\RetentionPolicy;
+
 /**
  * ⚠️ TEXTO TÉCNICO/FACTUAL — REQUER REVISÃO JURÍDICA ANTES DA DIVULGAÇÃO A
  * UTILIZADORES REAIS.
@@ -131,12 +133,12 @@ class LegalDocuments
      */
     private static function usageEventsDays(): int
     {
-        return min((int) config('retention.usage_events_days'), self::usageRollupsDays());
+        return app(RetentionPolicy::class)->usageEventsDays();
     }
 
     private static function usageRollupsDays(): int
     {
-        return (int) config('retention.usage_rollups_days');
+        return app(RetentionPolicy::class)->usageRollupsDays();
     }
 
     /**

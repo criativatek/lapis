@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $started_at
  * @property Carbon|null $ended_at
  */
-#[Fillable(['started_at', 'ended_at'])]
+#[Fillable(['started_at', 'ended_at', 'is_open'])]
 class UsageCollectionPeriod extends Model
 {
     public $timestamps = false;

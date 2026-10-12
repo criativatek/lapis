@@ -176,6 +176,14 @@ class UsageRecorder
      */
     public function snapshot(callable $compute): string
     {
+        // Quando nada vai ser registado — recolha desligada, acesso técnico,
+        // oposição, encerramento, sem utilizador ou sem organização — o cálculo
+        // nem corre: ler um relatório ou a identidade de um aluno para uma
+        // impressão digital que se deita fora seria tratar dados sem finalidade.
+        if (! $this->isRecording()) {
+            return self::UNAVAILABLE;
+        }
+
         $result = $this->attempt(
             fn (): string => sha1((string) json_encode($compute(), JSON_INVALID_UTF8_SUBSTITUTE)),
             self::UNAVAILABLE,
@@ -209,6 +217,55 @@ class UsageRecorder
     }
 
     /**
+     * Se este pedido PODE registar alguma coisa — as mesmas condições do
+     * registo, sem abrir o período. Os ganchos perguntam-no antes de qualquer
+     * leitura auxiliar (ver `snapshot()`).
+     */
+    public function isRecording(): bool
+    {
+        try {
+            return $this->recordingUser() !== null;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * O utilizador cuja utilização este pedido regista, ou nulo se não há nada
+     * a registar: recolha desligada, sem pedido com utilizador (consola,
+     * agendador, jobs), acesso técnico, oposição, conta anonimizada,
+     * desativada ou com encerramento pedido, ou sem organização resolvida.
+     */
+    private function recordingUser(): ?User
+    {
+        if (! config('usage.enabled')) {
+            return null;
+        }
+
+        $request = request();
+        $user = $request->user();
+
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        if ($request->hasSession() && $request->session()->has('impersonator_id')) {
+            return null;
+        }
+
+        // A partir do pedido de encerramento, nada mais é registado.
+        if ($user->usage_opted_out_at !== null || $user->anonymized_at !== null || $user->deactivated_at !== null || $user->closure_requested_at !== null) {
+            return null;
+        }
+
+        if (! app(CurrentOrganization::class)->isResolved()) {
+            return null;
+        }
+
+        return $user;
+    }
+
+    /**
      * @param  list<string>  $dedupeParts  O que identifica «o mesmo registo» além de utilizador e organização.
      * @param  array<string, int>  $breakdown  A discriminação de um lote, quando há.
      */
@@ -221,31 +278,13 @@ class UsageRecorder
         bool $minuteKey = false,
         array $breakdown = [],
     ): void {
-        if (! config('usage.enabled')) {
-            return;
-        }
+        $user = $this->recordingUser();
 
-        $request = request();
-        $user = $request->user();
-
-        if (! $user instanceof User) {
-            return;
-        }
-
-        if ($request->hasSession() && $request->session()->has('impersonator_id')) {
-            return;
-        }
-
-        // A partir do pedido de encerramento, nada mais é registado.
-        if ($user->usage_opted_out_at !== null || $user->anonymized_at !== null || $user->deactivated_at !== null || $user->closure_requested_at !== null) {
+        if ($user === null) {
             return;
         }
 
         $tenant = app(CurrentOrganization::class);
-
-        if (! $tenant->isResolved()) {
-            return;
-        }
 
         // O dia é o dia de calendário LOCAL, qualquer que seja o fuso do relógio.
         $now = now()->setTimezone((string) config('app.timezone'));

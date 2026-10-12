@@ -33,11 +33,11 @@ class UsageCoverage
 
         if (config('usage.enabled')) {
             if ($open->isEmpty()) {
-                UsageCollectionPeriod::query()->create(['started_at' => $now]);
+                $this->ensureOpen($now);
             }
         } else {
             foreach ($open as $period) {
-                $period->forceFill(['ended_at' => $now])->save();
+                $period->forceFill(['ended_at' => $now, 'is_open' => null])->save();
             }
         }
 
@@ -68,7 +68,13 @@ class UsageCoverage
         }
 
         if (! UsageCollectionPeriod::query()->whereNull('ended_at')->exists()) {
-            UsageCollectionPeriod::query()->create(['started_at' => $this->local($now)]);
+            // `insertOrIgnore` sobre o índice único de `is_open`: se outro pedido
+            // abriu a recolha entretanto, este não abre um segundo período.
+            UsageCollectionPeriod::query()->insertOrIgnore([
+                'started_at' => $this->local($now)->format('Y-m-d H:i:s'),
+                'ended_at' => null,
+                'is_open' => true,
+            ]);
             $this->intervals = null;
         }
     }

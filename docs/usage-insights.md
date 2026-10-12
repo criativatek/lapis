@@ -370,6 +370,14 @@ exportação é sobre o trabalho do professor).
   evento e a classe da exceção) e a operação continua.
 - Duplicados (pedido repetido, job reexecutado, duplo clique) são recusados pela
   chave única `dedupe_key`.
+- **Nada é lido para medir quando nada vai ser registado.** As impressões
+  digitais das edições (que leem o relatório, a medida, o instrumento, o
+  acontecimento ou a matrícula) só são calculadas quando o pedido pode registar
+  — recolha ligada, sem acesso técnico, sem oposição, sem encerramento pedido,
+  com organização resolvida (`UsageRecorder::isRecording()`).
+- Só pode haver **um** período de recolha aberto: um índice único
+  (`usage_collection_periods.is_open`) impede que dois pedidos simultâneos o
+  abram duas vezes.
 - O painel lê apenas tabelas de utilização agregadas e as tabelas de contas;
   nunca consulta conteúdos pedagógicos ao abrir. A disponibilidade de turmas é
   calculada pela agregação (`class_teachers`), não pelo painel.

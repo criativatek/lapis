@@ -190,4 +190,21 @@ class UsageMetricsLegalTest extends TestCase
         $this->assertStringContainsString('não há cookies de publicidade, de marketing ou de análise de tráfego', $text);
         $this->assertStringContainsString('não é carregado qualquer serviço de terceiros no seu navegador', $text);
     }
+
+    #[Test]
+    public function the_privacy_page_reads_the_start_of_collection_once_per_request(): void
+    {
+        $this->activateAt('2026-10-20 14:00:00');
+
+        $reads = 0;
+        DB::listen(function ($query) use (&$reads): void {
+            if (str_contains($query->sql, 'usage_collection_periods')) {
+                $reads++;
+            }
+        });
+
+        $this->get('/privacidade')->assertOk();
+
+        $this->assertSame(1, $reads);
+    }
 }

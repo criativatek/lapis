@@ -144,7 +144,6 @@ final class FollowUpSignals
         // vaga de falsos «sem atividade recente» seria pior do que nenhum
         // sinal, e um período sem recolha nunca é inatividade). As falhas
         // técnicas continuam: dados atrasados só as podem subcontar.
-        $fresh = self::aggregationIsFresh($now) && $this->coverage->isActive();
 
         $userIds = array_keys($eligible);
         $horizon = $today->subDays(self::LOOKBACK_CAP_DAYS);
@@ -156,8 +155,11 @@ final class FollowUpSignals
             }
         }
 
-        $nonTeaching = $this->nonTeachingDays->forUsers($userIds, $earliest, $today);
-        $activeDays = isset($enabled[self::WENT_QUIET]) ? $this->activeDays($userIds, $horizon, $today) : [];
+        $fresh = self::aggregationIsFresh($now) && $this->coverage->isActive();
+
+        // Só se lê o calendário e a atividade quando há alguma coisa a avaliar.
+        $nonTeaching = $fresh ? $this->nonTeachingDays->forUsers($userIds, $earliest, $today) : [];
+        $activeDays = $fresh && isset($enabled[self::WENT_QUIET]) ? $this->activeDays($userIds, $horizon, $today) : [];
         $failures = isset($enabled[self::TECHNICAL_FAILURES]) ? $this->failures($userIds, $today) : [];
 
         foreach ($eligible as $userId => $user) {

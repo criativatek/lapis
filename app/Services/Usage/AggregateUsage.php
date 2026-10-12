@@ -60,6 +60,15 @@ class AggregateUsage
         // dados de pessoas (turmas, primeiros passos) nem se declara em dia:
         // os sinais que dependem disso ficam por avaliar.
         if (! $this->coverage->isActive()) {
+            // Os dias até hoje foram recalculados nesta passagem, por isso o
+            // marcador avança — senão ficava congelado, `usage:prune` deixava
+            // de apagar eventos e cada passagem recalculava 180 dias. A HORA da
+            // agregação (`aggregated_at`, que diz se os sinais estão em dia)
+            // não muda: sem recolha, os sinais não estão em dia.
+            DB::table(self::TABLE_STATE)->updateOrInsert(['id' => 1], [
+                'aggregated_through' => $today->toDateString(),
+            ]);
+
             return ['days' => $days, 'states' => 0];
         }
 
@@ -234,7 +243,9 @@ class AggregateUsage
                         // Uma reimportação só com alterações não prova que se
                         // adicionaram alunos: sem discriminação (nulo) conta,
                         // com discriminação só se algum foi criado.
-                        ->where(fn ($query) => $query->whereNull('items_created')->orWhere('items_created', '>', 0))
+                        // Só o marco dos primeiros alunos depende de haver alunos CRIADOS: uma
+                        // reimportação só com alterações não é «primeiros alunos adicionados».
+                        ->when($milestone === UsageMilestone::FirstStudentsAdded, fn ($query) => $query->where(fn ($inner) => $inner->whereNull('items_created')->orWhere('items_created', '>', 0)))
                         ->whereIn('event', array_map(fn (UsageEventType $type): string => $type->value, $milestone->events()))
                         ->groupBy('user_id')
                         ->selectRaw('user_id, MIN(occurred_on) as first_on')

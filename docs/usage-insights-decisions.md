@@ -119,6 +119,9 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
   partir de eventos ainda guardados.
 - A agregação nunca recalcula um dia anterior ao limite dos **agregados**: um
   dia mais antigo já não pode ter agregados, e recalculá-lo reconstituí-los-ia.
+- Com a recolha desligada, a agregação continua a correr e a avançar o
+  marcador dos dias agregados (sem se declarar «em dia» para os sinais): o prazo
+  dos eventos vale também enquanto a recolha está desligada.
 - A eliminação dos eventos só apaga dias **já agregados** (anteriores a
   `aggregated_through − 1`, o primeiro dia que a agregação ainda volta a ler):
   o intervalo recalculado nunca inclui um dia sem os seus eventos, e uma

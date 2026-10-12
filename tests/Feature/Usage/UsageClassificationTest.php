@@ -103,7 +103,9 @@ class UsageClassificationTest extends TestCase
         $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->sole();
         $this->assertNull($event->organization_id);
         $this->assertSame($operator->id, $event->causer_id);
-        $this->assertSame([
+        // assertEquals, não assertSame: o MySQL guarda o JSON com as chaves
+        // reordenadas, e a ordem das chaves não é informação.
+        $this->assertEquals([
             'organization_id' => $organization->id,
             'previous' => 'unclassified',
             'classification' => 'real',

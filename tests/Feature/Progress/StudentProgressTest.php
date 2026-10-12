@@ -865,9 +865,11 @@ class StudentProgressTest extends TestCase
 
         $queries = 0;
         DB::listen(function (QueryExecuted $query) use (&$queries): void {
-            // A consulta de utilização (`usage_events`, 0.163.0) é telemetria
-            // da visita, não custo da página: o teto mede a leitura.
-            if (! str_contains($query->sql, 'usage_events')) {
+            // As consultas das métricas de utilização (0.163.0) — a escrita da
+            // visita em `usage_events` e a leitura, uma por pedido, de
+            // `usage_collection_periods` para a versão da Política — não são
+            // custo da página: o teto mede a leitura dos dados do aluno.
+            if (! str_contains($query->sql, 'usage_events') && ! str_contains($query->sql, 'usage_collection_periods')) {
                 $queries++;
             }
         });

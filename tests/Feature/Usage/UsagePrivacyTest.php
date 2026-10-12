@@ -43,7 +43,7 @@ class UsagePrivacyTest extends TestCase
             ['id', 'ulid', 'user_id', 'class_available_since', 'first_class_created_on', 'first_students_added_on', 'first_useful_record_on', 'computed_at', 'created_at', 'updated_at'],
             Schema::getColumnListing('usage_user_states'),
         );
-        $this->assertEqualsCanonicalizing(['id', 'started_at', 'ended_at'], Schema::getColumnListing('usage_collection_periods'));
+        $this->assertEqualsCanonicalizing(['id', 'started_at', 'ended_at', 'is_open'], Schema::getColumnListing('usage_collection_periods'));
         $this->assertEqualsCanonicalizing(['id', 'aggregated_through', 'aggregated_at'], Schema::getColumnListing('usage_aggregation_state'));
     }
 

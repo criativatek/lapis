@@ -28,6 +28,7 @@ trait SetsUsageCoverage
         DB::table('usage_collection_periods')->insert([
             'started_at' => $instant,
             'ended_at' => $endedAt,
+            'is_open' => $endedAt === null ? true : null,
         ]);
     }
 

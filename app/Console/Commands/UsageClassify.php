@@ -79,7 +79,7 @@ class UsageClassify extends Command
         $plans = $subscriptions->for($organizations->pluck('id')->all());
 
         $this->table(
-            ['ULID', 'Tipo', 'Nome', 'Criada em', 'Plano', 'is_test_account', 'Classificação', 'Membros'],
+            ['ULID', 'Tipo', 'Nome', 'Criada em', 'Plano', 'Marca comercial «teste» (não decide nada aqui)', 'Classificação', 'Membros'],
             $organizations->map(fn (Organization $organization): array => [
                 $organization->ulid,
                 $organization->type->value,

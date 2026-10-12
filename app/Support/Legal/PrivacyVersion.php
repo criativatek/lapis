@@ -20,6 +20,8 @@ use Carbon\CarbonImmutable;
  */
 final class PrivacyVersion
 {
+    private const MEMO = 'lapis.privacy.usage_metrics_activated_at';
+
     /** O instante a partir do qual a versão atual vale, ou nulo sem data configurada. */
     public static function effectiveAt(): ?CarbonImmutable
     {
@@ -51,8 +53,25 @@ final class PrivacyVersion
         return self::usageMetricsActivatedAt() !== null;
     }
 
+    /**
+     * Lida UMA vez por pedido: o aviso não bloqueante pergunta-o em cada
+     * resposta Inertia, e a página da Política fá-lo meia dúzia de vezes. A
+     * memória é do pedido, nunca do processo — um período aberto a meio de
+     * outro pedido nunca fica escondido por uma resposta antiga.
+     */
     private static function usageMetricsActivatedAt(): ?CarbonImmutable
     {
-        return UsageCoverage::firstActivation();
+        $request = app()->bound('request') ? app('request') : null;
+
+        if ($request !== null && $request->attributes->has(self::MEMO)) {
+            $memo = $request->attributes->get(self::MEMO);
+
+            return $memo instanceof CarbonImmutable ? $memo : null;
+        }
+
+        $activation = UsageCoverage::firstActivation();
+        $request?->attributes->set(self::MEMO, $activation ?? false);
+
+        return $activation;
     }
 }
