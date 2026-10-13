@@ -16,6 +16,7 @@ use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
+use App\Models\LessonSummary;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
 use App\Services\Lessons\LessonAttendanceRoster;
@@ -23,6 +24,8 @@ use App\Services\Lessons\LessonDayEvents;
 use App\Services\Lessons\LessonPreparationContext;
 use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +39,9 @@ class LessonController extends Controller implements HasMiddleware
 {
     use RefusesDuringImpersonation;
 
+    /** A impressão digital do sumário não se conseguiu ler (ver summaryFingerprint()). */
+    private const FINGERPRINT_UNAVAILABLE = 'unavailable';
+
     public function __construct(
         protected MarkLessonAsTaught $markLessonAsTaught,
         protected SaveLessonSummary $saveLessonSummary,
@@ -47,6 +53,7 @@ class LessonController extends Controller implements HasMiddleware
         protected LessonDayEvents $dayEvents,
         protected Entitlements $entitlements,
         protected LessonPreparationContext $lessonContext,
+        protected UsageRecorder $usage,
     ) {}
 
     /**
@@ -133,6 +140,8 @@ class LessonController extends Controller implements HasMiddleware
     ): RedirectResponse {
         $this->refuseDuringImpersonation($request);
 
+        $before = $this->summaryFingerprint($lesson);
+
         $this->saveLessonSummary->execute(
             $lesson,
             [
@@ -145,6 +154,8 @@ class LessonController extends Controller implements HasMiddleware
             $request->absentStudentUlids(),
             $request->integer('summary_version'),
         );
+
+        $this->recordSummarySaved($lesson, $before);
 
         return back()->with('success', 'Sumário guardado.');
     }
@@ -160,6 +171,8 @@ class LessonController extends Controller implements HasMiddleware
     ): RedirectResponse {
         $this->refuseDuringImpersonation($request);
 
+        $before = $this->summaryFingerprint($lesson);
+
         $this->saveLessonSummary->execute(
             $lesson,
             ['content' => $request->string('content')->toString()],
@@ -168,7 +181,46 @@ class LessonController extends Controller implements HasMiddleware
             $request->integer('summary_version'),
         );
 
+        $this->recordSummarySaved($lesson, $before);
+
         return back()->with('success', 'Sumário guardado.');
+    }
+
+    /**
+     * Impressão digital do sumário (os quatro campos) e do estado da aula, lida
+     * com uma consulta NOVA: carregar a relação `summary` no modelo vindo do
+     * route binding mudaria o que a resposta devolve a seguir.
+     */
+    private function summaryFingerprint(Lesson $lesson): ?string
+    {
+        // Protegida: uma leitura que falhasse aqui, antes da gravação, não pode
+        // impedir o professor de guardar o sumário (UsageRecorder::attempt).
+        return $this->usage->attempt(function () use ($lesson): ?string {
+            $summary = LessonSummary::query()->where('lesson_id', $lesson->getKey())->first();
+
+            return $this->usage->fingerprint($summary, [
+                'content',
+                'private_notes',
+                'resources',
+                'homework',
+                'lesson_status' => Lesson::query()->whereKey($lesson->getKey())->value('status'),
+            ]);
+        }, self::FINGERPRINT_UNAVAILABLE);
+    }
+
+    /** Só conta uma gravação que mudou alguma coisa (docs/usage-insights.md). */
+    private function recordSummarySaved(Lesson $lesson, ?string $before): void
+    {
+        $after = $this->summaryFingerprint($lesson);
+
+        // Sem impressão digital de um dos lados não se sabe se mudou: não conta.
+        if ($before === self::FINGERPRINT_UNAVAILABLE || $after === self::FINGERPRINT_UNAVAILABLE) {
+            return;
+        }
+
+        if ($after !== $before) {
+            $this->usage->action(UsageEventType::LessonSummarySaved, $lesson);
+        }
     }
 
     /**
@@ -243,7 +295,13 @@ class LessonController extends Controller implements HasMiddleware
     {
         $this->refuseDuringImpersonation($request);
 
+        $wasTaught = $lesson->status === LessonStatus::Taught;
+
         $this->markLessonAsTaught->execute($lesson, $this->user($request), $request->absentStudentUlids());
+
+        if (! $wasTaught) {
+            $this->usage->action(UsageEventType::LessonTaught, $lesson);
+        }
 
         return back()->with('success', 'Aula marcada como lecionada.');
     }
@@ -255,6 +313,10 @@ class LessonController extends Controller implements HasMiddleware
     {
         $this->refuseDuringImpersonation($request);
 
+        // O valor CRU da coluna, dos dois lados: o atributo do modelo é um enum e
+        // `value()` devolve a string, e `enum !== string` diria sempre «mudou».
+        $outcomeBefore = $lesson->getRawOriginal('outcome');
+
         $this->recordLessonOutcome->execute(
             $lesson,
             $request->outcome(),
@@ -262,6 +324,15 @@ class LessonController extends Controller implements HasMiddleware
             $request->reason(),
             $request->note(),
         );
+
+        $outcomeAfter = $this->usage->attempt(
+            fn (): mixed => Lesson::query()->whereKey($lesson->getKey())->value('outcome'),
+            $outcomeBefore,
+        );
+
+        if ($outcomeAfter !== $outcomeBefore) {
+            $this->usage->action(UsageEventType::LessonOutcomeRecorded, $lesson);
+        }
 
         return back()->with('success', $request->outcome() === LessonOutcome::TeacherAbsent
             ? 'Ausência registada. O planeamento passou para a aula seguinte.'

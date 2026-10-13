@@ -322,7 +322,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     //
     // Não há vista própria: as três respondem com um `back()` para a vista de
     // Mês ou de Ano em que o professor estava, que é onde o resultado se vê.
-    Route::middleware('module:calendar')->group(function () {
+    Route::middleware(['module:calendar', 'usage:calendar'])->group(function () {
         Route::get('calendar', [AcademicYearCalendarController::class, 'index'])->name('calendar.index');
         Route::get('calendar/ano', [AcademicYearCalendarController::class, 'year'])->name('calendar.year');
 
@@ -354,7 +354,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Alcançado a partir da própria página do Calendário e NÃO de uma entrada
         // de menu própria (§24): quem importa um calendário está a olhar para o
         // calendário quando decide fazê-lo.
-        Route::middleware('module:calendar_import')->group(function () {
+        Route::middleware(['module:calendar_import', 'usage:import_export'])->group(function () {
             Route::get('academic-calendar-imports/create', [AcademicCalendarImportController::class, 'create'])
                 ->name('academic-calendar-imports.create');
             Route::post('academic-calendar-imports', [AcademicCalendarImportController::class, 'store'])
@@ -415,11 +415,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // below. Gated by module:lessons like the timetable-imports.* routes it
     // links to, not by module:classes: a base-plan teacher without the
     // lessons entitlement has nothing to configure here.
-    Route::middleware('module:lessons')->group(function () {
+    Route::middleware(['module:lessons', 'usage:lessons'])->group(function () {
         Route::get('classes/schedule-setup', [ClassController::class, 'scheduleSetup'])->name('classes.schedule-setup');
     });
 
-    Route::middleware('module:classes')->group(function () {
+    Route::middleware(['module:classes', 'usage:classes'])->group(function () {
         Route::get('classes', [ClassController::class, 'index'])->name('classes.index');
         Route::get('classes/create', [ClassController::class, 'create'])->name('classes.create');
         // Antes de `classes/{class}`, pela mesma razão de `classes/schedule-setup`
@@ -462,15 +462,23 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // (`view` para ler, `update` para escrever): uma caracterização não é
         // uma coisa que se possa ter permissão para ver independentemente da
         // turma que descreve.
-        Route::get('classes/{class}/characterisation', [ClassCharacterisationController::class, 'show'])->name('classes.characterisation.show');
-        Route::put('classes/{class}/characterisation', [ClassCharacterisationController::class, 'update'])->name('classes.characterisation.update');
-        Route::put('classes/{class}/students/{enrollment}/characterisation', [ClassCharacterisationController::class, 'updateStudent'])->name('classes.characterisation.student.update');
+        Route::get('classes/{class}/characterisation', [ClassCharacterisationController::class, 'show'])
+            ->middleware('usage:characterisation')
+            ->name('classes.characterisation.show');
+        Route::put('classes/{class}/characterisation', [ClassCharacterisationController::class, 'update'])
+            ->middleware('usage:characterisation')
+            ->name('classes.characterisation.update');
+        Route::put('classes/{class}/students/{enrollment}/characterisation', [ClassCharacterisationController::class, 'updateStudent'])
+            ->middleware('usage:characterisation')
+            ->name('classes.characterisation.student.update');
         // Uma medida registada à mão a partir deste cartão — escreve a mesma
         // Intervention estruturada que Estratégias e Medidas lê, através da
         // mesma ação CreateIntervention que a importação e o
         // InterventionController já usam. Ver
         // ClassCharacterisationController::storeMeasure().
-        Route::post('classes/{class}/students/{enrollment}/characterisation/measures', [ClassCharacterisationController::class, 'storeMeasure'])->name('classes.characterisation.measures.store');
+        Route::post('classes/{class}/students/{enrollment}/characterisation/measures', [ClassCharacterisationController::class, 'storeMeasure'])
+            ->middleware('usage:characterisation')
+            ->name('classes.characterisation.measures.store');
         // Dois pedidos, e o primeiro não sabe escrever: `preview` lê o ficheiro
         // no pedido que o trouxe e esquece-o; `store` só aceita decisões
         // explícitas, revalidadas contra a turma. Não há token nem pasta
@@ -480,35 +488,55 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // guarda nada — não há nada a ganhar em repeti-lo depressa.
         Route::post('classes/{class}/characterisation-imports/preview', [CharacterisationImportController::class, 'preview'])
             ->middleware('throttle:30,1')
+            ->middleware('usage:characterisation')
             ->name('classes.characterisation-imports.preview');
-        Route::post('classes/{class}/characterisation-imports', [CharacterisationImportController::class, 'store'])->name('classes.characterisation-imports.store');
+        Route::post('classes/{class}/characterisation-imports', [CharacterisationImportController::class, 'store'])
+            ->middleware('usage:characterisation')
+            ->name('classes.characterisation-imports.store');
 
         // CADERNO DA TURMA — registos privados do professor sobre a turma,
         // dentro da turma e sem menu próprio. A turma autoriza-se pela policy
         // da turma; cada registo pela autoria (404 para qualquer outro, mesmo
         // colega da mesma turma). `scopeBindings()`: um registo só resolve
         // dentro da turma a que pertence.
-        Route::get('classes/{class}/notebook', [ClassNotebookController::class, 'index'])->name('classes.notebook.index');
-        Route::post('classes/{class}/notebook', [ClassNotebookController::class, 'store'])->name('classes.notebook.store');
+        Route::get('classes/{class}/notebook', [ClassNotebookController::class, 'index'])
+            ->middleware('usage:class_notebook')
+            ->name('classes.notebook.index');
+        Route::post('classes/{class}/notebook', [ClassNotebookController::class, 'store'])
+            ->middleware('usage:class_notebook')
+            ->name('classes.notebook.store');
         Route::scopeBindings()->group(function () {
-            Route::put('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'update'])->name('classes.notebook.update');
-            Route::patch('classes/{class}/notebook/{notebookEntry}/pin', [ClassNotebookController::class, 'pin'])->name('classes.notebook.pin');
-            Route::delete('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'destroy'])->name('classes.notebook.destroy');
+            Route::put('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'update'])
+                ->middleware('usage:class_notebook')
+                ->name('classes.notebook.update');
+            Route::patch('classes/{class}/notebook/{notebookEntry}/pin', [ClassNotebookController::class, 'pin'])
+                ->middleware('usage:class_notebook')
+                ->name('classes.notebook.pin');
+            Route::delete('classes/{class}/notebook/{notebookEntry}', [ClassNotebookController::class, 'destroy'])
+                ->middleware('usage:class_notebook')
+                ->name('classes.notebook.destroy');
         });
 
-        Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])->name('classes.roster-imports.store');
-        Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])->name('classes.photos.store');
+        Route::post('classes/{class}/roster-imports', [RosterImportController::class, 'store'])
+            ->middleware('usage:import_export')
+            ->name('classes.roster-imports.store');
+        Route::post('classes/{class}/photos', [ClassPhotoImportController::class, 'store'])
+            ->middleware('usage:import_export')
+            ->name('classes.photos.store');
         Route::post('classes/{class}/roster-imports/{token}/photos', [RosterImportController::class, 'attachPhotos'])
             ->where('token', '[0-9a-fA-F-]{36}')
+            ->middleware('usage:import_export')
             ->name('classes.roster-imports.attach-photos');
         // Constrained to the shape RosterImportTempStorage::newToken() actually
         // generates (a UUID) — never a bare string, so a token can never itself
         // carry a path segment like ".." into the temp-folder path it builds.
         Route::post('classes/{class}/roster-imports/{token}/confirm', [RosterImportController::class, 'confirm'])
             ->where('token', '[0-9a-fA-F-]{36}')
+            ->middleware('usage:import_export')
             ->name('classes.roster-imports.confirm');
         Route::get('classes/{class}/roster-imports/{token}/photos/{index}', [RosterImportController::class, 'previewPhoto'])
             ->where(['token' => '[0-9a-fA-F-]{36}', 'index' => '[0-9]+'])
+            ->middleware('usage:import_export')
             ->name('classes.roster-imports.preview-photo');
         // A SAÍDA DA PRÉ-VISUALIZAÇÃO — o «Escolher outro ficheiro» que só a
         // importação do horário tinha. DELETE porque desiste mesmo de alguma
@@ -517,6 +545,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // espera do prune agendado.
         Route::delete('classes/{class}/roster-imports/{token}', [RosterImportController::class, 'discard'])
             ->where('token', '[0-9a-fA-F-]{36}')
+            ->middleware('usage:import_export')
             ->name('classes.roster-imports.discard');
 
         Route::get('students/{student}/photo', [StudentPhotoController::class, 'show'])->name('students.photo');
@@ -540,11 +569,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // the page existed still lands on it. Only the route NAME moved, from
     // `students` to `students.index` — nothing referenced the old one, and the
     // dotted form is what every other real destination uses.
-    Route::middleware('module:students')->group(function () {
+    Route::middleware(['module:students', 'usage:classes'])->group(function () {
         Route::get('students', [StudentDirectoryController::class, 'index'])->name('students.index');
     });
 
-    Route::middleware('module:lessons')->group(function () {
+    Route::middleware(['module:lessons', 'usage:lessons'])->group(function () {
         // «Horário do Professor» — the whole week in one read-only page, and
         // the standalone home of both ways of filling it in. Distinct from
         // classes.schedule-setup, which stays exactly where it is as Turmas'
@@ -643,14 +672,20 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Importing a timetable export into recurring slots. Global rather than
         // nested inside a turma — one file spans several — and gated by this
         // module because RecurringLessonSlot is exactly what it creates.
-        Route::get('timetable-imports/create', [TimetableImportController::class, 'create'])->name('timetable-imports.create');
-        Route::post('timetable-imports', [TimetableImportController::class, 'store'])->name('timetable-imports.store');
-        Route::post('timetable-imports/confirm', [TimetableImportController::class, 'confirm'])->name('timetable-imports.confirm');
+        Route::get('timetable-imports/create', [TimetableImportController::class, 'create'])
+            ->middleware('usage:import_export')
+            ->name('timetable-imports.create');
+        Route::post('timetable-imports', [TimetableImportController::class, 'store'])
+            ->middleware('usage:import_export')
+            ->name('timetable-imports.store');
+        Route::post('timetable-imports/confirm', [TimetableImportController::class, 'confirm'])
+            ->middleware('usage:import_export')
+            ->name('timetable-imports.confirm');
     });
 
     // Instruments and the grading grid. Created inside a class; the grid is the
     // instrument's own page.
-    Route::middleware('module:instruments')->group(function () {
+    Route::middleware(['module:instruments', 'usage:assessment'])->group(function () {
         Route::get('instruments', [InstrumentController::class, 'index'])->name('instruments.index');
         // The front door when no class is already known from context (this
         // area's own "+ Novo" button) — a thin picker that then hands off to
@@ -685,7 +720,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // Avaliações — a read-only view of instruments-as-applications. Creating
     // and correcting hand off to the existing instruments routes above;
     // nothing here writes an Instrument.
-    Route::middleware('module:assessments')->group(function () {
+    Route::middleware(['module:assessments', 'usage:assessment'])->group(function () {
         Route::get('assessments', [AssessmentController::class, 'index'])->name('assessments.index');
         Route::get('assessments/{instrument}', [AssessmentController::class, 'show'])->name('assessments.show');
     });
@@ -695,7 +730,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // middleware is the access control, and a Base organization cannot reach any
     // of these by typing a URL. Every route also runs the policy, because the
     // plan says "may your organization", not "is this yours".
-    Route::middleware('module:correction_grid_import')->group(function () {
+    Route::middleware(['module:correction_grid_import', 'usage:assessment'])->group(function () {
         Route::get('imports/correction/create', [CorrectionImportController::class, 'create'])->name('correction-imports.create');
         Route::post('imports/correction', [CorrectionImportController::class, 'store'])->name('correction-imports.store');
         Route::get('imports/correction/{import}', [CorrectionImportController::class, 'edit'])->name('correction-imports.edit');
@@ -705,7 +740,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     // Results — the calculation engine's output for a class, per period.
-    Route::middleware('module:results')->group(function () {
+    Route::middleware(['module:results', 'usage:assessment'])->group(function () {
         Route::get('results', [ResultsController::class, 'index'])->name('results.index');
         // Declared BEFORE the {period?} wildcard, which would otherwise swallow
         // it and go looking for a period called «quadro-sintese».
@@ -775,7 +810,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // Exporting a period's qualitative mentions into the grid INOVAR
         // produced. Its own capability: the assessment core does not depend on
         // it, and a school that never uses INOVAR never meets it.
-        Route::middleware('module:inovar_export')->group(function () {
+        Route::middleware(['module:inovar_export', 'usage:import_export'])->group(function () {
             Route::get('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'create'])->name('exports.inovar.create');
             Route::post('classes/{class}/exports/inovar/{period}', [InovarExportController::class, 'store'])->name('exports.inovar.store');
             // A DOWNLOAD, so a GET the browser can follow on its own — the same
@@ -855,7 +890,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // A capability é a que já existe — nenhuma nova (§ briefing). O fluxo
         // antigo `exports.inovar.*` continua exatamente onde estava e não é
         // tocado por nada disto.
-        Route::middleware('module:inovar_export')->group(function () {
+        Route::middleware(['module:inovar_export', 'usage:import_export'])->group(function () {
             Route::get('classes/{class}/pauta-avaliacao/inovar/{period}', [EvaluationSheetInovarExportController::class, 'create'])->name('evaluation-sheets.inovar.create');
             Route::post('classes/{class}/pauta-avaliacao/inovar/{period}', [EvaluationSheetInovarExportController::class, 'store'])->name('evaluation-sheets.inovar.store');
             // Confirmar TERMINA NUM REDIRECT, não num ficheiro: ao contrário do
@@ -907,7 +942,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // que se finaliza e se exporta. A pauta, que já viveu neste módulo como
     // `pautas.*`, é hoje a Pauta de Avaliação e vive em Avaliação
     // (`evaluation-sheets.*`, dentro de `module:results`).
-    Route::middleware('module:reports')->group(function () {
+    Route::middleware(['module:reports', 'usage:reports'])->group(function () {
         Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
 
         // Every literal segment is declared before `reports/{report}`, or it
@@ -971,7 +1006,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // Evolução do Aluno — one student's year, read forwards. A VIEW, not a
     // document: Relatórios already produces the document, and this feeds it
     // without replacing it (§3 do brief).
-    Route::middleware('module:student_progress')->group(function () {
+    Route::middleware(['module:student_progress', 'usage:assessment'])->group(function () {
         Route::get('evolucao', [StudentProgressController::class, 'index'])->name('student-progress.index');
         Route::get('classes/{class}/evolucao', [StudentProgressController::class, 'show'])->name('student-progress.class');
         // Through the ENROLMENT, never a student id: a result belongs to the
@@ -1004,7 +1039,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
-    Route::middleware('module:records')->group(function () {
+    Route::middleware(['module:records', 'usage:records'])->group(function () {
         Route::get('records', [RecordConsultationController::class, 'index'])->name('records.index');
         Route::post('records/acompanhamento/confirmacoes', [RecordConsultationController::class, 'confirm'])->name('records.followup.confirm');
         Route::delete('records/acompanhamento/confirmacoes/{confirmation}', [RecordConsultationController::class, 'undo'])->name('records.followup.undo');
@@ -1026,7 +1061,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     });
 
     // Self-assessment (§15). Compared with the calculated grade, never summed in.
-    Route::middleware('module:self_assessments')->group(function () {
+    Route::middleware(['module:self_assessments', 'usage:assessment'])->group(function () {
         Route::get('self-assessments', [SelfAssessmentController::class, 'index'])->name('self-assessments.index');
         Route::get('classes/{class}/self-assessments/{period?}', [SelfAssessmentController::class, 'show'])->name('self-assessments.show');
         // Must come before the {enrollment} wildcard route below, or "links"
@@ -1044,7 +1079,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // whole class — never part of the calculation. PATCH stays the light
     // status-only action so the quick "Concluir" button does not have to
     // resend the whole record; PUT is the full edit.
-    Route::middleware('module:interventions')->group(function () {
+    Route::middleware(['module:interventions', 'usage:interventions'])->group(function () {
         Route::get('interventions', [InterventionController::class, 'index'])->name('interventions.index');
         Route::get('classes/{class}/interventions', [InterventionController::class, 'show'])->name('interventions.show');
         Route::post('classes/{class}/interventions', [InterventionController::class, 'store'])->name('interventions.store');
@@ -1065,9 +1100,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
     // "Exportar os meus dados" (Fatia 4, §20/§52) — every plan, not gated by
     // any module: this is portability, not a paid feature.
-    Route::get('data-exports', [DataExportController::class, 'index'])->name('data-exports.index');
-    Route::post('data-exports', [DataExportController::class, 'store'])->name('data-exports.store');
-    Route::get('data-exports/{data_export}', [DataExportController::class, 'download'])->name('data-exports.download');
+    Route::get('data-exports', [DataExportController::class, 'index'])
+        ->middleware('usage:import_export')
+        ->name('data-exports.index');
+    Route::post('data-exports', [DataExportController::class, 'store'])
+        ->middleware('usage:import_export')
+        ->name('data-exports.store');
+    Route::get('data-exports/{data_export}', [DataExportController::class, 'download'])
+        ->middleware('usage:import_export')
+        ->name('data-exports.download');
 
     // "Importar dados" (Fatia 6) — restoring a backup this same export
     // produces. Deliberately absent from EnsureAccountIsOperational's
@@ -1083,7 +1124,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // realignment neither half was gated at all, so a Base organization could
     // restore a complete backup over its own data. Exporting stays exactly
     // where it was; only putting a backup back is Pro.
-    Route::middleware('module:data_backup_restore')->group(function () {
+    Route::middleware(['module:data_backup_restore', 'usage:import_export'])->group(function () {
         Route::get('data-imports/create', [DataImportController::class, 'create'])->name('data-imports.create');
         Route::post('data-imports', [DataImportController::class, 'store'])->name('data-imports.store');
         Route::get('data-imports/{data_import}', [DataImportController::class, 'edit'])->name('data-imports.edit');

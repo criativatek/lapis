@@ -30,6 +30,7 @@ use App\Support\Commercial\FounderSeats;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageClassification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -290,6 +291,43 @@ class AdminAccountController extends Controller
                 ])->sortByDesc('is_owner')->values(),
             ],
             'plans' => Plan::orderBy('id')->get(['key', 'name']),
+            // Só quem já tem a autorização das métricas de utilização a pode dar,
+            // e só a um administrador da plataforma. A quem não a tem não se diz
+            // sequer quem a tem: vai só `can_manage: false`.
+            'usage_insights' => $request->user()?->canViewUsageInsights() === true
+                ? [
+                    'can_manage' => true,
+                    'owner_is_admin' => $owner?->isPlatformAdmin() === true,
+                    'granted' => $owner?->can_view_usage_insights === true,
+                ]
+                : ['can_manage' => false, 'owner_is_admin' => false, 'granted' => false],
+            // A autorização SEPARADA de ligar e desligar a recolha: só quem já a
+            // tem a pode dar (e nunca a si próprio). A quem só consulta o painel
+            // não se diz quem a tem.
+            'usage_collection_control' => $request->user()?->canControlUsageCollection() === true
+                ? [
+                    'can_manage' => true,
+                    'owner_is_admin' => $owner?->isPlatformAdmin() === true,
+                    'is_self' => $owner !== null && $owner->is($request->user()),
+                    'granted' => $owner?->can_control_usage_collection === true,
+                ]
+                : ['can_manage' => false, 'owner_is_admin' => false, 'is_self' => false, 'granted' => false],
+            // A classificação para as métricas só viaja a quem pode ver as
+            // métricas: a quem não pode, nem o valor lhe é dito.
+            'usage_classification' => $request->user()?->canViewUsageInsights() === true
+                ? [
+                    'value' => $organization->usage_classification,
+                    'classified_at' => $organization->usage_classified_at?->toDateTimeString(),
+                    'options' => array_map(
+                        fn (UsageClassification $classification): array => [
+                            'key' => $classification->value,
+                            'label' => $classification->label(),
+                            'description' => $classification->description(),
+                        ],
+                        UsageClassification::cases(),
+                    ),
+                ]
+                : null,
         ]);
     }
 
@@ -449,10 +487,19 @@ class AdminAccountController extends Controller
         $owner = $organization->owner;
         if ($owner !== null) {
             $grant = ! $owner->is_platform_admin;
-            $owner->forceFill([
+            $attributes = [
                 'is_platform_admin' => $grant,
                 'is_support_technician' => $grant,
-            ])->save();
+            ];
+
+            // Revogar o estatuto revoga também as duas autorizações das métricas
+            // de utilização: ver e controlar a recolha.
+            if (! $grant) {
+                $attributes['can_view_usage_insights'] = false;
+                $attributes['can_control_usage_collection'] = false;
+            }
+
+            $owner->forceFill($attributes)->save();
             $this->log($organization, $grant ? 'admin.admin_granted' : 'admin.admin_revoked',
                 ($grant ? 'Concedido' : 'Revogado')." acesso de administrador a {$owner->email}.");
         }

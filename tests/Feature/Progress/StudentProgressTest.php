@@ -29,6 +29,7 @@ use App\Services\Assessment\Progress\StudentProgressNarrative;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\EntitlementsSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -863,8 +864,14 @@ class StudentProgressTest extends TestCase
         $enrollment = $this->enrollment();
 
         $queries = 0;
-        DB::listen(function () use (&$queries): void {
-            $queries++;
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            // As consultas das métricas de utilização (0.163.0) — a escrita da
+            // visita em `usage_events` e a leitura, uma por pedido, de
+            // `usage_collection_periods` para a versão da Política — não são
+            // custo da página: o teto mede a leitura dos dados do aluno.
+            if (! str_contains($query->sql, 'usage_events') && ! str_contains($query->sql, 'usage_collection_periods')) {
+                $queries++;
+            }
         });
 
         $this->actingAs($this->teacher)->get("/classes/{$class->ulid}/evolucao/{$enrollment->ulid}")->assertOk();

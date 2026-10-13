@@ -10,6 +10,7 @@ import OrganizationMembership from '@/components/OrganizationMembership.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import UsageMetricsPreference from '@/components/UsageMetricsPreference.vue';
 import { edit } from '@/routes/profile';
 import { send } from '@/routes/verification';
 
@@ -119,6 +120,8 @@ const canRestoreBackup = computed(() => page.props.modules.includes('data_backup
     </div>
 
     <OrganizationMembership />
+
+    <UsageMetricsPreference />
 
     <AccountClosure />
 </template>

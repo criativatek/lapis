@@ -8,6 +8,8 @@ use App\Http\Requests\ClassNotebook\UpdateClassNotebookEntryRequest;
 use App\Models\ClassNotebookEntry;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -100,24 +102,26 @@ class ClassNotebookController extends Controller
         ]);
     }
 
-    public function store(StoreClassNotebookEntryRequest $request, SchoolClass $class): RedirectResponse
+    public function store(StoreClassNotebookEntryRequest $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('view', $class);
         $this->refuseDuringImpersonation($request);
 
-        ClassNotebookEntry::create([
+        $entry = ClassNotebookEntry::create([
             'class_id' => $class->getKey(),
             'author_id' => $this->user($request)->getKey(),
             'title' => $this->titleOf($request),
             'body' => (string) $request->validated('body'),
         ]);
 
+        $usage->action(UsageEventType::NotebookEntryCreated, $entry);
+
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Registo guardado.']);
 
         return to_route('classes.notebook.index', $class);
     }
 
-    public function update(UpdateClassNotebookEntryRequest $request, SchoolClass $class, ClassNotebookEntry $notebookEntry): RedirectResponse
+    public function update(UpdateClassNotebookEntryRequest $request, SchoolClass $class, ClassNotebookEntry $notebookEntry, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('view', $class);
         Gate::authorize('update', $notebookEntry);
@@ -127,7 +131,9 @@ class ClassNotebookController extends Controller
         $body = (string) $request->validated('body');
         $version = (int) $request->validated('lock_version');
 
-        DB::transaction(function () use ($notebookEntry, $title, $body, $version): void {
+        $edited = false;
+
+        DB::transaction(function () use ($notebookEntry, $title, $body, $version, &$edited): void {
             $entry = ClassNotebookEntry::query()->whereKey($notebookEntry->getKey())->lockForUpdate()->firstOrFail();
 
             if ($entry->lock_version !== $version) {
@@ -147,7 +153,14 @@ class ClassNotebookController extends Controller
                 'edited_at' => now(),
                 'lock_version' => $entry->lock_version + 1,
             ])->save();
+
+            $edited = true;
         });
+
+        // Só uma edição que mudou alguma coisa: o retorno antecipado acima não conta.
+        if ($edited) {
+            $usage->action(UsageEventType::NotebookEntryUpdated, $notebookEntry);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
 

@@ -40,6 +40,9 @@ use App\Services\Reporting\ReportListing;
 use App\Services\Reporting\Templates\TemplateResolver;
 use App\Services\Reporting\Writing\ReportWritingAssistant;
 use App\Services\Reporting\Writing\WritingMode;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -254,7 +257,7 @@ class ReportController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('create', Report::class);
 
@@ -383,6 +386,8 @@ class ReportController extends Controller
                 template: $template,
             ),
         };
+
+        $usage->action(UsageEventType::ReportCreated, $report);
 
         return redirect()->route('reports.show', $report);
     }
@@ -559,7 +564,7 @@ class ReportController extends Controller
      * The characterisation is stored whole rather than field by field: it is one
      * document, it is read whole, and its shape is versioned (§8).
      */
-    public function update(Request $request, Report $report): RedirectResponse
+    public function update(Request $request, Report $report, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $report);
 
@@ -613,6 +618,10 @@ class ReportController extends Controller
                 ->resolveDifficulties($data['teacher_input']['difficulties']);
         }
 
+        // O relatório e as suas secções antes de escrever, para só contar uma
+        // edição que mudou mesmo alguma coisa (docs/usage-insights.md).
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::report($report->getKey()));
+
         $attributes = [];
 
         if (array_key_exists('title', $data)) {
@@ -663,15 +672,29 @@ class ReportController extends Controller
             $this->composer->generate($report->fresh() ?? $report);
         }
 
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::report($report->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::ReportEdited, $report);
+        }
+
         return back();
     }
 
     /** Regenerate every section that the teacher has not rewritten. */
-    public function regenerate(Report $report): RedirectResponse
+    public function regenerate(Report $report, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $report);
 
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::report($report->getKey()));
+
         $this->composer->generate($report);
+
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::report($report->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::ReportEdited, $report);
+        }
 
         return back();
     }
@@ -680,11 +703,13 @@ class ReportController extends Controller
      * Finalize (§37). From here the report holds its own copy of everything it
      * said, and no later change to a grade or a logo rewrites it.
      */
-    public function finalize(Report $report, FinalizeReport $finalizer): RedirectResponse
+    public function finalize(Report $report, FinalizeReport $finalizer, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('finalize', $report);
 
         $finalizer->finalize($report, $this->user());
+
+        $usage->action(UsageEventType::ReportFinalized, $report);
 
         return back();
     }

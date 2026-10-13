@@ -18,6 +18,8 @@ use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Assessment\DecisionScale;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -245,7 +247,7 @@ class ClassificationController extends Controller
         return back();
     }
 
-    public function publish(Request $request, SchoolClass $class, string $period): RedirectResponse
+    public function publish(Request $request, SchoolClass $class, string $period, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -255,6 +257,10 @@ class ClassificationController extends Controller
             ->where('ulid', $period)->firstOrFail();
 
         $counts = $this->publisher->forPeriod($class, $selected, $scope);
+
+        if ($counts['published'] > 0) {
+            $usage->action(UsageEventType::ClassificationsPublished, 'publish:'.$class->getKey().':'.$selected->getKey(), $counts['published']);
+        }
 
         Inertia::flash('toast', [
             'type' => $counts['blocked_under_review'] > 0 ? 'warning' : 'success',
@@ -276,7 +282,7 @@ class ClassificationController extends Controller
      * teacher's for that — it is opened, then confirmed through the same service
      * that has always confirmed one.
      */
-    public function decide(Request $request, SchoolClass $class, string $period, Enrollment $enrollment): RedirectResponse
+    public function decide(Request $request, SchoolClass $class, string $period, Enrollment $enrollment, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -325,6 +331,8 @@ class ClassificationController extends Controller
         } catch (ClassificationDecisionException $exception) {
             return back()->withErrors(['final_value' => $exception->getMessage()]);
         }
+
+        $usage->action(UsageEventType::ClassificationDecided, 'classification:'.$enrollment->getKey().':'.$selected->getKey());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $changing
             ? __('Classificação alterada.')

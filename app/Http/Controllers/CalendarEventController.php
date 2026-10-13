@@ -7,6 +7,9 @@ use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Calendar\CalendarEventRequest;
 use App\Models\CalendarEvent;
 use App\Models\User;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -45,17 +48,19 @@ class CalendarEventController extends Controller implements HasMiddleware
         return ['module:calendar'];
     }
 
-    public function store(CalendarEventRequest $request, SaveCalendarEvent $saveCalendarEvent): RedirectResponse
+    public function store(CalendarEventRequest $request, SaveCalendarEvent $saveCalendarEvent, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('create', CalendarEvent::class);
         $this->refuseDuringImpersonation($request);
 
-        $saveCalendarEvent->execute(
+        $event = $saveCalendarEvent->execute(
             null,
             $request->safe()->only(['type', 'title', 'starts_on', 'ends_on', 'starts_at', 'ends_at', 'description']),
             $this->schoolClassUlids($request),
             $this->user($request),
         );
+
+        $usage->action(UsageEventType::CalendarEventCreated, $event);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Acontecimento adicionado ao calendário.']);
 
@@ -66,9 +71,12 @@ class CalendarEventController extends Controller implements HasMiddleware
         CalendarEventRequest $request,
         CalendarEvent $calendarEvent,
         SaveCalendarEvent $saveCalendarEvent,
+        UsageRecorder $usage,
     ): RedirectResponse {
         Gate::authorize('update', $calendarEvent);
         $this->refuseDuringImpersonation($request);
+
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::calendarEvent($calendarEvent->getKey()));
 
         $saveCalendarEvent->execute(
             $calendarEvent,
@@ -76,6 +84,12 @@ class CalendarEventController extends Controller implements HasMiddleware
             $this->schoolClassUlids($request),
             $this->user($request),
         );
+
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::calendarEvent($calendarEvent->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::CalendarEventUpdated, $calendarEvent);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Acontecimento atualizado.']);
 

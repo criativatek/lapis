@@ -36,6 +36,9 @@ use App\Support\Interventions\InterventionLegalFramework;
 use App\Support\Interventions\LegalFrameworkResolver;
 use App\Support\Interventions\PedagogicalText;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -442,7 +445,7 @@ class InterventionController extends Controller
         return $value === '' ? null : mb_substr($value, 0, $max);
     }
 
-    public function store(StoreInterventionRequest $request, SchoolClass $class): RedirectResponse
+    public function store(StoreInterventionRequest $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -515,6 +518,13 @@ class InterventionController extends Controller
             $this->record('intervention.created', $intervention, ['created_batch_ulid' => $batchUlid]);
         }
 
+        // Uma ação com N medidas criadas (um pedido com vários tipos), nunca N.
+        $usage->action(
+            UsageEventType::InterventionCreated,
+            $batchUlid !== null ? 'batch:'.$batchUlid : $interventions[0],
+            count($interventions),
+        );
+
         Inertia::flash('toast', ['type' => 'success', 'message' => count($interventions) === 1
             ? __('Intervenção registada.')
             : __(':count medidas pedagógicas registadas.', ['count' => count($interventions)])]);
@@ -555,7 +565,7 @@ class InterventionController extends Controller
      * A full edit. Status changes keep their own lighter endpoint below, so the
      * quick "Concluir" action does not have to resend the whole record.
      */
-    public function update(UpdateInterventionRequest $request, Intervention $intervention): RedirectResponse
+    public function update(UpdateInterventionRequest $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         $class = $intervention->schoolClass;
         Gate::authorize('update', $class);
@@ -580,6 +590,8 @@ class InterventionController extends Controller
         $previousLabel = $intervention->intervention_type_label;
         $typeChanged = $previousType !== $type;
         $labelWasTypeDerived = $previousType !== null && $previousLabel === $previousType->label();
+
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
         DB::transaction(function () use ($intervention, $validated, $type, $framing, $reasoning, $typeChanged, $labelWasTypeDerived, $previousLabel): void {
             $participantIds = $validated['enrollment_ids'] ?? [];
@@ -626,6 +638,12 @@ class InterventionController extends Controller
 
         $this->record('intervention.updated', $intervention->refresh());
 
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InterventionUpdated, $intervention);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Intervenção atualizada.')]);
 
         return back();
@@ -636,7 +654,7 @@ class InterventionController extends Controller
      * one-off (registered and never touched again) or followed over time. This
      * is deliberately a separate, optional action — never part of registering.
      */
-    public function updateStatus(Request $request, Intervention $intervention): RedirectResponse
+    public function updateStatus(Request $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $intervention->schoolClass);
 
@@ -652,6 +670,8 @@ class InterventionController extends Controller
 
         $status = InterventionStatus::from($validated['status']);
         $was = $intervention->status;
+
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
         DB::transaction(function () use ($intervention, $status, $validated): void {
             $intervention->fill([
@@ -689,12 +709,18 @@ class InterventionController extends Controller
             ['from' => $was->value, 'to' => $status->value],
         );
 
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InterventionUpdated, $intervention);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Estado atualizado.')]);
 
         return back();
     }
 
-    public function addReview(Request $request, Intervention $intervention): RedirectResponse
+    public function addReview(Request $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $intervention->schoolClass);
 
@@ -709,8 +735,8 @@ class InterventionController extends Controller
             'clear_review' => ['sometimes', 'boolean'],
         ]);
 
-        DB::transaction(function () use ($intervention, $validated): void {
-            $intervention->reviews()->create([
+        $review = DB::transaction(function () use ($intervention, $validated): InterventionReview {
+            $review = $intervention->reviews()->create([
                 'reviewed_on' => $validated['reviewed_on'],
                 'effectiveness' => $validated['effectiveness'] ?? null,
                 'notes' => $validated['notes'] ?? null,
@@ -722,6 +748,8 @@ class InterventionController extends Controller
             } elseif (($validated['review_on'] ?? null) !== null) {
                 $intervention->forceFill(['review_on' => $validated['review_on']])->save();
             }
+
+            return $review;
         });
 
         // The rating is a decision and travels; the note is prose about a child
@@ -731,6 +759,9 @@ class InterventionController extends Controller
             'effectiveness' => $validated['effectiveness'] ?? null,
             'has_note' => ($validated['notes'] ?? null) !== null,
         ]);
+
+        // Cada acompanhamento é um registo novo (não uma edição da medida).
+        $usage->action(UsageEventType::InterventionFollowupAdded, $review);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Acompanhamento registado.')]);
 

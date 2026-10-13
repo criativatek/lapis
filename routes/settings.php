@@ -5,6 +5,7 @@ use App\Http\Controllers\Settings\PlanController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SchoolIdentityController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\UsageMetricsController;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,11 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    // «Não registar a minha utilização» (docs/usage-insights.md). Sem {user},
+    // como o encerramento: atua sempre sobre a pessoa autenticada. Sem
+    // `verified`: opor-se nunca pode depender de confirmar o email.
+    Route::put('settings/usage-metrics', [UsageMetricsController::class, 'update'])->name('settings.usage-metrics.update');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

@@ -60,7 +60,23 @@ type Account = {
     closure: ClosureStatus | null;
 };
 
-const props = defineProps<{ account: Account; plans: { key: string; name: string }[] }>();
+const props = defineProps<{
+    account: Account;
+    plans: { key: string; name: string }[];
+    /** Só quem já tem a autorização das métricas de utilização a pode dar, e só a um administrador. */
+    usage_insights: { can_manage: boolean; owner_is_admin: boolean; granted: boolean };
+    /**
+     * A autorização SEPARADA de ligar e desligar a recolha: só quem já a tem a pode
+     * dar, a outro administrador (`is_self` esconde-a na própria conta).
+     */
+    usage_collection_control?: { can_manage: boolean; owner_is_admin: boolean; is_self: boolean; granted: boolean };
+    /** Só vai a quem pode ver as métricas de utilização; para os outros é nulo. */
+    usage_classification: {
+        value: string;
+        classified_at: string | null;
+        options: { key: string; label: string; description: string }[];
+    } | null;
+}>();
 
 const base = computed(() => `/admin/accounts/${props.account.ulid}`);
 
@@ -68,6 +84,34 @@ const base = computed(() => `/admin/accounts/${props.account.ulid}`);
 // so there is one place to render them all — except adding a member, which
 // writes to `member` so its error does not clobber this one mid-form.
 const refusal = computed(() => (usePage().props.errors as Record<string, string>)?.account ?? null);
+
+const usageAccessRefusal = computed(() => (usePage().props.errors as Record<string, string>)?.granted ?? null);
+
+function setUsageAccess(granted: boolean): void {
+    router.post(`${base.value}/usage-insights`, { granted }, { preserveScroll: true });
+}
+
+const collectionControl = computed(() => props.usage_collection_control ?? null);
+
+function setCollectionControl(granted: boolean): void {
+    router.post(`${base.value}/usage-collection-control`, { granted }, { preserveScroll: true });
+}
+
+const classificationForm = useForm({
+    classification: props.usage_classification?.value ?? 'unclassified',
+    note: '',
+});
+
+const classificationLabel = computed(
+    () => props.usage_classification?.options.find((option) => option.key === props.usage_classification?.value)?.label ?? '',
+);
+
+function saveClassification(): void {
+    classificationForm.post(`${base.value}/usage-classification`, {
+        preserveScroll: true,
+        onSuccess: () => classificationForm.reset('note'),
+    });
+}
 
 const blockingEntries = computed(() => Object.entries(props.account.blocking));
 const canDelete = computed(
@@ -606,6 +650,88 @@ function destroy(): void {
             </p>
             <Button type="button" variant="outline" size="sm" @click="setTestAccount(!account.is_test_account)">
                 {{ account.is_test_account ? 'Deixar de ser conta de teste' : 'Marcar como conta de teste' }}
+            </Button>
+        </section>
+
+        <!-- Classificação para métricas de utilização -->
+        <section v-if="usage_classification" class="space-y-3 rounded-lg border border-border p-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-sm font-medium">Classificação para métricas de utilização</h2>
+                <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ classificationLabel }}</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Serve só para o painel de utilização, é independente da «conta de teste» comercial e <strong>não</strong> altera nada na
+                conta. Nada é inferido: quem decide é uma pessoa, e uma organização por classificar não entra na utilização real.
+            </p>
+            <form class="space-y-3" @submit.prevent="saveClassification">
+                <fieldset class="space-y-2">
+                    <legend class="sr-only">Classificação</legend>
+                    <label v-for="option in usage_classification.options" :key="option.key" class="flex items-start gap-2 text-sm">
+                        <input v-model="classificationForm.classification" type="radio" name="classification" :value="option.key" class="mt-1" />
+                        <span>
+                            <span class="font-medium">{{ option.label }}</span>
+                            <span class="block text-muted-foreground">{{ option.description }}</span>
+                        </span>
+                    </label>
+                </fieldset>
+                <label class="block space-y-1 text-sm">
+                    <span class="font-medium">Nota (opcional)</span>
+                    <input
+                        v-model="classificationForm.note"
+                        type="text"
+                        maxlength="500"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm max-md:h-11"
+                    />
+                </label>
+                <p v-if="classificationForm.errors.classification || classificationForm.errors.note" role="alert" class="text-sm text-red-700 dark:text-red-400">
+                    {{ classificationForm.errors.classification ?? classificationForm.errors.note }}
+                </p>
+                <Button type="submit" variant="outline" class="max-md:min-h-11" :disabled="classificationForm.processing">Guardar classificação</Button>
+            </form>
+        </section>
+
+        <!-- Métricas de utilização -->
+        <section v-if="usage_insights.can_manage && usage_insights.owner_is_admin" class="space-y-3 rounded-lg border border-border p-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="text-sm font-medium">Métricas de utilização</h2>
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="usage_insights.granted ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300' : 'bg-muted text-muted-foreground'"
+                >
+                    {{ usage_insights.granted ? 'acesso concedido' : 'sem acesso' }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                É uma autorização própria, <strong>não</strong> incluída em ser administrador da plataforma. Dá acesso ao painel interno de
+                utilização e acompanhamento; a concessão e a revogação ficam na auditoria.
+            </p>
+            <p v-if="usageAccessRefusal" role="alert" class="text-sm text-red-700 dark:text-red-400">{{ usageAccessRefusal }}</p>
+            <Button type="button" variant="outline" class="max-md:min-h-11" @click="setUsageAccess(!usage_insights.granted)">
+                {{ usage_insights.granted ? 'Revogar acesso às métricas de utilização' : 'Conceder acesso às métricas de utilização' }}
+            </Button>
+        </section>
+
+        <!-- Controlo da recolha de métricas (autorização separada) -->
+        <section
+            v-if="collectionControl?.can_manage && collectionControl.owner_is_admin && !collectionControl.is_self"
+            class="space-y-3 rounded-lg border border-border p-4"
+            data-test="usage-collection-control"
+        >
+            <div class="flex flex-wrap items-center gap-3">
+                <h2 class="text-sm font-medium">Controlo da recolha de métricas</h2>
+                <span
+                    class="rounded-full px-2 py-0.5 text-xs"
+                    :class="collectionControl.granted ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300' : 'bg-muted text-muted-foreground'"
+                >
+                    {{ collectionControl.granted ? 'pode ligar e desligar' : 'sem controlo' }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Autorização própria, <strong>separada</strong> de ver o painel: permite ligar e desligar a recolha de métricas de
+                utilização (<code>lapis:usage-collection</code>). A concessão, a revogação e cada ativação ficam na auditoria.
+            </p>
+            <Button type="button" variant="outline" class="max-md:min-h-11" @click="setCollectionControl(!collectionControl.granted)">
+                {{ collectionControl.granted ? 'Retirar o controlo da recolha' : 'Conceder o controlo da recolha' }}
             </Button>
         </section>
 

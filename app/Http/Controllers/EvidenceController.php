@@ -20,6 +20,8 @@ use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
 use App\Services\Evidence\Followup\RecordFollowupAlerts;
 use App\Services\Evidence\Followup\RecordFollowupNotices;
 use App\Services\Evidence\Followup\RecordFollowupOutcome;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -154,7 +156,7 @@ class EvidenceController extends Controller
      * their own independent row, identical except for `enrollment_id`, each
      * editable and deletable on its own from then on.
      */
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -168,8 +170,9 @@ class EvidenceController extends Controller
         $targets = $validated['enrollment_ids'] === [] ? [null] : $validated['enrollment_ids'];
 
         $createdEnrollmentIds = [];
+        $firstRecord = null;
 
-        $followup = DB::transaction(function () use ($class, $validated, $targets, &$createdEnrollmentIds): RecordFollowupOutcome {
+        $followup = DB::transaction(function () use ($class, $validated, $targets, &$createdEnrollmentIds, &$firstRecord): RecordFollowupOutcome {
             // Serialises saves on this class, so the follow-up's «before»
             // count and the write it compares against belong together.
             SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
@@ -181,7 +184,7 @@ class EvidenceController extends Controller
             ], $targets));
 
             foreach ($targets as $enrollmentId) {
-                EvidenceRecord::create([
+                $record = EvidenceRecord::create([
                     'class_id' => $class->id,
                     'enrollment_id' => $enrollmentId,
                     'domain_id' => $validated['domain_id'] ?? null,
@@ -197,6 +200,7 @@ class EvidenceController extends Controller
                     'description' => $validated['description'] ?? '',
                     'created_by' => $this->user()->getKey(),
                 ]);
+                $firstRecord ??= $record;
                 $createdEnrollmentIds[] = $enrollmentId;
             }
 
@@ -213,6 +217,9 @@ class EvidenceController extends Controller
             count($targets) === 1 ? 'Registo criado.' : count($targets).' registos criados.',
             ['class_id' => $class->id, 'kind' => $validated['kind'], 'count' => count($targets), 'enrollment_ids' => $createdEnrollmentIds],
         );
+
+        // Uma ação com N alunos abrangidos, nunca N ações.
+        $usage->action(UsageEventType::RecordCreated, $firstRecord, count($targets));
 
         $message = count($targets) === 1
             ? __('Registo adicionado.')
@@ -284,7 +291,7 @@ class EvidenceController extends Controller
      * "sem informação": an existing row in this exact batch is soft-deleted,
      * while a row that never existed remains a no-op.
      */
-    public function updateHomeworkBatch(Request $request, SchoolClass $class): RedirectResponse
+    public function updateHomeworkBatch(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -368,6 +375,9 @@ class EvidenceController extends Controller
                 "Trabalho de casa guardado — {$class->label}.",
                 ['class_id' => $class->id, 'occurred_at' => $validated['occurred_at'], 'count' => $touched],
             );
+
+            // O lote não tem registo próprio: turma + dia é a sua identidade.
+            $usage->action(UsageEventType::HomeworkBatchSaved, 'homework:'.$class->getKey().':'.$validated['occurred_at'], $touched);
         }
 
         $this->flashWithFollowup(__('Trabalho de casa guardado.'), $followup);

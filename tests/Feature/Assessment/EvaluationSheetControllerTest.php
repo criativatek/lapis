@@ -186,9 +186,9 @@ class EvaluationSheetControllerTest extends TestCase
             $routes,
         );
 
-        $resultsGroupStart = strpos($routes, "Route::middleware('module:results')->group(");
+        $resultsGroupStart = strpos($routes, "Route::middleware(['module:results', 'usage:assessment'])->group(");
         $evaluationSheetsRoute = strpos($routes, "->name('evaluation-sheets.show')");
-        $nextGroupBoundary = strpos($routes, "Route::middleware('module:reports')->group(");
+        $nextGroupBoundary = strpos($routes, "Route::middleware(['module:reports', 'usage:reports'])->group(");
 
         $this->assertNotFalse($resultsGroupStart);
         $this->assertNotFalse($evaluationSheetsRoute);

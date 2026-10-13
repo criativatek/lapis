@@ -27,10 +27,20 @@ class MakePlatformAdmin extends Command
         }
 
         $grant = ! $this->option('revoke');
-        $user->forceFill([
+        $attributes = [
             'is_platform_admin' => $grant,
             'is_support_technician' => $grant,
-        ])->save();
+        ];
+
+        // Revogar o estatuto revoga também as duas autorizações das métricas de
+        // utilização (ver e controlar a recolha). Conceder o estatuto NÃO as
+        // concede: são passos à parte.
+        if (! $grant) {
+            $attributes['can_view_usage_insights'] = false;
+            $attributes['can_control_usage_collection'] = false;
+        }
+
+        $user->forceFill($attributes)->save();
 
         $this->info($grant
             ? "{$user->email} é agora administrador da plataforma."

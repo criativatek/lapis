@@ -28,6 +28,9 @@ use App\Support\Assessment\ScoreExceedsMaximumException;
 use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -133,7 +136,7 @@ class InstrumentController extends Controller
         ]);
     }
 
-    public function store(InstrumentRequest $request, SchoolClass $class): RedirectResponse
+    public function store(InstrumentRequest $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -155,6 +158,8 @@ class InstrumentController extends Controller
             "Elemento de avaliação «{$instrument->title}» criado — {$class->label}.",
             ['class_id' => $class->id, 'instrument_id' => $instrument->id],
         );
+
+        $usage->action(UsageEventType::InstrumentCreated, $instrument);
 
         $prepared = $instrument->status === InstrumentStatus::Prepared;
         Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
@@ -234,10 +239,14 @@ class InstrumentController extends Controller
         ]);
     }
 
-    public function update(InstrumentRequest $request, Instrument $instrument): RedirectResponse
+    public function update(InstrumentRequest $request, Instrument $instrument, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $instrument->schoolClass);
         $this->ensureNotCancelled($instrument);
+
+        // O instrumento, os grupos e os itens (conteúdo, não ids) antes de
+        // escrever: o construtor pode recriar itens com ids novos.
+        $before = $usage->snapshot(fn (): array => UsageSnapshots::instrument($instrument->getKey()));
 
         try {
             $this->builder->update(
@@ -253,6 +262,12 @@ class InstrumentController extends Controller
         }
 
         $instrument->refresh();
+
+        $after = $usage->snapshot(fn (): array => UsageSnapshots::instrument($instrument->getKey()));
+
+        if ($usage->changed($before, $after)) {
+            $usage->action(UsageEventType::InstrumentUpdated, $instrument);
+        }
 
         $this->audit->record(
             'instrument.updated',
@@ -589,7 +604,7 @@ class InstrumentController extends Controller
     /**
      * Saves the cells the teacher changed. Only touched cells are sent.
      */
-    public function saveScores(Request $request, Instrument $instrument, RecordScores $recordScores): RedirectResponse
+    public function saveScores(Request $request, Instrument $instrument, RecordScores $recordScores, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $instrument->schoolClass);
         $this->ensureNotCancelled($instrument);
@@ -622,6 +637,10 @@ class InstrumentController extends Controller
             // A closed correction refuses the write with a message rather than
             // a 500 — the teacher is told to reopen it.
             return back()->withErrors(['cells' => $exception->getMessage()]);
+        }
+
+        if ($result->changed > 0) {
+            $usage->action(UsageEventType::ScoresRecorded, $instrument, $result->changed);
         }
 
         // Say so. Every other action on this page flashes — completing,

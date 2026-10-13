@@ -18,6 +18,8 @@ use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\User;
 use App\Support\Lessons\LessonSequenceApplicationException;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -146,6 +148,7 @@ class LessonSequenceController extends Controller implements HasMiddleware
         LessonSequenceApplyRequest $request,
         LessonSequence $lessonSequence,
         ApplyLessonSequence $applyLessonSequence,
+        UsageRecorder $usage,
     ): RedirectResponse {
         $this->refuseDuringImpersonation($request);
 
@@ -166,6 +169,8 @@ class LessonSequenceController extends Controller implements HasMiddleware
         } catch (LessonSequenceApplicationException $exception) {
             return back()->withErrors(['class_id' => $exception->getMessage()]);
         }
+
+        $usage->action(UsageEventType::LessonSequenceApplied, $lessonSequence, $result->applied);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => $this->appliedMessage($result)]);
 

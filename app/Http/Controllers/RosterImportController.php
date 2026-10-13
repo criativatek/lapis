@@ -9,6 +9,7 @@ use App\Domain\Import\PhotoMatch;
 use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\SchoolClass;
+use App\Models\StudentIdentity;
 use App\Services\Audit\AuditLog;
 use App\Services\Import\MatchRosterToEnrollments;
 use App\Services\Import\PhotoFileParser;
@@ -21,6 +22,8 @@ use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
 use App\Support\Import\RosterImportTempStorage;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -332,7 +335,7 @@ class RosterImportController extends Controller
         return null;
     }
 
-    public function confirm(Request $request, SchoolClass $class, string $token): RedirectResponse
+    public function confirm(Request $request, SchoolClass $class, string $token, UsageRecorder $usage): RedirectResponse
     {
         // Authorization and validation run BEFORE the try/finally below, on
         // purpose: they never touch the temp folder, so a rejected request
@@ -357,6 +360,10 @@ class RosterImportController extends Controller
             $created = 0;
             $updated = 0;
             $photosWritten = 0;
+            // Para a métrica de utilização: linhas existentes em que algo mudou
+            // de facto, e linhas que vieram iguais (docs/usage-insights.md).
+            $rowsChanged = 0;
+            $rowsUnchanged = 0;
 
             // CADA INSCRIÇÃO É ESCRITA UMA VEZ SÓ POR PEDIDO.
             //
@@ -439,6 +446,8 @@ class RosterImportController extends Controller
                     // a re-import is where «X → MT» actually gets recorded:
                     // filling in a name and skipping the state would leave
                     // a student on a roll the school says they left.
+                    $stateBefore = $this->rosterRowSnapshot($usage, $existing);
+
                     $this->enrollmentService->fillFromRoster($existing, array_filter([
                         'name' => $name,
                         'class_number' => $row['class_number'] ?? null,
@@ -471,6 +480,16 @@ class RosterImportController extends Controller
                             $this->photoService->storeBytes($identity, $photoBytes, $photoExtension);
                             $photosWritten++;
                         }
+                    }
+
+                    // Depois da foto, porque a fotografia faz parte do estado
+                    // comparado (o caminho do ficheiro, nunca o seu conteúdo).
+                    $stateAfter = $this->rosterRowSnapshot($usage, $existing);
+
+                    if ($usage->changed($stateBefore, $stateAfter)) {
+                        $rowsChanged++;
+                    } elseif ($stateBefore !== UsageRecorder::UNAVAILABLE && $stateAfter !== UsageRecorder::UNAVAILABLE) {
+                        $rowsUnchanged++;
                     }
 
                     $updated++;
@@ -532,6 +551,17 @@ class RosterImportController extends Controller
                 );
             }
 
+            // Uma ação com N elementos, nunca N ações: alunos criados, linhas
+            // existentes em que algo mudou de facto e linhas que vieram
+            // iguais. Uma importação só com linhas iguais não é uma ação.
+            $usage->action(
+                UsageEventType::StudentsImported,
+                'roster:'.$token,
+                created: $created,
+                changed: $rowsChanged,
+                unchanged: $rowsUnchanged,
+            );
+
             Inertia::flash('toast', [
                 'type' => 'success',
                 'message' => $this->outcomeMessage($created, $updated, $photosWritten),
@@ -541,6 +571,34 @@ class RosterImportController extends Controller
         } finally {
             $this->tempStorage->delete($token);
         }
+    }
+
+    /**
+     * Impressão digital da matrícula e da identidade de uma linha existente,
+     * lida com consultas NOVAS e calculada em memória: os campos cifrados
+     * comparam-se decifrados e nunca são guardados.
+     */
+    protected function rosterRowSnapshot(UsageRecorder $usage, Enrollment $enrollment): string
+    {
+        return $usage->snapshot(function () use ($enrollment): array {
+            $fresh = Enrollment::query()->whereKey($enrollment->getKey())->firstOrFail();
+            $identity = StudentIdentity::query()->where('student_id', $fresh->student_id)->first();
+
+            return [
+                'enrollment' => [
+                    'class_number' => $fresh->getAttributes()['class_number'] ?? null,
+                    'import_note' => $fresh->getAttributes()['import_note'] ?? null,
+                    'status' => $fresh->getAttributes()['status'] ?? null,
+                    'status_reason' => $fresh->getAttributes()['status_reason'] ?? null,
+                ],
+                'identity' => $identity === null ? null : [
+                    'display_name' => $identity->display_name,
+                    'school_number' => $identity->school_number,
+                    'birth_date' => $identity->birth_date?->toDateString(),
+                    'photo_path' => $identity->photo_path,
+                ],
+            ];
+        });
     }
 
     /**

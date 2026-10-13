@@ -15,6 +15,8 @@ use App\Services\Characterisation\Import\Extraction\ExtractedTableSource;
 use App\Services\Characterisation\Import\ReadCharacterisationTable;
 use App\Services\Import\Tabular\UnreadableSpreadsheet;
 use App\Support\Characterisation\CharacterisationSection;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -562,7 +564,7 @@ class CharacterisationImportController extends Controller
     /**
      * Write what the teacher confirmed, and only that.
      */
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -615,6 +617,11 @@ class CharacterisationImportController extends Controller
                 'skipped' => $result['skipped'],
             ],
         );
+
+        // Elementos = decisões aplicadas (alunos escritos), só se alguma o foi.
+        if ($result['written'] > 0) {
+            $usage->action(UsageEventType::CharacterisationImported, $class, $result['written']);
+        }
 
         return redirect()
             ->route('classes.characterisation.show', $class)

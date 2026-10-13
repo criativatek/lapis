@@ -73,6 +73,7 @@ function sharedProps(overrides: SharedProps = {}): SharedProps {
             user: { name: 'Docente Fictícia', email: 'docente@exemplo.test' },
             is_platform_admin: false,
             is_support_technician: false,
+            can_view_usage_insights: false,
             should_see_privacy_notice: false,
             organization: { ulid: '01JORG', name: 'Escola Fictícia', type: 'personal', is_owner: true },
             organizations: [],
