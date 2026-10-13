@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityEvaluation;
 use App\Models\DisciplinarySeverity;
 use App\Models\Domain;
+use App\Models\Enrollment;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
 use App\Models\HomeworkStatus;
@@ -20,6 +21,7 @@ use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
 use App\Services\Evidence\Followup\RecordFollowupAlerts;
 use App\Services\Evidence\Followup\RecordFollowupNotices;
 use App\Services\Evidence\Followup\RecordFollowupOutcome;
+use App\Services\Evidence\HomeworkGridRoster;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
@@ -249,11 +251,12 @@ class EvidenceController extends Controller
     }
 
     /**
-     * The active roster and the per-student homework rows already saved for
-     * one calendar day. Homework batches deliberately have no persisted batch
-     * model: class + kind + calendar date is their authoring identity.
+     * The homework grid of one calendar day: EVERY student who was in the
+     * class that day (HomeworkGridRoster), with the marking already saved, if
+     * any. Homework batches deliberately have no persisted batch model:
+     * class + kind + calendar date is their authoring identity.
      */
-    public function homeworkBatch(Request $request, SchoolClass $class): JsonResponse
+    public function homeworkBatch(Request $request, SchoolClass $class, HomeworkGridRoster $roster): JsonResponse
     {
         Gate::authorize('update', $class);
 
@@ -261,40 +264,27 @@ class EvidenceController extends Controller
             'occurred_at' => ['required', 'date_format:Y-m-d'],
         ]);
 
-        $records = EvidenceRecord::query()
-            ->forClass($class->id)
-            ->where('kind', EvidenceKind::Homework->value)
-            ->whereDate('occurred_at', $validated['occurred_at'])
-            ->whereNotNull('enrollment_id')
-            ->orderBy('id')
-            ->get()
-            ->keyBy('enrollment_id');
+        $grid = $roster->for($class, $validated['occurred_at']);
 
-        $enrollments = $class->activeEnrollments()
-            ->with('student.identity')
-            ->orderBy('class_number')
-            ->get()
-            ->map(function ($enrollment) use ($records): array {
-                /** @var EvidenceRecord|null $record */
-                $record = $records->get($enrollment->id);
-
-                return [
-                    'id' => $enrollment->id,
-                    'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
-                    'homework_status' => $record?->homework_status?->value,
-                    'description' => $record === null ? '' : $record->description,
-                ];
-            });
-
-        return response()->json(['enrollments' => $enrollments]);
+        return response()->json([
+            'occurred_at' => $validated['occurred_at'],
+            'enrollments' => $grid['rows'],
+            'excluded_without_left_on' => $grid['excluded_without_left_on'],
+        ]);
     }
 
     /**
-     * Saves the whole visible homework grid atomically. Blank statuses mean
-     * "sem informação": an existing row in this exact batch is soft-deleted,
-     * while a row that never existed remains a no-op.
+     * Saves the rows of the homework grid the teacher changed, atomically.
+     * A blank status means «Não verificado»: an existing marking of this exact
+     * day is soft-deleted, while a row that never existed remains a no-op.
+     *
+     * Per row, never for the whole grid at once: correcting a marking that
+     * already exists is never refused, a NEW marking needs a student who was
+     * in the class that day and still is (HomeworkGridRoster), and a student
+     * with two homework records that day is never written through the grid —
+     * the two records are distinct and are not merged by the date.
      */
-    public function updateHomeworkBatch(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
+    public function updateHomeworkBatch(Request $request, SchoolClass $class, UsageRecorder $usage, HomeworkGridRoster $roster): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -306,16 +296,43 @@ class EvidenceController extends Controller
             'rows.*.description' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $enrollmentIds = array_column($validated['rows'], 'enrollment_id');
-        $this->guardCrossReferences($class, ['enrollment_ids' => $enrollmentIds], isNew: true);
+        $enrollmentIds = array_map('intval', array_column($validated['rows'], 'enrollment_id'));
+        // Membership against everyone who was ever on the roll — the per-row
+        // rules below decide what may be created.
+        $this->guardCrossReferences($class, ['enrollment_ids' => $enrollmentIds]);
 
         $touched = 0;
 
-        $followup = DB::transaction(function () use ($class, $validated, $enrollmentIds, &$touched): RecordFollowupOutcome {
+        $followup = DB::transaction(function () use ($class, $validated, $enrollmentIds, $roster, &$touched): RecordFollowupOutcome {
             // There is deliberately no batch table or uniqueness constraint.
             // Locking the existing parent serializes two first saves, where no
             // EvidenceRecord row exists yet for lockForUpdate() to lock.
             SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
+            $existingRecords = $roster->recordsOn($class, $validated['occurred_at'])
+                ->whereIn('enrollment_id', $enrollmentIds)
+                ->lockForUpdate()
+                ->get()
+                ->groupBy('enrollment_id');
+
+            $enrollments = Enrollment::query()->whereIn('id', $enrollmentIds)->get()->keyBy('id');
+
+            foreach ($validated['rows'] as $row) {
+                $own = $existingRecords->get($row['enrollment_id'], collect());
+
+                if ($own->count() > 1) {
+                    throw ValidationException::withMessages([
+                        'rows' => __('Um aluno tem mais do que um registo de TPC nesta data. Corrija-os um a um na pesquisa de registos.'),
+                    ]);
+                }
+
+                if ($own->isEmpty() && ($row['homework_status'] ?? null) !== null
+                    && ! $roster->acceptsNewMarking($enrollments->get($row['enrollment_id']), $validated['occurred_at'])) {
+                    throw ValidationException::withMessages([
+                        'rows' => __('Um aluno que não integrava a turma nesta data, ou que já não a integra, não pode receber uma marcação nova.'),
+                    ]);
+                }
+            }
 
             // Only a row saved as «Não realizado» can add to the follow-up.
             $snapshot = $this->followupAlerts->before($class, array_map(fn (array $row): array => [
@@ -324,18 +341,9 @@ class EvidenceController extends Controller
                 'date' => Carbon::parse($validated['occurred_at']),
             ], $validated['rows']));
 
-            $existingRecords = EvidenceRecord::query()
-                ->forClass($class->id)
-                ->where('kind', EvidenceKind::Homework->value)
-                ->whereDate('occurred_at', $validated['occurred_at'])
-                ->whereIn('enrollment_id', $enrollmentIds)
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('enrollment_id');
-
             foreach ($validated['rows'] as $row) {
                 /** @var EvidenceRecord|null $record */
-                $record = $existingRecords->get($row['enrollment_id']);
+                $record = $existingRecords->get($row['enrollment_id'])?->first();
 
                 if (($row['homework_status'] ?? null) === null) {
                     if ($record?->delete() === true) {
@@ -352,8 +360,14 @@ class EvidenceController extends Controller
                 ];
 
                 if ($record !== null) {
-                    $record->update($values);
-                    $touched++;
+                    // Saving the same marking again changes nothing and counts
+                    // as nothing — not in the audit, not in the metrics.
+                    $record->fill($values);
+
+                    if ($record->isDirty()) {
+                        $record->save();
+                        $touched++;
+                    }
 
                     continue;
                 }
@@ -383,7 +397,7 @@ class EvidenceController extends Controller
             $usage->action(UsageEventType::HomeworkBatchSaved, 'homework:'.$class->getKey().':'.$validated['occurred_at'], $touched);
         }
 
-        $this->flashWithFollowup(__('Trabalho de casa guardado.'), $followup);
+        $this->flashWithFollowup($touched > 0 ? __('Trabalho de casa guardado.') : __('Não havia alterações por guardar.'), $followup);
 
         return back();
     }

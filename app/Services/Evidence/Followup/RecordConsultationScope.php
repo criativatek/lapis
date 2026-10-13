@@ -166,6 +166,16 @@ final class RecordConsultationScope
         return array_values($this->classes->map(fn (SchoolClass $class): int => $class->id)->all());
     }
 
+    /**
+     * Every class of the year the person teaches, whatever the filters say.
+     *
+     * @return list<int>
+     */
+    public function yearClassIds(): array
+    {
+        return array_values($this->yearClasses->map(fn (SchoolClass $class): int => $class->id)->all());
+    }
+
     public function studentId(): ?int
     {
         return $this->student?->id;

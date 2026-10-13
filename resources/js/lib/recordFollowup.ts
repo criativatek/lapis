@@ -15,6 +15,9 @@ export type FollowupView = FollowupCategory | 'absences';
 
 export type CaseStatus = 'pending' | 'registered' | 'none';
 
+/** «Registar TPC», «Panorama da turma», «Pesquisar registos» (0.165.0). */
+export type RecordsTab = 'tpc' | 'panorama' | 'search';
+
 export type ConsultationFilters = {
     year: string | null;
     subject: string | null;
@@ -27,6 +30,54 @@ export type ConsultationFilters = {
     to: string | null;
     searched: boolean;
     view: FollowupView | null;
+    tab: RecordsTab;
+};
+
+/** «Registar TPC»: the class and the day of the grid (the grid loads itself). */
+export type RegisterContext = {
+    class: { ulid: string; label: string; subject: string; archived: boolean } | null;
+    date: string;
+    today: string;
+    can_write: boolean;
+};
+
+export type PanoramaColumn = 'homework_not_done' | 'missing_material' | 'lateness' | 'absences';
+
+export const PANORAMA_COLUMNS: { key: PanoramaColumn; label: string; short: string }[] = [
+    { key: 'homework_not_done', label: 'TPC não realizados', short: 'TPC' },
+    { key: 'missing_material', label: 'Faltas de material', short: 'Material' },
+    { key: 'lateness', label: 'Atrasos', short: 'Atrasos' },
+    { key: 'absences', label: 'Faltas de presença', short: 'Faltas' },
+];
+
+export type PanoramaRow = {
+    ulid: string;
+    number: number | null;
+    name: string;
+    enrolled_on: string;
+    left_on: string | null;
+    /** Entered or left during the window. */
+    partial: boolean;
+    /** null = nothing to count (see `missing`). */
+    counts: Record<PanoramaColumn, number | null>;
+    missing: Partial<Record<PanoramaColumn, 'no_data' | 'not_applicable'>>;
+    homework: { done: number; partially_done: number; not_done: number; verified: number };
+    absence_days: number;
+    attendance_recorded: number;
+    statuses: Partial<Record<FollowupCategory, CaseStatus | null>>;
+    has_occurrences: boolean;
+};
+
+export type Panorama = {
+    rows: PanoramaRow[];
+    totals: Record<PanoramaColumn, number>;
+    meta: {
+        is_period: boolean;
+        attendance_applicable: boolean;
+        homework_days: number;
+        lessons_counted: number;
+        lessons_not_recorded: number;
+    };
 };
 
 export type Paginated<T> = {
@@ -148,6 +199,12 @@ export type CaseDetail = {
         restored: boolean;
     }[];
     can_confirm: boolean;
+    /**
+     * TPC only: what was marked for the student in the window, by state, and
+     * on how many days the class had homework marked without a marking of
+     * theirs. Never «days homework was set» — the application does not know.
+     */
+    homework?: { done: number; partially_done: number; not_done: number; verified: number; class_days: number; unmarked_days: number } | null;
 };
 
 export type AbsenceDetail = {
@@ -272,6 +329,40 @@ export function withQuery(currentUrl: string, changes: Record<string, string | n
 }
 
 /** The filters as the query string a search sends — empty values left out. */
+/**
+ * The URL of a tab. The search keeps every filter; registering and the
+ * panorama keep only what they use — the year, the class and (panorama) the
+ * period or date range — so a student or a kind chosen in the search never
+ * hides anyone in the grid or the panorama.
+ */
+export function tabQuery(filters: ConsultationFilters, tab: RecordsTab, extra: Record<string, string> = {}): Record<string, string> {
+    if (tab === 'search') {
+        return { ...filtersToQuery(filters), tab, ...extra };
+    }
+
+    const query: Record<string, string> = { tab };
+
+    if (filters.year) {
+        query.year = filters.year;
+    }
+
+    if (filters.class) {
+        query.class = filters.class;
+    }
+
+    if (tab === 'panorama') {
+        const all = filtersToQuery(filters);
+
+        for (const key of ['mode', 'period', 'from', 'to'] as const) {
+            if (all[key]) {
+                query[key] = all[key];
+            }
+        }
+    }
+
+    return { ...query, ...extra };
+}
+
 export function filtersToQuery(filters: ConsultationFilters): Record<string, string> {
     const query: Record<string, string> = {};
     const keys: (keyof ConsultationFilters)[] = ['year', 'subject', 'class', 'student', 'kind'];

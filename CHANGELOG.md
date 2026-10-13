@@ -25,6 +25,91 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.165.0] — 2026-10-13
+
+> **Correção da 0.164.0.** A consulta de «Registos» deixou o registo diário —
+> sobretudo o TPC — a três passos: a grelha continuava a existir, mas só
+> aparecia em «Registar ▾» → turma → mudar o tipo para «Trabalho de casa». O
+> menu passa a servir as duas finalidades, registar e consultar. Sem
+> migrações.
+
+### Adicionado
+
+- **«Registos» em três separadores: «Registar TPC», «Panorama da turma» e
+  «Pesquisar registos».** O texto de apoio diz as duas finalidades. Os
+  restantes tipos de registo criam-se em «Novo registo». A turma vem do URL
+  (por exemplo, dos atalhos da página de registo da turma) ou da última
+  escolhida nesta sessão; sem nenhuma, a página pede-a — nunca escolhe uma
+  por si. O histórico de registos nunca aparece sozinho: só a pesquisa o
+  lista.
+- **«Registar TPC»: a grelha com todos os alunos da turma na data**, logo à
+  vista, sem pesquisa prévia: quem estava na turma nesse dia (as regras de
+  entrada e saída da assiduidade), por número, com ou sem marcação anterior.
+  Cada linha tem as três escolhas — «Realizou» (verde), «Realizou
+  parcialmente» (azul), «Não realizou» (laranja) — com texto, símbolo e
+  seleção destacada; quem ainda não foi marcado fica «Não verificado»
+  (neutro), nunca presumido. «Marcar todos como realizou» aplica-se só a
+  quem está por verificar, e só quando se carrega; depois ajustam-se as
+  exceções. Resumo de realizados, parciais, não realizados e por verificar.
+  Teclado: Tab muda de aluno, ← → ou 1, 2, 3 escolhem, 0 repõe, ↑ ↓ mudam de
+  linha.
+- **«Panorama da turma»**: todos os alunos da turma numa só tabela — número,
+  nome, TPC não realizados, faltas de material, atrasos e faltas de presença —
+  carregada logo que a turma é conhecida, no período em curso (ou noutro
+  período, ou num intervalo de datas). Ordenação por número, nome ou cada
+  indicador, «Só alunos com ocorrências» e pesquisa rápida de aluno. Cada
+  número acima de zero abre o detalhe (datas, ocorrências, registo ou aula de
+  origem, mensagem e marcação «Registado no Inovar») e volta ao mesmo ponto;
+  as células de casos com alerta mostram se estão por tratar ou registados.
+  Distingue «0» (nada registado — não prova cumprimento), «—» (sem dados
+  lançados: nenhum TPC verificado, nenhuma assiduidade lançada) e «n.a.»
+  (assiduidade não disponível no plano), e diz a cobertura: dias com TPC
+  marcado, aulas com assiduidade lançada e aulas dadas por lançar. Sem
+  pontuação global nem ordenação de alunos por comportamento.
+- No detalhe de um caso de TPC: quantas verificações, quantas «Realizou»,
+  «Parcialmente» e «Não realizou», e em quantos dias a turma teve TPC marcado
+  sem marcação desse aluno («por verificar», que não conta).
+- Na página de registo da turma, atalhos para «Registar TPC da turma» e
+  «Panorama da turma».
+
+### Corrigido
+
+- A grelha mostrava os alunos ativos hoje, não os que estavam na turma na
+  data: um aluno que entrou depois aparecia num dia antigo, e um que saiu
+  desaparecia dos dias em que lá esteve. Passa a seguir a data; quem saiu e
+  não tem marcação nesse dia fica só de leitura, e uma marcação existente
+  continua corrigível.
+- Um aluno com dois registos de TPC no mesmo dia (feitos um a um no
+  formulário) aparecia com um só estado, e gravar a grelha alterava um deles
+  em silêncio. A linha passa a só de leitura, diz porquê e leva à pesquisa
+  desses registos; o servidor recusa escrevê-los pela grelha.
+- A grelha enviava todas as linhas e contava como «alterado» o que não mudou
+  (auditoria e métricas). Agora envia só o que mudou; regravar não muda nada,
+  não audita nem conta, e diz «Não havia alterações por guardar».
+- Alterações feitas enquanto uma gravação corria eram apagadas pelo
+  recarregamento. Ficam, por guardar. O que está por guardar distingue-se do
+  que já está gravado (linha marcada e contador), uma falha mantém as
+  escolhas, e sair, mudar de turma, de data ou de separador pergunta antes
+  (o mesmo aviso das Aulas, com «Guardar e continuar»).
+- Repor uma marcação em «Não verificado» apagava sem aviso a observação dessa
+  marcação. Agora pergunta antes de guardar.
+
+### Segurança
+
+- Todas as operações continuam a ser autorizadas no servidor: leitura nas
+  turmas que a pessoa leciona (uma turma alheia dá 404), escrita com
+  `update` na turma. Numa sessão de apoio técnico o panorama e a grelha leem-se;
+  as escritas seguem a ADR-0014 (como até aqui), e a marcação «Registado no
+  Inovar» continua recusada.
+
+### Interno
+
+- `HomeworkGridRoster` (rol da grelha por data, linhas só de leitura) e
+  `ClassRecordPanorama` (os quatro indicadores por aluno, em consultas
+  agrupadas sobre `RecordFollowupCounter` e `ConsolidatedAbsences` — o mesmo
+  número dos cartões, nunca uma consulta por aluno). Só o separador ativo
+  calcula os seus dados. Sem migrações; o backup não muda.
+
 ## [0.164.0] — 2026-10-13
 
 > **Numeração.** Assenta na 0.163.0 (PR #64, «Utilização e acompanhamento»,

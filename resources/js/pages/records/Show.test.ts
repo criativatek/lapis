@@ -12,7 +12,7 @@ vi.mock('@inertiajs/vue3', () => ({
         inheritAttrs: false,
         setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()),
     }),
-    router: { post: routerPost, put: vi.fn(), delete: vi.fn(), get: vi.fn() },
+    router: { post: routerPost, put: vi.fn(), delete: vi.fn(), get: vi.fn(), on: vi.fn(() => () => {}), visit: vi.fn() },
     useForm: (data: Record<string, unknown>) =>
         reactive({
             ...data,
@@ -261,7 +261,10 @@ describe('records Show — registar, não consultar', () => {
         const wrapper = mountShow();
 
         expect(wrapper.text()).toContain('Registos mais recentes');
-        expect(wrapper.find('a[href="/records?year=year-1&class=class-1&searched=1"]').exists()).toBe(true);
+        expect(wrapper.find('a[href="/records?tab=search&year=year-1&class=class-1&searched=1"]').exists()).toBe(true);
+        // The two other paths of «Registos», for this class.
+        expect(wrapper.find('[data-test="register-homework-link"]').attributes('href')).toBe('/records?tab=tpc&year=year-1&class=class-1');
+        expect(wrapper.find('[data-test="panorama-link"]').attributes('href')).toBe('/records?tab=panorama&year=year-1&class=class-1');
         expect(wrapper.text()).not.toContain('Registos apresentados');
     });
 

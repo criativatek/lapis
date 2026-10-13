@@ -14,10 +14,12 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Evidence\EvidenceRecordLabels;
 use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
+use App\Services\Evidence\Followup\ClassRecordPanorama;
 use App\Services\Evidence\Followup\RecordConsultationScope;
 use App\Services\Evidence\Followup\RecordFollowupCaseBook;
 use App\Services\Evidence\Followup\RecordFollowupNotices;
 use App\Services\Evidence\Followup\RecordFollowupPresenter;
+use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -27,14 +29,19 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * «Registos» — the consultation of the logbook (spec 2026-10-12): filters and a
- * compact summary on entry, never the whole list; three direct accesses to
- * TPC não realizados, atrasos and faltas de material in the period; the
- * alerts still «por tratar»; and the teacher's «Registado no Inovar».
+ * «Registos» — to REGISTER and to CONSULT (0.165.0), in three tabs:
  *
- * Every read is confined to the classes the person teaches
- * (RecordConsultationScope). Creating and editing records stays on the class
- * logbook (EvidenceController); this screen links there and back.
+ * - `tpc` — «Registar TPC»: the homework grid of one class and day, every
+ *   student of the day (HomeworkGridRoster), saved through the same endpoint
+ *   and the same follow-up as ever (EvidenceController);
+ * - `panorama` — «Panorama da turma»: every student of one class with the four
+ *   indicators side by side (ClassRecordPanorama), loaded as soon as the class
+ *   is known, never after a «Pesquisar»;
+ * - `search` — «Pesquisar registos»: the consultation of 0.164.0 (filters, the
+ *   four direct accesses, the alerts and the paginated results).
+ *
+ * Only the active tab computes its props. Every read is confined to the
+ * classes the person teaches (RecordConsultationScope).
  */
 class RecordConsultationController extends Controller
 {
@@ -42,17 +49,52 @@ class RecordConsultationController extends Controller
 
     public const int RESULTS_PER_PAGE = 25;
 
+    public const string TAB_REGISTER = 'tpc';
+
+    public const string TAB_PANORAMA = 'panorama';
+
+    public const string TAB_SEARCH = 'search';
+
+    /** The class last chosen to register or to see the panorama — reused, never guessed. */
+    public const string SESSION_CLASS = 'records.class';
+
+    /** Any of these in the URL is the search tab's state (an alert link, a list, a search). */
+    private const array SEARCH_KEYS = ['searched', 'view', 'kind', 'student', 'case_class', 'followup_page', 'page'];
+
     public function __construct(
         private readonly RecordFollowupPresenter $presenter,
         private readonly RecordFollowupCaseBook $cases,
+        private readonly ClassRecordPanorama $panorama,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $scope = RecordConsultationScope::resolve($request, $this->user());
+        $tab = $this->tab($request);
         $searched = $request->query('searched') === '1';
         $view = $this->view($request->query('view'));
         $canConfirm = ! $request->session()->has('impersonator_id');
+        $needsClass = $tab !== self::TAB_SEARCH;
+
+        // To register or see a panorama, a class: the one in the URL, else the
+        // one this person chose last (this session, this year) — never one
+        // picked for them. Without either, the page asks.
+        if ($needsClass && $scope->class === null && ! is_string($request->query('class'))) {
+            $remembered = $request->session()->get(self::SESSION_CLASS);
+            $class = is_string($remembered) ? $scope->yearClasses->first(fn (SchoolClass $candidate): bool => $candidate->ulid === $remembered) : null;
+
+            if ($class !== null) {
+                return redirect()->to($request->fullUrlWithQuery(['class' => $class->ulid, 'tab' => $tab]));
+            }
+
+            $request->session()->forget(self::SESSION_CLASS);
+        }
+
+        if ($needsClass && $scope->class !== null) {
+            $request->session()->put(self::SESSION_CLASS, $scope->class->ulid);
+        }
+
+        $isSearch = $tab === self::TAB_SEARCH;
 
         // Every expensive prop is a closure: a partial reload (opening a case,
         // refreshing the options) computes only what it asked for.
@@ -71,13 +113,21 @@ class RecordConsultationController extends Controller
                 'to' => $scope->to?->format('Y-m-d'),
                 'searched' => $searched,
                 'view' => $view instanceof RecordFollowupCategory ? $view->value : $view,
+                'tab' => $tab,
             ],
             'options' => fn () => $this->options($scope),
             'context' => $this->context($scope),
-            'tiles' => fn () => $this->presenter->tiles($scope),
-            'alerts' => fn () => $this->presenter->alertRows($this->cases->pendingAlerts($scope->classIds(), $scope->timeline, $scope->studentId())),
-            'results' => fn () => $searched && $view === null && $scope->window !== null ? $this->results($request, $scope) : null,
-            'followup' => fn () => $view !== null && $scope->window !== null
+            'register' => fn () => $tab === self::TAB_REGISTER ? $this->register($request, $scope) : null,
+            'panorama' => fn () => $tab === self::TAB_PANORAMA && $scope->class !== null && $scope->window !== null
+                ? $this->panorama->for($scope->class, $scope->window, app(Entitlements::class)->canRead('lessons'))
+                : null,
+            // How many alerts wait in the whole year — a line above the tabs
+            // that are not the search, which lists them.
+            'pendingAlerts' => fn () => $isSearch ? 0 : $this->cases->pendingAlerts($scope->yearClassIds(), $scope->timeline, null, false)->count(),
+            'tiles' => fn () => $isSearch ? $this->presenter->tiles($scope) : [],
+            'alerts' => fn () => $isSearch ? $this->presenter->alertRows($this->cases->pendingAlerts($scope->classIds(), $scope->timeline, $scope->studentId())) : [],
+            'results' => fn () => $isSearch && $searched && $view === null && $scope->window !== null ? $this->results($request, $scope) : null,
+            'followup' => fn () => $isSearch && $view !== null && $scope->window !== null
                 ? [
                     'category' => $view instanceof RecordFollowupCategory ? $view->value : $view,
                     'label' => $view instanceof RecordFollowupCategory ? $view->label() : (string) __('Faltas de presença'),
@@ -140,6 +190,57 @@ class RecordConsultationController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => __('A marcação de registado no Inovar foi desfeita.')]);
 
         return back();
+    }
+
+    /**
+     * The tab asked for, else the search when the URL carries the search's own
+     * state (an alert opened from the dashboard, a list, a page of results),
+     * else «Registar TPC».
+     */
+    private function tab(Request $request): string
+    {
+        $asked = $request->query('tab');
+
+        if (in_array($asked, [self::TAB_REGISTER, self::TAB_PANORAMA, self::TAB_SEARCH], true)) {
+            return $asked;
+        }
+
+        foreach (self::SEARCH_KEYS as $key) {
+            if ($request->query($key) !== null) {
+                return self::TAB_SEARCH;
+            }
+        }
+
+        return self::TAB_REGISTER;
+    }
+
+    /**
+     * «Registar TPC»: the class and the day of the grid. The day is today in
+     * the application's time zone unless the teacher chose another; the grid
+     * itself is loaded by the browser from the homework endpoint.
+     *
+     * @return array<string, mixed>
+     */
+    private function register(Request $request, RecordConsultationScope $scope): array
+    {
+        $today = now()->timezone((string) config('app.timezone'))->format('Y-m-d');
+        $asked = $request->query('date');
+        $date = is_string($asked) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $asked) === 1 && checkdate((int) substr($asked, 5, 2), (int) substr($asked, 8, 2), (int) substr($asked, 0, 4))
+            ? $asked
+            : $today;
+        $class = $scope->class;
+
+        return [
+            'class' => $class === null ? null : [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject->name,
+                'archived' => $class->archived_at !== null,
+            ],
+            'date' => $date,
+            'today' => $today,
+            'can_write' => $class !== null && $class->archived_at === null && Gate::allows('update', $class),
+        ];
     }
 
     /**

@@ -22,11 +22,23 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 
-const props = defineProps<{
-    open: boolean;
-    context: string | null;
-    saving: boolean;
-}>();
+// The words default to the lesson summary (0.158.0); the homework grid
+// (0.165.0) says its own — the decision and the three ways out are the same.
+const props = withDefaults(
+    defineProps<{
+        open: boolean;
+        context: string | null;
+        saving: boolean;
+        lead?: string | null;
+        consequence?: string;
+        savingText?: string;
+    }>(),
+    {
+        lead: 'No sumário de',
+        consequence: 'Se continuares sem guardar, perdes o que escreveste.',
+        savingText: 'A guardar o sumário…',
+    },
+);
 const emit = defineEmits<{ stay: []; leave: []; save: [] }>();
 
 const stayButton = ref<InstanceType<typeof Button> | null>(null);
@@ -65,10 +77,10 @@ watch(
                 <DialogTitle>Tens alterações por guardar</DialogTitle>
                 <DialogDescription>
                     <template v-if="context"
-                        >No sumário de
-                        <strong class="text-foreground">{{ context }}</strong
+                        ><template v-if="lead">{{ lead }} </template
+                        ><strong class="text-foreground">{{ context }}</strong
                         >. </template
-                    >Se continuares sem guardar, perdes o que escreveste.
+                    >{{ consequence }}
                 </DialogDescription>
             </DialogHeader>
             <p
@@ -76,7 +88,7 @@ watch(
                 role="status"
                 class="flex items-center gap-2 text-sm text-muted-foreground"
             >
-                <Spinner /> A guardar o sumário…
+                <Spinner /> {{ savingText }}
             </p>
             <DialogFooter class="gap-2 sm:gap-2">
                 <Button
