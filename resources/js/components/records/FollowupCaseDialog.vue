@@ -187,7 +187,7 @@ function onOpenChange(open: boolean): void {
                     Alerta em {{ formatInstant(detail.alerted_at) }}
                 </span>
                 <span v-else-if="detail.origin === 'existing'" class="text-xs text-muted-foreground">
-                    Chegou a três ou mais sem alerta (registos anteriores aos alertas, importados ou com datas de períodos alteradas) — por tratar.
+                    Chegou a três ou mais sem alerta (registos anteriores aos alertas, importados ou com datas de períodos alteradas).
                 </span>
             </div>
 
