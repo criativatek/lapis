@@ -7,6 +7,9 @@ use App\Models\Report;
 use App\Models\ReportSection;
 use App\Services\Reporting\ComposeReport;
 use App\Services\Reporting\Writing\ReportWritingAssistant;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
+use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +32,7 @@ class ReportSectionController extends Controller
     public function __construct(
         protected ComposeReport $composer,
         protected ReportWritingAssistant $assistant,
+        protected UsageRecorder $usage,
     ) {}
 
     /** The teacher's own text. From here on the section is theirs. */
@@ -47,6 +51,8 @@ class ReportSectionController extends Controller
             // to duplicate how «edited» is decided.
             'assisted' => ['sometimes', 'boolean'],
         ]);
+
+        $before = $this->snapshot($report);
 
         $attributes = [];
 
@@ -83,6 +89,8 @@ class ReportSectionController extends Controller
             );
         }
 
+        $this->recordEdit($report, $before);
+
         return back();
     }
 
@@ -91,7 +99,11 @@ class ReportSectionController extends Controller
     {
         $this->guard($report, $section);
 
+        $before = $this->snapshot($report);
+
         $this->composer->regenerate($section);
+
+        $this->recordEdit($report, $before);
 
         return back();
     }
@@ -101,7 +113,11 @@ class ReportSectionController extends Controller
     {
         $this->guard($report, $section);
 
+        $before = $this->snapshot($report);
+
         $this->composer->restore($section);
+
+        $this->recordEdit($report, $before);
 
         return back();
     }
@@ -120,6 +136,8 @@ class ReportSectionController extends Controller
             'order' => ['required', 'array'],
             'order.*' => ['string'],
         ]);
+
+        $before = $this->snapshot($report);
 
         DB::transaction(function () use ($report, $data): void {
             $sections = $report->sections()->orderBy('position')->get();
@@ -153,7 +171,22 @@ class ReportSectionController extends Controller
             }
         });
 
+        $this->recordEdit($report, $before);
+
         return back();
+    }
+
+    /** O relatório e as suas secções, para só contar uma edição que mudou algo. */
+    protected function snapshot(Report $report): string
+    {
+        return $this->usage->snapshot(fn (): array => UsageSnapshots::report($report->getKey()));
+    }
+
+    protected function recordEdit(Report $report, string $before): void
+    {
+        if ($this->usage->changed($before, $this->snapshot($report))) {
+            $this->usage->action(UsageEventType::ReportEdited, $report);
+        }
     }
 
     protected function guard(Report $report, ReportSection $section): void

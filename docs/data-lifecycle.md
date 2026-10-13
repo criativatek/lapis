@@ -227,6 +227,32 @@ nunca faz reaparecer um registo eliminado no destino. O dump diário da base
 incluídos, como leva os `evidence_records` eliminados. Detalhe em
 [backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
+## Métricas de utilização (0.163.0)
+
+`usage_events` e `usage_daily_rollups` (painel interno `/admin/usage`, ver
+[usage-insights.md](usage-insights.md)) guardam, por dia, que funcionalidades
+cada conta usou e que ações concluiu — sem conteúdo nem dados de alunos.
+
+| Dados | Prazo | Quem o executa |
+| --- | --- | --- |
+| Eventos detalhados | **35 dias** (`retention.usage_events_days`, proposta) a contar do instante do evento, **agregados ou não** — no máximo 35 dias e uma hora | `usage:prune`, de **hora a hora** (aos 7 minutos) |
+| Agregados diários por pessoa | **180 dias** (`retention.usage_rollups_days`, proposta) depois do dia a que se referem | `usage:prune`, de hora a hora |
+| Dias sem dados (`usage_coverage_gaps`: só o dia e o motivo) | o mesmo dos agregados | `usage:prune`, de hora a hora |
+| Data de cada primeiro passo (`usage_user_states.first_*_on`) | **180 dias** (o prazo dos agregados); depois fica só «atingido», sem data | `usage:prune`, de hora a hora |
+| Estado «atingido» de cada primeiro passo (`first_*_reached`) | enquanto a conta existir | apagado na oposição, no pedido de encerramento e na anonimização |
+| Tudo o que é de quem pediu o encerramento | **no pedido** (não no dia 60); o cancelamento não recupera | `RequestPersonalAccountClosure` → `ForgetUsageData` |
+| Tudo o que é de quem se opôs | no momento da oposição | definições da conta (ou `lapis:usage-opt-out`) → `SetUsageOptOut` → `ForgetUsageData` |
+
+Se a agregação parar mais tempo do que o prazo dos eventos, os eventos saem na
+mesma; os dias que expiram por agregar ficam registados como dias sem dados (só
+o dia e o motivo) e o painel mostra-os como «sem recolha», nunca como zero.
+
+É a primeira tabela do produto com eliminação **por antiguidade**, e de
+propósito: não são dados do professor nem dos alunos, são um instrumento de
+medida, e um instrumento de medida não precisa de se lembrar de tudo para
+sempre. O backup diário integral leva-as como leva o resto da base; a
+exportação «Exportar os meus dados» não (não são trabalho do professor).
+
 ## A regra do ponteiro (0.101.3)
 
 > **Nunca limpar `stored_path`/`disk_path` antes de o ficheiro estar

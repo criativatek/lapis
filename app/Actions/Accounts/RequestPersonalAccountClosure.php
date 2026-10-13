@@ -2,6 +2,7 @@
 
 namespace App\Actions\Accounts;
 
+use App\Actions\Usage\ForgetUsageData;
 use App\Models\OrganizationType;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
@@ -12,9 +13,14 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Starts the recoverable closure window for a personal account (§5-§6 of the
- * lifecycle brief). Never deletes anything — it stamps a deadline that
- * CancelPersonalAccountClosure can still undo, and that
+ * lifecycle brief). Deletes nothing of the account itself — it stamps a
+ * deadline that CancelPersonalAccountClosure can still undo, and that
  * ClosureRetention/EnsureAccountIsOperational read from that moment on.
+ *
+ * The one exception is the usage metrics (docs/usage-insights.md): they are
+ * not the person's work, only a record of how they used the app, so they are
+ * erased HERE, in the same transaction, not on day 60. Cancelling the request
+ * does not bring them back.
  *
  * Distinct from `deactivated_at` (an operator's action) and from
  * DeleteUserAccount (immediate, administrative, exceptional — §34 of the
@@ -26,6 +32,7 @@ class RequestPersonalAccountClosure
         protected AuditLog $audit,
         protected RetentionPolicy $policy,
         protected CurrentOrganization $currentOrganization,
+        protected ForgetUsageData $forgetUsage,
     ) {}
 
     public function request(User $user): User
@@ -44,6 +51,10 @@ class RequestPersonalAccountClosure
                 'closure_requested_at' => $requestedAt,
                 'scheduled_deletion_at' => $scheduledDeletionAt,
             ])->save();
+
+            // A recolha pára aqui (o recorder não grava para quem pediu o
+            // encerramento) e o que já existia sai já, com a linha bloqueada.
+            $this->forgetUsage->forUser($lockedUser);
 
             $personalOrganization = $lockedUser->personalOrganization();
 

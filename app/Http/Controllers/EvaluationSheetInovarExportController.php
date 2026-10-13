@@ -21,6 +21,8 @@ use App\Support\Export\EvaluationSheetExportStorage;
 use App\Support\Export\InovarLevelOption;
 use App\Support\Export\InovarTemplateException;
 use App\Support\Export\InovarTemplateStorage;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -178,7 +180,7 @@ class EvaluationSheetInovarExportController extends Controller
      * needs back is the history entry, and the bytes come later through the
      * authorised download route.
      */
-    public function confirm(Request $request, SchoolClass $class, AcademicPeriod $period, string $token): RedirectResponse
+    public function confirm(Request $request, SchoolClass $class, AcademicPeriod $period, string $token, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
         $this->guardPeriod($class, $period);
@@ -284,7 +286,7 @@ class EvaluationSheetInovarExportController extends Controller
         }
 
         try {
-            return $this->generate($class, $period, $template, $templatePath, $token, [...$cells, ...$levelCells], [
+            $response = $this->generate($class, $period, $template, $templatePath, $token, [...$cells, ...$levelCells], [
                 'preview' => $preview,
                 'decided' => $decided,
                 'include_level' => $levelColumn !== null,
@@ -294,6 +296,12 @@ class EvaluationSheetInovarExportController extends Controller
                 'cell_count' => count($cells),
                 'level_cell_count' => count($levelCells),
             ]);
+
+            // A pauta para o INOVAR — outro registo que a exportação das
+            // classificações da mesma turma e período.
+            $usage->action(UsageEventType::InovarExported, 'evaluation-sheet:'.$class->getKey().':'.$period->getKey());
+
+            return $response;
         } catch (InovarTemplateException $exception) {
             return back()->withErrors(['template' => $exception->getMessage()]);
         }

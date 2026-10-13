@@ -2,6 +2,7 @@
 
 namespace App\Actions\Accounts;
 
+use App\Actions\Usage\ForgetUsageData;
 use App\Models\Organization;
 use App\Models\OrganizationType;
 use App\Models\StudentIdentity;
@@ -62,6 +63,7 @@ class AnonymiseClosedAccount
         protected ClosureRetention $retention,
         protected CurrentOrganization $currentOrganization,
         protected AuditLog $audit,
+        protected ForgetUsageData $forgetUsage,
     ) {}
 
     /**
@@ -99,6 +101,7 @@ class AnonymiseClosedAccount
             'photos' => 0,
             'passkeys' => 0,
             'sessions' => 0,
+            'usage_events' => 0,
         ];
 
         // ---- Files first: their paths are attributes of rows about to go. ----
@@ -135,6 +138,10 @@ class AnonymiseClosedAccount
 
             $removed['passkeys'] = DB::table('passkeys')->where('user_id', $user->getKey())->delete();
             $removed['sessions'] = DB::table('sessions')->where('user_id', $user->getKey())->delete();
+
+            // Métricas de utilização (docs/usage-insights.md): eventos, agregados
+            // e datas de primeira observação saem com a identidade.
+            $removed['usage_events'] = $this->forgetUsage->forUser($user);
 
             $this->stripIdentity($user);
         });

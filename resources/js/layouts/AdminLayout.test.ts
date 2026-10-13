@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import AdminLayout from './AdminLayout.vue';
 
+const auth = vi.hoisted(() => ({ user: { name: 'Nelson Matias' }, can_view_usage_insights: false }));
+
 vi.mock('@inertiajs/vue3', () => ({
     // Same reason as UserMenuContent.test.ts: resolve a Wayfinder route
     // definition to its url, exactly as the real Link does.
@@ -20,7 +22,7 @@ vi.mock('@inertiajs/vue3', () => ({
         },
     }),
     router: { post: vi.fn() },
-    usePage: () => ({ props: { auth: { user: { name: 'Nelson Matias' } } }, url: '/admin' }),
+    usePage: () => ({ props: { auth }, url: '/admin' }),
 }));
 
 vi.mock('@/components/ui/sonner', () => ({
@@ -42,6 +44,7 @@ function linkTo(wrapper: VueWrapper, label: string) {
 }
 
 afterEach(() => {
+    auth.can_view_usage_insights = false;
     wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
 });
 
@@ -74,5 +77,17 @@ describe('AdminLayout — the backoffice keeps its own navigation', () => {
         const wrapper = mountLayout();
 
         expect(linkTo(wrapper, 'Contas')?.classes()).toContain('bg-accent');
+    });
+});
+
+describe('AdminLayout — «Utilização» é para quem tem a autorização própria', () => {
+    it('does not list it without can_view_usage_insights', () => {
+        expect(linkTo(mountLayout(), 'Utilização')).toBeUndefined();
+    });
+
+    it('lists it, pointing at /admin/usage, when the flag is on', () => {
+        auth.can_view_usage_insights = true;
+
+        expect(linkTo(mountLayout(), 'Utilização')?.attributes('href')).toBe('/admin/usage');
     });
 });

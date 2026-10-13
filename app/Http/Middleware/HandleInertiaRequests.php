@@ -10,6 +10,7 @@ use App\Models\SupportRequest;
 use App\Models\SupportRequestStatus;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Legal\LegalDocuments;
+use App\Support\Legal\PrivacyVersion;
 use App\Support\Navigation\NavigationBuilder;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Retention\ResolveSelectedAcademicYear;
@@ -111,12 +112,21 @@ class HandleInertiaRequests extends Middleware
                 // forged `true` here buys a link to a 403.
                 'is_platform_admin' => $user?->isPlatformAdmin() ?? false,
                 'is_support_technician' => $user?->isSupportTechnician() ?? false,
+                // Do mesmo tom: se desenhar a entrada «Utilização». Apresentação,
+                // não acesso — `EnsureUsageInsightsAccess` é quem guarda /admin/usage.
+                'can_view_usage_insights' => $user?->canViewUsageInsights() ?? false,
                 // Se há uma Política de Privacidade mais recente do que o
                 // último aviso que esta pessoa fechou. Apenas isso: um booleano
                 // que decide se se desenha uma faixa informativa. Não é uma
                 // aceitação pendente e não bloqueia nada — ver
                 // `User::shouldSeePrivacyNotice()`.
                 'should_see_privacy_notice' => $user?->shouldSeePrivacyNotice() ?? false,
+                // O que mudou nessa versão, para a faixa o dizer: a ativação das
+                // métricas de utilização traz o seu próprio aviso (com a forma de
+                // se opor), e não o texto de uma versão anterior.
+                'privacy_notice_topic' => ($user?->shouldSeePrivacyNotice() ?? false)
+                    ? (PrivacyVersion::latestChangeIsUsageMetrics() ? 'usage_metrics' : 'general')
+                    : null,
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,

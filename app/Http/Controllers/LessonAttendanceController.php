@@ -12,6 +12,8 @@ use App\Http\Requests\Lessons\LessonAttendanceRecordRequest;
 use App\Models\Lesson;
 use App\Models\Student;
 use App\Models\User;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -24,6 +26,7 @@ class LessonAttendanceController extends Controller implements HasMiddleware
         protected SaveLessonAttendanceDraft $saveDraft,
         protected RecordLessonAttendance $recordAttendance,
         protected CorrectLessonAttendance $correctAttendance,
+        protected UsageRecorder $usage,
     ) {}
 
     /**
@@ -48,6 +51,8 @@ class LessonAttendanceController extends Controller implements HasMiddleware
         $this->refuseDuringImpersonation($request);
 
         $this->recordAttendance->execute($lesson, $this->user($request), $request->absentStudentUlids());
+
+        $this->usage->action(UsageEventType::LessonAttendanceRecorded, $lesson);
 
         return back()->with('success', 'Assiduidade registada.');
     }

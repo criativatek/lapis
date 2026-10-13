@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\Legal\PrivacyVersion;
 use App\Support\Tenancy\CurrentOrganization;
+use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -31,6 +33,10 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string|null $remember_token
  * @property bool $is_platform_admin
  * @property bool $is_support_technician
+ * @property bool $can_view_usage_insights
+ * @property bool $can_control_usage_collection
+ * @property Carbon|null $usage_opted_out_at
+ * @property Carbon|null $usage_resumed_at
  * @property Carbon|null $deactivated_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
@@ -64,6 +70,10 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'two_factor_confirmed_at' => 'datetime',
             'is_platform_admin' => 'boolean',
             'is_support_technician' => 'boolean',
+            'can_view_usage_insights' => 'boolean',
+            'can_control_usage_collection' => 'boolean',
+            'usage_opted_out_at' => 'datetime',
+            'usage_resumed_at' => 'datetime',
             'deactivated_at' => 'datetime',
             'closure_requested_at' => 'datetime',
             'scheduled_deletion_at' => 'datetime',
@@ -82,6 +92,41 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     public function isSupportTechnician(): bool
     {
         return $this->is_support_technician === true;
+    }
+
+    /**
+     * Pode abrir /admin/usage. As DUAS condições: ser administrador da
+     * plataforma não chega, a autorização própria não é concedida por omissão,
+     * e uma autorização sem o estatuto de administrador não vale nada.
+     */
+    public function canViewUsageInsights(): bool
+    {
+        return $this->isPlatformAdmin() && $this->can_view_usage_insights === true;
+    }
+
+    /**
+     * Pode ligar e desligar a recolha de métricas de utilização. É outra
+     * autorização, SEPARADA de consultar o painel: ver as métricas não chega
+     * para as começar a recolher. Também exige o estatuto de administrador.
+     */
+    public function canControlUsageCollection(): bool
+    {
+        return $this->isPlatformAdmin() && $this->can_control_usage_collection === true;
+    }
+
+    /**
+     * Desde quando a utilização desta pessoa PODE ter sido observada: a criação
+     * da conta ou, se a recolha voltou a valer para ela depois de uma oposição
+     * ou de um encerramento cancelado, esse instante. Antes disso não há
+     * histórico (foi eliminado), e o painel diz «sem recolha», nunca zero.
+     */
+    public function usageObservedSince(): CarbonImmutable
+    {
+        $created = CarbonImmutable::instance($this->created_at ?? now());
+
+        return $this->usage_resumed_at !== null && $this->usage_resumed_at->greaterThan($created)
+            ? CarbonImmutable::instance($this->usage_resumed_at)
+            : $created;
     }
 
     /**
@@ -154,17 +199,22 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
      * NÃO É UMA ACEITAÇÃO PENDENTE: fechar o aviso não consente coisa nenhuma,
      * e não o fechar não bloqueia nada. É informação, e a única coisa que este
      * método decide é se ela ainda é nova para quem está a ler.
+     *
+     * O INSTANTE em vigor vem de PrivacyVersion: é a data escrita à mão, ou o
+     * momento em que as métricas de utilização foram ativadas, se for depois —
+     * e por isso compara instantes, não só dias (quem fechou o aviso às 10h do
+     * dia em que a recolha começou às 14h volta a vê-lo).
      */
     public function shouldSeePrivacyNotice(): bool
     {
-        $emVigor = config('lapis.legal.privacy_effective_from');
+        $emVigor = PrivacyVersion::effectiveAt();
 
-        if (! is_string($emVigor) || $emVigor === '') {
+        if ($emVigor === null) {
             return false;
         }
 
         return $this->privacy_notice_dismissed_at === null
-            || $this->privacy_notice_dismissed_at->lt(Carbon::parse($emVigor));
+            || $this->privacy_notice_dismissed_at->lt($emVigor);
     }
 
     /**

@@ -9,6 +9,8 @@ use App\Services\Classes\ReusableStudents;
 use App\Services\Classes\StudentAlreadyEnrolled;
 use App\Services\StudentEnrollmentService;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -50,7 +52,7 @@ class SupportClassStudentController extends Controller
         ]);
     }
 
-    public function store(Request $request, SchoolClass $class): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
         abort_unless($class->is_support_class, 404);
@@ -83,6 +85,8 @@ class SupportClassStudentController extends Controller
             "Aluno existente adicionado à turma de apoio — {$class->label}.",
             ['class_id' => $class->id, 'enrollment_id' => $enrollment->id, 'count' => 1],
         );
+
+        $usage->action(UsageEventType::StudentsAdded, $enrollment);
 
         // SEM TOAST, de propósito: a confirmação é dada no próprio campo de
         // pesquisa (ExistingStudentPicker). No telemóvel o toast caía em cima

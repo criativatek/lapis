@@ -14,6 +14,8 @@ use App\Services\Import\Timetable\PdfTextExtractor;
 use App\Services\Import\Timetable\TimetableParser;
 use App\Services\Import\Timetable\TimetablePdfException;
 use App\Support\Retention\ResolveSelectedAcademicYear;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -120,7 +122,7 @@ class TimetableImportController extends Controller implements HasMiddleware
         ]);
     }
 
-    public function confirm(TimetableImportConfirmRequest $request): RedirectResponse
+    public function confirm(TimetableImportConfirmRequest $request, UsageRecorder $usage): RedirectResponse
     {
         $this->refuseDuringImpersonation($request);
 
@@ -135,13 +137,14 @@ class TimetableImportController extends Controller implements HasMiddleware
         $existed = 0;
         $conflicted = 0;
         $touched = [];
+        $createdSlotIds = [];
 
         // One transaction for the batch: an unexpected failure halfway through
         // must not leave a half-imported timetable behind. Duplicates and
         // conflicts are NOT failures — they are skipped and counted, because a
         // batch of twenty new blocks and two already-present ones should still
         // add the twenty.
-        DB::transaction(function () use ($rows, $startsOn, $endsOn, &$created, &$existed, &$conflicted, &$touched): void {
+        DB::transaction(function () use ($rows, $startsOn, $endsOn, &$created, &$existed, &$conflicted, &$touched, &$createdSlotIds): void {
             $existingByClass = [];
 
             foreach ($rows as $row) {
@@ -202,8 +205,22 @@ class TimetableImportController extends Controller implements HasMiddleware
 
                 $created++;
                 $touched[$classId] = true;
+                $createdSlotIds[] = $slot->getKey();
             }
         });
+
+        // Esta importação não tem token: a identidade da ação é o conjunto de
+        // tempos que ela criou (um reenvio igual não cria nenhum, logo não conta).
+        // Os conflitos ficam de fora: não são tempos, são recusas.
+        if ($created > 0) {
+            $usage->action(
+                UsageEventType::TimetableImported,
+                'timetable:'.sha1(implode(',', $createdSlotIds)),
+                created: $created,
+                changed: 0,
+                unchanged: $existed,
+            );
+        }
 
         Inertia::flash('toast', [
             'type' => 'success',

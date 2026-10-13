@@ -16,12 +16,14 @@ use App\Services\Import\Correction\PlickersCsvParser;
 use App\Support\Characterisation\DecreeLaw54CodeResolver;
 use App\Support\Characterisation\LegalCodeResolver;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Legal\PrivacyVersionMemo;
 use App\Support\Limits\Limits;
 use App\Support\Release\BuildsSsrBundle;
 use App\Support\Release\BuildStamp;
 use App\Support\Release\NpmSsrBundleBuilder;
 use App\Support\Ssr\ServerRenderedPages;
 use App\Support\Tenancy\CurrentOrganization;
+use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Encryption\DecryptException;
@@ -49,6 +51,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(Entitlements::class);
         $this->app->singleton(Limits::class);
+        // `scoped`, não `singleton`: o recorder memoriza o estado da recolha, e
+        // essa memória vale para um pedido ou um job, nunca para a vida de um
+        // worker (docs/usage-insights.md, «Ativação e desativação»).
+        $this->app->scoped(UsageRecorder::class);
+        $this->app->scoped(PrivacyVersionMemo::class);
 
         // THE SEAM FOR THE VERSIONED LEGAL CATALOGUE. Characterisation imports
         // read school shorthand — «MS b) + ACNS» — through this interface and

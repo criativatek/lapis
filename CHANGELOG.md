@@ -25,6 +25,153 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.163.0] — 2026-10-12
+
+### Adicionado
+
+- **Backoffice: «Utilização e acompanhamento» (`/admin/usage`).** Painel
+  interno para perceber a adoção do Lapispro — quem o usa, com que
+  regularidade, que funcionalidades usa e onde encontra dificuldades — e para
+  encontrar quem possa beneficiar de apoio. **Não avalia professores.**
+  Definições, dados recolhidos, conservação e ponderação em
+  `docs/usage-insights.md`.
+- **Visão geral:** utilizadores ativos nos últimos 7 e 30 dias e no período,
+  novas contas, primeiro registo útil («1 de 5», com o denominador e as contas
+  anteriores à recolha fora dele), evolução semanal (segunda a domingo, gráfico
+  e tabela) e mensal, utilização por funcionalidade (ações e elementos afetados
+  em colunas separadas, falhas técnicas), sinais de acompanhamento e regresso
+  nas semanas seguintes à adesão. Filtros: últimos 7/30/90 dias ou intervalo
+  personalizado, plano, organização e segmento.
+- **Acompanhamento:** lista pesquisável e paginada (adesão, plano, última
+  atividade observada, dias ativos de N observados, ações, funcionalidades,
+  sinais, estado descritivo) e, por pessoa, um resumo semanal e por
+  funcionalidade — só contagens, sem conteúdos nem histórico de cliques.
+- **Ranking de utilização:** por dias ativos (inicial), ações concluídas,
+  semanas com atividade ou funcionalidades utilizadas (indicador
+  complementar), sempre separados, sem pontuação composta. Empates partilham a
+  posição; contas recentes aparecem com «observação parcial (N de M dias)» e
+  filtram-se por antiguidade. «Compara a regularidade e as ações concluídas na
+  aplicação. Não avalia a qualidade do trabalho pedagógico.»
+- **Sinais de acompanhamento**, configuráveis em `config/usage.php`: conta sem
+  turma há 7 dias; turma disponível há 7 dias sem primeiro registo útil;
+  atividade em 2 das 4 semanas anteriores e nenhuma nos últimos 14 dias; 3
+  falhas técnicas em 7 dias. Cada um diz o motivo e a janela; não há sinal com
+  recolha insuficiente (conta-se à parte); interrupções letivas, feriados e
+  dias não letivos registados não contam para os prazos. Se a agregação parar
+  (mais de 60 minutos), os que dependem da atividade ficam por avaliar e o
+  painel avisa. Ficam só no painel — nada é enviado automaticamente.
+- **Recolha mínima** em `usage_events`, com catálogo fechado
+  (`UsageEventType`): dia, funcionalidade, tipo de evento, resultado ou código
+  técnico de lista fechada e, nas operações em lote, o número de elementos
+  afetados. Sem texto livre, sem JSON, sem alunos, sem URLs, sem mensagens de
+  erro, sem IP nem navegador, sem serviços externos. Consultas deliberadas
+  (uma por funcionalidade e dia; nunca recarregamentos parciais,
+  pré-carregamentos ou pedidos automáticos) e ações concluídas (só depois do
+  commit, nunca gravações sem alteração; uma importação de 100 alunos é 1 ação
+  com 100 elementos). **Uma ação por pessoa, organização, registo e dia, seja
+  criação ou edição**: criar um relatório e editá-lo três vezes no mesmo dia é
+  uma ação, e registos diferentes com o mesmo id nunca se fundem (o tipo de
+  registo vem do catálogo, `UsageEventType::record()`). A identidade é uma chave
+  única, por isso dois pedidos em paralelo gravam uma linha, e os agregados e o
+  ranking contam pela mesma definição. As ações são contagens deduplicadas, não
+  o registo de todas as operações. Acesso técnico do suporte, tarefas agendadas
+  e jobs nunca são registados, nem nada a partir de um pedido de encerramento da
+  conta. Uma falha na recolha nunca impede a gravação do trabalho do professor.
+- **Edições reais contam:** relatórios (dados, secções, ordem, regenerar,
+  restaurar), estratégias e medidas (edição e estado), instrumentos (cabeçalho,
+  grupos e itens) e acontecimentos — só quando alguma coisa mudou, e na mesma
+  ação que a criação se for no mesmo dia. As impressões digitais que o decidem
+  são calculadas em memória e nunca guardadas.
+- **Lotes discriminados:** criados, alterados e inalterados guardados à parte
+  (`items_created`, `items_changed`, `items_unchanged`). Uma reimportação da
+  lista de alunos é uma ação com os alunos criados mais os alterados; as linhas
+  iguais contam à parte e uma reimportação só com linhas iguais não conta.
+- **Classificação própria das organizações para as métricas**
+  (`usage_classification`: Por classificar · Utilização real · Teste e
+  demonstração · Interna), decidida por uma pessoa na ficha da conta ou com
+  `lapis:usage-classify`, auditada na plataforma. Todas nascem «Por
+  classificar»: nada é inferido da atividade, do nome, do plano nem da marca
+  comercial «conta de teste», que o painel deixa de ler.
+- Agregação diária a cada 15 minutos (`usage:aggregate`) — o painel diz até
+  quando os dados estão atualizados e nunca lê dados pedagógicos ao abrir;
+  cobertura da recolha registada (`usage_collection_periods`): antes do início
+  da recolha os períodos aparecem «sem recolha», nunca como zeros, e semanas e
+  meses parciais ou em curso estão assinalados.
+
+### Segurança
+
+- O painel exige **duas** coisas: ser administrador da plataforma **e** ter a
+  autorização própria `can_view_usage_insights`, que não é concedida por
+  omissão (`php artisan lapis:grant-usage-insights <email>`; depois, na ficha
+  da conta, por quem já a tem, com auditoria de plataforma). Verificada no
+  servidor em todas as rotas; revogar o administrador revoga-a também. Nunca é
+  mostrada a colegas nem a responsáveis de organizações.
+- **Ligar e desligar a recolha é uma autorização separada**
+  (`can_control_usage_collection`, só com o estatuto de administrador, não
+  concedida por omissão): consultar o painel não chega. Verificada no comando e
+  na própria ação, lida da base; primeira concessão no servidor
+  (`lapis:grant-usage-insights <email> --collection-control`), depois na ficha da
+  conta só por quem já a tem e nunca a si próprio; concessão, revogação e cada
+  `start`/`stop` auditados; revogar o administrador retira-a.
+- Quatro segmentos disjuntos: **Utilização real** (inicial), Teste e
+  demonstração, Interna (inclui sempre o pessoal interno) e Por classificar.
+  Até alguém classificar as organizações de produção, a utilização real está
+  vazia e o painel diz quantas estão por classificar.
+
+### Privacidade
+
+- **A recolha nasce DESLIGADA e só se liga explicitamente:** `php artisan
+  lapis:usage-collection start|stop --operator=<email>` (e `status`), com
+  auditoria de plataforma. A única fonte de verdade é haver um período aberto
+  em `usage_collection_periods` — não há chave de configuração. O período abre
+  e fecha no instante da transição (não no primeiro evento, nem na agregação
+  seguinte); repetir não duplica; religar deixa o intervalo como «sem
+  recolha». Desligar bloqueia logo: a escrita de cada evento, depois do commit,
+  confirma no mesmo comando SQL que a recolha continua ligada. Efeito imediato
+  em todos os processos, sem caches a refazer.
+- **A Política de Privacidade só muda na ativação:** até lá fica como está
+  (2026-09-15); a partir do instante do primeiro `start` ganha a secção
+  «Métricas de utilização do serviço» (o que é e não é registado, sinais,
+  ranking interno, quem vê, interesse legítimo ponderado, direito de oposição,
+  prazos) e esse instante passa a ser a versão em vigor — o aviso não bloqueante
+  reaparece nesse momento, com o aviso de oposição. Desligar não retira a
+  secção. Termos e Acordo de Tratamento de Dados inalterados.
+- **«Não registar a minha utilização»** nas definições da conta: pára a
+  recolha e elimina de imediato eventos, agregados e primeiros passos, sem tocar
+  em dados pedagógicos nem no acesso; nenhum pedido em curso nem agregação
+  posterior os reconstitui; quem se opôs sai de todos os números do painel e
+  nunca aparece inativo. Voltar a aceitar recomeça a recolha nesse instante, sem
+  histórico, com cobertura própria. `lapis:usage-opt-out` continua para pedidos
+  por escrito.
+- **O pedido de encerramento da conta elimina as métricas de imediato** (não no
+  dia 60); cancelar não as recupera.
+- **Conservação com limite efetivo (proposta, configurável):** eventos
+  detalhados 35 dias, agregados ou não — `usage:prune` passa a correr de hora a
+  hora, por isso nenhum evento vive mais de 35 dias e uma hora; agregados por
+  pessoa 180 dias. Se a agregação parar mais do que o prazo, os dias que expiram
+  por agregar ficam como dias sem dados (só o dia e o motivo), mostrados «sem
+  recolha» e nunca usados por sinais; não há reconstituição.
+- **Primeiros passos com data limitada:** a data de cada primeiro passo guarda-se
+  180 dias (o prazo dos agregados); depois sai e fica só o estado «Atingido —
+  data já não conservada», enquanto a conta existir. Nenhum evento posterior nem
+  dado pedagógico volta a datá-lo; a data ter saído nunca gera um sinal de falta
+  de utilização; os cálculos que precisam de datas leem os agregados. A limpeza
+  corre também com a recolha desligada; a oposição e o pedido de encerramento
+  apagam data e estado.
+- As decisões que faltam (classificação de cada organização de produção, prazos
+  e aviso depois da validação jurídica, a primeira concessão do controlo da
+  recolha, a data do `start`) e as perguntas para validação jurídica — **não
+  concluída** — estão em `docs/usage-insights-decisions.md`, com as fontes
+  oficiais consultadas.
+
+### Corrigido
+
+- **Backoffice num telemóvel:** a barra lateral fixa de 240px deixava 135px para
+  a página a 375px. Abaixo de `md` passa a barra no topo com navegação
+  deslizante; no desktop nada muda.
+- A tabela acessível dos gráficos (Estatística da turma, Evolução do aluno e o
+  novo painel) alargava a página num telemóvel; deixa de o fazer.
+
 ## [0.162.0] — 2026-10-11
 
 ### Adicionado

@@ -15,6 +15,10 @@ use Illuminate\Support\Facades\DB;
  * columns — pedagogical data, memberships and organizations were never
  * touched by the request in the first place, so there is nothing else to
  * undo.
+ *
+ * The usage metrics erased by the request stay erased. Unless the person had
+ * objected to them, collection resumes from THIS instant (`usage_resumed_at`),
+ * with no history (docs/usage-insights.md).
  */
 class CancelPersonalAccountClosure
 {
@@ -36,6 +40,9 @@ class CancelPersonalAccountClosure
             $lockedUser->forceFill([
                 'closure_requested_at' => null,
                 'scheduled_deletion_at' => null,
+                // O que foi apagado no pedido não volta: a observação recomeça
+                // agora, para quem não se opôs (quem se opôs continua de fora).
+                'usage_resumed_at' => $lockedUser->usage_opted_out_at === null ? now() : $lockedUser->usage_resumed_at,
             ])->save();
 
             $personalOrganization = $lockedUser->personalOrganization();

@@ -10,6 +10,8 @@ use App\Models\Lesson;
 use App\Models\LessonAttendance;
 use App\Models\User;
 use App\Support\Retention\ResolveSelectedAcademicYear;
+use App\Support\Usage\UsageEventType;
+use App\Support\Usage\UsageRecorder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -39,6 +41,7 @@ class LessonBatchController extends Controller implements HasMiddleware
     public function __construct(
         protected MarkLessonsAsTaughtInBatch $batch,
         protected ResolveSelectedAcademicYear $resolveAcademicYear,
+        protected UsageRecorder $usage,
     ) {}
 
     /** @return list<string> */
@@ -112,6 +115,12 @@ class LessonBatchController extends Controller implements HasMiddleware
 
         $marked = $this->batch->execute($eligible, $this->user($request));
         $skipped = count($candidates['ineligible']);
+
+        if ($marked > 0) {
+            $ulids = $eligible->pluck('ulid')->map(fn ($ulid): string => (string) $ulid)->sort()->values()->all();
+
+            $this->usage->action(UsageEventType::LessonTaught, 'lesson-batch:'.sha1(implode(',', $ulids)), $marked);
+        }
 
         return back()->with('success', sprintf(
             '%d aula%s marcada%s como lecionada%s.%s',
