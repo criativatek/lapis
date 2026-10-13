@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowRight, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, Presentation, X } from '@lucide/vue';
+import { ArrowRight, BellRing, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, Presentation, X } from '@lucide/vue';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import { qualitativeToneClasses } from '@/lib/qualitativeTone';
@@ -42,6 +42,8 @@ const props = defineProps<{
     readiness: { is_ready: boolean; items: ReadinessItem[] };
     firstSteps: { dismissed: boolean; all_done: boolean; items: FirstStepsItem[] };
     totals: { classes: number; pending_confirmation: number; pending_publication: number };
+    /** Accumulation alerts still «por tratar» this year; null when there are none. */
+    recordAlerts?: { pending: number; href: string } | null;
 }>();
 
 // First name only — a warmer greeting than the full registered name.
@@ -218,6 +220,28 @@ function pendingLabel(schoolClass: ClassCard): string {
             <span class="min-w-0 flex-1">
                 <span class="block font-medium">Aulas de hoje</span>
                 <span class="block text-sm text-muted-foreground">Sumários e assiduidade</span>
+            </span>
+            <ArrowRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+
+        <!-- ALERTAS DE ACUMULAÇÃO (0.164.0) — o aviso persistente do
+             acompanhamento dos registos: só os alertas que uma gravação fez
+             nascer e que continuam por tratar. Desaparece quando o professor
+             os marca como registados no Inovar ou quando uma correção desce a
+             contagem. -->
+        <Link
+            v-if="recordAlerts && canOpenRecords"
+            :href="recordAlerts.href"
+            :class="[
+                card('plain'),
+                'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-fit sm:min-w-80',
+            ]"
+            data-testid="record-alerts"
+        >
+            <BellRing class="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+            <span class="min-w-0 flex-1">
+                <span class="block font-medium">{{ recordAlerts.pending === 1 ? '1 alerta de registos por tratar' : `${recordAlerts.pending} alertas de registos por tratar` }}</span>
+                <span class="block text-sm text-muted-foreground">TPC, atrasos e faltas de material à 3.ª ocorrência</span>
             </span>
             <ArrowRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         </Link>

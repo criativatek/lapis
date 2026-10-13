@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Check, Pencil, RefreshCw, Sparkles, Trash2, X } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
-import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Spinner } from '@/components/ui/spinner';
 import HomeworkGrid from './HomeworkGrid.vue';
 
@@ -46,9 +45,17 @@ const props = defineProps<{
     domains: { id: number; name: string }[];
     kinds: Kind[];
     severities: { value: string; label: string }[];
-    periods: { id: number; label: string }[];
-    filters: { enrollment_id: number | null; kind: string | null; period_id: number | null };
+    /** The latest records of the class — the consultation (/records) searches the rest. */
     records: EvidenceRecordRow[];
+    /** A record opened from the consultation («Abrir»), loaded into the form. */
+    editingRecord?: EvidenceRecordRow | null;
+    /** The record named in the URL no longer exists (deleted meanwhile). */
+    editingRecordMissing?: boolean;
+    /** Where «Voltar à consulta» goes — filters, page and open case intact. */
+    backUrl?: string | null;
+    consultation: { year: string; class: string };
+    /** Set when the class's year has no assessment periods configured. */
+    periodsNotice?: string | null;
     /** «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE). */
     ai: { available: boolean; reason: string | null };
     incidentRewrite?: IncidentRewriteSuggestion | null;
@@ -302,45 +309,27 @@ function refreshRecords(): void {
     router.reload({ only: ['records'] });
 }
 
+const formElement = ref<HTMLFormElement | null>(null);
+
+// «Abrir» in the consultation lands here with the record already in the form.
+onMounted(() => {
+    if (props.editingRecord) {
+        edit(props.editingRecord);
+        void nextTick(() => formElement.value?.scrollIntoView?.({ block: 'start' }));
+    }
+});
+
+const consultationHref = computed(() => {
+    const query = new URLSearchParams({ year: props.consultation.year, class: props.consultation.class, searched: '1' });
+
+    return `/records?${query.toString()}`;
+});
+
 function when(iso: string): string {
     return new Date(iso).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 const hasRecords = computed(() => props.records.length > 0);
-
-// A neutral, factual count by type for whatever is currently listed (§21) —
-// never a judgement ("aluno em risco", "penalização"), just what exists.
-const recordSummary = computed(() => {
-    if (props.records.length === 0) {
-        return null;
-    }
-
-    const counts = new Map<string, number>();
-
-    for (const record of props.records) {
-        counts.set(record.kind_label, (counts.get(record.kind_label) ?? 0) + 1);
-    }
-
-    const parts = Array.from(counts.entries()).map(([label, count]) => `${label} (${count})`);
-
-    return `Registos apresentados: ${parts.join(', ')}.`;
-});
-
-const filterEnrollmentId = ref<number | null>(props.filters.enrollment_id);
-const filterKind = ref<string | null>(props.filters.kind);
-const filterPeriodId = ref<number | null>(props.filters.period_id);
-
-function applyFilters(): void {
-    router.get(
-        `/classes/${props.schoolClass.ulid}/records`,
-        {
-            enrollment_id: filterEnrollmentId.value,
-            kind: filterKind.value,
-            period_id: filterPeriodId.value,
-        },
-        { preserveState: true, preserveScroll: true, replace: true },
-    );
-}
 
 // ------------------------------------------------------- aperfeiçoar redação
 //
@@ -423,12 +412,21 @@ watch(
     <div class="mx-auto w-full max-w-3xl space-y-5 p-4">
         <div>
             <Heading :title="`Registos — ${schoolClass.label}`" :description="schoolClass.subject" />
-            <Link href="/records" class="text-sm text-muted-foreground hover:underline">← Todas as turmas</Link>
+            <Link v-if="backUrl" :href="backUrl" class="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:underline">← Voltar à consulta</Link>
+            <Link v-else href="/records" class="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:underline">← Consulta de registos</Link>
         </div>
 
         <p class="text-xs text-muted-foreground">Os registos não alteram automaticamente a classificação do aluno.</p>
 
-        <form class="space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
+        <p v-if="editingRecordMissing" class="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground" role="note" data-test="editing-missing">
+            O registo que abriu já não existe — foi eliminado entretanto.
+        </p>
+
+        <p v-if="periodsNotice" class="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground" role="note">
+            {{ periodsNotice }}
+        </p>
+
+        <form ref="formElement" class="scroll-mt-4 space-y-3 rounded-lg border border-border p-4" @submit.prevent="submit">
             <!-- Em que fase se está. Sem isto o cartão é só campos, e o botão
             no fundo tinha de carregar sozinho a diferença entre compor e
             confirmar — que era exactamente o que falhava (SUP-B7K823). -->
@@ -698,33 +696,12 @@ watch(
             </div>
         </form>
 
-        <div class="flex flex-wrap items-center gap-3 text-sm">
-            <label class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground">Aluno</span>
-                <NativeSelect v-model="filterEnrollmentId" @change="applyFilters">
-                    <option :value="null">Todos</option>
-                    <option v-for="enrollment in enrollments" :key="enrollment.id" :value="enrollment.id">{{ enrollment.name }}</option>
-                </NativeSelect>
-            </label>
-            <label class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground">Tipo</span>
-                <NativeSelect v-model="filterKind" @change="applyFilters">
-                    <option :value="null">Todos</option>
-                    <optgroup v-for="group in kindGroups" :key="group.label" :label="group.label">
-                        <option v-for="kind in group.kinds" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
-                    </optgroup>
-                </NativeSelect>
-            </label>
-            <label class="flex items-center gap-2">
-                <span class="text-xs text-muted-foreground">Período</span>
-                <NativeSelect v-model="filterPeriodId" @change="applyFilters">
-                    <option :value="null">Todos</option>
-                    <option v-for="period in periods" :key="period.id" :value="period.id">{{ period.label }}</option>
-                </NativeSelect>
-            </label>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold">Registos mais recentes</h2>
+            <Link :href="consultationHref" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">
+                Consultar todos os registos desta turma
+            </Link>
         </div>
-
-        <p v-if="recordSummary" class="text-xs text-muted-foreground">{{ recordSummary }}</p>
 
         <EmptyState v-if="!hasRecords" title="Ainda não há registos nesta turma." />
 

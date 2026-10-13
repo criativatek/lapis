@@ -81,6 +81,10 @@ const TONES: Record<string, QualitativeTone> = {
     paid: 'green',
     refunded: 'neutral',
     trial: 'blue',
+
+    // Acompanhamento dos registos (0.164.0) — «Por tratar» partilha o âmbar
+    // de «pending» acima; «Registado no Inovar» é verde, como o que já assentou.
+    registered: 'green',
 };
 
 export function statusTone(status: string): QualitativeTone {

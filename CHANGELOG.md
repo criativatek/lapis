@@ -25,6 +25,107 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.164.0] — 2026-10-13
+
+> **Numeração.** A 0.163.0 pertence à PR #64 («Utilização e acompanhamento»,
+> migrações `2026_11_18_*`), ainda por integrar; esta versão não a inclui e usa
+> migrações `2026_11_19_*`, que ordenam depois dessas.
+
+### Adicionado
+
+- **«Registos» passa a ser uma consulta, não uma lista.** A página abre com
+  filtros — ano letivo, turma, disciplina (quando há mais de uma), aluno (depois
+  de escolher a turma), tipo de registo e período de avaliação, ou um intervalo
+  de datas — e com um resumo. A lista de registos só aparece depois de
+  «Pesquisar», paginada no servidor (25 por página); «Limpar filtros» volta ao
+  âmbito por omissão. Uma pesquisa sem resultados diz-se como tal, distinta do
+  estado inicial. O âmbito aplicado está sempre escrito por cima («2026/2027 ·
+  Todas as turmas · 1.º Período (14/09/2026 a 16/12/2026) — período em curso»).
+- **O período em curso** fica escolhido quando hoje cai num período configurado;
+  noutro caso nada é escolhido e a página pede um período ou um intervalo de
+  datas. Usam-se os períodos tal como estão configurados (trimestres,
+  semestres ou outra organização); nunca se divide o ano nem se assume o ano
+  inteiro.
+- **Três acessos diretos: «TPC não realizados», «Atrasos», «Faltas de
+  material»**, cada um com «N alunos · M ocorrências» e quantos estão por
+  tratar. Ao abrir: só os alunos com ocorrências desse tipo, com número,
+  nome, turma e quantidade, do que tem mais para o que tem menos (desempate
+  por turma, número e inscrição). O detalhe de cada aluno carrega a pedido,
+  com todas as datas e «Abrir registo».
+- **Alerta à 3.ª ocorrência, persistente.** Quando uma gravação faz um aluno
+  chegar a três ocorrências do mesmo tipo, na mesma turma (disciplina) e no
+  mesmo período, fica um alerta em «Alertas por tratar» (na consulta e no
+  Início) e o aviso aparece também ao gravar. Um só alerta por aluno, tipo,
+  turma e período; passar de duas para quatro numa só operação dá um alerta,
+  com a contagem real. A grelha de TPC também alerta.
+- **Mensagem para o Inovar**, no detalhe e no alerta: pré-visualização
+  editável com os modelos do dono do produto para faltas de material, atrasos e
+  TPC não realizados — número do aluno, primeiro e último nome, disciplina,
+  período, quantidade por extenso e as datas. Diz «quatro» quando abrange
+  quatro; duas ocorrências no mesmo dia aparecem como um dia com «(duas
+  ocorrências)». Sem número ou sem nome, a frase perde esse troço (nunca
+  «null») e pede revisão. «Copiar mensagem para o Inovar» confirma a cópia; se
+  o browser recusar, o texto fica selecionado para copiar à mão. Copiar não
+  marca nada; editar não altera registos; nada é enviado ao Inovar.
+- **«Marcar como registado no Inovar»**, com confirmação explícita: guarda quem,
+  quando e que ocorrências abrangia; pode ser desfeito sem perder o histórico.
+  «Por tratar» e «Registado no Inovar» distinguem-se em todas as listas. Se um
+  registo for corrigido ou eliminado depois, a contagem muda e o detalhe diz o
+  que mudou desde a marcação — sem afirmar que o Inovar foi corrigido.
+- A página de registo da turma mostra os 10 registos mais recentes e um atalho
+  para a consulta da turma; «Abrir» na consulta abre o registo em edição e
+  «Voltar à consulta» regressa com filtros, página e caso aberto.
+- Novo artigo de ajuda «Consultar registos e acompanhar TPC, atrasos e faltas
+  de material».
+
+### Alterado
+
+- **O aviso de acumulação da 0.125.0 foi substituído** (decisão do dono do
+  produto, 2026-10-12). Era um toast ao gravar, só para atrasos e faltas de
+  material, que contava o ano letivo inteiro da turma e se repetia aos 3, 6,
+  9…; nem a grelha de TPC nem a importação o disparavam, e regravar o 3.º
+  registo voltava a mostrá-lo. Agora há uma só contagem por aluno, turma,
+  tipo e período — com TPC não realizados —, um alerta persistente e sem
+  ciclos aos 6 e 9. **Consequências:** 2 ocorrências num período + 1 no
+  seguinte já não alertam; a contagem recomeça em cada período; um ano letivo
+  sem períodos configurados, ou um registo fora deles, não alerta — e a
+  aplicação diz «Para receber alertas de acumulação, configure os períodos de
+  avaliação e confirme as respetivas datas.» A consulta por datas continua.
+- Os casos que já tinham três ou mais ocorrências antes desta versão não geram
+  notificações: aparecem nas listas como «Por tratar», com a indicação
+  «anterior aos alertas». Nenhum registo existente foi alterado.
+
+### Segurança
+
+- Todas as leituras (resumos, listas, detalhe, alertas) ficam nas turmas que a
+  pessoa leciona; o responsável da organização continua sem ver turmas de
+  colegas. Uma turma, um período ou um aluno fora desse âmbito dá 404.
+- «Marcar como registado no Inovar» e «Desfazer» exigem poder escrever na turma
+  e são recusados numa sessão de apoio técnico (que pode consultar). As regras
+  existentes das sessões de apoio para os registos mantêm-se.
+- Auditoria `record_followup.confirmed` / `record_followup.unconfirmed`, só com
+  identificadores, nunca nomes.
+
+### Interno
+
+- Tabelas `record_followup_cases` (uma linha por chave turma × inscrição ×
+  período × categoria, `UNIQUE`, com `alerted_at`/`alerted_count`; a contagem
+  nunca é guardada) e `record_followup_confirmations`; índice
+  `evidence_followup_idx (organization_id, class_id, kind, occurred_at)`.
+  Migração aditiva `2026_11_19_000100`, sem backfill, reversível. Os casos
+  bloqueiam a eliminação definitiva da turma, da inscrição e do período, como
+  os registos (`SchoolClassHistory`, `EnrollmentHistory`,
+  `AcademicYearService`).
+- `RecordFollowupCounter` é a única contagem (resumos, listas, detalhe,
+  alertas, mensagem). Data pedagógica = `occurred_at`, dias inteiros; numa
+  sobreposição de períodos cada data conta só no primeiro por sequência (a
+  convenção do calendário), e o ecrã avisa. `RecordFollowupAlerts` lê a
+  contagem antes e depois da escrita na mesma transação, com a turma
+  bloqueada; o alerta entra por `insertOrIgnore` contra a chave única.
+- `DetectEvidenceAccumulationWarnings` removido. A página de registo da turma
+  deixou de filtrar (os filtros estão na consulta).
+- Estes dados não viajam no backup exportável nem na exportação de dados.
+
 ## [0.162.0] — 2026-10-11
 
 ### Adicionado

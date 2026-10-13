@@ -12,6 +12,7 @@ use App\Models\Instrument;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
 use App\Models\ProfileVersionPeriod;
+use App\Models\RecordFollowupCase;
 use App\Models\Report;
 use App\Models\SelfAssessment;
 use App\Support\AcademicYears\AcademicYearValidationException;
@@ -57,6 +58,7 @@ class AcademicYearService
         Intervention::class,
         InterimAssessment::class,
         Report::class,
+        RecordFollowupCase::class,
     ];
 
     /**
@@ -248,8 +250,8 @@ class AcademicYearService
     }
 
     /**
-     * Whether anything in the nine RESTRICT-constrained tables above still
-     * points at this period. KEEP DEPENDENT_MODELS IN SYNC if a tenth
+     * Whether anything in the ten RESTRICT-constrained tables above still
+     * points at this period. KEEP DEPENDENT_MODELS IN SYNC if an eleventh
      * dependent table is ever added — the same risk this class's docblock
      * already flagged once, before any of these tables existed.
      */
