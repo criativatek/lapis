@@ -151,6 +151,42 @@ apresentadas — com quatro, diz «quatro» e as quatro datas.
   `?registo=<ulid>&voltar=<url da consulta>` abre esse registo em edição e
   oferece «Voltar à consulta» com filtros, página e caso intactos.
 
+## Faltas de presença (acrescentado a 2026-10-13)
+
+- Quarto acesso direto da consulta, lido da fonte de verdade da assiduidade
+  (`lesson_attendances`), sem criar registos pedagógicos duplicados.
+- Conta uma falta quando a aula tem a assiduidade consolidada
+  (`attendance_recorded_at`) e conta (`outcome` nulo ou `taught`) —
+  `Lesson::whereAttendanceCounts`, a mesma regra da Evolução do aluno e do
+  resumo da turma — e o aluno está `absent`. Rascunhos, assiduidade por
+  lançar, aulas canceladas ou sem assiduidade aplicável e atrasos nunca
+  contam; uma correção ou anulação reflete-se de imediato (nada é guardado).
+- Uma falta = uma aula. A data é a da aula (`starts_at`, hora local); o
+  período é o que contém essa data, pela mesma regra dos registos.
+- O detalhe mostra faltas e dias à parte («5 faltas em 3 dias»), cada aula
+  com data, hora e número, «Abrir aula» e regresso à consulta; diz quantas
+  aulas dadas estão ainda sem assiduidade (que não são faltas).
+- Não há distinção justificada/injustificada: a aplicação não a regista, e o
+  ecrã di-lo.
+- **Sem alerta à 3.ª ocorrência e sem mensagem para o Inovar** (decisão de
+  2026-10-13).
+
+## Alunos distintos (acrescentado a 2026-10-13)
+
+«Alunos» conta alunos distintos pela identidade da aplicação
+(`enrollments.student_id`, ou `lesson_attendances.student_id`), nunca pelo
+nome. Os «casos» (aluno × turma) dizem-se à parte quando diferem, e cada caso
+tem a sua linha e o seu alerta. Limitação: só as turmas de apoio
+(`enrollExisting`) e o restauro de backups partilham um aluno entre turmas —
+adicionar um aluno a uma turma normal cria sempre uma identidade nova, por
+isso o mesmo nome em duas turmas pode ser dois alunos.
+
+## Backup (acrescentado a 2026-10-13)
+
+Casos e declarações viajam no backup desde a v15 — regras em
+`docs/backup-schema.md` («Acompanhamento dos registos»). O restauro nunca corre
+a regra do alerta.
+
 ## Índices e desempenho
 
 Contagens por `GROUP BY` no servidor; índice novo
@@ -160,5 +196,5 @@ só recebe a página pedida e os agregados.
 ## Fora de âmbito (decidido)
 
 Integração/envio para o Inovar; envio externo automático; ocorrência
-disciplinar automática; ciclos aos 6/9; ligação registo↔aula; viagem destes
-dados no backup.
+disciplinar automática; ciclos aos 6/9; ligação registo↔aula; alerta e
+mensagem para as faltas de presença.

@@ -162,6 +162,8 @@ describe('FollowupCaseDialog', () => {
                 confirmed_at: '2026-10-11T09:00:00+01:00',
                 count: 3,
                 dates: ['2026-10-03', '2026-10-10', '2026-10-10'],
+                restored: false,
+                missing: [],
                 changes: { added: ['2026-10-17'], removed: ['2026-10-03'] },
             },
         });
@@ -175,6 +177,37 @@ describe('FollowupCaseDialog', () => {
 
         await wrapper.findAll('button').find((button) => button.text() === 'Desfazer marcação')?.trigger('click');
         expect(routerDelete).toHaveBeenCalledWith('/records/acompanhamento/confirmacoes/K1', expect.any(Object));
+    });
+
+    it('says a restored declaration came from a backup, which records were not recovered, and never invents its author', () => {
+        const wrapper = mountDialog({
+            status: 'registered',
+            confirmation: {
+                ulid: 'K2',
+                confirmed_by: null,
+                confirmed_at: '2025-10-07T09:00:00+01:00',
+                count: 4,
+                dates: ['2025-10-01', '2025-10-02', '2025-10-03', '2025-10-06'],
+                restored: true,
+                missing: ['2025-10-06'],
+                changes: { added: [], removed: [] },
+            },
+            history: [
+                { ulid: 'K2', confirmed_by: null, confirmed_at: '2025-10-07T09:00:00+01:00', count: 4, undone_by: null, undone_at: null, restored: true },
+                { ulid: 'K0', confirmed_by: null, confirmed_at: '2024-10-07T09:00:00+01:00', count: 3, undone_by: null, undone_at: '2024-10-07T09:05:00+01:00', restored: false },
+            ],
+        });
+
+        const text = wrapper.text().replace(/\s+/g, ' ');
+        expect(text).toContain('Marcado como registado no Inovar por autor não associado no restauro');
+        expect(text).toContain('Marcação reposta a partir de um backup.');
+        const missing = wrapper.find('[data-test="confirmation-missing"]').text().replace(/\s+/g, ' ');
+        expect(missing).toContain('1 das 4 ocorrências declaradas não foi recuperada no restauro (06/10/2025)');
+        // A record not recovered is not a record that stopped counting.
+        expect(wrapper.find('[data-test="confirmation-changes"]').exists()).toBe(false);
+        expect(text).toContain('(reposta de um backup)');
+        // An old declaration whose author was removed keeps its own wording.
+        expect(text).toContain('desfeito por um utilizador removido');
     });
 
     it('never offers a declaration below the third occurrence', () => {

@@ -71,7 +71,10 @@ use Throwable;
  */
 class ValidateBackupPayload
 {
-    public function __construct(private readonly SecretScanner $secretScanner) {}
+    public function __construct(
+        private readonly SecretScanner $secretScanner,
+        private readonly ValidateRecordFollowupRows $followupRows,
+    ) {}
 
     /**
      * @return array{canonical: array<string, mixed>, schemaCompatibility: BackupSchemaCompatibility, rowIssues: list<array{domain: string, ulid: string|null, reason: string}>}
@@ -255,6 +258,12 @@ class ValidateBackupPayload
 
             'class_notebook_entries' => $this->validClassNotebookEntryRows($decoded, $rowIssues),
         ];
+
+        // Schema v15 — the follow-up cases and the «Registado no Inovar»
+        // declarations (ValidateRecordFollowupRows). Absent in a backup ≤14.
+        $followups = $this->followupRows->validate($decoded, $rowIssues);
+        $canonical['record_followup_cases'] = $followups['cases'];
+        $canonical['record_followup_confirmations'] = $followups['confirmations'];
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
     }
@@ -1272,11 +1281,16 @@ class ValidateBackupPayload
     {
         $ulid = $row['ulid'] ?? null;
         $classUlid = $row['class_ulid'] ?? null;
+        $kind = EvidenceKind::tryFrom((string) ($row['kind'] ?? ''));
 
+        // An empty description is valid exactly where the form allows it
+        // (EvidenceKind::allowsEmptyDescription()): every TPC saved from the
+        // homework grid has one, and refusing it lost those records — and
+        // left every TPC follow-up declaration incomplete — on restore.
         if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
             || $this->nullableDateTime($row['occurred_at'] ?? null) === null
-            || EvidenceKind::tryFrom((string) ($row['kind'] ?? '')) === null
-            || ! is_string($row['description'] ?? null) || $row['description'] === '' || strlen((string) $row['description']) > 1000
+            || $kind === null
+            || ! is_string($row['description'] ?? null) || ($row['description'] === '' && ! $kind->allowsEmptyDescription()) || strlen((string) $row['description']) > 1000
         ) {
             $rowIssues[] = ['domain' => 'evidence_records', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
 

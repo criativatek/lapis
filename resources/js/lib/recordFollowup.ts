@@ -117,6 +117,10 @@ export type CaseConfirmation = {
     confirmed_at: string;
     count: number;
     dates: string[];
+    /** Came in through a backup restore. */
+    restored: boolean;
+    /** Declared, but the record could not be recovered by the restore. */
+    missing: string[];
     changes: { added: string[]; removed: string[] };
 };
 
@@ -141,6 +145,7 @@ export type CaseDetail = {
         count: number;
         undone_by: string | null;
         undone_at: string | null;
+        restored: boolean;
     }[];
     can_confirm: boolean;
 };
@@ -185,6 +190,15 @@ export function formatInstant(iso: string): string {
 
 export function studentLabel(number: number | null, name: string): string {
     return number === null ? name : `n.º ${number} · ${name}`;
+}
+
+/**
+ * Who marked or undid a declaration. A restore keeps the author only when it
+ * is the account restoring (the email matches); otherwise the declaration
+ * comes in without one — never attributed to whoever imported it.
+ */
+export function declarationAuthor(name: string | null, restored: boolean): string {
+    return name ?? (restored ? 'autor não associado no restauro' : 'um utilizador removido');
 }
 
 export function occurrencesLabel(count: number): string {

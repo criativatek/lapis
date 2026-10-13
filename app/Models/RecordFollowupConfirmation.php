@@ -25,11 +25,12 @@ use Illuminate\Support\Carbon;
  * @property int|null $confirmed_by
  * @property Carbon $confirmed_at
  * @property int $occurrence_count
- * @property list<array{ulid: string, date: string}> $occurrences
+ * @property list<array{ulid: string|null, date: string}> $occurrences `ulid` null = declared, but its record could not be recovered in a restore
  * @property int|null $undone_by
  * @property Carbon|null $undone_at
+ * @property Carbon|null $restored_at set when the declaration came in through a backup restore
  */
-#[Fillable(['record_followup_case_id', 'confirmed_by', 'confirmed_at', 'occurrence_count', 'occurrences', 'undone_by', 'undone_at'])]
+#[Fillable(['record_followup_case_id', 'confirmed_by', 'confirmed_at', 'occurrence_count', 'occurrences', 'undone_by', 'undone_at', 'restored_at'])]
 class RecordFollowupConfirmation extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -52,6 +53,7 @@ class RecordFollowupConfirmation extends Model
         return [
             'confirmed_at' => 'datetime',
             'undone_at' => 'datetime',
+            'restored_at' => 'datetime',
             'occurrence_count' => 'integer',
             'occurrences' => 'array',
         ];

@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 14 (atual) | `Supported` | Como a v13, acrescentando `class_notebook_entries` — o **Caderno da turma**: registos privados do professor sobre a turma (título opcional, texto, fixação e as três datas). Só sai o caderno de quem exporta, nas turmas que ensina, sem os registos eliminados; só se restaura na conta do próprio autor. Ausente num backup v≤13 ⇒ zero registos restaurados, nunca um erro, e nada é apagado no destino. Ver [Caderno da turma (schema v14)](#caderno-da-turma-schema-v14) |
+| 15 (atual) | `Supported` | Como a v14, acrescentando o **acompanhamento dos registos** (0.164.0): `record_followup_cases` (o caso aluno × turma × período × tipo e o alerta que teve) e `record_followup_confirmations` (as declarações «Registado no Inovar», as desfeitas incluídas, com as ocorrências abrangidas como `{ulid, date}`). Referências sempre por ULID, autoria por email. Ausentes num backup v≤14 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Acompanhamento dos registos (schema v15)](#acompanhamento-dos-registos-schema-v15) |
+| 14 | `LegacyCompatible` | Como a v13, acrescentando `class_notebook_entries` — o **Caderno da turma**: registos privados do professor sobre a turma (título opcional, texto, fixação e as três datas). Só sai o caderno de quem exporta, nas turmas que ensina, sem os registos eliminados; só se restaura na conta do próprio autor. Ausente num backup v≤13 ⇒ zero registos restaurados, nunca um erro, e nada é apagado no destino. Ver [Caderno da turma (schema v14)](#caderno-da-turma-schema-v14) |
 | 13 | `LegacyCompatible` | Como a v12, acrescentando `results_analysis_notes` — as observações do professor no separador Resultados de um elemento de avaliação (`context_kind = 'instrument'`, a única forma que existe hoje). Texto livre até 20 000 carateres; uma observação vazia nunca é exportada. Ausente num backup v≤12 ⇒ zero observações restauradas, nunca um erro, e nada é apagado no destino |
 | 12 | `LegacyCompatible` | Como a v11, acrescentando a estampa do enquadramento legal: `interventions[].legal_framework_code` e `interventions[].support_measures[].legal_framework_code` — a versão da lei sob a qual o enquadramento foi decidido. Ausentes num backup v≤11 ⇒ `null`, que significa o mesmo que significava antes de a estampa existir: o regime aplicável resolve-se pelo `started_on` da intervenção. Copiada tal como está, nunca recalculada no restauro |
 | 11 | `LegacyCompatible` | Como a v10, acrescentando o resultado real da aula (0.146.0): `lessons[].outcome` (`taught`, `teacher_absent`, `class_external_activity` ou `null` = ainda não fechada), `outcome_reason` (só categoria — `training`, `official_duty`, `other` — e só numa ausência do professor), `outcome_note` (≤160 caracteres, só numa atividade da turma), `outcome_recorded_at` e `outcome_recorded_by_email`. Ausentes num backup v≤10 ⇒ uma aula `status = taught` fecha como `taught` e as restantes ficam em aberto (o mesmo backfill da migração). Motivo em texto livre, motivo fora de uma ausência, nota fora de uma atividade ou assiduidade consolidada numa ocorrência sem assiduidade aplicável ⇒ a linha é `invalid` |
@@ -104,7 +105,8 @@ aqui em vez de repetidos em cada linha da tabela:
 | Coleção | Forma | Notas |
 |---|---|---|
 | `interim_assessments` | `ulid` | Escrito uma só vez, nunca atualizado (o modelo já impõe isto) — o restauro só faz `INSERT` |
-| `evidence_records` | `ulid` | "Registos pedagógicos" — um apontamento de diário, nunca entra no cálculo. Distinto de `student_item_scores`, que É avaliação |
+| `evidence_records` | `ulid` | "Registos pedagógicos" — um apontamento de diário, nunca entra no cálculo. Distinto de `student_item_scores`, que É avaliação. Desde a 0.164.0, um registo que o destino tem **eliminado** (o mesmo `ulid`, `deleted_at` preenchido) é `conflict` — nunca reposto, e já não faz falhar a importação inteira (issue #61). A descrição pode vir vazia exatamente onde o formulário o aceita (`homework`, `participation`, `incident` — `EvidenceKind::allowsEmptyDescription()`); antes da 0.164.0 esses registos, todos os TPC da grelha incluídos, eram recusados |
+| `record_followup_cases`, `record_followup_confirmations` | `ulid` / chave natural | "Acompanhamento dos registos" (v15). Ver [a secção própria](#acompanhamento-dos-registos-schema-v15) |
 | `interventions` (+ participantes), `intervention_reviews` | `ulid` | "Estratégias e Medidas". Participantes ligados pelas inscrições já resolvidas |
 
 ## Documentos
@@ -192,6 +194,13 @@ restauro para uma turma que já existe no destino), por isso
 `ExecuteDataImport` constrói, só para esta fatia, um mapa próprio —
 `new ∪ existing`, lido de `$rows['enrollments']` depois de `writeEnrollments`
 correr.
+
+Desde a 0.164.0 os **registos pedagógicos** (`evidence_records`) usam esse
+mesmo mapa. Até aí, um registo restaurado para uma turma que já existia no
+destino perdia o aluno sem aviso e ficava como registo da turma inteira — e o
+acompanhamento dos registos (v15) nunca o contaria. As estratégias e medidas
+e os relatórios continuam no mapa antigo (ver
+[Dívida futura](#dívida-futura-fora-do-âmbito-desta-fatia-de-propósito)).
 
 ## Autoria
 
@@ -469,15 +478,111 @@ eliminados e todas as colunas lá estão sem alteração ao script — provado e
 MySQL 8.0.43 com o próprio script, restauro numa base limpa e comparação
 linha a linha (ver [docs/deployment.md](deployment.md)).
 
+## Acompanhamento dos registos (schema v15)
+
+O acompanhamento dos registos (0.164.0) guarda duas coisas que não se
+recalculam a partir dos registos: **o alerta que um caso teve** (quando e com
+quantas ocorrências) e **as declarações «Registado no Inovar»** do professor.
+A contagem em si nunca viaja — lê-se sempre dos `evidence_records`
+restaurados, como em qualquer outro ecrã. As faltas de presença também não
+viajam aqui: lêem-se da assiduidade (`lesson_attendances`), que tem a sua
+própria coleção desde a v9.
+
+`record_followup_cases`:
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade do caso |
+| `class_ulid`, `enrollment_ulid`, `academic_period_ulid` | ULID | têm de vir NESTE backup, ser coerentes entre si (inscrição da turma, período do ano da turma) e ser `new` ou `existing` neste restauro |
+| `category` | `homework_not_done`, `lateness`, `missing_material` | outro valor ⇒ `invalid` |
+| `alerted_at` / `alerted_count` | ISO 8601 / inteiro ≥ 3, ou ambos `null` | `null` = caso anterior aos alertas. Um sem o outro ⇒ `invalid` |
+| `created_at` / `updated_at` | ISO 8601 | preservadas |
+
+`record_followup_confirmations`:
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade da declaração |
+| `case_ulid` | ULID | o caso, que tem de vir neste backup |
+| `confirmed_by_email` / `undone_by_email` | email ou `null` | autoria (ver abaixo) |
+| `confirmed_at` / `undone_at` | ISO 8601 | `undone_at` `null` = em vigor. Quem desfez sem data ⇒ `invalid` |
+| `occurrence_count` | inteiro | tem de ser igual ao número de `occurrences` |
+| `occurrences` | lista de `{ulid, date}` (1–500) | os registos que a declaração abrangia; `ulid` `null` = registo que um restauro anterior já não recuperou |
+| `created_at` / `updated_at` | ISO 8601 | preservadas |
+
+**Nunca transportado**: `id`, `organization_id`, `class_id`,
+`enrollment_id`, `academic_period_id`, `record_followup_case_id`,
+`confirmed_by`, `undone_by`, `restored_at`. Nada disto é dado de aluno: os
+nomes ficam em `students`, e as linhas só apontam para eles por ULID.
+
+**Âmbito da exportação**: os casos das turmas que quem exporta leciona, com
+todas as declarações (as desfeitas incluídas — são histórico). No
+`Exportacao-Lapispro.xlsx`, a folha «Acompanhamento» mostra o estado legível
+de cada caso com três ou mais ocorrências agora ou com linha guardada (ano
+letivo, turma, disciplina, n.º, aluno, tipo, período, ocorrências e as suas
+datas, estado, alerta, a declaração em vigor com quem e que datas abrangia,
+e o histórico das desfeitas), e o «Resumo» ganha a linha «Nº de casos de
+acompanhamento».
+
+**Restauro — casos:**
+
+| Situação no destino | Classificação |
+|---|---|
+| Turma, inscrição ou período que não vêm no backup, não são restauráveis ou não batem certo entre si | `invalid` |
+| Mesmo `ulid`, mesma chave, mesmo alerta | `existing` |
+| Mesmo `ulid`, mesma chave, alerta diferente | `conflict` — o destino é mantido; as declarações podem juntar-se-lhe |
+| Mesmo `ulid`, outra chave | `conflict` — nunca reassociado |
+| Sem `ulid` no destino, mas a mesma chave (turma × inscrição × período × tipo) já tem caso | `existing` ou `conflict`, como acima |
+| Nenhum dos anteriores | `new` (`ulid` novo se o original existir noutra organização) |
+
+Um caso restaurado guarda o `alerted_at` original. **O restauro nunca corre a
+regra do alerta**: não cria alertas, não envia notificações nem emails, e um
+caso com três ou mais ocorrências sem linha no backup fica como «anterior aos
+alertas», como na primeira instalação da 0.164.0.
+
+**Restauro — declarações:**
+
+| Situação | Classificação |
+|---|---|
+| Caso `invalid`, ou `conflict` com outra chave | `invalid` |
+| Mesmo `ulid` (ou, sem `ulid`, o mesmo caso com a mesma data ao segundo), mesmo estado | `existing` |
+| Idem, estado diferente (por exemplo, desfeita no destino depois da exportação) | `conflict` — o destino nunca é sobrescrito |
+| Declaração em vigor quando o caso já tem uma em vigor no destino ou noutra linha deste backup | `conflict` — nunca duas em vigor |
+| Nenhum dos anteriores | `new` |
+
+Cada ocorrência abrangida é procurada **por ULID no destino**: um registo que
+já lá está, vivo, da mesma turma e do mesmo aluno, ou um registo que este
+mesmo restauro cria (numa clonagem, com o seu `ulid` novo). Um registo que não
+volta — eliminado no destino, recusado neste restauro ou ausente do backup —
+**nunca é recriado**: a declaração entra com essa ocorrência como
+`{ulid: null, date}`, `occurrence_count` intacto e `restored_at` preenchido.
+A pré-visualização mostra-a em «Restauro incompleto», o resumo conta-a em
+«Marcações restauradas sem todas as ocorrências», e o caso na consulta diz
+«N das M ocorrências declaradas não foram recuperadas» — nunca a apresenta
+como totalmente restaurada.
+
+**Autoria.** Segue a regra geral ([Autoria](#autoria)): `confirmed_by` e
+`undone_by` só ficam preenchidos quando o email é o de quem confirma a
+importação; noutro caso ficam vazios, com o aviso em «Autoria original», e o
+ecrã diz «autor não associado no restauro». Uma declaração nunca é atribuída
+a quem importa.
+
+**Cópias integrais da base.** O dump diário (`scripts/backup-database.sh`)
+copia a base inteira sem lista de tabelas: as duas tabelas lá estão sem
+alteração ao script.
+
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
-- **Registos eliminados nas outras coleções** — restaurar o próprio backup
-  depois de eliminar um `evidence_records` que ele contém faz falhar a
-  importação inteira (o plano não vê a linha eliminada e o `INSERT` colide
-  com o `ulid` único). Confirmado e registado na issue #61, com
-  `interventions`, `instruments` e `assessment_profiles` como suspeitas
-  ainda por reproduzir. O Caderno da turma (v14) já procura incluindo os
-  eliminados e não tem este problema.
+- **Registos eliminados nas outras coleções** — a issue #61 confirmou que
+  restaurar o próprio backup depois de eliminar um `evidence_records` que ele
+  contém fazia falhar a importação inteira. Corrigido na 0.164.0 para os
+  registos pedagógicos (`conflict`, nunca reposto). `interventions`,
+  `instruments` e `assessment_profiles` continuam suspeitas por reproduzir. O
+  Caderno da turma (v14) já procurava incluindo os eliminados.
+- **Estratégias e medidas e relatórios restaurados para uma turma que já
+  existe** usam ainda o mapa de inscrições só com as `new` (ver
+  [O mapa de inscrições](#o-mapa-de-inscrições-que-writeenrollments-não-dá));
+  os registos pedagógicos deixaram de o usar na 0.164.0.
 - Restauro de `ReportTemplate`/`ReportLibraryEntry` — hoje um relatório
   finalizado é autossuficiente (`template_snapshot`), pelo que isto só
   importaria para permitir gerar **novos** relatórios a partir de um modelo

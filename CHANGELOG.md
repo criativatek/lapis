@@ -75,8 +75,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - A página de registo da turma mostra os 10 registos mais recentes e um atalho
   para a consulta da turma; «Abrir» na consulta abre o registo em edição e
   «Voltar à consulta» regressa com filtros, página e caso aberto.
-- Novo artigo de ajuda «Consultar registos e acompanhar TPC, atrasos e faltas
-  de material».
+- **«Faltas de presença», quarto acesso direto**, lido da assiduidade das
+  aulas — nenhum registo é duplicado. Conta uma falta por aula em que o aluno
+  ficou com falta, só depois de a assiduidade da aula ser lançada e só numa
+  aula que conta (dada, com assiduidade aplicável): a assiduidade por lançar
+  não é falta, um atraso não é falta, e uma correção ou anulação na aula
+  reflete-se logo. A data é a da aula. O detalhe diz faltas e dias à parte
+  («5 faltas em 3 dias»), lista cada aula com data, hora e número, abre a aula
+  e volta à consulta, e diz quantas aulas dadas estão ainda sem assiduidade. A
+  aplicação não distingue faltas justificadas de injustificadas, e o ecrã
+  di-lo. **Sem alerta à 3.ª e sem mensagem para o Inovar** para as faltas de
+  presença (decisão de 2026-10-13).
+- **O acompanhamento vai no backup (formato v15) e na exportação de dados.**
+  O backup leva os casos (com o alerta que tiveram) e todas as marcações
+  «Registado no Inovar», as desfeitas incluídas, ligados por ULID e nunca por
+  números internos; o `Exportacao-Lapispro.xlsx` ganha a folha
+  «Acompanhamento», com o estado legível de cada caso, e uma linha no «Resumo».
+  No restauro: reimportar não duplica; o destino nunca é sobrescrito (um
+  alerta diferente ou uma marcação desfeita depois da exportação é um
+  conflito na pré-visualização); nunca ficam duas marcações em vigor no mesmo
+  caso; um registo eliminado não é recriado, e a marcação que o abrangia
+  entra como incompleta — a pré-visualização mostra-o em «Restauro
+  incompleto», o resumo conta-a e o caso na consulta diz quantas ocorrências
+  não foram recuperadas; referências em falta aparecem em «Pontos a rever»; a
+  autoria só é reposta na conta de quem a fez (noutra conta fica «autor não
+  associado no restauro», nunca quem importa). **Um restauro nunca cria
+  alertas nem envia avisos.** Um backup antigo (≤ v14) restaura-se como
+  antes e não toca no acompanhamento do destino.
+- Novo artigo de ajuda «Consultar registos e acompanhar TPC, atrasos e
+  faltas».
 
 ### Alterado
 
@@ -94,6 +121,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - Os casos que já tinham três ou mais ocorrências antes desta versão não geram
   notificações: aparecem nas listas como «Por tratar», com a indicação
   «anterior aos alertas». Nenhum registo existente foi alterado.
+
+- **«Alunos» nos acessos diretos conta alunos distintos** pela ficha do aluno
+  na aplicação, nunca pelo nome. Quando há mais casos do que alunos (o mesmo
+  aluno numa turma de apoio e noutra turma), o cartão diz também os casos, e
+  cada caso tem a sua linha e o seu alerta, com a indicação «também noutra
+  turma». Dois alunos com o mesmo nome em turmas diferentes são dois alunos:
+  adicionar um aluno a uma turma normal cria sempre uma ficha nova.
+
+### Corrigido
+
+- **A data proposta no formulário de registo** era o dia UTC: entre as 00:00 e
+  a 01:00 de Lisboa, no verão, propunha o dia anterior. Passa a ser o dia no
+  fuso da aplicação (Europe/Lisbon), no verão e no inverno; uma data
+  escolhida pelo professor mantém-se e decide o período.
+- **Restaurar o próprio backup depois de eliminar um registo pedagógico** que
+  ele contém fazia falhar a importação inteira (issue #61, parte confirmada).
+  Agora essa linha é um conflito — «foi eliminado no destino depois da
+  exportação e não é reposto» — e o resto do restauro segue. As suspeitas da
+  issue sobre estratégias, elementos de avaliação e perfis continuam por
+  reproduzir.
+- **Um registo pedagógico restaurado para uma turma que já existia** perdia o
+  aluno sem aviso e ficava como registo da turma inteira. Passa a manter o
+  aluno.
+- **Um restauro recusava os registos sem descrição** que o formulário aceita:
+  todos os TPC gravados na grelha de TPC, e as participações e ocorrências
+  disciplinares sem descrição, apareciam em «Pontos a rever» como «Campos
+  obrigatórios em falta ou inválidos» e não voltavam. Passam a ser
+  restaurados; o formulário e o restauro leem a mesma regra
+  (`EvidenceKind::allowsEmptyDescription()`).
 
 ### Segurança
 
@@ -124,7 +180,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   bloqueada; o alerta entra por `insertOrIgnore` contra a chave única.
 - `DetectEvidenceAccumulationWarnings` removido. A página de registo da turma
   deixou de filtrar (os filtros estão na consulta).
-- Estes dados não viajam no backup exportável nem na exportação de dados.
+- Backup **schema v15** (`BackupSchemaCompatibility::CURRENT = 15`; a v14
+  passa a `LegacyCompatible`): `ValidateRecordFollowupRows` (lista branca),
+  `BuildRecordFollowupPlan` (classificação a cada pré-visualização e
+  confirmação), `WriteRecordFollowups` (só linhas `new`, na transação do
+  restauro, depois dos registos) e `RecordFollowupExport`. Coluna
+  `record_followup_confirmations.restored_at` na migração da versão (ainda
+  não instalada em lado nenhum). O dump diário integral da base já leva as
+  duas tabelas. Regras em `docs/backup-schema.md`.
+- `Lesson::whereAttendanceCounts` passa a ser a única regra de «a assiduidade
+  desta aula conta», partilhada pela Evolução do aluno, pelo resumo da turma e
+  pelas faltas de presença (`ConsolidatedAbsences`).
+- Validado com a 0.163.0 (PR #64): a gravação que levanta o alerta continua a
+  ser uma só ação nas métricas, o alerta não é um evento, e os alertas
+  funcionam com a recolha desligada, com o opt-out e numa sessão de apoio
+  técnico (que não deixa rasto nem marca nada).
+
+### Conhecido, fora desta versão
+
+- O possível problema de «Aperfeiçoar redação» na descrição de uma ocorrência
+  disciplinar fica registado como **suspeita não reproduzida**; não é tratado
+  aqui.
 
 ## [0.163.0] — 2026-10-12
 

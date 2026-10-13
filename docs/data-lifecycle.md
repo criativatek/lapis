@@ -227,6 +227,22 @@ nunca faz reaparecer um registo eliminado no destino. O dump diário da base
 incluídos, como leva os `evidence_records` eliminados. Detalhe em
 [backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
+## Acompanhamento dos registos (0.164.0)
+
+`record_followup_cases` e `record_followup_confirmations` guardam o alerta
+de cada caso (aluno × turma × período × tipo) e as declarações «Registado no
+Inovar» do professor; a contagem nunca é guardada. Não têm nomes nem texto
+livre — só ids, datas e, nas declarações, os ULID e as datas dos registos
+abrangidos. Bloqueiam a eliminação definitiva da turma, da inscrição e do
+período, como os registos.
+
+**Backup (schema v15).** A exportação leva os casos e todas as declarações
+das turmas que quem exporta leciona, e a folha legível «Acompanhamento»; o
+restauro liga tudo por ULID, nunca duplica, nunca sobrescreve o destino,
+nunca recria um registo eliminado e nunca atribui uma declaração a quem
+importa. O dump diário integral leva as duas tabelas. Detalhe em
+[backup-schema.md](backup-schema.md#acompanhamento-dos-registos-schema-v15).
+
 ## Métricas de utilização (0.163.0)
 
 `usage_events` e `usage_daily_rollups` (painel interno `/admin/usage`, ver

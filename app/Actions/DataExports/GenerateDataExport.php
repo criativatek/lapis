@@ -51,6 +51,7 @@ use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Services\Audit\AuditLog;
+use App\Services\Evidence\Followup\RecordFollowupExport;
 use App\Services\Reporting\Export\PdfRenderer;
 use App\Services\Reporting\Export\ReportDocumentBuilder;
 use App\Support\Assessment\DecisionScale;
@@ -113,6 +114,7 @@ class GenerateDataExport
         protected ScaleProposalResolver $proposals,
         protected ReportDocumentBuilder $reportBuilder,
         protected PdfRenderer $pdfRenderer,
+        protected RecordFollowupExport $followupExport,
     ) {}
 
     public function generate(Organization $organization, User $user): DataExport
@@ -206,6 +208,10 @@ class GenerateDataExport
             ->get();
 
         $evidenceRecords = EvidenceRecord::query()->whereIn('class_id', $classIds)->with('enrollment.student')->get();
+
+        // Schema v15 — the follow-up cases of these same classes and every
+        // «Registado no Inovar» declaration, undone ones included.
+        $followupCases = $this->followupExport->cases($classIds);
         $classifications = Classification::query()
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
             ->with(['enrollment.student', 'academicPeriod', 'proposedScaleLevel', 'finalScaleLevel'])
@@ -296,6 +302,19 @@ class GenerateDataExport
             $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances, $resultsAnalysisNotes, $classNotebookEntries,
         );
 
+        // Who confirmed or undid a declaration travels as an email, like every
+        // other author field.
+        $missingAuthorIds = collect($this->followupExport->authorIds($followupCases))->diff($authors->pluck('id'))->values();
+
+        if ($missingAuthorIds->isNotEmpty()) {
+            $authors = $authors->merge(User::query()->withoutGlobalScopes()->whereIn('id', $missingAuthorIds)->get());
+        }
+
+        $followupBackupRows = $this->followupExport->backupRows(
+            $followupCases, $classes->keyBy('id'), $enrollments->keyBy('id'), $academicPeriods->keyBy('id'), $authors->keyBy('id'),
+        );
+        $followupSheetRows = $this->followupExport->sheetRows($classes, $followupCases, $enrollments->keyBy('id'), $authors->keyBy('id'));
+
         // Called ONCE per class — never inside a per-student/per-row loop —
         // and reused for both the "Média Ponderada" figures and the scale
         // Proposta, exactly like ClassificationController::alongsideResults()
@@ -310,7 +329,7 @@ class GenerateDataExport
         try {
             $spreadsheet->removeSheetByIndex(0);
 
-            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries);
+            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries, count($followupSheetRows));
 
             if ($classes->isNotEmpty()) {
                 $this->addTurmasSheet($spreadsheet, $classes);
@@ -350,6 +369,10 @@ class GenerateDataExport
 
             if ($evidenceRecords->isNotEmpty()) {
                 $this->addRegistosSheet($spreadsheet, $evidenceRecords, $classes);
+            }
+
+            if ($followupSheetRows !== []) {
+                $this->addAcompanhamentoSheet($spreadsheet, $followupSheetRows);
             }
 
             if ($reports->isNotEmpty()) {
@@ -407,6 +430,7 @@ class GenerateDataExport
             $lessonAttendances,
             $resultsAnalysisNotes,
             $classNotebookEntries,
+            $followupBackupRows,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
 
@@ -443,6 +467,7 @@ class GenerateDataExport
         Collection $reports,
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
+        int $followupCaseCount = 0,
     ): void {
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle('Resumo');
@@ -463,6 +488,7 @@ class GenerateDataExport
             ['Nº de registos do caderno da turma', $classNotebookEntries->count()],
             ['Nº de classificações', $classifications->count()],
             ['Nº de registos', $evidenceRecords->count()],
+            ['Nº de casos de acompanhamento (TPC, atrasos, material)', $followupCaseCount],
             ['Nº de relatórios', $reports->count()],
         ];
 
@@ -676,6 +702,60 @@ class GenerateDataExport
         }
 
         $this->finishSheet($sheet, count($headers), $row - 1);
+    }
+
+    /**
+     * The follow-up state (schema v15): per student, class, category and
+     * period — the occurrences now and their dates, the status, the alert,
+     * the «Registado no Inovar» declaration in force (who, when, which dates)
+     * and the declarations undone. Dates written as text lists so a list of
+     * days never turns into one Excel date.
+     *
+     * @param  list<array<string, mixed>>  $rows  RecordFollowupExport::sheetRows()
+     */
+    protected function addAcompanhamentoSheet(Spreadsheet $spreadsheet, array $rows): void
+    {
+        $headers = [
+            'Ano letivo', 'Turma', 'Disciplina', 'N.º', 'Aluno', 'Tipo', 'Período', 'Ocorrências', 'Datas das ocorrências',
+            'Estado', 'Alerta em', 'Registado no Inovar em', 'Marcado por', 'Ocorrências declaradas', 'Marcações desfeitas',
+        ];
+        $sheet = $this->newSheet($spreadsheet, 'Acompanhamento', $headers);
+        $day = fn (string $date): string => Carbon::parse($date)->format('d/m/Y');
+
+        $line = 2;
+
+        foreach ($rows as $row) {
+            $sheet->setCellValue("A{$line}", $row['academic_year']);
+            $sheet->setCellValueExplicit("B{$line}", (string) $row['class'], 's');
+            $sheet->setCellValue("C{$line}", $row['subject']);
+
+            if ($row['number'] !== null) {
+                $sheet->setCellValue("D{$line}", $row['number']);
+            }
+
+            $sheet->setCellValueExplicit("E{$line}", (string) $row['student'], 's');
+            $sheet->setCellValue("F{$line}", $row['category']);
+            $sheet->setCellValueExplicit("G{$line}", (string) $row['period'], 's');
+            $sheet->setCellValue("H{$line}", $row['occurrences']);
+            $sheet->setCellValueExplicit("I{$line}", implode(', ', array_map($day, $row['dates'])), 's');
+            $sheet->setCellValue("J{$line}", $row['status']);
+
+            if ($row['alerted_at'] instanceof CarbonInterface) {
+                $this->writeDate($sheet, "K{$line}", $row['alerted_at'], withTime: true);
+            }
+
+            if ($row['confirmed_at'] instanceof CarbonInterface) {
+                $this->writeDate($sheet, "L{$line}", $row['confirmed_at'], withTime: true);
+            }
+
+            $sheet->setCellValueExplicit("M{$line}", (string) ($row['confirmed_by'] ?? ''), 's');
+            $sheet->setCellValueExplicit("N{$line}", implode(', ', array_map($day, $row['declared_dates'])), 's');
+            $sheet->setCellValueExplicit("O{$line}", implode('; ', $row['history']), 's');
+
+            $line++;
+        }
+
+        $this->finishSheet($sheet, count($headers), $line - 1);
     }
 
     /**
@@ -2112,6 +2192,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
+     * @param  array{record_followup_cases: list<array<string, mixed>>, record_followup_confirmations: list<array<string, mixed>>}  $followupRows
      */
     protected function technicalBackup(
         Organization $organization,
@@ -2152,6 +2233,7 @@ class GenerateDataExport
         Collection $lessonAttendances,
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
+        array $followupRows = ['record_followup_cases' => [], 'record_followup_confirmations' => []],
     ): string {
         $refs = $this->buildBackupRefs(
             $classes, $academicPeriods, $domains, $scales, $profiles, $profileVersions,
@@ -2177,6 +2259,7 @@ class GenerateDataExport
                 'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances',
                 'results_analysis_notes',
                 'class_notebook_entries',
+                'record_followup_cases', 'record_followup_confirmations',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -2249,6 +2332,12 @@ class GenerateDataExport
             'results_analysis_notes' => $resultsAnalysisNotes->map(fn (ResultsAnalysisNote $note): array => $this->resultsAnalysisNoteRow($note, $refs))->values(),
 
             'class_notebook_entries' => $classNotebookEntries->map(fn (ClassNotebookEntry $entry): array => $this->classNotebookEntryRow($entry, $refs))->values(),
+
+            // Schema v15 — facts only (RecordFollowupExport::backupRows()): the
+            // case and its alert, and every declaration with who/when as
+            // emails and the occurrences it covered. Counts are recomputed.
+            'record_followup_cases' => $followupRows['record_followup_cases'],
+            'record_followup_confirmations' => $followupRows['record_followup_confirmations'],
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 

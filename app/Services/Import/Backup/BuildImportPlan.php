@@ -92,6 +92,7 @@ class BuildImportPlan
         private readonly BuildLessonsPlan $lessonsPlan,
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
         private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
+        private readonly BuildRecordFollowupPlan $recordFollowupPlan,
     ) {}
 
     /**
@@ -208,6 +209,21 @@ class BuildImportPlan
             $enrollmentsByUlid,
         );
 
+        // Schema v15 — after the logbook records: a declaration covers records,
+        // and each covered occurrence is mapped to what this restore will
+        // leave in the destination.
+        $recordFollowups = $this->recordFollowupPlan->build(
+            $canonical['record_followup_cases'] ?? [],
+            $canonical['record_followup_confirmations'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+            $enrollmentsByUlid,
+            $structure['periodsByUlid'],
+            $canonical,
+            $records['rows']['evidence_records'] ?? [],
+        );
+
         $issuesByDomain = collect($rowIssues)->groupBy('domain');
 
         $rows = array_merge(
@@ -224,6 +240,7 @@ class BuildImportPlan
             $lessons['rows'],
             $resultsAnalysisNotes['rows'],
             $classNotebookEntries['rows'],
+            $recordFollowups['rows'],
         );
 
         // Every domain, child rows included: a refused row of a flat child

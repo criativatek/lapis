@@ -21,7 +21,8 @@ use Illuminate\Support\Facades\Schema;
  * `record_followup_confirmations` — a declaração do professor de que registou
  * a ocorrência no Inovar: quem, quando e QUAIS registos abrangeu (`occurrences`
  * = lista de {ulid, date}). Desfazer não apaga: marca `undone_at`/`undone_by`,
- * e a história fica. A aplicação nunca verifica o Inovar.
+ * e a história fica. A aplicação nunca verifica o Inovar. `restored_at` marca
+ * uma declaração que chegou por restauro de backup (v15).
  *
  * Chaves estrangeiras RESTRICT para a turma, a inscrição e o período, como os
  * próprios registos: um caso é história pedagógica, e as listas de
@@ -66,6 +67,12 @@ return new class extends Migration
             $table->json('occurrences');
             $table->foreignId('undone_by')->nullable()->constrained('users')->nullOnDelete();
             $table->dateTime('undone_at')->nullable();
+            // Set only when the declaration came in through a backup restore
+            // (schema v15): provenance, so the screen can say so. An entry of
+            // `occurrences` whose record could not be recovered there keeps its
+            // date with `ulid` null — the declaration is shown as incomplete,
+            // never as fully restored.
+            $table->dateTime('restored_at')->nullable();
             $table->timestamps();
 
             $table->index(['record_followup_case_id', 'undone_at'], 'record_followup_confirmations_case_idx');

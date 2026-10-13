@@ -518,20 +518,14 @@ class EvidenceController extends Controller
      */
     protected function rulesFor(?string $kind): array
     {
-        // homework/participation/incident already carry other descriptive
-        // content (situação/nível/gravidade) — description stays optional
-        // only for those three; every other kind needs it to say what
-        // happened at all (§4.4).
-        $descriptionOptionalKinds = [
-            EvidenceKind::Homework->value,
-            EvidenceKind::Participation->value,
-            EvidenceKind::Incident->value,
-        ];
+        // EvidenceKind::allowsEmptyDescription() — the same rule a backup
+        // restore applies.
+        $descriptionOptional = EvidenceKind::tryFrom((string) $kind)?->allowsEmptyDescription() ?? false;
 
         return [
             'kind' => ['required', Rule::enum(EvidenceKind::class)],
             'description' => [
-                Rule::requiredIf(! in_array($kind, $descriptionOptionalKinds, true)),
+                Rule::requiredIf(! $descriptionOptional),
                 'nullable', 'string', 'max:1000',
             ],
             'occurred_at' => ['required', 'date'],

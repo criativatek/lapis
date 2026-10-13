@@ -4,7 +4,7 @@ import { Check, ClipboardCopy, ExternalLink, RotateCcw } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { Dialog, DialogDescription, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog';
 import type { CaseDetail } from '@/lib/recordFollowup';
-import { copyText, formatDay, formatInstant, occurrencesLabel, statusLabel, studentLabel, weekday } from '@/lib/recordFollowup';
+import { copyText, declarationAuthor, formatDay, formatInstant, occurrencesLabel, statusLabel, studentLabel, weekday } from '@/lib/recordFollowup';
 import { statusToneClasses } from '@/lib/statusTone';
 
 /**
@@ -269,9 +269,20 @@ function onOpenChange(open: boolean): void {
 
                 <div v-if="detail.confirmation" class="space-y-2 text-sm">
                     <p>
-                        Marcado como registado no Inovar por {{ detail.confirmation.confirmed_by ?? 'um utilizador removido' }}
+                        Marcado como registado no Inovar por {{ declarationAuthor(detail.confirmation.confirmed_by, detail.confirmation.restored) }}
                         em {{ formatInstant(detail.confirmation.confirmed_at) }}, com {{ occurrencesLabel(detail.confirmation.count) }}
                         ({{ detail.confirmation.dates.map(formatDay).join(', ') }}).
+                        <template v-if="detail.confirmation.restored">Marcação reposta a partir de um backup.</template>
+                    </p>
+                    <p
+                        v-if="detail.confirmation.missing.length > 0"
+                        class="rounded-md bg-amber-50 px-3 py-2 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100"
+                        role="note"
+                        data-test="confirmation-missing"
+                    >
+                        {{ detail.confirmation.missing.length }} das {{ detail.confirmation.count }} ocorrências declaradas não {{ detail.confirmation.missing.length === 1 ? 'foi recuperada' : 'foram recuperadas' }}
+                        no restauro ({{ detail.confirmation.missing.map(formatDay).join(', ') }}): o registo já não existe nesta conta ou não pôde ser associado.
+                        A marcação fica como foi feita; confirme no Inovar, se for preciso.
                     </p>
                     <p
                         v-if="detail.confirmation.changes.added.length > 0 || detail.confirmation.changes.removed.length > 0"
@@ -343,7 +354,7 @@ function onOpenChange(open: boolean): void {
                     <summary class="min-h-11 cursor-pointer py-2 text-muted-foreground">Histórico das marcações ({{ detail.history.length }})</summary>
                     <ul class="space-y-1 pl-1">
                         <li v-for="entry in detail.history" :key="entry.ulid" class="text-muted-foreground">
-                            {{ formatInstant(entry.confirmed_at) }} — marcado por {{ entry.confirmed_by ?? 'um utilizador removido' }} ({{ occurrencesLabel(entry.count) }})<template v-if="entry.undone_at">; desfeito por {{ entry.undone_by ?? 'um utilizador removido' }} em {{ formatInstant(entry.undone_at) }}</template>.
+                            {{ formatInstant(entry.confirmed_at) }} — marcado por {{ declarationAuthor(entry.confirmed_by, entry.restored) }} ({{ occurrencesLabel(entry.count) }})<template v-if="entry.undone_at">; desfeito por {{ declarationAuthor(entry.undone_by, entry.restored) }} em {{ formatInstant(entry.undone_at) }}</template><template v-if="entry.restored"> (reposta de um backup)</template>.
                         </li>
                     </ul>
                 </details>

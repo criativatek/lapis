@@ -126,7 +126,13 @@ do professor no separador Resultados de um elemento de avaliação
 registos do Caderno da turma (`class_notebook_entries`) — só o caderno de
 quem exporta, e só restaurados na conta do próprio autor (a autoria é o que
 decide quem lê um registo privado; ver a exceção em
-[docs/backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14)). A referência coleção a coleção — o que cada uma
+[docs/backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14)). Desde a v15
+(schema_version 15), também o acompanhamento dos registos
+(`record_followup_cases`, `record_followup_confirmations`): o alerta que cada
+caso teve e as declarações «Registado no Inovar», ligadas aos registos por
+ULID e nunca por id; um restauro não cria alertas nem notificações, e uma
+declaração cujos registos não voltam entra como incompleta e diz-se assim
+(ver [docs/backup-schema.md](backup-schema.md#acompanhamento-dos-registos-schema-v15)). A referência coleção a coleção — o que cada uma
 transporta e as regras de correspondência — está em
 [docs/backup-schema.md](backup-schema.md); este documento mantém-se ao
 nível do mecanismo.

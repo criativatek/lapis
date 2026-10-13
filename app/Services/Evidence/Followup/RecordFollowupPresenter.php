@@ -286,6 +286,7 @@ final class RecordFollowupPresenter
                     'count' => $confirmation->occurrence_count,
                     'undone_by' => $confirmation->undoer?->name,
                     'undone_at' => $confirmation->undone_at?->toIso8601String(),
+                    'restored' => $confirmation->restored_at !== null,
                 ])->values()->all(),
             'can_confirm' => $canConfirm && $window->isPeriod(),
         ];
@@ -344,8 +345,12 @@ final class RecordFollowupPresenter
     {
         // Compared as {ulid, date}: a date moved inside the period is a change
         // too — the old date no longer counts, the new one is not declared.
+        // An occurrence without a ulid was declared but its record could not
+        // be recovered by a restore: said apart («não recuperada»), never as
+        // a record that stopped counting.
         $declared = collect($confirmation->occurrences);
-        $declaredPairs = $declared->map(fn (array $occurrence): string => $occurrence['ulid'].'|'.$occurrence['date'])->all();
+        [$recovered, $missing] = $declared->partition(fn (array $occurrence): bool => $occurrence['ulid'] !== null);
+        $declaredPairs = $recovered->map(fn (array $occurrence): string => $occurrence['ulid'].'|'.$occurrence['date'])->all();
 
         return [
             'ulid' => $confirmation->ulid,
@@ -353,12 +358,14 @@ final class RecordFollowupPresenter
             'confirmed_at' => $confirmation->confirmed_at->toIso8601String(),
             'count' => $confirmation->occurrence_count,
             'dates' => $declared->pluck('date')->values()->all(),
+            'restored' => $confirmation->restored_at !== null,
+            'missing' => $missing->pluck('date')->sort()->values()->all(),
             'changes' => [
                 'added' => collect($currentPairs)
                     ->reject(fn (string $pair): bool => in_array($pair, $declaredPairs, true))
                     ->map(fn (string $pair): string => substr($pair, -10))
                     ->sort()->values()->all(),
-                'removed' => $declared
+                'removed' => $recovered
                     ->reject(fn (array $occurrence): bool => in_array($occurrence['ulid'].'|'.$occurrence['date'], $currentPairs, true))
                     ->pluck('date')
                     ->sort()->values()->all(),

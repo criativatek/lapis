@@ -28,6 +28,17 @@ class WritePedagogicalRecords
     use ResolvesWrittenReferences;
 
     /**
+     * Source ulid → destination ulid of every logbook record the last
+     * `write()` created (they differ only for a clone, when the source ulid
+     * belongs to another organization). The follow-up tier (schema v15) reads
+     * it to point a restored «Registado no Inovar» declaration at the records
+     * it covered.
+     *
+     * @var array<string, string>
+     */
+    public array $evidenceRecordUlids = [];
+
+    /**
      * @param  array<int, array<string, mixed>>  $interimRows
      * @param  array<int, array<string, mixed>>  $evidenceRows
      * @param  array<int, array<string, mixed>>  $interventionRows
@@ -40,6 +51,7 @@ class WritePedagogicalRecords
      * @param  array<string, int>  $scalesByRef
      * @param  array<string, int>  $scaleLevelsByRef
      * @param  array<string, int>  $academicYearsByUlid
+     * @param  array<string, int>|null  $evidenceEnrollmentsByUlid  new ∪ existing enrollments, for the logbook records only
      * @return array<string, int>
      */
     public function write(
@@ -56,9 +68,15 @@ class WritePedagogicalRecords
         array $scalesByRef,
         array $scaleLevelsByRef,
         array $academicYearsByUlid,
+        ?array $evidenceEnrollmentsByUlid = null,
     ): array {
         ['byUlid' => $interimByUlid, 'created' => $interimCreated] = $this->writeInterimAssessments($interimRows, $classesByUlid, $periodsByUlid);
-        $evidenceCreated = $this->writeEvidenceRecords($evidenceRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid, $scalesByRef, $scaleLevelsByRef);
+        // A record restored into a class that already exists keeps its
+        // student: the enrollment map for records includes the enrollments
+        // that already existed (0.164.0). Until then only the `new` ones were
+        // in it, and such a record silently became a whole-class record —
+        // which the follow-up would never count.
+        $evidenceCreated = $this->writeEvidenceRecords($evidenceRows, $classesByUlid, $evidenceEnrollmentsByUlid ?? $enrollmentsByUlid, $periodsByUlid, $domainsByUlid, $scalesByRef, $scaleLevelsByRef);
         ['byUlid' => $interventionsByUlid, 'created' => $interventionsCreated] = $this->writeInterventions($interventionRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid);
         $reviewsCreated = $this->writeInterventionReviews($interventionReviewRows, $interventionsByUlid);
         $reportsCreated = $this->writeReports($reportRows, $classesByUlid, $enrollmentsByUlid, $periodsByUlid, $interimByUlid, $academicYearsByUlid);
@@ -122,6 +140,7 @@ class WritePedagogicalRecords
     private function writeEvidenceRecords(array $rows, array $classesByUlid, array $enrollmentsByUlid, array $periodsByUlid, array $domainsByUlid, array $scalesByRef, array $scaleLevelsByRef): int
     {
         $created = 0;
+        $this->evidenceRecordUlids = [];
 
         foreach ($rows as $row) {
             if ($row['classification'] !== 'new') {
@@ -146,6 +165,7 @@ class WritePedagogicalRecords
                 'disciplinary_severity' => $row['disciplinary_severity'], 'created_by' => $row['created_by'],
             ]);
             $record->save();
+            $this->evidenceRecordUlids[(string) $row['ulid']] = $record->ulid;
             $created++;
         }
 

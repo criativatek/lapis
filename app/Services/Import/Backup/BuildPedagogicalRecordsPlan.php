@@ -154,10 +154,22 @@ class BuildPedagogicalRecordsPlan
     {
         $ulids = collect($recordsIn)->pluck('ulid');
         $lookups = $this->ulidLookups(EvidenceRecord::class, $ulids, $destination);
+        // Issue #61: a record the teacher deleted in the destination after the
+        // export is invisible to the lookup above (SoftDeletes scope), was
+        // classified `new`, and its INSERT collided with the unique ulid —
+        // failing the WHOLE restore. Read the deleted ones too: such a row is
+        // a conflict, and the record stays deleted (never resurrected).
+        $deleted = $ulids->isEmpty() ? collect() : EvidenceRecord::onlyTrashed()->where('organization_id', $destination->getKey())->whereIn('ulid', $ulids)->get()->keyBy('ulid');
         $classIds = $classesByUlid->pluck('existing_id')->filter();
         $candidates = $classIds->isEmpty() ? collect() : EvidenceRecord::query()->where('organization_id', $destination->getKey())->whereIn('class_id', $classIds)->get();
 
-        return collect($recordsIn)->map(function (array $row) use ($classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid, $actor, $lookups, $candidates): array {
+        return collect($recordsIn)->map(function (array $row) use ($classesByUlid, $enrollmentsByUlid, $periodsByUlid, $domainsByUlid, $actor, $lookups, $deleted, $candidates): array {
+            $deletedSinceExport = $deleted->get($row['ulid']);
+
+            if ($deletedSinceExport !== null) {
+                return ['ulid' => $row['ulid'], 'classification' => 'conflict', 'existing_id' => $deletedSinceExport->getKey(), 'reason' => $this->t('Este registo foi eliminado no destino depois da exportação e não é reposto.')];
+            }
+
             $existing = $lookups['existing']->get($row['ulid']);
 
             if ($existing !== null) {

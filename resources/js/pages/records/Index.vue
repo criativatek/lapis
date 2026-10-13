@@ -230,7 +230,7 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
     <Head title="Registos" />
 
     <div class="mx-auto w-full max-w-5xl space-y-6 p-4">
-        <PageHeader title="Registos" description="Consultar os registos, acompanhar TPC, atrasos e faltas de material, e preparar a comunicação ao Inovar.">
+        <PageHeader title="Registos" description="Consultar os registos, acompanhar TPC, atrasos, faltas de material e faltas de presença, e preparar a comunicação ao Inovar.">
             <template v-if="registerClasses.length > 0" #actions>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>

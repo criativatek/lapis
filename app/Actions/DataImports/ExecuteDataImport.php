@@ -54,6 +54,7 @@ class ExecuteDataImport
         private readonly WriteLessons $lessonsWriter,
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
         private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
+        private readonly WriteRecordFollowups $recordFollowupsWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
     ) {}
@@ -94,20 +95,15 @@ class ExecuteDataImport
             );
             $dataCounts = $dataResult['counts'];
 
-            $recordCounts = $this->recordsWriter->write(
-                $rows['interim_assessments'], $rows['evidence_records'], $rows['interventions'],
-                $rows['intervention_reviews'], $rows['reports'], $organization, $classModels['byUlid'],
-                $enrollmentSummary['byUlid'], $structure['periodsByUlid'], $structure['domainsByUlid'],
-                $structure['scalesByRef'], $structure['scaleLevelsByRef'], $structure['academicYearsByUlid'],
-            );
-
             // Aulas/assiduidade usam o MESMO mapa de inscrições que as
             // pertenças de grupo e a assiduidade precisam de resolver
             // (new ∪ existing) — nunca o `$enrollmentSummary['byUlid']` do
             // writeEnrollments() acima, que só contém as `new` (dívida
-            // pré-existente, deliberadamente não alterada aqui: mudar esse
-            // mapa mudaria o comportamento de pontuações/evidências já
-            // escritas por outras camadas). Ver BuildLessonsPlan.
+            // pré-existente, deliberadamente não alterada para pontuações,
+            // intercalares e estratégias). Ver BuildLessonsPlan. Desde a
+            // 0.164.0 os registos pedagógicos e o acompanhamento usam-no
+            // também: um registo restaurado numa turma que já existe não
+            // perde o aluno.
             $enrollmentsForLessons = $enrollmentSummary['byUlid'];
 
             foreach ($rows['enrollments'] as $enrollmentRow) {
@@ -115,6 +111,14 @@ class ExecuteDataImport
                     $enrollmentsForLessons[$enrollmentRow['ulid']] = (int) $enrollmentRow['existing_id'];
                 }
             }
+
+            $recordCounts = $this->recordsWriter->write(
+                $rows['interim_assessments'], $rows['evidence_records'], $rows['interventions'],
+                $rows['intervention_reviews'], $rows['reports'], $organization, $classModels['byUlid'],
+                $enrollmentSummary['byUlid'], $structure['periodsByUlid'], $structure['domainsByUlid'],
+                $structure['scalesByRef'], $structure['scaleLevelsByRef'], $structure['academicYearsByUlid'],
+                evidenceEnrollmentsByUlid: $enrollmentsForLessons,
+            );
 
             $lessonCounts = $this->lessonsWriter->write(
                 $rows['class_groups'], $rows['class_group_memberships'], $rows['recurring_lesson_slots'],
@@ -138,6 +142,14 @@ class ExecuteDataImport
             // so the count is not part of `records_without_original_author`.
             $classNotebookEntriesCreated = $this->classNotebookEntriesWriter->write(
                 $rows['class_notebook_entries'], $classModels['byUlid'],
+            );
+
+            // Schema v15 — after the logbook records, whose new ulids the
+            // declarations point at. Never runs the alert threshold.
+            $followupCounts = $this->recordFollowupsWriter->write(
+                $rows['record_followup_cases'] ?? [], $rows['record_followup_confirmations'] ?? [],
+                $classModels['byUlid'], $enrollmentsForLessons, $structure['periodsByUlid'],
+                $this->recordsWriter->evidenceRecordUlids,
             );
 
             $summary = [
@@ -172,9 +184,13 @@ class ExecuteDataImport
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
                 'class_notebook_entries_created' => $classNotebookEntriesCreated,
+                'record_followup_cases_created' => $followupCounts['cases'],
+                'record_followup_confirmations_created' => $followupCounts['confirmations'],
+                'record_followup_confirmations_incomplete' => $followupCounts['incomplete'],
                 'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
                     'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
                     'lessons', 'lesson_plans', 'cancelled_lesson_occurrences', 'results_analysis_notes',
+                    'record_followup_confirmations',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
             ];
