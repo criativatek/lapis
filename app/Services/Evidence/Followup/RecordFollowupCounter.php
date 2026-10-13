@@ -15,7 +15,7 @@ use Illuminate\Support\Collection;
  * An occurrence is one logbook row (soft-deleted rows never count) that names
  * one student and belongs to a RecordFollowupCategory, inside the window.
  * Each row counts once: two rows on the same day are two occurrences, and no
- * query here joins anything that could multiply rows (groups, timetables and
+ * join here can multiply rows (enrollments is 1:1; groups, timetables and
  * lessons never enter).
  *
  * Callers pass the class ids they are ALLOWED to read; this class does not
@@ -46,21 +46,30 @@ final class RecordFollowupCounter
     }
 
     /**
-     * Students and occurrences per category — every category is present, zeros
-     * included. «Students» counts what the per-student list shows: one per
-     * student per class (an enrollment belongs to one class), so the tile and
-     * its list always agree — a student followed in two subjects is two lines
-     * there and two here.
+     * Students, cases and occurrences per category — every category is
+     * present, zeros included.
+     *
+     * - `students`: distinct STUDENTS by the identity the application keeps
+     *   (`enrollments.student_id`) — the same person in two classes counts
+     *   once when the application knows it is the same person (a support
+     *   class reuses the student; a restored backup keeps it). People are
+     *   never matched by name: two regular classes imported from two class
+     *   lists are two student records, and count as two.
+     * - `cases`: student × class (one enrollment belongs to one class) — the
+     *   rows the per-student list shows, and the unit alerts are kept by.
+     * - `occurrences`: every logbook row.
+     *
+     * The join to `enrollments` is 1:1 and cannot multiply rows.
      *
      * @param  list<int>  $classIds
-     * @return array<string, array{students: int, occurrences: int}>
+     * @return array<string, array{students: int, cases: int, occurrences: int}>
      */
     public function summary(array $classIds, FollowupWindow $window, ?int $enrollmentId = null): array
     {
         $summary = [];
 
         foreach (RecordFollowupCategory::cases() as $category) {
-            $summary[$category->value] = ['students' => 0, 'occurrences' => 0];
+            $summary[$category->value] = ['students' => 0, 'cases' => 0, 'occurrences' => 0];
         }
 
         if ($classIds === []) {
@@ -68,15 +77,17 @@ final class RecordFollowupCounter
         }
 
         $rows = $this->occurrences($classIds, $window, null, $enrollmentId)
+            ->join('enrollments', 'enrollments.id', '=', 'evidence_records.enrollment_id')
             ->toBase()
             ->selectRaw(RecordFollowupCategory::SQL_EXPRESSION.' as category')
             ->selectRaw('count(*) as occurrences')
-            ->selectRaw('count(distinct evidence_records.enrollment_id) as students')
+            ->selectRaw('count(distinct evidence_records.enrollment_id) as cases')
+            ->selectRaw('count(distinct enrollments.student_id) as students')
             ->groupByRaw(RecordFollowupCategory::SQL_EXPRESSION)
             ->get();
 
         foreach ($rows as $row) {
-            $summary[(string) $row->category] = ['students' => (int) $row->students, 'occurrences' => (int) $row->occurrences];
+            $summary[(string) $row->category] = ['students' => (int) $row->students, 'cases' => (int) $row->cases, 'occurrences' => (int) $row->occurrences];
         }
 
         return $summary;

@@ -5,6 +5,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import { Spinner } from '@/components/ui/spinner';
+import { todayInTimeZone } from '@/lib/appDate';
 import HomeworkGrid from './HomeworkGrid.vue';
 
 type IncidentRewriteSuggestion = {
@@ -56,6 +57,8 @@ const props = defineProps<{
     consultation: { year: string; class: string };
     /** Set when the class's year has no assessment periods configured. */
     periodsNotice?: string | null;
+    /** The application's time zone (`app.timezone`) — what «today» means here. */
+    appTimezone?: string;
     /** «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE). */
     ai: { available: boolean; reason: string | null };
     incidentRewrite?: IncidentRewriteSuggestion | null;
@@ -126,8 +129,10 @@ const kindGroups = computed(() => {
     return groups;
 });
 
-// Today, in the yyyy-mm-dd shape a date input expects.
-const today = new Date().toISOString().slice(0, 10);
+// Today in the APPLICATION's time zone (Europe/Lisbon), in the yyyy-mm-dd
+// shape a date input expects — never the UTC day, which in Lisbon summer time
+// is still yesterday between 00:00 and 01:00.
+const today = todayInTimeZone(props.appTimezone ?? 'Europe/Lisbon');
 
 type FormData = {
     kind: string;

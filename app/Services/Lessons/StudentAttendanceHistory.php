@@ -7,7 +7,6 @@ use App\Models\Enrollment;
 use App\Models\EnrollmentStatus;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
-use App\Models\LessonOutcome;
 use Illuminate\Support\Collection;
 
 /**
@@ -42,8 +41,7 @@ class StudentAttendanceHistory
             ->whereHas('lesson', function ($query) use ($from, $to): void {
                 // SÓ CONSOLIDADAS (0.146.0): um rascunho de falta numa aula
                 // ainda não fechada não é falta nenhuma.
-                $query->whereNotNull('attendance_recorded_at')
-                    ->where(fn ($outcome) => $outcome->whereNull('outcome')->orWhere('outcome', LessonOutcome::Taught->value));
+                Lesson::whereAttendanceCounts($query);
 
                 if ($from !== null) {
                     $query->whereDate('starts_at', '>=', $from);

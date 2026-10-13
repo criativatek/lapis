@@ -271,3 +271,42 @@ describe('records Show — registar, não consultar', () => {
         expect(mountShow({ periodsNotice: notice }).text()).toContain(notice);
     });
 });
+
+describe('records Show — a data por omissão é o dia da aplicação', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('between 00:00 and 01:00 in Lisbon summer time the form already shows the new day', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-07-15T23:30:00Z'));
+
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+
+        expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-07-16');
+    });
+
+    it('in winter the form shows the same day as the clock', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-12-10T00:30:00Z'));
+
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+
+        expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-12-10');
+    });
+
+    it('keeps the date the teacher chose after saving a record', async () => {
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+        const vm = wrapper.vm as unknown as { form: { occurred_at: string; description: string; post: ReturnType<typeof vi.fn>; reset: ReturnType<typeof vi.fn> } };
+
+        await wrapper.find('input[type="date"]').setValue('2026-10-02');
+        vm.form.description = 'Chegou depois do toque.';
+        await wrapper.find('form').trigger('submit');
+
+        const options = vm.form.post.mock.calls[0][1] as { onSuccess: () => void };
+        options.onSuccess();
+
+        expect(vm.form.occurred_at).toBe('2026-10-02');
+        expect(vm.form.reset.mock.calls[0]).not.toContain('occurred_at');
+    });
+});

@@ -154,9 +154,9 @@ class RecordFollowupCountingTest extends TestCase
         $summary = $this->inTenant($this->organization, fn (): array => app(RecordFollowupCounter::class)
             ->summary([$this->schoolClass->id], $this->window()));
 
-        $this->assertSame(['students' => 2, 'occurrences' => 4], $summary['lateness']);
-        $this->assertSame(['students' => 1, 'occurrences' => 1], $summary['missing_material']);
-        $this->assertSame(['students' => 0, 'occurrences' => 0], $summary['homework_not_done']);
+        $this->assertSame(['students' => 2, 'cases' => 2, 'occurrences' => 4], $summary['lateness']);
+        $this->assertSame(['students' => 1, 'cases' => 1, 'occurrences' => 1], $summary['missing_material']);
+        $this->assertSame(['students' => 0, 'cases' => 0, 'occurrences' => 0], $summary['homework_not_done']);
     }
 
     #[Test]

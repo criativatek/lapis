@@ -6,6 +6,13 @@
 
 export type FollowupCategory = 'homework_not_done' | 'lateness' | 'missing_material';
 
+/**
+ * The four direct accesses: the three logbook categories, and «Faltas de
+ * presença» (`absences`), read from the lessons' attendance — consultation and
+ * counts only, no alert and no message.
+ */
+export type FollowupView = FollowupCategory | 'absences';
+
 export type CaseStatus = 'pending' | 'registered' | 'none';
 
 export type ConsultationFilters = {
@@ -19,7 +26,7 @@ export type ConsultationFilters = {
     from: string | null;
     to: string | null;
     searched: boolean;
-    view: FollowupCategory | null;
+    view: FollowupView | null;
 };
 
 export type Paginated<T> = {
@@ -34,9 +41,14 @@ export type Paginated<T> = {
 };
 
 export type Tile = {
-    category: FollowupCategory;
+    category: FollowupView;
     label: string;
+    /** What is counted: logbook occurrences, or absences (one per lesson). */
+    unit: 'occurrence' | 'absence';
+    /** Distinct students, by the identity the application keeps — never by name. */
     students: number;
+    /** Student × class: the lines of the list, and the unit alerts are kept by. */
+    cases: number;
     occurrences: number;
     /** «Por tratar» in the period; null for a custom date range. */
     pending: number | null;
@@ -59,6 +71,10 @@ export type AlertRow = {
 };
 
 export type FollowupRow = {
+    /** Same key on two lines = the same student, followed in two classes. */
+    student_key: string | null;
+    /** How many lines this student has in the whole list. */
+    student_cases: number;
     class_ulid: string;
     class_label: string;
     subject: string;
@@ -66,6 +82,8 @@ export type FollowupRow = {
     number: number | null;
     name: string;
     occurrences: number;
+    /** Absences only: on how many distinct days. */
+    days: number | null;
     first_date: string;
     last_date: string;
     status: CaseStatus | null;
@@ -127,6 +145,19 @@ export type CaseDetail = {
     can_confirm: boolean;
 };
 
+export type AbsenceDetail = {
+    kind: 'absences';
+    class: { ulid: string; label: string; subject: string };
+    student: { ulid: string; number: number | null; name: string };
+    category_label: string;
+    window: { is_period: boolean; label: string; period_ulid: string | null };
+    absences: { ulid: string; lesson_ulid: string; date: string; time: string; lesson_number: number | null; context_label: string }[];
+    count: number;
+    days: number;
+    /** Taught lessons still without attendance in the window — never absences. */
+    not_recorded: number;
+};
+
 /** The query keys that open a case — removed again when it closes. */
 export const CASE_KEYS = ['case_class', 'case_student', 'case_category'] as const;
 
@@ -162,6 +193,35 @@ export function occurrencesLabel(count: number): string {
 
 export function studentsLabel(count: number): string {
     return count === 1 ? '1 aluno' : `${count} alunos`;
+}
+
+export function casesLabel(count: number): string {
+    return count === 1 ? '1 caso' : `${count} casos`;
+}
+
+export function absencesLabel(count: number): string {
+    return count === 1 ? '1 falta' : `${count} faltas`;
+}
+
+export function daysLabel(count: number): string {
+    return count === 1 ? '1 dia' : `${count} dias`;
+}
+
+/**
+ * «6 alunos · 14 ocorrências», or «1 aluno · 2 casos · 5 ocorrências» when a
+ * student is followed in more than one class — the two numbers are never
+ * presented as if they were the same thing.
+ */
+export function tileFigures(tile: Pick<Tile, 'students' | 'cases' | 'occurrences'> & { unit?: Tile['unit'] }): string {
+    const parts = [studentsLabel(tile.students)];
+
+    if (tile.cases !== tile.students) {
+        parts.push(casesLabel(tile.cases));
+    }
+
+    parts.push(tile.unit === 'absence' ? absencesLabel(tile.occurrences) : occurrencesLabel(tile.occurrences));
+
+    return parts.join(' · ');
 }
 
 export function statusLabel(status: CaseStatus | null): string | null {

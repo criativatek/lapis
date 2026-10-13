@@ -391,7 +391,9 @@ onMounted(() => {
             lesson?: string;
         } | null;
 
-        if (entry?.lesson === props.lesson.ulid && typeof entry.url === 'string' && entry.url.startsWith('/lessons')) {
+        // Vinda de Aulas e Sumários, ou das «Faltas de presença» da consulta
+        // de Registos (0.164.0) — sempre um caminho da própria aplicação.
+        if (entry?.lesson === props.lesson.ulid && typeof entry.url === 'string' && (entry.url.startsWith('/lessons') || entry.url.startsWith('/records'))) {
             returnTarget.value = { url: entry.url, viaHistory: true };
         }
     } catch {
@@ -406,7 +408,13 @@ onMounted(() => {
  */
 const returnLabel = computed(() => {
     try {
-        const query = new URL(returnTarget.value.url, 'http://lapis.local').searchParams;
+        const target = new URL(returnTarget.value.url, 'http://lapis.local');
+
+        if (returnTarget.value.viaHistory && target.pathname.startsWith('/records')) {
+            return 'Voltar à consulta de registos';
+        }
+
+        const query = target.searchParams;
 
         return returnTarget.value.viaHistory && (query.get('q') ?? '').trim() !== ''
             ? 'Voltar aos resultados da pesquisa'

@@ -5,6 +5,7 @@ namespace Tests\Feature\Evidence;
 use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodKind;
 use App\Models\AcademicYear;
+use App\Models\Enrollment;
 use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
 use App\Models\HomeworkStatus;
@@ -60,7 +61,9 @@ class RecordConsultationTest extends TestCase
             ->where('filters.searched', false)
             ->where('context.period_is_current', true)
             ->where('context.needs_window', false)
-            ->has('tiles', 3)
+            ->has('tiles', 4)
+            ->where('tiles.3.category', 'absences')
+            ->where('tiles.3.pending', null)
             ->where('tiles.1.category', 'lateness')
             ->where('tiles.1.students', 1)
             ->where('tiles.1.occurrences', 1)
@@ -365,6 +368,59 @@ class RecordConsultationTest extends TestCase
     public function a_malformed_query_string_never_breaks_the_page(): void
     {
         $this->consult(['view' => ['lateness'], 'case_category' => ['x'], 'kind' => ['y'], 'mode' => ['range']])->assertOk();
+    }
+
+    #[Test]
+    public function one_student_in_two_classes_is_one_student_two_cases_and_two_separate_alerts(): void
+    {
+        $ana = $this->enroll('Ana Costa', ['class_number' => 3]);
+        $support = $this->secondClass('7.º A (apoio)', $this->inTenant($this->organization, fn () => $this->schoolClass->subject));
+        // A support class reuses the same student (StudentEnrollmentService::enrollExisting);
+        // a homonym in another class is ANOTHER student and is never merged by name.
+        $anaInSupport = $this->inTenant($this->organization, fn (): Enrollment => Enrollment::create([
+            'class_id' => $support->id, 'student_id' => $ana->student_id, 'class_number' => 1, 'enrolled_on' => '2026-09-01', 'status' => 'active', 'is_late_entry' => false,
+        ]));
+        $homonym = $this->enroll('Ana Costa', ['class_number' => 2], $support);
+
+        foreach (['2026-10-01', '2026-10-02'] as $date) {
+            $this->record($ana, EvidenceKind::Lateness, $date);
+            $this->record($anaInSupport, EvidenceKind::Lateness, $date, class: $support);
+        }
+        $this->record($homonym, EvidenceKind::Lateness, '2026-10-02', class: $support);
+
+        $this->postRecord(['enrollment_ids' => [$ana->id], 'occurred_at' => '2026-10-05'])->assertRedirect();
+        $this->postRecord(['enrollment_ids' => [$anaInSupport->id], 'occurred_at' => '2026-10-05'], $support)->assertRedirect();
+
+        $this->assertSame(2, $this->alertCount());
+
+        $this->consult(['view' => 'lateness'])->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('tiles.1.students', 2)
+            ->where('tiles.1.cases', 3)
+            ->where('tiles.1.occurrences', 7)
+            ->where('tiles.1.pending', 2)
+            ->where('followup.rows.total', 3)
+            ->where('followup.rows.data.0.student_cases', 2)
+            ->where('followup.rows.data.1.student_cases', 2)
+            ->where('followup.rows.data.2.student_cases', 1)
+            ->where('followup.rows.data.2.occurrences', 1)
+            ->has('alerts', 2));
+    }
+
+    #[Test]
+    public function the_class_logbook_tells_the_form_which_day_today_is_in_the_application_zone(): void
+    {
+        $this->travelTo(Carbon::parse('2026-09-14 00:30:00', 'Europe/Lisbon'));
+
+        $this->asTeacher()->get('/classes/'.$this->schoolClass->ulid.'/records')
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('appTimezone', 'Europe/Lisbon'));
+
+        // The day the form proposes at 00:30 in Lisbon (2026-09-14, the first
+        // day of the period) is inside the first period.
+        $ana = $this->enroll('Ana Costa');
+        $this->record($ana, EvidenceKind::Lateness, '2026-09-14');
+        $this->consult()->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.period', $this->firstPeriod->ulid)
+            ->where('tiles.1.occurrences', 1));
     }
 
     #[Test]

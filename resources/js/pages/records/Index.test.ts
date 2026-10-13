@@ -36,9 +36,9 @@ function filters(overrides: Partial<ConsultationFilters> = {}): ConsultationFilt
 
 function tiles(): Tile[] {
     return [
-        { category: 'homework_not_done', label: 'TPC não realizados', students: 0, occurrences: 0, pending: 0 },
-        { category: 'lateness', label: 'Atrasos', students: 6, occurrences: 14, pending: 2 },
-        { category: 'missing_material', label: 'Faltas de material', students: 1, occurrences: 1, pending: 0 },
+        { category: 'homework_not_done', label: 'TPC não realizados', unit: 'occurrence', students: 0, cases: 0, occurrences: 0, pending: 0 },
+        { category: 'lateness', label: 'Atrasos', unit: 'occurrence', students: 6, cases: 6, occurrences: 14, pending: 2 },
+        { category: 'missing_material', label: 'Faltas de material', unit: 'occurrence', students: 1, cases: 1, occurrences: 1, pending: 0 },
     ];
 }
 
@@ -163,10 +163,11 @@ describe('records Index — a consulta', () => {
             followup: {
                 category: 'lateness',
                 label: 'Atrasos',
+                unit: 'occurrence',
                 rows: {
                     data: [
-                        { class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E1', number: 2, name: 'Rui Sousa', occurrences: 4, first_date: '2026-10-01', last_date: '2026-10-09', status: 'pending', origin: 'existing' },
-                        { class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E2', number: 1, name: 'Ana Costa', occurrences: 2, first_date: '2026-10-02', last_date: '2026-10-03', status: 'none', origin: null },
+                        { student_key: 'S1', student_cases: 1, class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E1', number: 2, name: 'Rui Sousa', occurrences: 4, first_date: '2026-10-01', last_date: '2026-10-09', status: 'pending', origin: 'existing', days: null },
+                        { student_key: 'S2', student_cases: 1, class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E2', number: 1, name: 'Ana Costa', occurrences: 2, first_date: '2026-10-02', last_date: '2026-10-03', status: 'none', origin: null, days: null },
                     ],
                     current_page: 1, last_page: 1, total: 2, from: 1, to: 2, prev_url: null, next_url: null,
                 },
@@ -204,6 +205,38 @@ describe('records Index — a consulta', () => {
         }, { preserveScroll: true });
     });
 
+    it('says students and cases apart when a student is followed in two classes', () => {
+        const wrapper = mountPage({
+            tiles: [
+                ...tiles().slice(0, 2),
+                { category: 'missing_material', label: 'Faltas de material', unit: 'occurrence', students: 1, cases: 2, occurrences: 5, pending: 2 },
+            ],
+        });
+
+        expect(wrapper.find('[data-test="tile-missing_material"]').text()).toContain('1 aluno · 2 casos · 5 ocorrências');
+        expect(wrapper.find('[data-test="tile-lateness"]').text()).toContain('6 alunos · 14 ocorrências');
+        expect(wrapper.find('[data-test="cases-hint"]').exists()).toBe(true);
+        expect(mountPage().find('[data-test="cases-hint"]').exists()).toBe(false);
+    });
+
+    it('marks a line whose student is followed in another class too', () => {
+        const row = { student_key: 'S1', student_cases: 2, class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E1', number: 2, name: 'Rui Sousa', occurrences: 3, first_date: '2026-10-01', last_date: '2026-10-09', status: 'pending', origin: 'alert', days: null };
+        const wrapper = mountPage({
+            filters: filters({ view: 'lateness' }),
+            followup: {
+                category: 'lateness',
+                label: 'Atrasos',
+                unit: 'occurrence',
+                rows: { data: [row, { ...row, class_ulid: 'C2', class_label: '7.º A (apoio)', student_ulid: 'E9' }], current_page: 1, last_page: 1, total: 2, from: 1, to: 2, prev_url: null, next_url: null },
+            },
+        });
+
+        const lines = wrapper.findAll('[data-test="followup-list"] li');
+        expect(lines[0].text().replace(/\s+/g, ' ')).toContain('7.º A · Matemática · também noutra turma');
+        expect(lines[1].text()).toContain('7.º A (apoio)');
+        expect(wrapper.find('[data-test="followup-list"]').text()).toContain('2 casos');
+    });
+
     it('shows the periods notice exactly as worded', () => {
         const notice = 'Para receber alertas de acumulação, configure os períodos de avaliação e confirme as respetivas datas.';
 
@@ -222,5 +255,35 @@ describe('records Index — a consulta', () => {
         const open = wrapper.find('[data-test="results"] li a');
         expect(open.attributes('href')).toBe('/classes/C1/records?registo=R1&voltar=%2Frecords%3Fyear%3DY1%26period%3DP1');
         expect(wrapper.find('[data-test="results"]').text()).toContain('54 registos · Página 1 de 3');
+    });
+
+    it('shows the fourth access, absences, in absences — never as occurrences, never «por tratar»', () => {
+        const wrapper = mountPage({
+            tiles: [...tiles(), { category: 'absences', label: 'Faltas de presença', unit: 'absence', students: 2, cases: 2, occurrences: 3, pending: null }],
+        });
+
+        const tile = wrapper.find('[data-test="tile-absences"]').text();
+        expect(tile).toContain('Faltas de presença');
+        expect(tile).toContain('2 alunos · 3 faltas');
+        expect(tile).not.toContain('por tratar');
+    });
+
+    it('lists absences per student with how many days they fall on', () => {
+        const wrapper = mountPage({
+            filters: filters({ view: 'absences' }),
+            followup: {
+                category: 'absences',
+                label: 'Faltas de presença',
+                unit: 'absence',
+                rows: {
+                    data: [{ student_key: 'S1', student_cases: 1, class_ulid: 'C1', class_label: '7.º A', subject: 'Matemática', student_ulid: 'E1', number: 1, name: 'Ana Costa', occurrences: 3, days: 2, first_date: '2026-10-05', last_date: '2026-10-09', status: null, origin: null }],
+                    current_page: 1, last_page: 1, total: 1, from: 1, to: 1, prev_url: null, next_url: null,
+                },
+            },
+        });
+
+        const line = wrapper.find('[data-test="followup-list"] li').text().replace(/\s+/g, ' ');
+        expect(line).toContain('3 faltas em 2 dias');
+        expect(line).not.toContain('Por tratar');
     });
 });

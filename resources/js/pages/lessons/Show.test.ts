@@ -793,6 +793,30 @@ describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () =>
         expect(back).toHaveBeenCalledOnce();
     });
 
+    it('goes back to the Registos consultation when the teacher opened the lesson from «Faltas de presença» (0.164.0)', async () => {
+        const url = '/records?year=Y1&period=P1&view=absences&case_class=C1&case_student=E1&case_category=absences';
+        window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url, lesson: 'lesson-a' }));
+        const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+        Object.defineProperty(window.history, 'length', { configurable: true, value: 3 });
+        const wrapper = mountPage();
+        await nextTick();
+
+        const link = wrapper.get('[data-testid="lesson-back"]');
+        expect(link.text()).toBe('Voltar à consulta de registos');
+        expect(link.attributes('href')).toBe(url);
+
+        await link.trigger('click', { button: 0 });
+        expect(back).toHaveBeenCalledOnce();
+    });
+
+    it('never follows a remembered origin outside the application', async () => {
+        window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url: 'https://example.com/records', lesson: 'lesson-a' }));
+        const wrapper = mountPage();
+        await nextTick();
+
+        expect(wrapper.find('[data-testid="lesson-back"]').attributes('href')).toBe('/lessons?week=2026-09-07');
+    });
+
     it('ignores a remembered origin that belongs to another lesson', async () => {
         window.sessionStorage.setItem('lapis.lessons.return', JSON.stringify({ url: '/lessons?week=2026-01-05', lesson: 'other-lesson' }));
         const wrapper = mountPage();

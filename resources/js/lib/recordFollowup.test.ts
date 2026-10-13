@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConsultationFilters } from './recordFollowup';
-import { copyText, filtersToQuery, formatDay, occurrencesLabel, statusLabel, studentLabel, studentsLabel, weekday, withQuery } from './recordFollowup';
+import { casesLabel, copyText, filtersToQuery, formatDay, occurrencesLabel, statusLabel, studentLabel, studentsLabel, tileFigures, weekday, withQuery } from './recordFollowup';
 
 function filters(overrides: Partial<ConsultationFilters> = {}): ConsultationFilters {
     return {
@@ -68,5 +68,11 @@ describe('recordFollowup helpers', () => {
         vi.stubGlobal('navigator', { clipboard: { writeText } });
         expect(await copyText('texto')).toBe(true);
         expect(writeText).toHaveBeenCalledWith('texto');
+    });
+
+    it('tells students and cases apart only when they differ', () => {
+        expect(casesLabel(1)).toBe('1 caso');
+        expect(tileFigures({ students: 6, cases: 6, occurrences: 14 })).toBe('6 alunos · 14 ocorrências');
+        expect(tileFigures({ students: 1, cases: 2, occurrences: 5 })).toBe('1 aluno · 2 casos · 5 ocorrências');
     });
 });

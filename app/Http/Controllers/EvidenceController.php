@@ -103,6 +103,9 @@ class EvidenceController extends Controller
             'backUrl' => $backUrl,
             'consultation' => ['year' => $class->academicYear->ulid, 'class' => $class->ulid],
             'periodsNotice' => AssessmentPeriodTimeline::forYear($class->academic_year_id)->isEmpty() ? RecordFollowupNotices::periodsMissing() : null,
+            // What «today» means for the form's default date: the application's
+            // day, never the UTC one (records/Show.vue, lib/appDate.ts).
+            'appTimezone' => (string) config('app.timezone'),
             // «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE).
             // Read on the server before the button is drawn — hiding a control
             // is presentation, not the answer (CLAUDE.md §8.2); the endpoint

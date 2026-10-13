@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { BookX, ChevronDown, ChevronRight, Clock, NotebookPen, PackageX, Search, X } from '@lucide/vue';
+import { BookX, ChevronDown, ChevronRight, Clock, NotebookPen, PackageX, Search, UserX, X } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, reactive, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
+import AbsenceCaseDialog from '@/components/records/AbsenceCaseDialog.vue';
 import FollowupCaseDialog from '@/components/records/FollowupCaseDialog.vue';
 import RecordPagination from '@/components/records/RecordPagination.vue';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { AlertRow, CaseDetail, ConsultationFilters, FollowupCategory, FollowupRow, Paginated, ResultRow, Tile } from '@/lib/recordFollowup';
-import { CASE_KEYS, filtersToQuery, formatDay, occurrencesLabel, statusLabel, studentLabel, studentsLabel, withQuery } from '@/lib/recordFollowup';
+import type { AbsenceDetail, AlertRow, CaseDetail, ConsultationFilters, FollowupRow, FollowupView, Paginated, ResultRow, Tile } from '@/lib/recordFollowup';
+import { absencesLabel, CASE_KEYS, daysLabel, filtersToQuery, formatDay, occurrencesLabel, statusLabel, studentLabel, tileFigures, withQuery } from '@/lib/recordFollowup';
 import { statusToneClasses } from '@/lib/statusTone';
 
 /**
@@ -52,18 +53,22 @@ const props = defineProps<{
     tiles: Tile[];
     alerts: AlertRow[];
     results: Paginated<ResultRow> | null;
-    followup: { category: FollowupCategory; label: string; rows: Paginated<FollowupRow> } | null;
-    openCase?: CaseDetail | null;
+    followup: { category: FollowupView; label: string; unit: 'occurrence' | 'absence'; rows: Paginated<FollowupRow> } | null;
+    openCase?: CaseDetail | AbsenceDetail | null;
     can: { confirm: boolean };
 }>();
 
 const page = usePage();
 
-const CATEGORY_ICONS: Record<FollowupCategory, Component> = {
+const CATEGORY_ICONS: Record<FollowupView, Component> = {
     homework_not_done: BookX,
     lateness: Clock,
     missing_material: PackageX,
+    absences: UserX,
 };
+
+const absenceCase = computed<AbsenceDetail | null>(() => (props.openCase && 'kind' in props.openCase && props.openCase.kind === 'absences' ? props.openCase : null));
+const recordCase = computed<CaseDetail | null>(() => (props.openCase && !('kind' in props.openCase) ? props.openCase : null));
 
 // --- Filtros por aplicar --------------------------------------------------
 
@@ -162,7 +167,7 @@ function appliedQuery(extra: Record<string, string> = {}): Record<string, string
     return { ...filtersToQuery(props.filters), ...(props.filters.searched ? { searched: '1' } : {}), ...extra };
 }
 
-function openFollowup(category: FollowupCategory): void {
+function openFollowup(category: FollowupView): void {
     if (props.filters.view === category) {
         closeFollowup();
 
@@ -176,7 +181,7 @@ function closeFollowup(): void {
     router.get('/records', appliedQuery(), { preserveScroll: true });
 }
 
-function openCaseFor(classUlid: string, studentUlid: string, category: FollowupCategory): void {
+function openCaseFor(classUlid: string, studentUlid: string, category: FollowupView): void {
     router.get(
         withQuery(page.url, { case_class: classUlid, case_student: studentUlid, case_category: category }),
         {},
@@ -212,6 +217,9 @@ function recordHref(row: ResultRow): string {
 }
 
 const registerClasses = computed(() => props.options.classes.filter((option) => !option.archived));
+
+// Shown only when it matters: some student is followed in more than one class.
+const showsCases = computed(() => props.tiles.some((tile) => tile.cases !== tile.students));
 
 const showSubjectFilter = computed(() => props.options.subjects.length > 1);
 
@@ -410,7 +418,7 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
             <!-- Os três acessos diretos -->
             <section v-if="tiles.length > 0" aria-labelledby="followup-heading" class="space-y-3">
                 <h2 id="followup-heading" class="text-base font-semibold">Acompanhamento</h2>
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <button
                         v-for="tile in tiles"
                         :key="tile.category"
@@ -426,13 +434,16 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
                         </span>
                         <span class="min-w-0">
                             <span class="block font-semibold">{{ tile.label }}</span>
-                            <span class="block text-sm tabular-nums text-muted-foreground">{{ studentsLabel(tile.students) }} · {{ occurrencesLabel(tile.occurrences) }}</span>
+                            <span class="block text-sm tabular-nums text-muted-foreground">{{ tileFigures(tile) }}</span>
                             <span v-if="tile.pending" class="mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium" :class="statusToneClasses('pending')">
                                 {{ tile.pending }} por tratar
                             </span>
                         </span>
                     </button>
                 </div>
+                <p v-if="showsCases" class="text-xs text-muted-foreground" data-test="cases-hint">
+                    Um caso é um aluno numa turma: um aluno com ocorrências em duas turmas conta uma vez como aluno e duas como casos, e os alertas de cada turma ficam separados.
+                </p>
             </section>
 
             <!-- Alertas por tratar -->
@@ -456,7 +467,7 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
             <!-- Lista de um acompanhamento -->
             <section v-if="followup" aria-labelledby="followup-list-heading" class="space-y-3" data-test="followup-list">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h2 id="followup-list-heading" class="text-base font-semibold">{{ followup.label }} — por aluno</h2>
+                    <h2 id="followup-list-heading" class="text-base font-semibold">{{ followup.label }} — por aluno e turma</h2>
                     <Button type="button" variant="ghost" class="min-h-11" @click="closeFollowup">Fechar lista</Button>
                 </div>
 
@@ -475,7 +486,9 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
                                 <span class="min-w-0 flex-1">
                                     <span class="block truncate text-sm font-medium">{{ row.name }}</span>
                                     <span class="block truncate text-xs text-muted-foreground">
+                                        <template v-if="row.days !== null">{{ absencesLabel(row.occurrences) }} em {{ daysLabel(row.days) }} · </template>
                                         {{ row.class_label }} · {{ row.subject }}
+                                        <template v-if="row.student_cases > 1"> · também noutra turma</template>
                                         <template v-if="row.origin === 'existing'"> · sem alerta</template>
                                     </span>
                                 </span>
@@ -493,7 +506,7 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
                         :total="followup.rows.total"
                         :prev-url="followup.rows.prev_url"
                         :next-url="followup.rows.next_url"
-                        :noun="{ one: 'aluno', many: 'alunos' }"
+                        :noun="{ one: 'caso', many: 'casos' }"
                     />
                 </template>
             </section>
@@ -544,6 +557,7 @@ const periodDates = (period: PeriodOption): string => `${formatDay(period.starts
             </p>
         </template>
 
-        <FollowupCaseDialog v-if="openCase" :detail="openCase" :current-url="page.url" @close="closeCase" />
+        <FollowupCaseDialog v-if="recordCase" :detail="recordCase" :current-url="page.url" @close="closeCase" />
+        <AbsenceCaseDialog v-else-if="absenceCase" :detail="absenceCase" :current-url="page.url" @close="closeCase" />
     </div>
 </template>

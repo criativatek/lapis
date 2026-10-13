@@ -51,7 +51,7 @@ class RecordConsultationController extends Controller
     {
         $scope = RecordConsultationScope::resolve($request, $this->user());
         $searched = $request->query('searched') === '1';
-        $view = $this->category($request->query('view'));
+        $view = $this->view($request->query('view'));
         $canConfirm = ! $request->session()->has('impersonator_id');
 
         // Every expensive prop is a closure: a partial reload (opening a case,
@@ -70,7 +70,7 @@ class RecordConsultationController extends Controller
                 'from' => $scope->from?->format('Y-m-d'),
                 'to' => $scope->to?->format('Y-m-d'),
                 'searched' => $searched,
-                'view' => $view?->value,
+                'view' => $view instanceof RecordFollowupCategory ? $view->value : $view,
             ],
             'options' => fn () => $this->options($scope),
             'context' => $this->context($scope),
@@ -79,8 +79,9 @@ class RecordConsultationController extends Controller
             'results' => fn () => $searched && $view === null && $scope->window !== null ? $this->results($request, $scope) : null,
             'followup' => fn () => $view !== null && $scope->window !== null
                 ? [
-                    'category' => $view->value,
-                    'label' => $view->label(),
+                    'category' => $view instanceof RecordFollowupCategory ? $view->value : $view,
+                    'label' => $view instanceof RecordFollowupCategory ? $view->label() : (string) __('Faltas de presença'),
+                    'unit' => $view instanceof RecordFollowupCategory ? 'occurrence' : 'absence',
                     'rows' => $this->paginationPayload($this->presenter->followupRows(
                         $scope,
                         $view,
@@ -225,6 +226,14 @@ class RecordConsultationController extends Controller
         return is_string($value) ? RecordFollowupCategory::tryFrom($value) : null;
     }
 
+    /**
+     * A logbook category, or «Faltas de presença» (`absences`).
+     */
+    private function view(mixed $value): RecordFollowupCategory|string|null
+    {
+        return $value === RecordFollowupPresenter::ABSENCES ? RecordFollowupPresenter::ABSENCES : $this->category($value);
+    }
+
     private function studentLabel(Enrollment $enrollment): string
     {
         $enrollment->loadMissing('student.identity');
@@ -309,7 +318,7 @@ class RecordConsultationController extends Controller
     {
         $classUlid = $request->query('case_class');
         $studentUlid = $request->query('case_student');
-        $category = $this->category($request->query('case_category'));
+        $category = $this->view($request->query('case_category'));
 
         if (! is_string($classUlid) || ! is_string($studentUlid) || $category === null || $scope->window === null) {
             return null;
@@ -320,6 +329,10 @@ class RecordConsultationController extends Controller
         abort_if($class === null, 404);
 
         $enrollment = $class->enrollments()->where('ulid', $studentUlid)->firstOrFail();
+
+        if (! $category instanceof RecordFollowupCategory) {
+            return $this->presenter->absenceDetail($class, $enrollment, $scope->window);
+        }
 
         return $this->presenter->caseDetail(
             $class,

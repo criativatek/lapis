@@ -3,7 +3,6 @@
 namespace App\Services\Evidence\Followup;
 
 use App\Models\AcademicPeriod;
-use App\Models\EvidenceRecord;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -75,12 +74,17 @@ final class FollowupWindow
     }
 
     /**
-     * Restricts a logbook query to the window, as half-open datetime ranges —
-     * a record typed with a time on the last day still belongs to it.
+     * Restricts a query to the window, as half-open datetime ranges on a
+     * pedagogical date column — a record typed with a time on the last day, or
+     * a lesson in the last afternoon, still belongs to it. The logbook's
+     * `occurred_at` by default; the lessons' `starts_at` (local wall-clock
+     * time) for attendance.
      *
-     * @param  Builder<EvidenceRecord>  $query
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
      */
-    public function applyTo(Builder $query): void
+    public function applyTo(Builder $query, string $column = 'evidence_records.occurred_at'): void
     {
         if ($this->intervals === []) {
             $query->whereRaw('1 = 0');
@@ -88,11 +92,11 @@ final class FollowupWindow
             return;
         }
 
-        $query->where(function (Builder $window): void {
+        $query->where(function (Builder $window) use ($column): void {
             foreach ($this->intervals as [$from, $to]) {
                 $window->orWhere(fn (Builder $interval) => $interval
-                    ->where('evidence_records.occurred_at', '>=', $from->format('Y-m-d 00:00:00'))
-                    ->where('evidence_records.occurred_at', '<', $to->addDay()->format('Y-m-d 00:00:00')));
+                    ->where($column, '>=', $from->format('Y-m-d 00:00:00'))
+                    ->where($column, '<', $to->addDay()->format('Y-m-d 00:00:00')));
             }
         });
     }

@@ -4,11 +4,14 @@ namespace App\Services\Evidence\Followup;
 
 use App\Models\Enrollment;
 use App\Models\EvidenceRecord;
+use App\Models\LessonAttendance;
 use App\Models\RecordFollowupCase;
 use App\Models\RecordFollowupCategory;
 use App\Models\RecordFollowupConfirmation;
 use App\Models\SchoolClass;
 use App\Services\Evidence\EvidenceRecordLabels;
+use App\Services\Lessons\ConsolidatedAbsences;
+use App\Services\Lessons\StudentAttendanceHistory;
 use App\Support\Language\StudentNameParts;
 use Carbon\CarbonInterface;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -16,22 +19,32 @@ use Illuminate\Support\Collection;
 
 /**
  * Shapes the follow-up for the consultation screen. Reads only what the
- * counter and the case book give it — it never counts on its own.
+ * counters and the case book give it — it never counts on its own.
+ *
+ * Four direct accesses: the three logbook categories (with alerts, status and
+ * the Inovar message) and «Faltas de presença», read from the lessons'
+ * attendance (ConsolidatedAbsences) — consultation and counts only, no alert
+ * and no message (decisão do dono do produto, 2026-10-13).
  */
 final class RecordFollowupPresenter
 {
     public const int FOLLOWUP_PER_PAGE = 25;
 
+    /** The view key of the attendance access — not a RecordFollowupCategory. */
+    public const string ABSENCES = 'absences';
+
     public function __construct(
         private readonly RecordFollowupCounter $counter,
         private readonly RecordFollowupCaseBook $cases,
+        private readonly ConsolidatedAbsences $absences,
+        private readonly StudentAttendanceHistory $attendanceHistory,
     ) {}
 
     /**
      * The three direct accesses: distinct students and occurrences per
      * category in the window, plus «por tratar» when the window is a period.
      *
-     * @return list<array{category: string, label: string, students: int, occurrences: int, pending: int|null}>
+     * @return list<array{category: string, label: string, unit: string, students: int, cases: int, occurrences: int, pending: int|null}>
      */
     public function tiles(RecordConsultationScope $scope): array
     {
@@ -42,13 +55,30 @@ final class RecordFollowupPresenter
         $summary = $this->counter->summary($scope->classIds(), $scope->window, $scope->studentId());
         $pending = $scope->window->isPeriod() ? $this->cases->pendingCounts($scope->classIds(), $scope->window, $scope->studentId()) : null;
 
-        return array_map(fn (RecordFollowupCategory $category): array => [
+        $tiles = array_map(fn (RecordFollowupCategory $category): array => [
             'category' => $category->value,
             'label' => $category->label(),
+            'unit' => 'occurrence',
             'students' => $summary[$category->value]['students'],
+            'cases' => $summary[$category->value]['cases'],
             'occurrences' => $summary[$category->value]['occurrences'],
             'pending' => $pending === null ? null : $pending[$category->value],
         ], RecordFollowupCategory::cases());
+
+        $absences = $this->absences->summary($scope->classIds(), $scope->window, $scope->studentId());
+
+        $tiles[] = [
+            'category' => self::ABSENCES,
+            'label' => (string) __('Faltas de presença'),
+            'unit' => 'absence',
+            'students' => $absences['students'],
+            'cases' => $absences['cases'],
+            'occurrences' => $absences['absences'],
+            // No alert, no «por tratar»: consultation and counts only.
+            'pending' => null,
+        ];
+
+        return $tiles;
     }
 
     /**
@@ -59,7 +89,7 @@ final class RecordFollowupPresenter
      * @param  array<string, mixed>  $query
      * @return LengthAwarePaginator<int, array<string, mixed>>
      */
-    public function followupRows(RecordConsultationScope $scope, RecordFollowupCategory $category, int $page, string $path, array $query): LengthAwarePaginator
+    public function followupRows(RecordConsultationScope $scope, RecordFollowupCategory|string $view, int $page, string $path, array $query): LengthAwarePaginator
     {
         $window = $scope->window;
 
@@ -67,7 +97,13 @@ final class RecordFollowupPresenter
             return (new LengthAwarePaginator([], 0, self::FOLLOWUP_PER_PAGE, 1, ['path' => $path, 'pageName' => 'followup_page']))->appends($query);
         }
 
-        $rows = $this->counter->perStudent($scope->classIds(), $window, $category, $scope->studentId() === null ? null : [$scope->studentId()]);
+        $students = $scope->studentId() === null ? null : [$scope->studentId()];
+        $category = $view instanceof RecordFollowupCategory ? $view : null;
+
+        $rows = $category === null
+            ? $this->absences->perStudent($scope->classIds(), $window, $students)
+            : $this->counter->perStudent($scope->classIds(), $window, $category, $students)
+                ->map(fn (array $row): array => array_merge($row, ['days' => null]));
 
         $enrollments = Enrollment::query()
             ->whereIn('id', $rows->pluck('enrollment_id')->unique()->values()->all())
@@ -84,6 +120,10 @@ final class RecordFollowupPresenter
             })
             ->values();
 
+        // How many cases each student has in the WHOLE list (not just this
+        // page) — so a line can say the same student is followed elsewhere.
+        $casesPerStudent = $sorted->countBy(fn (array $row): int => (int) $enrollments->get($row['enrollment_id'])?->student_id);
+
         $lastPage = max(1, (int) ceil($sorted->count() / self::FOLLOWUP_PER_PAGE));
         $page = min(max(1, $page), $lastPage);
         $slice = $sorted->slice(($page - 1) * self::FOLLOWUP_PER_PAGE, self::FOLLOWUP_PER_PAGE)->values();
@@ -94,14 +134,15 @@ final class RecordFollowupPresenter
             ->get()
             ->keyBy('id');
 
-        $caseRows = $window->period() === null ? collect() : $this->cases->forPeriod($scope->classIds(), $window->period()->id, $category);
+        $caseRows = $window->period() === null || $category === null ? collect() : $this->cases->forPeriod($scope->classIds(), $window->period()->id, $category);
 
         $data = array_values($slice->map(fn (array $row): array => $this->followupRow(
             $row,
             $identities->get($row['enrollment_id']),
             $classes->get($row['class_id']),
             $caseRows->get($row['class_id'].':'.$row['enrollment_id']),
-            $window,
+            $category === null ? null : $window,
+            (int) $casesPerStudent->get((int) $enrollments->get($row['enrollment_id'])?->student_id, 1),
         ))->all());
 
         return (new LengthAwarePaginator($data, $sorted->count(), self::FOLLOWUP_PER_PAGE, $page, [
@@ -111,12 +152,18 @@ final class RecordFollowupPresenter
     }
 
     /**
-     * @param  array{class_id: int, enrollment_id: int, occurrences: int, first_at: string, last_at: string}  $row
+     * `$window` null for absences: they have no status and no alert.
+     *
+     * @param  array{class_id: int, enrollment_id: int, occurrences: int, days: int|null, first_at: string, last_at: string}  $row
      * @return array<string, mixed>
      */
-    private function followupRow(array $row, ?Enrollment $enrollment, ?SchoolClass $class, ?RecordFollowupCase $case, ?FollowupWindow $window): array
+    private function followupRow(array $row, ?Enrollment $enrollment, ?SchoolClass $class, ?RecordFollowupCase $case, ?FollowupWindow $window, int $studentCases): array
     {
         return [
+            // The student's identity in this list (never an id): the same key
+            // on two lines means the same student, followed in two classes.
+            'student_key' => $enrollment?->student->ulid,
+            'student_cases' => $studentCases,
             'class_ulid' => $class?->ulid,
             'class_label' => $class?->label,
             'subject' => $class?->subject->name,
@@ -124,6 +171,8 @@ final class RecordFollowupPresenter
             'number' => $enrollment?->class_number,
             'name' => optional($enrollment?->student->identity)->display_name ?? __('(sem identidade)'),
             'occurrences' => $row['occurrences'],
+            // Absences only: on how many distinct days.
+            'days' => $row['days'],
             'first_date' => substr($row['first_at'], 0, 10),
             'last_date' => substr($row['last_at'], 0, 10),
             'status' => $window?->isPeriod() === true ? RecordFollowupCaseBook::status($row['occurrences'], $case) : null,
@@ -239,6 +288,47 @@ final class RecordFollowupPresenter
                     'undone_at' => $confirmation->undone_at?->toIso8601String(),
                 ])->values()->all(),
             'can_confirm' => $canConfirm && $window->isPeriod(),
+        ];
+    }
+
+    /**
+     * One student's absences in one class — the lessons, each with its date,
+     * time and number, and a way to open the lesson where the attendance was
+     * registered. Also how many taught lessons of the class are still without
+     * attendance in the window, which are NOT absences and are said apart.
+     *
+     * @return array<string, mixed>
+     */
+    public function absenceDetail(SchoolClass $class, Enrollment $enrollment, FollowupWindow $window): array
+    {
+        $absences = $this->absences->caseAbsences($class->id, $enrollment->id, $window);
+        $enrollment->loadMissing('student.identity');
+
+        // The same history the student's Evolução shows — for the lessons
+        // still without attendance in the window (never counted as absences).
+        $history = $this->attendanceHistory->for($enrollment, $window->from()->toDateString(), $window->to()->toDateString());
+
+        return [
+            'kind' => self::ABSENCES,
+            'class' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
+            'student' => [
+                'ulid' => $enrollment->ulid,
+                'number' => $enrollment->class_number,
+                'name' => $enrollment->student->identity->display_name ?? __('(sem identidade)'),
+            ],
+            'category_label' => (string) __('Faltas de presença'),
+            'window' => ['is_period' => $window->isPeriod(), 'label' => $window->label(), 'period_ulid' => $window->period()?->ulid],
+            'absences' => array_values($absences->map(fn (LessonAttendance $attendance): array => [
+                'ulid' => $attendance->ulid,
+                'lesson_ulid' => $attendance->lesson->ulid,
+                'date' => $attendance->lesson->starts_at->format('Y-m-d'),
+                'time' => $attendance->lesson->starts_at->format('H:i'),
+                'lesson_number' => $attendance->lesson->lesson_number,
+                'context_label' => $attendance->lesson->contextLabel(),
+            ])->all()),
+            'count' => $absences->count(),
+            'days' => $absences->map(fn (LessonAttendance $attendance): string => $attendance->lesson->starts_at->format('Y-m-d'))->unique()->count(),
+            'not_recorded' => $history['totals']['not_recorded'],
         ];
     }
 
