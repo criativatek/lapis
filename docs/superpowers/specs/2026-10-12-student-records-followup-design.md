@@ -198,16 +198,29 @@ omissão «Registar TPC», e a pesquisa quando o URL traz o seu próprio estado.
 - **Turma**: do URL, ou a última escolhida nesta sessão (`records.class`, só se
   for do ano em uso); sem nenhuma, a página pede-a. A aplicação não tem uma
   turma global (a barra de contexto só a mostra nas páginas de uma turma).
-- **Grelha** (`HomeworkGridRoster`): o rol da data — `enrolledOn(data)` e ativa
-  ou com data de saída (a regra da assiduidade); ambígua fica de fora e
-  contada. Linhas só de leitura: dois registos de TPC no mesmo dia
-  (`duplicate`, nunca fundidos) e aluno que saiu sem marcação nesse dia
-  (`left`). Marcação nova: aluno ativo e na turma na data; correção de uma
+- **Grelha** (`HomeworkGridRoster`): quem pertencia à turma NA DATA —
+  `enrolled_on` ≤ data ≤ `left_on` (dias de entrada e de saída incluídos) e
+  ativa ou com data de saída (a regra da assiduidade). Pode receber a marcação
+  desse dia mesmo que já tenha saído; numa data fora da inscrição, nunca.
+  Inscrição não ativa sem `left_on`: elegibilidade indeterminada — linha só
+  de leitura com o motivo (`undetermined`), nunca presumida elegível. Dois
+  registos de TPC no mesmo dia: só de leitura (`duplicate`), nunca fundidos
+  nem um escolhido, com ligação à pesquisa. Correção de uma marcação
   existente nunca recusada. O modelo não tem um «TPC» como entidade: turma +
   dia é a identidade, uma marcação por aluno e dia.
 - **Gravação**: só as linhas alteradas; uma marcação igual não é regravada,
   nem auditada, nem contada nas métricas. Alertas e casos pelo mesmo caminho
   (`RecordFollowupAlerts`, turma bloqueada).
+- **Concorrência por marcação**: cada linha traz `version` (`none`, ou um
+  resumo do registo, do estado, da observação e de `updated_at`); a gravação
+  devolve-a como `expected` e, com a turma bloqueada, compara-a por aluno.
+  Diferente → conflito (`changed` / `created` / `removed`, com o estado atual
+  e a hora), a linha não é escrita e as outras sim. Linha já no estado pedido
+  → gravada (repetição após falha, mesma escolha noutro separador). Resultado
+  por linha no flash `homework_save`; o aviso diz «Gravação parcial» ou «Nada
+  foi gravado», nunca sucesso total com conflitos. No ecrã, a linha em
+  conflito mantém a escolha e só volta a ser enviada depois de «Manter a minha
+  escolha» (com a versão nova) ou «Usar o estado atual».
 - **Panorama** (`ClassRecordPanorama`): rol da janela (quem esteve na turma em
   algum dia dela, mais quem tem alguma contagem), contagens por consultas
   agrupadas sobre `RecordFollowupCounter` e `ConsolidatedAbsences` (o mesmo

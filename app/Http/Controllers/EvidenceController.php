@@ -264,25 +264,35 @@ class EvidenceController extends Controller
             'occurred_at' => ['required', 'date_format:Y-m-d'],
         ]);
 
-        $grid = $roster->for($class, $validated['occurred_at']);
-
         return response()->json([
             'occurred_at' => $validated['occurred_at'],
-            'enrollments' => $grid['rows'],
-            'excluded_without_left_on' => $grid['excluded_without_left_on'],
+            'enrollments' => $roster->for($class, $validated['occurred_at'])['rows'],
         ]);
     }
 
     /**
-     * Saves the rows of the homework grid the teacher changed, atomically.
-     * A blank status means «Não verificado»: an existing marking of this exact
-     * day is soft-deleted, while a row that never existed remains a no-op.
+     * Saves the rows of the homework grid the teacher changed. A blank status
+     * means «Não verificado»: an existing marking of that day is soft-deleted,
+     * while a row that never existed remains a no-op.
      *
-     * Per row, never for the whole grid at once: correcting a marking that
-     * already exists is never refused, a NEW marking needs a student who was
-     * in the class that day and still is (HomeworkGridRoster), and a student
-     * with two homework records that day is never written through the grid —
-     * the two records are distinct and are not merged by the date.
+     * PER STUDENT, NEVER PER GRID:
+     * - Each row carries `expected`, the version of the marking the teacher
+     *   saw (HomeworkGridRoster::versionOf). With the class locked, a row
+     *   whose marking changed in between (edited, created or removed in
+     *   another session) is NOT written: it comes back as a conflict with
+     *   what is there now. The other rows are saved normally — someone
+     *   changing a different student never blocks this one.
+     * - A row already in the state asked for counts as saved, whatever its
+     *   version: a request repeated after a lost connection, or the same
+     *   choice made in two tabs, is never a conflict and never a duplicate.
+     * - A new marking needs a student who belonged to the class ON THAT DAY,
+     *   even if they left since; correcting an existing marking is never
+     *   refused; two homework records of that day are never written through
+     *   the grid (they are distinct and are not merged by the date).
+     *
+     * The outcome per row goes back as flash `homework_save` (saved, unchanged,
+     * conflicts) — and the toast never says «guardado» when some row was not.
+     * A request without `expected` (an older page) saves as before.
      */
     public function updateHomeworkBatch(Request $request, SchoolClass $class, UsageRecorder $usage, HomeworkGridRoster $roster): RedirectResponse
     {
@@ -294,22 +304,28 @@ class EvidenceController extends Controller
             'rows.*.enrollment_id' => ['required', 'integer', 'distinct'],
             'rows.*.homework_status' => ['nullable', Rule::enum(HomeworkStatus::class)],
             'rows.*.description' => ['nullable', 'string', 'max:1000'],
+            'rows.*.expected' => ['nullable', 'string', 'max:64'],
         ]);
 
+        $date = $validated['occurred_at'];
         $enrollmentIds = array_map('intval', array_column($validated['rows'], 'enrollment_id'));
         // Membership against everyone who was ever on the roll — the per-row
         // rules below decide what may be created.
         $this->guardCrossReferences($class, ['enrollment_ids' => $enrollmentIds]);
 
         $touched = 0;
+        $saved = [];
+        $unchanged = [];
+        $conflicts = [];
 
-        $followup = DB::transaction(function () use ($class, $validated, $enrollmentIds, $roster, &$touched): RecordFollowupOutcome {
+        $followup = DB::transaction(function () use ($class, $validated, $date, $enrollmentIds, $roster, &$touched, &$saved, &$unchanged, &$conflicts): RecordFollowupOutcome {
             // There is deliberately no batch table or uniqueness constraint.
-            // Locking the existing parent serializes two first saves, where no
+            // Locking the existing parent serializes two saves (two tabs
+            // creating the same first marking included), where no
             // EvidenceRecord row exists yet for lockForUpdate() to lock.
             SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
 
-            $existingRecords = $roster->recordsOn($class, $validated['occurred_at'])
+            $existingRecords = $roster->recordsOn($class, $date)
                 ->whereIn('enrollment_id', $enrollmentIds)
                 ->lockForUpdate()
                 ->get()
@@ -317,6 +333,8 @@ class EvidenceController extends Controller
 
             $enrollments = Enrollment::query()->whereIn('id', $enrollmentIds)->get()->keyBy('id');
 
+            // 1. What can never be written through the grid refuses the whole
+            //    request before anything is written.
             foreach ($validated['rows'] as $row) {
                 $own = $existingRecords->get($row['enrollment_id'], collect());
 
@@ -326,24 +344,75 @@ class EvidenceController extends Controller
                     ]);
                 }
 
-                if ($own->isEmpty() && ($row['homework_status'] ?? null) !== null
-                    && ! $roster->acceptsNewMarking($enrollments->get($row['enrollment_id']), $validated['occurred_at'])) {
-                    throw ValidationException::withMessages([
-                        'rows' => __('Um aluno que não integrava a turma nesta data, ou que já não a integra, não pode receber uma marcação nova.'),
-                    ]);
+                if ($own->isEmpty() && ($row['homework_status'] ?? null) !== null) {
+                    $eligibility = $roster->eligibilityOn($enrollments->get($row['enrollment_id']), $date);
+
+                    if ($eligibility === HomeworkGridRoster::UNDETERMINED) {
+                        throw ValidationException::withMessages([
+                            'rows' => __('Não se sabe se um dos alunos pertencia à turma nesta data: a inscrição não está ativa e não tem data de saída. Registe a data de saída na turma para o poder marcar.'),
+                        ]);
+                    }
+
+                    if ($eligibility !== HomeworkGridRoster::ELIGIBLE) {
+                        throw ValidationException::withMessages([
+                            'rows' => __('Um dos alunos não pertencia à turma nesta data e não pode receber uma marcação de TPC deste dia.'),
+                        ]);
+                    }
                 }
             }
 
-            // Only a row saved as «Não realizado» can add to the follow-up.
-            $snapshot = $this->followupAlerts->before($class, array_map(fn (array $row): array => [
-                'enrollment_id' => (int) $row['enrollment_id'],
-                'category' => RecordFollowupCategory::fromRecord(EvidenceKind::Homework, HomeworkStatus::tryFrom((string) ($row['homework_status'] ?? ''))),
-                'date' => Carbon::parse($validated['occurred_at']),
-            ], $validated['rows']));
+            // 2. Per student: already as asked, changed meanwhile, or to write.
+            $toWrite = [];
 
             foreach ($validated['rows'] as $row) {
+                $enrollmentId = (int) $row['enrollment_id'];
+                $own = $existingRecords->get($enrollmentId, collect());
                 /** @var EvidenceRecord|null $record */
-                $record = $existingRecords->get($row['enrollment_id'])?->first();
+                $record = $own->first();
+                $wantedStatus = $row['homework_status'] ?? null;
+                $wantedDescription = $wantedStatus === null ? '' : ($row['description'] ?? '');
+                $currentStatus = $record?->homework_status?->value;
+                $currentDescription = $record === null ? '' : $record->description;
+
+                if ($currentStatus === $wantedStatus && ($wantedStatus === null || $currentDescription === $wantedDescription)) {
+                    $unchanged[] = $enrollmentId;
+
+                    continue;
+                }
+
+                $expected = $row['expected'] ?? null;
+                $current = $roster->versionOf($own);
+
+                if ($expected !== null && $expected !== $current) {
+                    $conflicts[] = [
+                        'enrollment_id' => $enrollmentId,
+                        'homework_status' => $currentStatus,
+                        'description' => $currentDescription,
+                        'version' => $current,
+                        'change' => match (true) {
+                            $record === null => 'removed',
+                            $expected === HomeworkGridRoster::VERSION_NONE => 'created',
+                            default => 'changed',
+                        },
+                        'at' => $record?->updated_at?->toIso8601String() ?? $this->lastRemovalOf($class, $enrollmentId, $date),
+                    ];
+
+                    continue;
+                }
+
+                $toWrite[] = ['row' => $row, 'record' => $record];
+            }
+
+            // Only a row actually written as «Não realizado» can add to the
+            // follow-up; a conflict or an unchanged row moves nothing.
+            $snapshot = $this->followupAlerts->before($class, array_map(fn (array $item): array => [
+                'enrollment_id' => (int) $item['row']['enrollment_id'],
+                'category' => RecordFollowupCategory::fromRecord(EvidenceKind::Homework, HomeworkStatus::tryFrom((string) ($item['row']['homework_status'] ?? ''))),
+                'date' => Carbon::parse($date),
+            ], $toWrite));
+
+            foreach ($toWrite as ['row' => $row, 'record' => $record]) {
+                $saved[] = (int) $row['enrollment_id'];
 
                 if (($row['homework_status'] ?? null) === null) {
                     if ($record?->delete() === true) {
@@ -354,14 +423,12 @@ class EvidenceController extends Controller
                 }
 
                 $values = [
-                    'occurred_at' => $validated['occurred_at'],
+                    'occurred_at' => $date,
                     'homework_status' => $row['homework_status'],
                     'description' => $row['description'] ?? '',
                 ];
 
                 if ($record !== null) {
-                    // Saving the same marking again changes nothing and counts
-                    // as nothing — not in the audit, not in the metrics.
                     $record->fill($values);
 
                     if ($record->isDirty()) {
@@ -390,16 +457,53 @@ class EvidenceController extends Controller
                 $class,
                 $this->user(),
                 "Trabalho de casa guardado — {$class->label}.",
-                ['class_id' => $class->id, 'occurred_at' => $validated['occurred_at'], 'count' => $touched],
+                ['class_id' => $class->id, 'occurred_at' => $date, 'count' => $touched],
             );
 
             // O lote não tem registo próprio: turma + dia é a sua identidade.
-            $usage->action(UsageEventType::HomeworkBatchSaved, 'homework:'.$class->getKey().':'.$validated['occurred_at'], $touched);
+            $usage->action(UsageEventType::HomeworkBatchSaved, 'homework:'.$class->getKey().':'.$date, $touched);
+        }
+
+        Inertia::flash('homework_save', [
+            'occurred_at' => $date,
+            'saved' => $saved,
+            'unchanged' => $unchanged,
+            'conflicts' => $conflicts,
+        ]);
+
+        if ($conflicts !== []) {
+            $done = count($saved) + count($unchanged);
+            $pending = trans_choice(':count aluno alterado noutra sessão desde que abriu a grelha ficou por gravar — reveja-o antes de voltar a guardar.|:count alunos alterados noutra sessão desde que abriu a grelha ficaram por gravar — reveja-os antes de voltar a guardar.', count($conflicts), ['count' => count($conflicts)]);
+            $message = $done === 0
+                ? __('Nada foi gravado:').' '.$pending
+                : __('Gravação parcial:').' '.trans_choice(':count linha gravada|:count linhas gravadas', $done, ['count' => $done]).'; '.$pending;
+            $sentences = $followup->toastSentences();
+
+            Inertia::flash('toast', ['type' => 'warning', 'message' => trim($message.' '.implode(' ', $sentences))]);
+
+            return back();
         }
 
         $this->flashWithFollowup($touched > 0 ? __('Trabalho de casa guardado.') : __('Não havia alterações por guardar.'), $followup);
 
         return back();
+    }
+
+    /**
+     * When a student's marking of that day was last removed (put back to «Não
+     * verificado» or deleted) — what a conflict says happened.
+     */
+    private function lastRemovalOf(SchoolClass $class, int $enrollmentId, string $date): ?string
+    {
+        $removed = EvidenceRecord::onlyTrashed()
+            ->forClass($class->id)
+            ->where('kind', EvidenceKind::Homework->value)
+            ->where('enrollment_id', $enrollmentId)
+            ->whereDate('occurred_at', $date)
+            ->latest('deleted_at')
+            ->first();
+
+        return $removed?->deleted_at?->toIso8601String();
     }
 
     public function destroyHomeworkBatch(Request $request, SchoolClass $class): RedirectResponse

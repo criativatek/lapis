@@ -19,9 +19,16 @@ import { formatDay } from '@/lib/recordFollowup';
  * Só se envia o que mudou. O que está por guardar distingue-se do que já está
  * gravado, sobrevive a uma gravação em curso e é protegido ao sair, ao mudar
  * de data ou de turma (`useUnsavedChangesGuard`, o mesmo das Aulas).
+ *
+ * DUAS SESSÕES NA MESMA GRELHA: cada linha leva a versão da marcação que foi
+ * lida. Se outra pessoa (ou outro separador) a mudou entretanto, essa linha
+ * não é gravada — volta como conflito, com o estado atual à vista e a escolha
+ * do professor intacta, à espera de «Manter a minha escolha» ou «Usar o estado
+ * atual». As outras linhas gravam-se normalmente, e o que ficou por gravar
+ * diz-se — nunca um «guardado» total.
  */
 type HomeworkStatus = 'done' | 'partially_done' | 'not_done';
-type LockedReason = 'duplicate' | 'left';
+type LockedReason = 'duplicate' | 'undetermined';
 
 type ServerRow = {
     id: number;
@@ -31,9 +38,25 @@ type ServerRow = {
     homework_status: HomeworkStatus | null;
     description: string;
     record_count: number;
+    version: string;
     editable: boolean;
     locked_reason: LockedReason | null;
+    eligibility?: 'eligible' | 'undetermined' | 'not_enrolled';
+    enrollment_status_label?: string;
     left_on: string | null;
+};
+
+type Conflict = {
+    status: HomeworkStatus | null;
+    description: string;
+    change: 'created' | 'changed' | 'removed';
+    at: string | null;
+};
+
+type SaveOutcome = {
+    saved: number[];
+    unchanged: number[];
+    conflicts: { enrollment_id: number; homework_status: HomeworkStatus | null; description: string; version: string; change: Conflict['change']; at: string | null }[];
 };
 
 type GridRow = {
@@ -49,6 +72,11 @@ type GridRow = {
     lockedReason: LockedReason | null;
     recordCount: number;
     leftOn: string | null;
+    statusLabel: string | null;
+    /** The version of the marking as last read — sent back as `expected`. */
+    version: string;
+    /** Changed in another session since it was read: awaiting the teacher's review. */
+    conflict: Conflict | null;
     observationOpen: boolean;
     descriptionCustomized: boolean;
 };
@@ -101,12 +129,13 @@ const UNVERIFIED_LABEL = 'Não verificado';
 
 const root = ref<HTMLElement | null>(null);
 const rows = ref<GridRow[]>([]);
-const excludedWithoutLeftOn = ref(0);
 const sharedDescription = ref('');
 const loading = ref(false);
 const loadError = ref('');
 const saveError = ref('');
 const savedAt = ref<string | null>(null);
+/** After a partial save: how many rows were saved, and how many came back in conflict. */
+const partial = ref<{ saved: number; conflicts: number } | null>(null);
 // Set BEFORE the save's visit starts: the guard's `before` hook runs ahead of
 // `form.processing`, and the page's own save must never be questioned.
 const submitting = ref(false);
@@ -126,12 +155,17 @@ function isRowDirty(row: GridRow): boolean {
 }
 
 const dirtyRows = computed(() => rows.value.filter(isRowDirty));
+const conflictRows = computed(() => rows.value.filter((row) => row.conflict !== null));
+/** A row in conflict is only sent again after the teacher has reviewed it. */
+const savableRows = computed(() => dirtyRows.value.filter((row) => row.conflict === null));
 const editableRows = computed(() => rows.value.filter((row) => row.editable && !props.readOnly));
 const unverifiedEditable = computed(() => editableRows.value.filter((row) => row.status === null));
 const hasSavedMarkings = computed(() => rows.value.some((row) => row.savedStatus !== null || row.recordCount > 1));
 
 const counts = computed(() => {
-    const countable = rows.value.filter((row) => row.recordCount <= 1);
+    // A row that can never be verified (two records that day, or an enrollment
+    // the data cannot place on it) is not «por verificar».
+    const countable = rows.value.filter((row) => row.recordCount <= 1 && (row.lockedReason === null || row.status !== null));
 
     return {
         done: countable.filter((row) => row.status === 'done').length,
@@ -155,6 +189,9 @@ function fromServer(row: ServerRow): GridRow {
         lockedReason: row.locked_reason,
         recordCount: row.record_count,
         leftOn: row.left_on,
+        statusLabel: row.enrollment_status_label ?? null,
+        version: row.version,
+        conflict: null,
         observationOpen: row.description !== '',
         descriptionCustomized: row.description !== '',
     };
@@ -165,9 +202,11 @@ type Submitted = Map<number, { status: HomeworkStatus | null; description: strin
 /**
  * Loads the grid of the day. After a save, `submitted` names what was sent:
  * every row the teacher touched WHILE the save was running keeps that newer
- * choice (still «por guardar»), the rest takes what the server now holds.
+ * choice (still «por guardar»), the rest takes what the server now holds. A
+ * row in `conflicts` keeps the teacher's choice and its conflict, over the
+ * state and version the server holds now.
  */
-async function loadBatch(submitted: Submitted | null = null): Promise<void> {
+async function loadBatch(submitted: Submitted | null = null, conflicts: Map<number, Conflict> = new Map()): Promise<void> {
     const sequence = ++loadSequence;
     loadError.value = '';
 
@@ -181,7 +220,6 @@ async function loadBatch(submitted: Submitted | null = null): Promise<void> {
     if (submitted === null) {
         loading.value = true;
         rows.value = [];
-        excludedWithoutLeftOn.value = 0;
     }
 
     try {
@@ -194,7 +232,7 @@ async function loadBatch(submitted: Submitted | null = null): Promise<void> {
             throw new Error('load failed');
         }
 
-        const payload = (await response.json()) as { enrollments: ServerRow[]; excluded_without_left_on?: number };
+        const payload = (await response.json()) as { enrollments: ServerRow[] };
 
         // A newer day, class or reload already started — this answer is old.
         if (sequence !== loadSequence) {
@@ -208,6 +246,18 @@ async function loadBatch(submitted: Submitted | null = null): Promise<void> {
             const local = current.get(serverRow.id);
 
             if (submitted === null || local === undefined || !fresh.editable) {
+                return fresh;
+            }
+
+            const conflict = conflicts.get(serverRow.id) ?? local.conflict;
+
+            if (conflict !== null) {
+                fresh.status = local.status;
+                fresh.description = local.description;
+                fresh.descriptionCustomized = local.descriptionCustomized;
+                fresh.observationOpen = local.observationOpen || fresh.observationOpen;
+                fresh.conflict = conflict;
+
                 return fresh;
             }
 
@@ -226,7 +276,6 @@ async function loadBatch(submitted: Submitted | null = null): Promise<void> {
 
             return fresh;
         });
-        excludedWithoutLeftOn.value = payload.excluded_without_left_on ?? 0;
     } catch {
         if (sequence === loadSequence) {
             if (submitted === null) {
@@ -254,6 +303,7 @@ watch(
     () => {
         sharedDescription.value = '';
         savedAt.value = null;
+        partial.value = null;
         saveError.value = '';
         void loadBatch();
     },
@@ -292,9 +342,24 @@ function discardChanges(): void {
         row.status = row.savedStatus;
         row.description = row.savedDescription;
         row.descriptionCustomized = row.savedDescription !== '';
+        row.conflict = null;
     }
 
     saveError.value = '';
+    partial.value = null;
+}
+
+/** Conflict reviewed: the teacher's choice is sent next time, over the state now seen. */
+function keepMyChoice(row: GridRow): void {
+    row.conflict = null;
+}
+
+/** Conflict reviewed: the choice is dropped, the row shows what is saved now. */
+function useCurrentState(row: GridRow): void {
+    row.status = row.savedStatus;
+    row.description = row.savedDescription;
+    row.descriptionCustomized = row.savedDescription !== '';
+    row.conflict = null;
 }
 
 function applySharedDescription(): void {
@@ -315,10 +380,10 @@ function timeNow(): string {
 
 /** Saves the rows that changed. Resolves `true` only when the server accepted them. */
 function save(): Promise<boolean> {
-    const changed = dirtyRows.value;
+    const changed = savableRows.value;
 
     if (changed.length === 0 || props.readOnly) {
-        return Promise.resolve(changed.length === 0);
+        return Promise.resolve(dirtyRows.value.length === 0);
     }
 
     const losingObservation = changed.filter((row) => row.status === null && row.savedDescription.trim() !== '');
@@ -337,37 +402,67 @@ function save(): Promise<boolean> {
     const submitted: Submitted = new Map(
         changed.map((row) => [row.enrollment_id, { status: row.status, description: row.status === null ? '' : row.description }]),
     );
+    const versions = new Map(changed.map((row) => [row.enrollment_id, row.version]));
 
     form.occurred_at = props.occurredAt;
     form.rows = [...submitted.entries()].map(([enrollmentId, value]) => ({
         enrollment_id: enrollmentId,
         homework_status: value.status,
         description: value.description,
+        expected: versions.get(enrollmentId) ?? null,
     }));
     saveError.value = '';
+    partial.value = null;
     submitting.value = true;
 
     return new Promise((resolve) => {
         let succeeded = false;
+        let outcome: SaveOutcome | null = null;
 
         form.put(`/classes/${props.classUlid}/records/homework-batch`, {
             preserveScroll: true,
             preserveState: true,
+            onFlash: (flash: Record<string, unknown>) => {
+                outcome = (flash.homework_save as SaveOutcome | undefined) ?? null;
+            },
             onSuccess: () => {
-                succeeded = true;
-                savedAt.value = timeNow();
+                const result = outcome as SaveOutcome | null;
+                const conflicts = new Map<number, Conflict>(
+                    (result?.conflicts ?? []).map((conflict) => [
+                        conflict.enrollment_id,
+                        { status: conflict.homework_status, description: conflict.description, change: conflict.change, at: conflict.at },
+                    ]),
+                );
 
                 for (const row of rows.value) {
                     const sent = submitted.get(row.enrollment_id);
+                    const conflict = (result?.conflicts ?? []).find((candidate) => candidate.enrollment_id === row.enrollment_id);
 
-                    if (sent !== undefined) {
+                    if (conflict !== undefined) {
+                        // Not written: what is there now becomes the baseline,
+                        // the teacher's choice stays on screen to be reviewed.
+                        row.savedStatus = conflict.homework_status;
+                        row.savedDescription = conflict.description;
+                        row.version = conflict.version;
+                        row.conflict = conflicts.get(row.enrollment_id) ?? null;
+                    } else if (sent !== undefined) {
                         row.savedStatus = sent.status;
                         row.savedDescription = sent.description;
                     }
                 }
 
+                // Only a save without conflicts is a complete one.
+                succeeded = conflicts.size === 0;
+
+                if (succeeded) {
+                    savedAt.value = timeNow();
+                } else {
+                    savedAt.value = null;
+                    partial.value = { saved: submitted.size - conflicts.size, conflicts: conflicts.size };
+                }
+
                 emit('saved');
-                void loadBatch(submitted);
+                void loadBatch(submitted, conflicts);
             },
             onError: (errors) => {
                 saveError.value = errors.rows ?? Object.values(errors)[0] ?? 'Não foi possível guardar.';
@@ -375,7 +470,7 @@ function save(): Promise<boolean> {
             onFinish: () => {
                 submitting.value = false;
 
-                if (!succeeded && saveError.value === '') {
+                if (!succeeded && saveError.value === '' && partial.value === null) {
                     saveError.value = 'Não foi possível guardar. As escolhas mantêm-se — tente novamente.';
                 }
 
@@ -494,10 +589,28 @@ function rowTone(row: GridRow): string {
 
 function lockedText(row: GridRow): string {
     if (row.lockedReason === 'duplicate') {
-        return `Tem ${row.recordCount} registos de TPC nesta data — não são fundidos. Corrija-os um a um na pesquisa.`;
+        return `Tem ${row.recordCount} registos de TPC nesta data — não são fundidos nem se escolhe um. Corrija-os um a um na pesquisa.`;
     }
 
-    return row.leftOn ? `Saiu da turma a ${formatDay(row.leftOn)} — sem marcação nesta data.` : 'Já não integra a turma — sem marcação nesta data.';
+    return `Inscrição «${row.statusLabel ?? 'não ativa'}» sem data de saída: não se sabe se pertencia à turma nesta data, por isso não pode ser marcada. Registe a data de saída na turma.`;
+}
+
+function conflictText(row: GridRow): string {
+    const conflict = row.conflict;
+
+    if (conflict === null) {
+        return '';
+    }
+
+    const when = conflict.at ? ` às ${new Date(conflict.at).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}` : '';
+    const now = STATUSES.find((status) => status.value === conflict.status)?.label ?? UNVERIFIED_LABEL;
+    const what = conflict.change === 'removed'
+        ? `foi reposta em «${UNVERIFIED_LABEL}»`
+        : conflict.change === 'created'
+            ? `foi marcada «${now}»`
+            : `passou a «${now}»`;
+
+    return `Noutra sessão, esta marcação ${what}${when}, depois de abrir a grelha. A sua escolha («${statusLabelOf(row)}») não foi gravada.`;
 }
 
 function duplicateSearchHref(row: GridRow): string {
@@ -601,6 +714,7 @@ function statusLabelOf(row: GridRow): string {
                         <span class="font-medium"><span class="tabular-nums text-muted-foreground lg:hidden">{{ row.number === null ? '' : `n.º ${row.number} · ` }}</span>{{ row.name }}</span>
                         <span class="block text-xs text-muted-foreground">
                             {{ statusLabelOf(row) }}<template v-if="isRowDirty(row)"> · <span class="font-medium text-amber-800 dark:text-amber-300" data-test="row-unsaved">por guardar</span></template>
+                            <template v-if="row.leftOn && row.editable"> · saiu a {{ formatDay(row.leftOn) }}</template>
                         </span>
                     </span>
 
@@ -650,7 +764,22 @@ function statusLabelOf(row: GridRow): string {
                     <p v-else class="text-xs text-muted-foreground lg:col-span-5" data-test="row-locked">
                         {{ lockedText(row) }}
                         <Link v-if="row.lockedReason === 'duplicate'" :href="duplicateSearchHref(row)" class="font-medium text-primary underline">Ver os registos</Link>
+                        <Link v-else :href="`/classes/${classUlid}`" class="font-medium text-primary underline">Abrir a turma</Link>
                     </p>
+                </div>
+                <div
+                    v-if="row.conflict"
+                    class="flex flex-wrap items-center gap-2 border-t border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                    role="alert"
+                    data-test="row-conflict"
+                >
+                    <p class="min-w-0 flex-1">{{ conflictText(row) }}</p>
+                    <button type="button" class="min-h-11 rounded-md border border-amber-400 px-3 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40" data-test="keep-mine" @click="keepMyChoice(row)">
+                        Manter a minha escolha
+                    </button>
+                    <button type="button" class="min-h-11 rounded-md border border-amber-400 px-3 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40" data-test="use-current" @click="useCurrentState(row)">
+                        Usar o estado atual
+                    </button>
                 </div>
                 <div v-if="row.observationOpen && row.editable && !readOnly" class="border-t border-border bg-background/60 p-3">
                     <label class="block text-xs text-muted-foreground">
@@ -672,10 +801,6 @@ function statusLabelOf(row: GridRow): string {
             </div>
         </div>
 
-        <p v-if="excludedWithoutLeftOn > 0" class="text-xs text-muted-foreground" role="note">
-            {{ excludedWithoutLeftOn === 1 ? '1 aluno não aparece' : `${excludedWithoutLeftOn} alunos não aparecem` }}: a inscrição não está ativa e não tem data de saída, por isso não se sabe se estava na turma nesta data.
-        </p>
-
         <div
             v-if="!readOnly && rows.length > 0"
             class="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card/95 px-3 py-2 backdrop-blur"
@@ -683,6 +808,14 @@ function statusLabelOf(row: GridRow): string {
         >
             <p class="text-sm" aria-live="polite">
                 <span v-if="saveError" class="text-red-700 dark:text-red-300" role="alert" data-test="save-error">{{ saveError }}</span>
+                <span v-else-if="partial && conflictRows.length > 0" class="font-medium text-amber-800 dark:text-amber-300" role="alert" data-test="partial-save">
+                    <template v-if="partial.saved === 0">Nada foi gravado:</template>
+                    <template v-else>Gravação parcial: {{ partial.saved === 1 ? '1 linha gravada' : `${partial.saved} linhas gravadas` }};</template>
+                    {{ conflictRows.length === 1 ? '1 aluno alterado noutra sessão ficou por gravar — reveja-o.' : `${conflictRows.length} alunos alterados noutra sessão ficaram por gravar — reveja-os.` }}
+                </span>
+                <span v-else-if="conflictRows.length > 0" class="font-medium text-amber-800 dark:text-amber-300" data-test="conflict-count">
+                    {{ conflictRows.length === 1 ? '1 aluno com conflito por rever' : `${conflictRows.length} alunos com conflito por rever` }}
+                </span>
                 <span v-else-if="dirtyRows.length > 0" class="font-medium text-amber-800 dark:text-amber-300" data-test="dirty-count">
                     {{ dirtyRows.length === 1 ? '1 alteração por guardar' : `${dirtyRows.length} alterações por guardar` }}
                 </span>
@@ -712,7 +845,7 @@ function statusLabelOf(row: GridRow): string {
                 <button
                     type="button"
                     class="min-h-11 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    :disabled="loading || form.processing || dirtyRows.length === 0"
+                    :disabled="loading || form.processing || savableRows.length === 0"
                     data-test="save-homework"
                     @click="submit"
                 >

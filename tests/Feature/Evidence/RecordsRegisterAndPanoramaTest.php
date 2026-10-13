@@ -201,14 +201,16 @@ class RecordsRegisterAndPanoramaTest extends TestCase
 
         $this->assertTrue($rows->has($present->ulid));
         $this->assertFalse($rows->contains('name', 'Entrou Depois'));
-        $this->assertFalse($rows->contains('name', 'Ambígua'));
-        $this->assertSame(1, $response->json('excluded_without_left_on'));
-        // Was there that day, is not any more: read-only without a marking…
-        $this->assertFalse($rows[$left->ulid]['editable']);
-        $this->assertSame('left', $rows[$left->ulid]['locked_reason']);
-        // …and a marking that already exists stays correctable.
+        // Belonged to the class that day, left since: that day's marking is allowed.
+        $this->assertTrue($rows[$left->ulid]['editable']);
+        $this->assertSame('eligible', $rows[$left->ulid]['eligibility']);
         $this->assertTrue($rows[$leftWithMarking->ulid]['editable']);
         $this->assertSame('done', $rows[$leftWithMarking->ulid]['homework_status']);
+        // Not current, no leaving date: shown, locked, with the reason — never presumed.
+        $ambiguous = $rows->firstWhere('name', 'Ambígua');
+        $this->assertFalse($ambiguous['editable']);
+        $this->assertSame('undetermined', $ambiguous['locked_reason']);
+        $this->assertSame('Transferido', $ambiguous['enrollment_status_label']);
     }
 
     #[Test]

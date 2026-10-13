@@ -12,30 +12,49 @@ use Illuminate\Support\Collection;
 
 /**
  * The rows of the homework grid for one class and one calendar day — EVERY
- * student who was in the class that day, with or without a marking.
+ * student who belonged to the class that day, with or without a marking.
  *
  * The model has no homework «batch»: class + kind + calendar date is the
- * grid's identity (one marking per student per day). The roster is the dated
- * rule of the attendance roll (LessonAttendanceRoster): enrolled on that day,
- * and either current or with a recorded leaving date — an inactive enrollment
- * without one is ambiguous, left out and counted, never guessed.
+ * grid's identity (one marking per student per day).
+ *
+ * WHO MAY BE MARKED is a question about THE DATE, never about today: a student
+ * who belonged to the class on that day may receive that day's marking, even
+ * after leaving; a student who did not belong to it that day may not. Whether
+ * they belonged comes from the enrollment's own dates and status, the rule of
+ * the attendance roll (LessonAttendanceRoster):
+ * - `enrolled_on` ≤ date and (no `left_on`, or `left_on` ≥ date), AND
+ * - current, or with a recorded leaving date.
+ * An enrollment that is not current and has NO leaving date cannot answer —
+ * it may have ended before or after the day. It is shown, read-only, with that
+ * concrete reason (`undetermined`), and never treated as eligible.
  *
  * A row the grid must not write is still shown, read-only, with the reason:
- * - `duplicate`: the student has more than one homework record that day
- *   (made one by one in the form). They are distinct records and are never
- *   merged by the date — they are corrected in the search, one by one;
- * - `left`: no longer in the class and nothing recorded that day — a new
- *   record is only ever about the class as it stands (the rule every new
- *   record follows). A record that already exists stays correctable.
+ * - `duplicate`: two homework records of that day (made one by one in the
+ *   form). Distinct records, never merged nor one picked — corrected in the
+ *   search, one by one;
+ * - `undetermined`: as above. A marking that already exists stays correctable.
+ *
+ * Every row carries `version`: a reference to the marking as it was read.
+ * The save compares it, per student, with what is there at that moment, so
+ * a change made meanwhile by someone else is never overwritten silently.
  */
 final class HomeworkGridRoster
 {
     public const string LOCKED_DUPLICATE = 'duplicate';
 
-    public const string LOCKED_LEFT = 'left';
+    public const string LOCKED_UNDETERMINED = 'undetermined';
+
+    public const string ELIGIBLE = 'eligible';
+
+    public const string UNDETERMINED = 'undetermined';
+
+    public const string NOT_ENROLLED = 'not_enrolled';
+
+    /** The version of «no marking that day». */
+    public const string VERSION_NONE = 'none';
 
     /**
-     * @return array{rows: list<array<string, mixed>>, excluded_without_left_on: int}
+     * @return array{rows: list<array<string, mixed>>}
      */
     public function for(SchoolClass $class, string $date): array
     {
@@ -55,22 +74,14 @@ final class HomeworkGridRoster
             ->get();
 
         $rows = [];
-        $excluded = 0;
 
         foreach ($candidates as $enrollment) {
             $own = $records->get($enrollment->id, collect());
-            $current = $enrollment->status === EnrollmentStatus::Active;
-
-            if ($own->isEmpty() && ! $current && $enrollment->left_on === null) {
-                $excluded++;
-
-                continue;
-            }
-
+            $eligibility = $this->eligibilityOn($enrollment, $date);
             $record = $own->count() === 1 ? $own->first() : null;
             $locked = match (true) {
                 $own->count() > 1 => self::LOCKED_DUPLICATE,
-                $own->isEmpty() && ! $current => self::LOCKED_LEFT,
+                $own->isEmpty() && $eligibility === self::UNDETERMINED => self::LOCKED_UNDETERMINED,
                 default => null,
             };
 
@@ -83,8 +94,13 @@ final class HomeworkGridRoster
                 'description' => $record === null ? '' : $record->description,
                 'record_ulid' => $record?->ulid,
                 'record_count' => $own->count(),
+                'version' => $this->versionOf($own),
                 'editable' => $locked === null,
                 'locked_reason' => $locked,
+                'eligibility' => $eligibility,
+                'enrollment_status' => $enrollment->status->value,
+                'enrollment_status_label' => $enrollment->status->label(),
+                'enrolled_on' => $enrollment->enrolled_on->format('Y-m-d'),
                 'left_on' => $enrollment->left_on?->format('Y-m-d'),
             ];
         }
@@ -92,7 +108,7 @@ final class HomeworkGridRoster
         usort($rows, fn (array $left, array $right): int => [$left['number'] ?? PHP_INT_MAX, $left['name'], $left['id']]
             <=> [$right['number'] ?? PHP_INT_MAX, $right['name'], $right['id']]);
 
-        return ['rows' => $rows, 'excluded_without_left_on' => $excluded];
+        return ['rows' => $rows];
     }
 
     /**
@@ -112,16 +128,53 @@ final class HomeworkGridRoster
     }
 
     /**
-     * Whether a NEW marking may be created for this student on that day:
-     * current in the class and enrolled on the date.
+     * Whether the student belonged to the class ON THAT DAY — `eligible`,
+     * `not_enrolled` (outside the enrollment's dates) or `undetermined` (not
+     * current and no leaving date: the data cannot say).
      */
-    public function acceptsNewMarking(Enrollment $enrollment, string $date): bool
+    public function eligibilityOn(Enrollment $enrollment, string $date): string
     {
-        if ($enrollment->status !== EnrollmentStatus::Active) {
-            return false;
+        $enrolledOn = $enrollment->enrolled_on->format('Y-m-d');
+        $leftOn = $enrollment->left_on?->format('Y-m-d');
+
+        if ($enrolledOn > $date || ($leftOn !== null && $leftOn < $date)) {
+            return self::NOT_ENROLLED;
         }
 
-        return $enrollment->enrolled_on->format('Y-m-d') <= $date
-            && ($enrollment->left_on === null || $enrollment->left_on->format('Y-m-d') >= $date);
+        if ($enrollment->status === EnrollmentStatus::Active || $leftOn !== null) {
+            return self::ELIGIBLE;
+        }
+
+        return self::UNDETERMINED;
+    }
+
+    /**
+     * The reference to a student's marking as it is now: `none` when there is
+     * no marking that day, else a digest of the record, its state, its
+     * observation and its last change. Equal versions mean nothing changed in
+     * between; the content is part of it, so two edits within the same second
+     * of `updated_at` are still told apart.
+     *
+     * @param  Collection<int, EvidenceRecord>  $own
+     */
+    public function versionOf(Collection $own): string
+    {
+        if ($own->isEmpty()) {
+            return self::VERSION_NONE;
+        }
+
+        if ($own->count() > 1) {
+            return 'duplicate:'.$own->count();
+        }
+
+        /** @var EvidenceRecord $record */
+        $record = $own->first();
+
+        return 'r:'.substr(sha1(implode('|', [
+            $record->ulid,
+            $record->homework_status->value ?? '',
+            $record->description,
+            $record->updated_at?->format('Y-m-d H:i:s') ?? '',
+        ])), 0, 20);
     }
 }

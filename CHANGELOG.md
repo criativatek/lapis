@@ -74,11 +74,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Corrigido
 
-- A grelha mostrava os alunos ativos hoje, não os que estavam na turma na
+- A grelha mostrava os alunos ativos hoje, não os que pertenciam à turma na
   data: um aluno que entrou depois aparecia num dia antigo, e um que saiu
-  desaparecia dos dias em que lá esteve. Passa a seguir a data; quem saiu e
-  não tem marcação nesse dia fica só de leitura, e uma marcação existente
-  continua corrigível.
+  desaparecia dos dias em que lá esteve. Passa a seguir a data, na grelha e
+  no servidor: quem pertencia à turma nesse dia pode receber a marcação desse
+  dia, mesmo que já tenha saído (o dia da entrada e o da saída contam); numa
+  data em que não pertencia, nunca. Uma inscrição não ativa e sem data de
+  saída não deixa saber se o aluno lá estava: aparece só de leitura, com esse
+  motivo e a ligação para a turma, e nunca é tratada como elegível. As
+  marcações que já existem continuam corrigíveis.
+- **Duas pessoas ou dois separadores na mesma grelha deixam de se sobrepor em
+  silêncio.** Cada aluno leva a versão da marcação que foi lida; se outra
+  sessão a mudou entretanto (alterou, criou ou repôs em «Não verificado»),
+  essa linha não é gravada: fica com a escolha do professor, mostra o estado
+  atual e quando mudou, e espera por «Manter a minha escolha» ou «Usar o
+  estado atual». Os outros alunos gravam-se normalmente; a grelha e o aviso
+  dizem «Gravação parcial» (ou «Nada foi gravado») e quais ficaram por
+  gravar — nunca um sucesso total. Uma linha já no estado pedido conta como
+  gravada, por isso repetir um pedido depois de uma falha de ligação, ou fazer
+  a mesma escolha em dois separadores, não dá conflito nem duplica nada.
+  Alertas e métricas só contam o que foi de facto gravado.
 - Um aluno com dois registos de TPC no mesmo dia (feitos um a um no
   formulário) aparecia com um só estado, e gravar a grelha alterava um deles
   em silêncio. A linha passa a só de leitura, diz porquê e leva à pesquisa
@@ -104,11 +119,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Interno
 
-- `HomeworkGridRoster` (rol da grelha por data, linhas só de leitura) e
+- `HomeworkGridRoster` (rol da grelha por data, elegibilidade na data,
+  versão por marcação, linhas só de leitura) e
   `ClassRecordPanorama` (os quatro indicadores por aluno, em consultas
   agrupadas sobre `RecordFollowupCounter` e `ConsolidatedAbsences` — o mesmo
   número dos cartões, nunca uma consulta por aluno). Só o separador ativo
   calcula os seus dados. Sem migrações; o backup não muda.
+- Gravação da grelha por aluno: com a turma bloqueada, compara a versão
+  enviada (`expected`) com a atual e devolve o resultado por linha no flash
+  `homework_save` (gravadas, já iguais, em conflito). Um pedido sem versão
+  (página antiga) grava como antes.
 
 ## [0.164.0] — 2026-10-13
 

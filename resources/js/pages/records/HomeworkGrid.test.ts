@@ -5,6 +5,7 @@ import { defineComponent, h, nextTick, reactive } from 'vue';
 import HomeworkGrid from './HomeworkGrid.vue';
 
 type VisitOptions = {
+    onFlash?: (flash: Record<string, unknown>) => void;
     onSuccess?: () => void;
     onError?: (errors: Record<string, string>) => void;
     onFinish?: () => void;
@@ -42,8 +43,10 @@ type Row = {
     homework_status: 'done' | 'partially_done' | 'not_done' | null;
     description?: string;
     record_count?: number;
+    version?: string;
     editable?: boolean;
-    locked_reason?: 'duplicate' | 'left' | null;
+    locked_reason?: 'duplicate' | 'undetermined' | null;
+    enrollment_status_label?: string;
     left_on?: string | null;
 };
 
@@ -52,6 +55,7 @@ function serverRow(row: Row) {
         ulid: `E${row.id}`,
         description: '',
         record_count: row.homework_status === null ? 0 : 1,
+        version: row.homework_status === null ? 'none' : `r:${row.id}`,
         editable: true,
         locked_reason: null,
         left_on: null,
@@ -177,7 +181,7 @@ describe('records/HomeworkGrid.vue — a grelha', () => {
 
         expect(putCalls).toHaveLength(1);
         expect(putCalls[0].url).toBe('/classes/class-a/records/homework-batch');
-        expect(putCalls[0].rows).toEqual([{ enrollment_id: 1, homework_status: 'done', description: '' }]);
+        expect(putCalls[0].rows).toEqual([{ enrollment_id: 1, homework_status: 'done', description: '', expected: 'none' }]);
     });
 
     it('keeps every choice when the save fails, and lets it be tried again', async () => {
@@ -232,20 +236,111 @@ describe('records/HomeworkGrid.vue — a grelha', () => {
 
         confirmSpy.mockReturnValue(true);
         await wrapper.find('[data-test="save-homework"]').trigger('click');
-        expect(putCalls[0].rows).toEqual([{ enrollment_id: 2, homework_status: null, description: '' }]);
+        expect(putCalls[0].rows).toEqual([{ enrollment_id: 2, homework_status: null, description: '', expected: 'r:2' }]);
     });
 
     it('never merges two homework records of the same day: the row is read-only and says why', async () => {
         const { wrapper } = await mountGrid([
             { id: 1, number: 1, name: 'Ana Silva', homework_status: null, record_count: 2, editable: false, locked_reason: 'duplicate' },
-            { id: 2, number: 2, name: 'Bruno Lopes', homework_status: null, editable: false, locked_reason: 'left', left_on: '2026-10-01' },
+            { id: 2, number: 2, name: 'Bruno Lopes', homework_status: null, editable: false, locked_reason: 'undetermined', enrollment_status_label: 'Transferido' },
         ]);
 
         expect(row(wrapper, 1).findAll('[role="radio"]')).toHaveLength(0);
         expect(row(wrapper, 1).find('[data-test="row-locked"]').text()).toContain('Tem 2 registos de TPC nesta data');
+        expect(row(wrapper, 1).find('[data-test="row-locked"]').text()).toContain('nem se escolhe um');
         expect(row(wrapper, 1).find('a').attributes('href')).toContain('tab=search');
-        expect(row(wrapper, 2).find('[data-test="row-locked"]').text()).toContain('Saiu da turma a 01/10/2026');
+        // An enrollment the data cannot place on the day: the concrete reason, never presumed eligible.
+        const undetermined = row(wrapper, 2).find('[data-test="row-locked"]').text();
+        expect(undetermined).toContain('Inscrição «Transferido» sem data de saída');
+        expect(undetermined).toContain('não se sabe se pertencia à turma nesta data');
+        expect(row(wrapper, 2).find('a').attributes('href')).toBe('/classes/class-a');
         expect(wrapper.find('[data-test="mark-all-done"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('shows a student who left later, and lets the day they belonged be marked', async () => {
+        const { wrapper } = await mountGrid([{ id: 4, number: 4, name: 'Duarte Sá', homework_status: null, left_on: '2026-10-20' }]);
+
+        expect(row(wrapper, 4).text()).toContain('saiu a 20/10/2026');
+        await choose(wrapper, 4, 'Realizou');
+        expect(row(wrapper, 4).attributes('data-status')).toBe('done');
+    });
+
+    it('a student changed in another session is not overwritten: the choice stays, the current state is shown, the rest is saved', async () => {
+        const { wrapper, fetchSpy } = await mountGrid();
+
+        await choose(wrapper, 1, 'Realizou');
+        await choose(wrapper, 2, 'Realizou parcialmente');
+        await wrapper.find('[data-test="save-homework"]').trigger('click');
+        expect(putCalls[0].rows).toEqual([
+            { enrollment_id: 1, homework_status: 'done', description: '', expected: 'none' },
+            { enrollment_id: 2, homework_status: 'partially_done', description: 'Não trouxe.', expected: 'r:2' },
+        ]);
+
+        // Bruno was changed meanwhile; Ana was saved.
+        fetchSpy.mockImplementation(() => Promise.resolve(respond([
+            { ...ROSTER[0], homework_status: 'done' },
+            { ...ROSTER[1], homework_status: 'done', description: '', version: 'r:2b' },
+            ROSTER[2],
+        ])));
+        putCalls[0].options.onFlash?.({
+            homework_save: {
+                saved: [1],
+                unchanged: [],
+                conflicts: [{ enrollment_id: 2, homework_status: 'done', description: '', version: 'r:2b', change: 'changed', at: '2026-10-13T10:42:00+01:00' }],
+            },
+        });
+        putCalls[0].options.onSuccess?.();
+        putCalls[0].options.onFinish?.();
+        await vi.waitFor(() => expect(row(wrapper, 2).find('[data-test="row-conflict"]').exists()).toBe(true));
+
+        expect(row(wrapper, 2).find('[data-test="row-conflict"]').text()).toContain('passou a «Realizou»');
+        expect(row(wrapper, 2).find('[data-test="row-conflict"]').text()).toContain('A sua escolha («Realizou parcialmente») não foi gravada');
+        expect(row(wrapper, 2).attributes('data-status')).toBe('partially_done');
+        expect(row(wrapper, 1).find('[data-test="row-unsaved"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="partial-save"]').text()).toContain('Gravação parcial: 1 linha gravada');
+        expect(wrapper.find('[data-test="saved-at"]').exists()).toBe(false);
+        // A row in conflict is not sent again before it is reviewed.
+        expect(wrapper.find('[data-test="save-homework"]').attributes('disabled')).toBeDefined();
+
+        // Keeping the choice is deliberate: sent with the version now seen.
+        await row(wrapper, 2).find('[data-test="keep-mine"]').trigger('click');
+        await wrapper.find('[data-test="save-homework"]').trigger('click');
+        expect(putCalls[1].rows).toEqual([{ enrollment_id: 2, homework_status: 'partially_done', description: 'Não trouxe.', expected: 'r:2b' }]);
+    });
+
+    it('«Usar o estado atual» drops the choice and shows what is saved now', async () => {
+        const { wrapper, fetchSpy } = await mountGrid();
+
+        await choose(wrapper, 2, 'Realizou');
+        await wrapper.find('[data-test="save-homework"]').trigger('click');
+        fetchSpy.mockImplementation(() => Promise.resolve(respond([ROSTER[0], { ...ROSTER[1], homework_status: null, description: '', version: 'none' }, ROSTER[2]])));
+        putCalls[0].options.onFlash?.({
+            homework_save: { saved: [], unchanged: [], conflicts: [{ enrollment_id: 2, homework_status: null, description: '', version: 'none', change: 'removed', at: null }] },
+        });
+        putCalls[0].options.onSuccess?.();
+        putCalls[0].options.onFinish?.();
+        await vi.waitFor(() => expect(row(wrapper, 2).find('[data-test="row-conflict"]').exists()).toBe(true));
+        expect(row(wrapper, 2).find('[data-test="row-conflict"]').text()).toContain('foi reposta em «Não verificado»');
+
+        await row(wrapper, 2).find('[data-test="use-current"]').trigger('click');
+
+        expect(row(wrapper, 2).attributes('data-status')).toBe('unverified');
+        expect(row(wrapper, 2).find('[data-test="row-conflict"]').exists()).toBe(false);
+        expect(row(wrapper, 2).find('[data-test="row-unsaved"]').exists()).toBe(false);
+    });
+
+    it('after a lost connection the same request goes again, with the same versions', async () => {
+        const { wrapper } = await mountGrid();
+        await choose(wrapper, 1, 'Não realizou');
+        await wrapper.find('[data-test="save-homework"]').trigger('click');
+
+        // No answer at all: no success, no validation error.
+        putCalls[0].options.onFinish?.();
+        await nextTick();
+        expect(wrapper.find('[data-test="save-error"]').text()).toContain('As escolhas mantêm-se');
+
+        await wrapper.find('[data-test="save-homework"]').trigger('click');
+        expect(putCalls[1].rows).toEqual(putCalls[0].rows);
     });
 
     it('works from the keyboard: 1/2/3 choose, 0 resets, ↓ goes to the next student', async () => {
