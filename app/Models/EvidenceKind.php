@@ -40,6 +40,21 @@ enum EvidenceKind: string
     }
 
     /**
+     * homework/participation/incident already carry other descriptive
+     * content (situação/nível/gravidade) — the description stays optional
+     * only for those three; every other kind needs it to say what happened
+     * at all (§4.4). The form and the backup validator read this one rule:
+     * a record the form accepts is a record a restore accepts.
+     */
+    public function allowsEmptyDescription(): bool
+    {
+        return match ($this) {
+            self::Homework, self::Participation, self::Incident => true,
+            default => false,
+        };
+    }
+
+    /**
      * The internal category the teacher never picks directly — always
      * derived from the kind, never stored (EvidenceInternalGroup). No
      * `default` arm: a new case added here without a group below throws

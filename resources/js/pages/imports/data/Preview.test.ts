@@ -98,6 +98,81 @@ afterEach(() => {
     wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
 });
 
+function mountFollowupPreview(summary: Record<string, unknown> | null = null) {
+    const wrapper = mount(Preview, {
+        props: {
+            dataImport: {
+                ulid: '01J0000000000000000000000B',
+                status: summary === null ? 'pending' : 'imported',
+                status_label: summary === null ? 'Por confirmar' : 'Importado',
+                original_filename: 'backup.zip',
+                source_schema_version: 15,
+                source_app_version: '0.164.0',
+                source_generated_at: null,
+                source_organization: null,
+                summary,
+                failure_reason: null,
+            },
+            destination: { name: 'Org fictícia', type: 'personal' },
+            plan: {
+                rows: {
+                    record_followup_cases: [
+                        { classification: 'new', reason: null, label: 'Atrasos · 7.º Z · 1.º Período' },
+                        { classification: 'conflict', reason: 'No destino, este acompanhamento tem outra informação de alerta. O destino é mantido.', label: 'Faltas de material · 7.º Z · 1.º Período' },
+                    ],
+                    record_followup_confirmations: [
+                        {
+                            classification: 'new',
+                            reason: null,
+                            label: 'Atrasos · 7.º Z · 1.º Período',
+                            notice: 'A autoria desta marcação fica por associar.',
+                            warning: 'Esta marcação abrange ocorrências cujos registos não existem neste restauro.',
+                        },
+                    ],
+                },
+                counts: {
+                    record_followup_cases: tally({ new: 1, conflict: 1 }),
+                    record_followup_confirmations: tally({ new: 1 }),
+                },
+                can_confirm: true,
+            },
+        },
+    });
+
+    wrappers.push(wrapper);
+
+    return wrapper;
+}
+
+describe('imports/data/Preview — acompanhamento dos registos (v15)', () => {
+    it('mostra os dois domínios, o conflito com a frase do plano e o restauro incompleto à parte da autoria', () => {
+        const wrapper = mountFollowupPreview();
+        const text = wrapper.text();
+
+        expect(text).toContain('Casos de acompanhamento dos registos');
+        expect(text).toContain('Marcações «Registado no Inovar»');
+        expect(text).toContain('Faltas de material · 7.º Z · 1.º Período');
+        expect(text).toContain('outra informação de alerta');
+
+        const warnings = wrapper.find('[data-test="restore-warnings"]');
+        expect(warnings.text()).toContain('Restauro incompleto');
+        expect(warnings.text()).toContain('1 registo(s)');
+        expect(warnings.text()).not.toContain('autoria');
+        expect(text).toContain('Autoria original');
+    });
+
+    it('resume o que foi criado e quantas marcações ficaram incompletas', () => {
+        const text = mountFollowupPreview({
+            record_followup_cases_created: 2,
+            record_followup_confirmations_created: 3,
+            record_followup_confirmations_incomplete: 1,
+        }).text();
+
+        expect(text).toContain('Casos de acompanhamento dos registos');
+        expect(text).toContain('Marcações restauradas sem todas as ocorrências');
+    });
+});
+
 describe('imports/data/Preview — recusas de linhas filhas', () => {
     it('lista cada recusa em «Pontos a rever» com o nome do domínio e a frase do validador', () => {
         const text = mountPreview().text();

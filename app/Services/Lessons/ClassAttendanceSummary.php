@@ -5,7 +5,6 @@ namespace App\Services\Lessons;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
-use App\Models\LessonOutcome;
 use App\Models\SchoolClass;
 use Illuminate\Validation\ValidationException;
 
@@ -68,9 +67,8 @@ class ClassAttendanceSummary
                 // SÓ CONSOLIDADAS (0.146.0). Uma linha `absent` numa aula ainda
                 // por consolidar é um RASCUNHO e não entra em total nenhum; e
                 // numa ocorrência sem assiduidade aplicável não conta nada.
-                $query->where('class_id', $class->id)
-                    ->whereNotNull('attendance_recorded_at')
-                    ->where(fn ($outcome) => $outcome->whereNull('outcome')->orWhere('outcome', LessonOutcome::Taught->value));
+                $query->where('class_id', $class->id);
+                Lesson::whereAttendanceCounts($query);
 
                 if ($from !== null) {
                     $query->whereDate('starts_at', '>=', $from);

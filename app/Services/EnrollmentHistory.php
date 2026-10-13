@@ -65,6 +65,9 @@ class EnrollmentHistory
         // remover a inscrição apagaria uma nota real, tal como apagar
         // `student_item_scores` apagaria uma avaliação real.
         'external_subject_results' => 'resultados externos registados',
+        // Alerta à 3.ª ocorrência e a declaração «Registado no Inovar»: só
+        // existem porque houve registos, e são história como eles.
+        'record_followup_cases' => 'acompanhamento dos registos',
     ];
 
     /**

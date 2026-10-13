@@ -495,12 +495,12 @@ class EnrollmentRemovalTest extends TestCase
         // Uma query pelos ids da turma, mais uma por relação. NUNCA uma por
         // aluno: doze alunos ou trinta, o custo é o mesmo — que é a condição
         // sob a qual esta antecipação pode viver no ecrã da turma.
-        // 15, MEDIDO E NÃO DEDUZIDO — 1 + 13 + 1.
+        // 16, MEDIDO E NÃO DEDUZIDO — 1 + 14 + 1.
         //
         // `idsWithHistoryIn()` custa uma query pelos ids da turma mais uma
-        // por entrada de `EnrollmentHistory::RELATIONS` (são treze, agora
-        // que `enrollment_characterisations` e `external_subject_results`
-        // passaram a ser duas delas): catorze.
+        // por entrada de `EnrollmentHistory::RELATIONS` (são catorze, agora
+        // que `enrollment_characterisations`, `external_subject_results` e
+        // `record_followup_cases` (0.164.0) passaram a ser três delas): quinze.
         //
         // A DÉCIMA QUINTA NÃO É DO SERVIÇO, É DESTE TESTE:
         // `$this->user->personalOrganization()` é avaliado como ARGUMENTO de
@@ -512,6 +512,6 @@ class EnrollmentRemovalTest extends TestCase
         // O QUE ESTE CASO GUARDA NÃO É O NÚMERO: é que ele acompanha as
         // RELAÇÕES e nunca os ALUNOS. São doze alunos aqui de propósito, e
         // o custo teria de ser exatamente o mesmo com trinta.
-        $this->assertLessThanOrEqual(15, $queries, 'idsWithHistoryIn cresceu com o número de alunos.');
+        $this->assertLessThanOrEqual(16, $queries, 'idsWithHistoryIn cresceu com o número de alunos.');
     }
 }

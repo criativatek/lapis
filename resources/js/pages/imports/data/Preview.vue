@@ -27,6 +27,12 @@ type PlanRow = {
      * current account. Deliberately not an error: the record is imported.
      */
     notice?: string | null;
+    /**
+     * A row that WILL be written but not whole — today, a «Registado no
+     * Inovar» declaration whose records did not all come back. Said apart
+     * from authorship, and never as a refusal.
+     */
+    warning?: string | null;
     label?: string;
     name?: string;
     title?: string;
@@ -104,6 +110,14 @@ const domainGroups: {
             { key: 'interventions', label: 'Estratégias e medidas' },
             { key: 'intervention_reviews', label: 'Revisões de estratégias' },
             { key: 'class_notebook_entries', label: 'Caderno da turma' },
+            {
+                key: 'record_followup_cases',
+                label: 'Casos de acompanhamento dos registos',
+            },
+            {
+                key: 'record_followup_confirmations',
+                label: 'Marcações «Registado no Inovar»',
+            },
         ],
     },
     {
@@ -178,6 +192,18 @@ const summaryGroups: {
             {
                 key: 'class_notebook_entries_created',
                 label: 'Registos do caderno da turma',
+            },
+            {
+                key: 'record_followup_cases_created',
+                label: 'Casos de acompanhamento dos registos',
+            },
+            {
+                key: 'record_followup_confirmations_created',
+                label: 'Marcações «Registado no Inovar»',
+            },
+            {
+                key: 'record_followup_confirmations_incomplete',
+                label: 'Marcações restauradas sem todas as ocorrências',
             },
         ],
     },
@@ -395,6 +421,35 @@ const authorshipNotices = computed<{ notice: string; count: number }[]>(() => {
 
     return [...counts.entries()].map(([notice, count]) => ({
         notice,
+        count,
+    }));
+});
+
+/**
+ * Rows that WILL be imported but not whole. Apart from authorship (a
+ * different question) and from "Pontos a rever" (those are not written).
+ */
+const restoreWarnings = computed<{ warning: string; count: number }[]>(() => {
+    if (props.plan === null) {
+        return [];
+    }
+
+    const counts = new Map<string, number>();
+
+    for (const row of Object.values(props.plan.rows).flat()) {
+        if (row.classification !== 'new') {
+            continue;
+        }
+
+        const warning = row.warning;
+
+        if (typeof warning === 'string' && warning.length > 0) {
+            counts.set(warning, (counts.get(warning) ?? 0) + 1);
+        }
+    }
+
+    return [...counts.entries()].map(([warning, count]) => ({
+        warning,
         count,
     }));
 });
@@ -701,6 +756,27 @@ const needingReassignment = computed(() => {
                     <li v-for="entry in authorshipNotices" :key="entry.notice">
                         <strong>{{ entry.count }} registo(s)</strong> —
                         {{ entry.notice }}
+                    </li>
+                </ul>
+            </div>
+
+            <div
+                v-if="restoreWarnings.length > 0"
+                class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950"
+                data-test="restore-warnings"
+            >
+                <h2 class="font-medium text-amber-800 dark:text-amber-300">
+                    Restauro incompleto
+                </h2>
+                <p class="text-amber-900 dark:text-amber-200">
+                    Estes registos são importados, mas não ficam completos.
+                </p>
+                <ul
+                    class="list-inside list-disc space-y-1 text-amber-900 dark:text-amber-200"
+                >
+                    <li v-for="entry in restoreWarnings" :key="entry.warning">
+                        <strong>{{ entry.count }} registo(s)</strong> —
+                        {{ entry.warning }}
                     </li>
                 </ul>
             </div>

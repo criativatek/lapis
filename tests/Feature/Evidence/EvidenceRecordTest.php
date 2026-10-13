@@ -477,8 +477,13 @@ class EvidenceRecordTest extends TestCase
         }
     }
 
+    /**
+     * Decided 2026-10-12: the old 3/6/9 warning is replaced by one persistent
+     * alert per student, class, kind and period — the sixth no longer repeats
+     * it (RecordFollowupAlertTest covers the rule in full).
+     */
     #[Test]
-    public function the_third_lateness_record_triggers_the_accumulation_warning_and_the_sixth_repeats_it(): void
+    public function the_third_lateness_record_raises_the_alert_and_the_sixth_does_not_repeat_it(): void
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
@@ -495,20 +500,17 @@ class EvidenceRecordTest extends TestCase
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
 
-        // 3rd: crosses the first multiple of 3.
+        // 3rd: crosses the threshold — the alert stays in Registos.
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
             && str_contains($toast['message'], 'acumulou 3 atrasos')
-            && str_contains($toast['message'], 'Inovar (grau 2)')
-            && str_contains($toast['message'], 'alertar o encarregado de educação')
+            && str_contains($toast['message'], 'O alerta ficou em Registos, por tratar.')
             && ! str_contains($toast['message'], 'falta de presença'));
 
-        // 4th and 5th: back to no warning.
+        // 4th, 5th and 6th: no cycles.
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
-
-        // 6th: the next multiple of 3.
-        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
-            && str_contains($toast['message'], 'acumulou 6 atrasos'));
+        $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success'
+            && ! str_contains($toast['message'], 'acumulou'));
     }
 
     #[Test]
@@ -529,8 +531,7 @@ class EvidenceRecordTest extends TestCase
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'success');
         $this->assertToast($post(), fn ($toast) => $toast['type'] === 'warning'
             && str_contains($toast['message'], 'acumulou 3 faltas de material')
-            && str_contains($toast['message'], 'Inovar (grau 2)')
-            && str_contains($toast['message'], 'consequências na avaliação'));
+            && str_contains($toast['message'], 'por tratar'));
     }
 
     #[Test]
@@ -682,8 +683,12 @@ class EvidenceRecordTest extends TestCase
         ])->assertNotFound();
     }
 
+    /**
+     * The class logbook no longer filters — it lists the latest records and
+     * the consultation (/records) searches. The same three filters, there.
+     */
     #[Test]
-    public function the_listing_can_be_filtered_by_kind_student_and_period(): void
+    public function the_consultation_can_be_filtered_by_kind_student_and_period(): void
     {
         [$classUlid, $enrollmentId] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
@@ -700,20 +705,29 @@ class EvidenceRecordTest extends TestCase
             'kind' => 'note', 'description' => 'Nota do 2.º semestre.', 'occurred_at' => '2027-03-01',
         ])->assertRedirect();
 
-        $periodId = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid) {
+        [$periodUlid, $studentUlid] = app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function () use ($classUlid, $enrollmentId) {
             $class = SchoolClass::where('ulid', $classUlid)->firstOrFail();
 
-            return AcademicPeriod::where('academic_year_id', $class->academic_year_id)->where('sequence', 1)->firstOrFail()->id;
+            return [
+                AcademicPeriod::where('academic_year_id', $class->academic_year_id)->where('sequence', 1)->firstOrFail()->ulid,
+                $class->enrollments()->whereKey((int) $enrollmentId)->firstOrFail()->ulid,
+            ];
         });
 
+        $search = "/records?class={$classUlid}&period={$periodUlid}&searched=1";
+
+        $this->get("{$search}&kind=homework")
+            ->assertInertia(fn ($page) => $page->component('records/Index')->where('results.total', 1));
+
+        $this->get("{$search}&student={$studentUlid}")
+            ->assertInertia(fn ($page) => $page->component('records/Index')->where('results.total', 1));
+
+        $this->get($search)
+            ->assertInertia(fn ($page) => $page->component('records/Index')->where('results.total', 2));
+
+        // The class logbook shows the latest records, unfiltered.
         $this->get("/classes/{$classUlid}/records?kind=homework")
-            ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 1));
-
-        $this->get("/classes/{$classUlid}/records?enrollment_id={$enrollmentId}")
-            ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 1));
-
-        $this->get("/classes/{$classUlid}/records?period_id={$periodId}")
-            ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 2));
+            ->assertInertia(fn ($page) => $page->component('records/Show')->has('records', 3));
     }
 
     #[Test]

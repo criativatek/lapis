@@ -65,6 +65,9 @@ class SchoolClassHistory
         // que um colega dono da turma não consiga, ao eliminá-la, apagar os
         // registos que outro escreveu — o que o caderno promete que não acontece.
         'class_notebook_entries' => 'registos do caderno da turma',
+        // Alertas e confirmações «Registado no Inovar» — declarações do
+        // professor sobre os registos, história como eles.
+        'record_followup_cases' => 'acompanhamento dos registos',
     ];
 
     /**

@@ -65,6 +65,7 @@ use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PrivacyNoticeController;
 use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\PublicSupportController;
+use App\Http\Controllers\RecordConsultationController;
 use App\Http\Controllers\Records\IncidentDescriptionRewriteController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
@@ -1039,7 +1040,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
 
     // Records — the teacher's logbook (§14). Qualitative evidence, never a grade.
     Route::middleware(['module:records', 'usage:records'])->group(function () {
-        Route::get('records', [EvidenceController::class, 'index'])->name('records.index');
+        Route::get('records', [RecordConsultationController::class, 'index'])->name('records.index');
+        Route::post('records/acompanhamento/confirmacoes', [RecordConsultationController::class, 'confirm'])->name('records.followup.confirm');
+        Route::delete('records/acompanhamento/confirmacoes/{confirmation}', [RecordConsultationController::class, 'undo'])->name('records.followup.undo');
         Route::get('classes/{class}/records', [EvidenceController::class, 'show'])->name('records.show');
         Route::get('classes/{class}/records/homework-batch', [EvidenceController::class, 'homeworkBatch'])->name('records.homework-batch.show');
         Route::put('classes/{class}/records/homework-batch', [EvidenceController::class, 'updateHomeworkBatch'])->name('records.homework-batch.update');

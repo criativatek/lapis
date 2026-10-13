@@ -212,6 +212,25 @@ class Lesson extends Model
     }
 
     /**
+     * A assiduidade desta aula CONTA: foi consolidada (marcada como lecionada,
+     * ou registada depois) e a ocorrência é uma aula — sem resultado ainda, ou
+     * `taught`. Um rascunho de faltas numa aula por fechar, ou uma ocorrência
+     * sem assiduidade aplicável (professor ausente, turma noutras atividades),
+     * nunca conta. A regra única de StudentAttendanceHistory,
+     * ClassAttendanceSummary e das faltas de presença da consulta de Registos.
+     * Colunas qualificadas: serve tanto um `whereHas('lesson')` como uma junção.
+     *
+     * @template TModel of Model
+     *
+     * @param  Builder<TModel>|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereAttendanceCounts($query): void
+    {
+        $query->whereNotNull('lessons.attendance_recorded_at')
+            ->where(fn ($outcome) => $outcome->whereNull('lessons.outcome')->orWhere('lessons.outcome', LessonOutcome::Taught->value));
+    }
+
+    /**
      * A assiduidade dos alunos não se aplica a esta ocorrência.
      */
     public function attendanceNotApplicable(): bool

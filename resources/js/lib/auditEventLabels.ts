@@ -44,6 +44,8 @@ const labels: Record<string, string> = {
     'record.deleted': 'Registo eliminado',
     'record.homework_batch_updated': 'Trabalho de casa guardado',
     'record.homework_batch_deleted': 'Trabalho de casa eliminado',
+    'record_followup.confirmed': 'Marcado como registado no Inovar',
+    'record_followup.unconfirmed': 'Desfeita a marcação de registado no Inovar',
     'self_assessment.recorded': 'Autoavaliação registada',
     'class_group.created': 'Grupo de turma criado',
     'class_group.updated': 'Grupo de turma alterado',

@@ -13,6 +13,9 @@ use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
+use App\Services\Evidence\Followup\RecordFollowupCaseBook;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\AcademicYearRetentionClassifier;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -26,7 +29,7 @@ use Inertia\Response;
  */
 class DashboardController extends Controller
 {
-    public function __invoke(AcademicYearRetentionClassifier $retentionClassifier): Response
+    public function __invoke(AcademicYearRetentionClassifier $retentionClassifier, RecordFollowupCaseBook $followupCases, Entitlements $entitlements): Response
     {
         $teacher = $this->user();
 
@@ -81,12 +84,37 @@ class DashboardController extends Controller
                 $currentAcademicYearClasses,
             ),
             'firstSteps' => $this->firstSteps($teacher, $currentAcademicYearClasses),
+            'recordAlerts' => $this->recordAlerts($followupCases, $entitlements, $currentAcademicYear, $currentAcademicYearClasses),
             'totals' => [
                 'classes' => $classCards->count(),
                 'pending_confirmation' => $classCards->sum('pending_confirmation'),
                 'pending_publication' => $classCards->sum('pending_publication'),
             ],
         ]);
+    }
+
+    /**
+     * The accumulation alerts still «por tratar» in this year's classes — the
+     * persistent notice of the logbook follow-up (spec 2026-10-12). Only the
+     * alerts an operation actually raised: cases that predate alerts are found
+     * in Registos, never pushed here.
+     *
+     * @param  Collection<int, SchoolClass>  $currentAcademicYearClasses
+     * @return array{pending: int, href: string}|null
+     */
+    private function recordAlerts(RecordFollowupCaseBook $followupCases, Entitlements $entitlements, ?AcademicYear $currentAcademicYear, Collection $currentAcademicYearClasses): ?array
+    {
+        if ($currentAcademicYear === null || $currentAcademicYearClasses->isEmpty() || ! $entitlements->canRead('records')) {
+            return null;
+        }
+
+        $pending = $followupCases->pendingAlerts(
+            array_values($currentAcademicYearClasses->map(fn (SchoolClass $class): int => $class->id)->all()),
+            AssessmentPeriodTimeline::forYear($currentAcademicYear->id),
+            withDetails: false,
+        )->count();
+
+        return $pending === 0 ? null : ['pending' => $pending, 'href' => '/records?year='.$currentAcademicYear->ulid];
     }
 
     /**

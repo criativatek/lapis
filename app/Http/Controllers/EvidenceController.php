@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AcademicPeriod;
 use App\Models\ActivityEvaluation;
 use App\Models\DisciplinarySeverity;
 use App\Models\Domain;
@@ -10,17 +9,23 @@ use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
 use App\Models\HomeworkStatus;
 use App\Models\ParticipationLevel;
+use App\Models\RecordFollowupCategory;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Audit\AuditLog;
 use App\Services\Evidence\Ai\IncidentDescriptionAssistant;
-use App\Services\Evidence\DetectEvidenceAccumulationWarnings;
+use App\Services\Evidence\EvidenceRecordLabels;
+use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
+use App\Services\Evidence\Followup\RecordFollowupAlerts;
+use App\Services\Evidence\Followup\RecordFollowupNotices;
+use App\Services\Evidence\Followup\RecordFollowupOutcome;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -35,66 +40,39 @@ use Inertia\Response;
  */
 class EvidenceController extends Controller
 {
-    public function __construct(protected AuditLog $audit) {}
+    /** How many of the latest records the class logbook lists. */
+    public const int RECENT_RECORDS = 10;
 
-    public function index(): Response
-    {
-        $classes = SchoolClass::query()
-            ->whereHas('teachers', fn ($query) => $query->whereKey($this->user()->getKey()))
-            ->with(['subject', 'academicYear'])
-            ->withCount('evidenceRecords')
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(fn (SchoolClass $class) => [
-                'ulid' => $class->ulid,
-                'label' => $class->label,
-                'subject' => $class->subject->name,
-                'academic_year' => $class->academicYear->label,
-                'records_count' => $class->evidence_records_count,
-            ]);
-
-        return Inertia::render('records/Index', ['classes' => $classes]);
-    }
+    public function __construct(protected AuditLog $audit, protected RecordFollowupAlerts $followupAlerts) {}
 
     public function show(Request $request, SchoolClass $class, IncidentDescriptionAssistant $assistant): Response
     {
         Gate::authorize('view', $class);
 
-        $enrollmentFilter = $request->query('enrollment_id') !== null ? (int) $request->query('enrollment_id') : null;
-        $kindFilter = $request->query('kind');
-        $periodFilter = $request->query('period_id') !== null ? (int) $request->query('period_id') : null;
-
-        $period = $periodFilter !== null
-            ? AcademicPeriod::where('academic_year_id', $class->academic_year_id)->find($periodFilter)
-            : null;
-
+        // THE CLASS LOGBOOK IS WHERE RECORDS ARE WRITTEN, not where they are
+        // consulted (spec 2026-10-12): it shows the few most recent ones to
+        // check what was just saved, and the consultation (/records) does the
+        // searching. `registo` opens one specific record for editing — the
+        // consultation's «Abrir» — and `voltar` brings the teacher back there
+        // with filters, page and open case intact.
         $records = EvidenceRecord::query()
             ->forClass($class->id)
-            ->forEnrollmentOrWholeClass($enrollmentFilter)
-            ->when($kindFilter !== null, fn ($query) => $query->where('kind', $kindFilter))
-            ->when($period !== null, fn ($query) => $query->inPeriod($period))
             ->with(['enrollment.student.identity', 'domain'])
             ->orderByDesc('occurred_at')
-            ->limit(200)
+            ->orderByDesc('id')
+            ->limit(self::RECENT_RECORDS)
             ->get()
-            ->map(fn (EvidenceRecord $record) => [
-                'ulid' => $record->ulid,
-                'kind' => $record->kind->value,
-                'kind_label' => $record->kind->label(),
-                'enrollment_id' => $record->enrollment_id,
-                'domain_id' => $record->domain_id,
-                'disciplinary_severity' => $record->disciplinary_severity?->value,
-                'disciplinary_severity_label' => $record->disciplinary_severity?->label(),
-                'homework_status' => $record->homework_status?->value,
-                'participation_level' => $record->participation_level?->value,
-                'activity_evaluation' => $record->activity_evaluation?->value,
-                'activity_include_in_report' => $record->activity_include_in_report,
-                'detail_label' => $this->detailLabel($record),
-                'description' => $record->description,
-                'student' => $record->enrollment === null ? null : (optional($record->enrollment->student->identity)->display_name ?? '(sem identidade)'),
-                'domain' => $record->domain?->name,
-                'occurred_at' => $record->occurred_at->toIso8601String(),
-            ]);
+            ->map(fn (EvidenceRecord $record) => $this->recordRow($record));
+
+        // A record deleted meanwhile (the teacher removed it from this very
+        // page, a stale bookmark) is said so — never a 404 after a delete.
+        $editingUlid = $request->query('registo');
+        $editing = is_string($editingUlid)
+            ? EvidenceRecord::query()->forClass($class->id)->where('ulid', $editingUlid)->with(['enrollment.student.identity', 'domain'])->first()
+            : null;
+
+        $backUrl = $request->query('voltar');
+        $backUrl = is_string($backUrl) && preg_match('#^/records(?:[/?]|$)#', $backUrl) === 1 ? $backUrl : null;
 
         return Inertia::render('records/Show', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
@@ -119,14 +97,15 @@ class EvidenceController extends Controller
                 'group_label' => $kind->group()->label(),
             ]),
             'severities' => collect(DisciplinarySeverity::cases())->map(fn (DisciplinarySeverity $severity) => ['value' => $severity->value, 'label' => $severity->label()]),
-            'periods' => AcademicPeriod::where('academic_year_id', $class->academic_year_id)->orderBy('sequence')->get()
-                ->map(fn (AcademicPeriod $classPeriod) => ['id' => $classPeriod->id, 'label' => $classPeriod->label]),
-            'filters' => [
-                'enrollment_id' => $enrollmentFilter,
-                'kind' => $kindFilter,
-                'period_id' => $periodFilter,
-            ],
             'records' => $records,
+            'editingRecord' => $editing === null ? null : $this->recordRow($editing),
+            'editingRecordMissing' => is_string($editingUlid) && $editing === null,
+            'backUrl' => $backUrl,
+            'consultation' => ['year' => $class->academicYear->ulid, 'class' => $class->ulid],
+            'periodsNotice' => AssessmentPeriodTimeline::forYear($class->academic_year_id)->isEmpty() ? RecordFollowupNotices::periodsMissing() : null,
+            // What «today» means for the form's default date: the application's
+            // day, never the UTC one (records/Show.vue, lib/appDate.ts).
+            'appTimezone' => (string) config('app.timezone'),
             // «Aperfeiçoar redação» on the ocorrência disciplinar (SUP-U8FMAE).
             // Read on the server before the button is drawn — hiding a control
             // is presentation, not the answer (CLAUDE.md §8.2); the endpoint
@@ -139,19 +118,38 @@ class EvidenceController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    protected function recordRow(EvidenceRecord $record): array
+    {
+        return [
+            'ulid' => $record->ulid,
+            'kind' => $record->kind->value,
+            'kind_label' => $record->kind->label(),
+            'enrollment_id' => $record->enrollment_id,
+            'domain_id' => $record->domain_id,
+            'disciplinary_severity' => $record->disciplinary_severity?->value,
+            'disciplinary_severity_label' => $record->disciplinary_severity?->label(),
+            'homework_status' => $record->homework_status?->value,
+            'participation_level' => $record->participation_level?->value,
+            'activity_evaluation' => $record->activity_evaluation?->value,
+            'activity_include_in_report' => $record->activity_include_in_report,
+            'detail_label' => $this->detailLabel($record),
+            'description' => $record->description,
+            'student' => $record->enrollment === null ? null : (optional($record->enrollment->student->identity)->display_name ?? '(sem identidade)'),
+            'domain' => $record->domain?->name,
+            'occurred_at' => $record->occurred_at->toIso8601String(),
+        ];
+    }
+
+    /**
      * A short, type-specific suffix for the compact listing (§10) — e.g.
      * "Não realizado", "Positiva", "Avaliação positiva — Incluir no
      * relatório". Computed once here so the frontend never re-derives it.
      */
     protected function detailLabel(EvidenceRecord $record): ?string
     {
-        return match ($record->kind) {
-            EvidenceKind::Homework => $record->homework_status?->label(),
-            EvidenceKind::Participation => $record->participation_level?->label(),
-            EvidenceKind::Progress, EvidenceKind::Difficulty => $record->domain?->name,
-            EvidenceKind::Activity => $record->activity_evaluation === null ? null : ($record->activity_evaluation->label().($record->activity_include_in_report ? ' — '.__('Incluir no relatório') : '')),
-            default => null,
-        };
+        return EvidenceRecordLabels::detail($record);
     }
 
     /**
@@ -161,7 +159,7 @@ class EvidenceController extends Controller
      * their own independent row, identical except for `enrollment_id`, each
      * editable and deletable on its own from then on.
      */
-    public function store(Request $request, SchoolClass $class, DetectEvidenceAccumulationWarnings $detectAccumulationWarnings, UsageRecorder $usage): RedirectResponse
+    public function store(Request $request, SchoolClass $class, UsageRecorder $usage): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -177,7 +175,17 @@ class EvidenceController extends Controller
         $createdEnrollmentIds = [];
         $firstRecord = null;
 
-        DB::transaction(function () use ($class, $validated, $targets, &$createdEnrollmentIds, &$firstRecord): void {
+        $followup = DB::transaction(function () use ($class, $validated, $targets, &$createdEnrollmentIds, &$firstRecord): RecordFollowupOutcome {
+            // Serialises saves on this class, so the follow-up's «before»
+            // count and the write it compares against belong together.
+            SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
+            $snapshot = $this->followupAlerts->before($class, array_map(fn ($enrollmentId): array => [
+                'enrollment_id' => $enrollmentId === null ? null : (int) $enrollmentId,
+                'category' => RecordFollowupCategory::fromRecord(EvidenceKind::from($validated['kind']), HomeworkStatus::tryFrom((string) ($validated['homework_status'] ?? ''))),
+                'date' => Carbon::parse($validated['occurred_at']),
+            ], $targets));
+
             foreach ($targets as $enrollmentId) {
                 $record = EvidenceRecord::create([
                     'class_id' => $class->id,
@@ -198,6 +206,8 @@ class EvidenceController extends Controller
                 $firstRecord ??= $record;
                 $createdEnrollmentIds[] = $enrollmentId;
             }
+
+            return $this->followupAlerts->after($snapshot);
         });
 
         // Um evento por pedido, nunca um por aluno: o grelha multi-aluno é um
@@ -218,15 +228,24 @@ class EvidenceController extends Controller
             ? __('Registo adicionado.')
             : __(':count registos adicionados.', ['count' => count($targets)]);
 
-        $accumulationWarnings = $detectAccumulationWarnings->forSavedRecords($class, EvidenceKind::from($validated['kind']), $targets);
-
-        if ($accumulationWarnings !== []) {
-            $message .= ' '.implode(' ', $accumulationWarnings);
-        }
-
-        Inertia::flash('toast', ['type' => $accumulationWarnings === [] ? 'success' : 'warning', 'message' => $message]);
+        $this->flashWithFollowup($message, $followup);
 
         return back();
+    }
+
+    /**
+     * The save toast, completed by what the follow-up did — a new alert or an
+     * occurrence no period covers. The alert itself is persistent; this only
+     * tells the teacher at the moment it happened.
+     */
+    protected function flashWithFollowup(string $message, RecordFollowupOutcome $followup): void
+    {
+        $sentences = $followup->toastSentences();
+
+        Inertia::flash('toast', [
+            'type' => $followup->hasAlerts() ? 'warning' : ($sentences === [] ? 'success' : 'info'),
+            'message' => trim($message.' '.implode(' ', $sentences)),
+        ]);
     }
 
     /**
@@ -292,11 +311,18 @@ class EvidenceController extends Controller
 
         $touched = 0;
 
-        DB::transaction(function () use ($class, $validated, $enrollmentIds, &$touched): void {
+        $followup = DB::transaction(function () use ($class, $validated, $enrollmentIds, &$touched): RecordFollowupOutcome {
             // There is deliberately no batch table or uniqueness constraint.
             // Locking the existing parent serializes two first saves, where no
             // EvidenceRecord row exists yet for lockForUpdate() to lock.
             SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
+            // Only a row saved as «Não realizado» can add to the follow-up.
+            $snapshot = $this->followupAlerts->before($class, array_map(fn (array $row): array => [
+                'enrollment_id' => (int) $row['enrollment_id'],
+                'category' => RecordFollowupCategory::fromRecord(EvidenceKind::Homework, HomeworkStatus::tryFrom((string) ($row['homework_status'] ?? ''))),
+                'date' => Carbon::parse($validated['occurred_at']),
+            ], $validated['rows']));
 
             $existingRecords = EvidenceRecord::query()
                 ->forClass($class->id)
@@ -340,6 +366,8 @@ class EvidenceController extends Controller
                 ]));
                 $touched++;
             }
+
+            return $this->followupAlerts->after($snapshot);
         });
 
         if ($touched > 0) {
@@ -355,7 +383,7 @@ class EvidenceController extends Controller
             $usage->action(UsageEventType::HomeworkBatchSaved, 'homework:'.$class->getKey().':'.$validated['occurred_at'], $touched);
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Trabalho de casa guardado.')]);
+        $this->flashWithFollowup(__('Trabalho de casa guardado.'), $followup);
 
         return back();
     }
@@ -371,6 +399,10 @@ class EvidenceController extends Controller
         $deleted = 0;
 
         DB::transaction(function () use ($class, $validated, &$deleted): void {
+            // The same class lock as every save, so a delete never lands
+            // between a save's «before» and «after» follow-up counts.
+            SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
             $rows = EvidenceRecord::query()
                 ->forClass($class->id)
                 ->where('kind', EvidenceKind::Homework->value)
@@ -398,7 +430,7 @@ class EvidenceController extends Controller
         return back();
     }
 
-    public function update(Request $request, EvidenceRecord $record, DetectEvidenceAccumulationWarnings $detectAccumulationWarnings): RedirectResponse
+    public function update(Request $request, EvidenceRecord $record): RedirectResponse
     {
         $class = $record->schoolClass;
         Gate::authorize('update', $class);
@@ -407,20 +439,36 @@ class EvidenceController extends Controller
 
         $this->guardCrossReferences($class, $validated);
 
-        $record->update([
-            'enrollment_id' => $validated['enrollment_id'] ?? null,
-            'domain_id' => $validated['domain_id'] ?? null,
-            'occurred_at' => $validated['occurred_at'],
-            'kind' => $validated['kind'],
-            'disciplinary_severity' => $validated['disciplinary_severity'] ?? null,
-            'homework_status' => $validated['homework_status'] ?? null,
-            'participation_level' => $validated['participation_level'] ?? null,
-            'activity_evaluation' => $validated['activity_evaluation'] ?? null,
-            'activity_include_in_report' => $validated['activity_include_in_report'] ?? null,
-            // The DB column is NOT NULL — an omitted, optional description (§4.4)
-            // is stored as empty, never as a null that would fail the insert.
-            'description' => $validated['description'] ?? '',
-        ]);
+        $followup = DB::transaction(function () use ($class, $record, $validated): RecordFollowupOutcome {
+            SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+
+            // An edit can move a record INTO a count — corrected into «Atraso»,
+            // to another student, to a date in another period, or to «Não
+            // realizado». Only the count it lands in can cross the threshold;
+            // re-saving it unchanged leaves that count where it was.
+            $snapshot = $this->followupAlerts->before($class, [[
+                'enrollment_id' => isset($validated['enrollment_id']) ? (int) $validated['enrollment_id'] : null,
+                'category' => RecordFollowupCategory::fromRecord(EvidenceKind::from($validated['kind']), HomeworkStatus::tryFrom((string) ($validated['homework_status'] ?? ''))),
+                'date' => Carbon::parse($validated['occurred_at']),
+            ]]);
+
+            $record->update([
+                'enrollment_id' => $validated['enrollment_id'] ?? null,
+                'domain_id' => $validated['domain_id'] ?? null,
+                'occurred_at' => $validated['occurred_at'],
+                'kind' => $validated['kind'],
+                'disciplinary_severity' => $validated['disciplinary_severity'] ?? null,
+                'homework_status' => $validated['homework_status'] ?? null,
+                'participation_level' => $validated['participation_level'] ?? null,
+                'activity_evaluation' => $validated['activity_evaluation'] ?? null,
+                'activity_include_in_report' => $validated['activity_include_in_report'] ?? null,
+                // The DB column is NOT NULL — an omitted, optional description (§4.4)
+                // is stored as empty, never as a null that would fail the insert.
+                'description' => $validated['description'] ?? '',
+            ]);
+
+            return $this->followupAlerts->after($snapshot);
+        });
 
         $this->audit->record(
             'record.updated',
@@ -430,20 +478,7 @@ class EvidenceController extends Controller
             ['class_id' => $class->id, 'evidence_record_id' => $record->id, 'kind' => $record->kind->value],
         );
 
-        $message = __('Registo atualizado.');
-
-        // An edit can change which kind a record is — e.g. correcting it into
-        // "Atraso" — so the count it now belongs to may only just have
-        // crossed the threshold. A kind that was already alerting and stays
-        // alerting is covered too: the count is read back from the database,
-        // not carried over from before the edit.
-        $accumulationWarnings = $detectAccumulationWarnings->forSavedRecords($class, $record->kind, [$record->enrollment_id]);
-
-        if ($accumulationWarnings !== []) {
-            $message .= ' '.implode(' ', $accumulationWarnings);
-        }
-
-        Inertia::flash('toast', ['type' => $accumulationWarnings === [] ? 'success' : 'warning', 'message' => $message]);
+        $this->flashWithFollowup(__('Registo atualizado.'), $followup);
 
         return back();
     }
@@ -456,7 +491,10 @@ class EvidenceController extends Controller
         $recordId = $record->id;
         $kind = $record->kind->value;
 
-        $record->delete();
+        DB::transaction(function () use ($class, $record): void {
+            SchoolClass::query()->whereKey($class->id)->lockForUpdate()->firstOrFail();
+            $record->delete();
+        });
 
         $this->audit->record(
             'record.deleted',
@@ -480,20 +518,14 @@ class EvidenceController extends Controller
      */
     protected function rulesFor(?string $kind): array
     {
-        // homework/participation/incident already carry other descriptive
-        // content (situação/nível/gravidade) — description stays optional
-        // only for those three; every other kind needs it to say what
-        // happened at all (§4.4).
-        $descriptionOptionalKinds = [
-            EvidenceKind::Homework->value,
-            EvidenceKind::Participation->value,
-            EvidenceKind::Incident->value,
-        ];
+        // EvidenceKind::allowsEmptyDescription() — the same rule a backup
+        // restore applies.
+        $descriptionOptional = EvidenceKind::tryFrom((string) $kind)?->allowsEmptyDescription() ?? false;
 
         return [
             'kind' => ['required', Rule::enum(EvidenceKind::class)],
             'description' => [
-                Rule::requiredIf(! in_array($kind, $descriptionOptionalKinds, true)),
+                Rule::requiredIf(! $descriptionOptional),
                 'nullable', 'string', 'max:1000',
             ],
             'occurred_at' => ['required', 'date'],

@@ -7,7 +7,13 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (14) is what GenerateDataExport writes today. Version 14 adds the
+ * CURRENT (15) is what GenerateDataExport writes today. Version 15 adds the
+ * follow-up of the logbook — `record_followup_cases` (student × class ×
+ * period × category, with the alert) and `record_followup_confirmations`
+ * (the teacher's «Registado no Inovar» declarations, undone ones included,
+ * with who/when as emails and the occurrences each one covered). Absent in a
+ * backup ≤14 (read as empty lists): nothing is restored and nothing in the
+ * destination's follow-up is changed or deleted because of it. Version 14 adds the
  * `class_notebook_entries` collection — a teacher's own private notebook of
  * the class (`ClassNotebookEntry`): `ulid`, `class_ulid`, `author_email`,
  * `title`, `body`, `is_pinned` and the three dates. Exported only for the
@@ -69,7 +75,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 14;
+    public const int CURRENT = 15;
 
     public const int MINIMUM_SUPPORTED = 2;
 

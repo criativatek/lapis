@@ -35,9 +35,8 @@ function baseProps(overrides: Record<string, unknown> = {}) {
         domains: [],
         kinds: [{ value: 'incident', label: 'Ocorrência disciplinar', group: 'behaviour', group_label: 'Comportamento' }],
         severities: [{ value: 'minor', label: 'Ligeira' }],
-        periods: [],
-        filters: { enrollment_id: null, kind: null, period_id: null },
         records: [],
+        consultation: { year: 'year-1', class: 'class-1' },
         ai: { available: true, reason: null },
         incidentRewrite: null,
         incidentRewriteError: null,
@@ -239,5 +238,75 @@ describe('records Show — compor e confirmar são fases distintas', () => {
         const labels = wrapper.findAll('button').map((button) => button.text());
         expect(labels).toContain('Cancelar');
         expect(labels).not.toContain('Limpar');
+    });
+});
+
+describe('records Show — registar, não consultar', () => {
+    it('opens a record sent by the consultation in the form, with the way back', async () => {
+        const record = {
+            ulid: 'R1', kind: 'incident', kind_label: 'Ocorrência disciplinar', enrollment_id: 1, domain_id: null,
+            disciplinary_severity: 'minor', disciplinary_severity_label: 'Ligeira', homework_status: null, participation_level: null,
+            activity_evaluation: null, activity_include_in_report: null, detail_label: null, description: 'Interrompeu a aula.',
+            student: 'Maria Silva', domain: null, occurred_at: '2026-10-03T00:00:00+01:00',
+        };
+        const wrapper = mountShow({ editingRecord: record, backUrl: '/records?view=lateness' });
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.text()).toContain('A editar registo');
+        expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Interrompeu a aula.');
+        expect(wrapper.find('a[href="/records?view=lateness"]').text()).toContain('Voltar à consulta');
+    });
+
+    it('lists the latest records and points to the consultation of this class', () => {
+        const wrapper = mountShow();
+
+        expect(wrapper.text()).toContain('Registos mais recentes');
+        expect(wrapper.find('a[href="/records?year=year-1&class=class-1&searched=1"]').exists()).toBe(true);
+        expect(wrapper.text()).not.toContain('Registos apresentados');
+    });
+
+    it('says how to get accumulation alerts when the year has no periods', () => {
+        const notice = 'Para receber alertas de acumulação, configure os períodos de avaliação e confirme as respetivas datas.';
+
+        expect(mountShow({ periodsNotice: notice }).text()).toContain(notice);
+    });
+});
+
+describe('records Show — a data por omissão é o dia da aplicação', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('between 00:00 and 01:00 in Lisbon summer time the form already shows the new day', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-07-15T23:30:00Z'));
+
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+
+        expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-07-16');
+    });
+
+    it('in winter the form shows the same day as the clock', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-12-10T00:30:00Z'));
+
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+
+        expect((wrapper.find('input[type="date"]').element as HTMLInputElement).value).toBe('2026-12-10');
+    });
+
+    it('keeps the date the teacher chose after saving a record', async () => {
+        const wrapper = mountShow({ appTimezone: 'Europe/Lisbon' });
+        const vm = wrapper.vm as unknown as { form: { occurred_at: string; description: string; post: ReturnType<typeof vi.fn>; reset: ReturnType<typeof vi.fn> } };
+
+        await wrapper.find('input[type="date"]').setValue('2026-10-02');
+        vm.form.description = 'Chegou depois do toque.';
+        await wrapper.find('form').trigger('submit');
+
+        const options = vm.form.post.mock.calls[0][1] as { onSuccess: () => void };
+        options.onSuccess();
+
+        expect(vm.form.occurred_at).toBe('2026-10-02');
+        expect(vm.form.reset.mock.calls[0]).not.toContain('occurred_at');
     });
 });
