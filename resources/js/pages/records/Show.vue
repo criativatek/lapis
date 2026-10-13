@@ -209,6 +209,24 @@ watch(
 const editingUlid = ref<string | null>(null);
 const isHomeworkGrid = computed(() => editingUlid.value === null && form.kind === 'homework');
 
+// The embedded grid keeps its own «por guardar» changes: changing the type or
+// the day under it goes through its guard, like leaving the page does.
+const homeworkGrid = ref<InstanceType<typeof HomeworkGrid> | null>(null);
+
+function throughGrid(event: Event, apply: (value: string) => void, current: () => string): void {
+    const target = event.target as HTMLInputElement | HTMLSelectElement;
+    const value = target.value;
+
+    if (!isHomeworkGrid.value || homeworkGrid.value === null) {
+        apply(value);
+
+        return;
+    }
+
+    target.value = current();
+    homeworkGrid.value.request(() => apply(value));
+}
+
 function edit(record: EvidenceRecordRow): void {
     editingUlid.value = record.ulid;
     incidentRewriteSuggestion.value = null;
@@ -325,10 +343,13 @@ onMounted(() => {
 });
 
 const consultationHref = computed(() => {
-    const query = new URLSearchParams({ year: props.consultation.year, class: props.consultation.class, searched: '1' });
+    const query = new URLSearchParams({ tab: 'search', year: props.consultation.year, class: props.consultation.class, searched: '1' });
 
     return `/records?${query.toString()}`;
 });
+
+const registerHomeworkHref = computed(() => `/records?${new URLSearchParams({ tab: 'tpc', year: props.consultation.year, class: props.consultation.class }).toString()}`);
+const panoramaHref = computed(() => `/records?${new URLSearchParams({ tab: 'panorama', year: props.consultation.year, class: props.consultation.class }).toString()}`);
 
 function when(iso: string): string {
     return new Date(iso).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -418,7 +439,11 @@ watch(
         <div>
             <Heading :title="`Registos — ${schoolClass.label}`" :description="schoolClass.subject" />
             <Link v-if="backUrl" :href="backUrl" class="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:underline">← Voltar à consulta</Link>
-            <Link v-else href="/records" class="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:underline">← Consulta de registos</Link>
+            <Link v-else href="/records" class="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:underline">← Registos</Link>
+            <div class="flex flex-wrap gap-x-4">
+                <Link :href="registerHomeworkHref" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline" data-test="register-homework-link">Registar TPC da turma</Link>
+                <Link :href="panoramaHref" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline" data-test="panorama-link">Panorama da turma</Link>
+            </div>
         </div>
 
         <p class="text-xs text-muted-foreground">Os registos não alteram automaticamente a classificação do aluno.</p>
@@ -439,7 +464,11 @@ watch(
             <div class="grid gap-3" :class="isHomeworkGrid ? 'sm:grid-cols-2' : 'sm:grid-cols-3'">
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Tipo</span>
-                    <select v-model="form.kind" class="w-full rounded-md border border-border bg-background px-2 py-1.5">
+                    <select
+                        :value="form.kind"
+                        class="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                        @change="throughGrid($event, (value) => (form.kind = value), () => form.kind)"
+                    >
                         <optgroup v-for="group in kindGroups" :key="group.label" :label="group.label">
                             <option v-for="kind in group.kinds" :key="kind.value" :value="kind.value">{{ kind.label }}</option>
                         </optgroup>
@@ -448,7 +477,12 @@ watch(
                 </label>
                 <label class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Data</span>
-                    <input v-model="form.occurred_at" type="date" class="w-full rounded-md border border-border bg-background px-2 py-1.5" />
+                    <input
+                        :value="form.occurred_at"
+                        type="date"
+                        class="w-full rounded-md border border-border bg-background px-2 py-1.5"
+                        @change="throughGrid($event, (value) => (form.occurred_at = value), () => form.occurred_at)"
+                    />
                 </label>
                 <label v-if="!isHomeworkGrid" class="text-sm">
                     <span class="mb-1 block text-xs text-muted-foreground">Aluno</span>
@@ -502,6 +536,7 @@ watch(
 
             <HomeworkGrid
                 v-if="isHomeworkGrid"
+                ref="homeworkGrid"
                 :class-ulid="schoolClass.ulid"
                 :occurred-at="form.occurred_at"
                 @saved="refreshRecords"

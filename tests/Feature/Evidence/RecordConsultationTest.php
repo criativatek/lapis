@@ -42,7 +42,8 @@ class RecordConsultationTest extends TestCase
     {
         $request = $as === null ? $this->asTeacher() : $this->actingAs($as)->withSession(['organization_id' => $this->organization->id]);
 
-        return $request->get('/records'.($query === [] ? '' : '?'.http_build_query($query)));
+        // The search tab (0.165.0): the cards, alerts and results live there.
+        return $request->get('/records?'.http_build_query(['tab' => 'search', ...$query]));
     }
 
     #[Test]

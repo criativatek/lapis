@@ -731,7 +731,7 @@ class EvidenceRecordTest extends TestCase
     }
 
     #[Test]
-    public function the_homework_grid_loads_only_active_enrollments_with_no_default_state(): void
+    public function the_homework_grid_shows_an_enrollment_it_cannot_place_locked_and_presumes_no_state(): void
     {
         [$classUlid] = $this->seedClass();
         $teacher = User::where('email', 'ana.martins@lapis.test')->firstOrFail();
@@ -748,7 +748,12 @@ class EvidenceRecordTest extends TestCase
             ->getJson("/classes/{$classUlid}/records/homework-batch?occurred_at=2026-10-20")
             ->assertOk();
 
-        $this->assertNotContains($inactiveId, $response->json('enrollments.*.id'));
+        // Not current and no leaving date: whether the student belonged to
+        // the class that day cannot be told — shown, locked, never presumed.
+        $inactive = collect($response->json('enrollments'))->firstWhere('id', $inactiveId);
+        $this->assertNotNull($inactive);
+        $this->assertFalse($inactive['editable']);
+        $this->assertSame('undetermined', $inactive['locked_reason']);
         $this->assertNotEmpty($response->json('enrollments'));
         $this->assertSame(
             array_fill(0, count($response->json('enrollments')), null),

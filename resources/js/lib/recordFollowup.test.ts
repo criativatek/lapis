@@ -15,6 +15,7 @@ function filters(overrides: Partial<ConsultationFilters> = {}): ConsultationFilt
         to: null,
         searched: false,
         view: null,
+        tab: 'search',
         ...overrides,
     };
 }

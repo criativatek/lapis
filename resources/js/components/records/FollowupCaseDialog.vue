@@ -195,6 +195,19 @@ function onOpenChange(open: boolean): void {
                 Já não há ocorrências deste tipo neste período (foram corrigidas ou eliminadas).
             </p>
 
+            <p v-if="detail.homework" class="rounded-lg bg-muted/30 px-3 py-2 text-sm" data-test="homework-breakdown">
+                <span class="font-medium">{{ detail.homework.verified === 1 ? '1 verificação de TPC' : `${detail.homework.verified} verificações de TPC` }} neste período:</span>
+                <span class="tabular-nums">
+                    <span aria-hidden="true">✓</span> {{ detail.homework.done }} realizou ·
+                    <span aria-hidden="true">◐</span> {{ detail.homework.partially_done }} parcialmente ·
+                    <span aria-hidden="true">✕</span> {{ detail.homework.not_done }} não realizou.
+                </span>
+                <span v-if="detail.homework.unmarked_days > 0" class="block text-xs text-muted-foreground">
+                    Sem marcação em {{ detail.homework.unmarked_days === 1 ? '1 dia' : `${detail.homework.unmarked_days} dias` }} em que a turma teve TPC marcado — por verificar, não conta como não realizado.
+                </span>
+                <span class="block text-xs text-muted-foreground">Só «Não realizou» entra na contagem e no alerta.</span>
+            </p>
+
             <section v-if="detail.count > 0" aria-labelledby="case-occurrences">
                 <h3 id="case-occurrences" class="mb-2 text-sm font-semibold">Ocorrências abrangidas</h3>
                 <ol class="divide-y divide-border rounded-lg border border-border">

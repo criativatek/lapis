@@ -3,7 +3,9 @@
 namespace App\Services\Evidence\Followup;
 
 use App\Models\Enrollment;
+use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
+use App\Models\HomeworkStatus;
 use App\Models\LessonAttendance;
 use App\Models\RecordFollowupCase;
 use App\Models\RecordFollowupCategory;
@@ -289,6 +291,50 @@ final class RecordFollowupPresenter
                     'restored' => $confirmation->restored_at !== null,
                 ])->values()->all(),
             'can_confirm' => $canConfirm && $window->isPeriod(),
+            'homework' => $category === RecordFollowupCategory::HomeworkNotDone ? $this->homeworkBreakdown($class, $enrollment, $window) : null,
+        ];
+    }
+
+    /**
+     * What the teacher marked for this student's homework in the window, by
+     * state — and on how many days the class had homework marked while the
+     * student was in it without a marking of their own. Never «days TPC was
+     * set»: the application does not know that, and does not invent it.
+     *
+     * @return array{done: int, partially_done: int, not_done: int, verified: int, class_days: int, unmarked_days: int}
+     */
+    private function homeworkBreakdown(SchoolClass $class, Enrollment $enrollment, FollowupWindow $window): array
+    {
+        $base = EvidenceRecord::query()
+            ->where('evidence_records.class_id', $class->id)
+            ->whereNotNull('evidence_records.enrollment_id')
+            ->where('evidence_records.kind', EvidenceKind::Homework->value);
+        $window->applyTo($base);
+
+        $own = (clone $base)->where('evidence_records.enrollment_id', $enrollment->id);
+        $byStatus = (clone $own)->toBase()
+            ->select('evidence_records.homework_status')
+            ->selectRaw('count(*) as total')
+            ->groupBy('evidence_records.homework_status')
+            ->pluck('total', 'homework_status')
+            ->map(fn ($total): int => (int) $total);
+
+        $day = 'date(evidence_records.occurred_at)';
+        $ownDays = (clone $own)->toBase()->selectRaw("{$day} as day")->distinct()->pluck('day')->map(fn ($value): string => substr((string) $value, 0, 10));
+        $enrolledOn = $enrollment->enrolled_on->format('Y-m-d');
+        $leftOn = $enrollment->left_on?->format('Y-m-d');
+        $classDays = (clone $base)->toBase()->selectRaw("{$day} as day")->distinct()->pluck('day')
+            ->map(fn ($value): string => substr((string) $value, 0, 10))
+            ->filter(fn (string $value): bool => $value >= $enrolledOn && ($leftOn === null || $value <= $leftOn))
+            ->values();
+
+        return [
+            'done' => $byStatus->get(HomeworkStatus::Done->value, 0),
+            'partially_done' => $byStatus->get(HomeworkStatus::PartiallyDone->value, 0),
+            'not_done' => $byStatus->get(HomeworkStatus::NotDone->value, 0),
+            'verified' => $byStatus->sum(),
+            'class_days' => $classDays->count(),
+            'unmarked_days' => $classDays->diff($ownDays)->count(),
         ];
     }
 

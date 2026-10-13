@@ -29,7 +29,7 @@ const wrappers: VueWrapper[] = [];
 function filters(overrides: Partial<ConsultationFilters> = {}): ConsultationFilters {
     return {
         year: 'Y1', subject: null, class: null, student: null, kind: null,
-        mode: 'period', period: 'P1', from: null, to: null, searched: false, view: null,
+        mode: 'period', period: 'P1', from: null, to: null, searched: false, view: null, tab: 'search',
         ...overrides,
     };
 }
@@ -58,6 +58,9 @@ function props(overrides: Record<string, unknown> = {}) {
             window_label: '1.º Período (14/09/2026 a 16/12/2026)', period_is_current: true, needs_window: false,
             window_problem: null, periods_notice: null, overlaps: [],
         },
+        register: null,
+        panorama: null,
+        pendingAlerts: 0,
         tiles: tiles(),
         alerts: [],
         results: null,
@@ -121,7 +124,7 @@ describe('records Index — a consulta', () => {
 
         await wrapper.find('form').trigger('submit');
 
-        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', kind: 'lateness', period: 'P1', searched: '1' }, { preserveScroll: true });
+        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', kind: 'lateness', period: 'P1', tab: 'search', searched: '1' }, { preserveScroll: true });
     });
 
     it('searches by dates in range mode', async () => {
@@ -132,13 +135,13 @@ describe('records Index — a consulta', () => {
         await wrapper.find('[data-test="filter-to"]').setValue('2026-10-31');
         await wrapper.find('form').trigger('submit');
 
-        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', mode: 'range', from: '2026-10-01', to: '2026-10-31', searched: '1' }, { preserveScroll: true });
+        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', mode: 'range', from: '2026-10-01', to: '2026-10-31', tab: 'search', searched: '1' }, { preserveScroll: true });
     });
 
     it('clears every filter back to the defaults', async () => {
         await mountPage().find('[data-test="clear"]').trigger('click');
 
-        expect(routerGet).toHaveBeenCalledWith('/records');
+        expect(routerGet).toHaveBeenCalledWith('/records', { tab: 'search' });
     });
 
     it('keeps the student filter closed until a class is chosen, then loads that roll without applying anything', async () => {
@@ -148,13 +151,13 @@ describe('records Index — a consulta', () => {
 
         await wrapper.find('[data-test="filter-class"]').setValue('C1');
 
-        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', class: 'C1', period: 'P1' }, expect.objectContaining({ only: ['options'], preserveUrl: true }));
+        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', class: 'C1', period: 'P1', tab: 'search' }, expect.objectContaining({ only: ['options'], preserveUrl: true }));
     });
 
     it('opens a direct access in the applied scope', async () => {
         await mountPage().find('[data-test="tile-lateness"]').trigger('click');
 
-        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', period: 'P1', view: 'lateness' }, { preserveScroll: true });
+        expect(routerGet).toHaveBeenCalledWith('/records', { year: 'Y1', period: 'P1', tab: 'search', view: 'lateness' }, { preserveScroll: true });
     });
 
     it('lists only the students with occurrences and opens one on demand', async () => {
@@ -201,7 +204,7 @@ describe('records Index — a consulta', () => {
         await wrapper.find('[data-test="alerts"] button').trigger('click');
 
         expect(routerGet).toHaveBeenCalledWith('/records', {
-            year: 'Y1', period: 'P0', view: 'missing_material', case_class: 'C1', case_student: 'E1', case_category: 'missing_material',
+            year: 'Y1', period: 'P0', tab: 'search', view: 'missing_material', case_class: 'C1', case_student: 'E1', case_category: 'missing_material',
         }, { preserveScroll: true });
     });
 
@@ -285,5 +288,41 @@ describe('records Index — a consulta', () => {
         const line = wrapper.find('[data-test="followup-list"] li').text().replace(/\s+/g, ' ');
         expect(line).toContain('3 faltas em 2 dias');
         expect(line).not.toContain('Por tratar');
+    });
+});
+
+describe('records Index — registar e consultar, em três separadores', () => {
+    it('says both purposes and shows the three paths, «Registar TPC» first and in plain sight', () => {
+        const wrapper = mountPage({ filters: filters({ tab: 'tpc' }), register: { class: null, date: '2026-10-13', today: '2026-10-13', can_write: false } });
+
+        expect(wrapper.text()).toContain('Regista e consulta informações dos alunos e acompanha os TPC, a assiduidade, os atrasos e as faltas de material.');
+        // The full label (the short one replaces it only on a phone, by CSS).
+        expect(wrapper.findAll('[role="tab"]').map((tab) => tab.findAll('span').at(-1)?.text())).toEqual(['Registar TPC', 'Panorama da turma', 'Pesquisar registos']);
+        expect(wrapper.find('[data-test="tab-tpc"]').attributes('aria-selected')).toBe('true');
+        expect(wrapper.find('[data-test="register-tab"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="search-tab"]').exists()).toBe(false);
+        // No history of records shown on its own.
+        expect(wrapper.find('[data-test="results"]').exists()).toBe(false);
+    });
+
+    it('leaves the search’s student and kind behind when going to register or to the panorama', async () => {
+        const wrapper = mountPage({ filters: filters({ class: 'C1', student: 'E7', kind: 'lateness', searched: true }) });
+
+        await wrapper.find('[data-test="tab-tpc"]').trigger('click');
+        expect(routerGet).toHaveBeenCalledWith('/records', { tab: 'tpc', year: 'Y1', class: 'C1' }, { preserveScroll: true });
+
+        await wrapper.find('[data-test="tab-panorama"]').trigger('click');
+        expect(routerGet).toHaveBeenLastCalledWith('/records', { tab: 'panorama', year: 'Y1', class: 'C1', period: 'P1' }, { preserveScroll: true });
+    });
+
+    it('points to the alerts still waiting from the other tabs, and keeps creating the other kinds one click away', () => {
+        const wrapper = mountPage({ filters: filters({ tab: 'panorama', class: 'C1' }), pendingAlerts: 2 });
+
+        expect(wrapper.find('[data-test="pending-alerts"]').text()).toContain('2 alertas de acumulação por tratar');
+        expect(wrapper.find('[data-test="new-record"]').attributes('href')).toBe('/classes/C1/records');
+
+        const search = mountPage({ pendingAlerts: 2 });
+        expect(search.find('[data-test="pending-alerts"]').exists()).toBe(false);
+        expect(search.find('[data-test="new-record-menu"]').exists()).toBe(true);
     });
 });

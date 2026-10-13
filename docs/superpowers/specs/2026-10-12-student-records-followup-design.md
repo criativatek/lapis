@@ -187,6 +187,48 @@ Casos e declarações viajam no backup desde a v15 — regras em
 `docs/backup-schema.md` («Acompanhamento dos registos»). O restauro nunca corre
 a regra do alerta.
 
+## Registar e panorama (acrescentado a 2026-10-13, 0.165.0)
+
+A 0.164.0 tornou «Registos» uma consulta e deixou o registo diário a três
+passos (a grelha de TPC só aparecia dentro do formulário da turma, depois de
+mudar o tipo). Correção: três separadores — `tpc` («Registar TPC»), `panorama`
+(«Panorama da turma») e `search` («Pesquisar registos») — com o separador por
+omissão «Registar TPC», e a pesquisa quando o URL traz o seu próprio estado.
+
+- **Turma**: do URL, ou a última escolhida nesta sessão (`records.class`, só se
+  for do ano em uso); sem nenhuma, a página pede-a. A aplicação não tem uma
+  turma global (a barra de contexto só a mostra nas páginas de uma turma).
+- **Grelha** (`HomeworkGridRoster`): quem pertencia à turma NA DATA —
+  `enrolled_on` ≤ data ≤ `left_on` (dias de entrada e de saída incluídos) e
+  ativa ou com data de saída (a regra da assiduidade). Pode receber a marcação
+  desse dia mesmo que já tenha saído; numa data fora da inscrição, nunca.
+  Inscrição não ativa sem `left_on`: elegibilidade indeterminada — linha só
+  de leitura com o motivo (`undetermined`), nunca presumida elegível. Dois
+  registos de TPC no mesmo dia: só de leitura (`duplicate`), nunca fundidos
+  nem um escolhido, com ligação à pesquisa. Correção de uma marcação
+  existente nunca recusada. O modelo não tem um «TPC» como entidade: turma +
+  dia é a identidade, uma marcação por aluno e dia.
+- **Gravação**: só as linhas alteradas; uma marcação igual não é regravada,
+  nem auditada, nem contada nas métricas. Alertas e casos pelo mesmo caminho
+  (`RecordFollowupAlerts`, turma bloqueada).
+- **Concorrência por marcação**: cada linha traz `version` (`none`, ou um
+  resumo do registo, do estado, da observação e de `updated_at`); a gravação
+  devolve-a como `expected` e, com a turma bloqueada, compara-a por aluno.
+  Diferente → conflito (`changed` / `created` / `removed`, com o estado atual
+  e a hora), a linha não é escrita e as outras sim. Linha já no estado pedido
+  → gravada (repetição após falha, mesma escolha noutro separador). Resultado
+  por linha no flash `homework_save`; o aviso diz «Gravação parcial» ou «Nada
+  foi gravado», nunca sucesso total com conflitos. No ecrã, a linha em
+  conflito mantém a escolha e só volta a ser enviada depois de «Manter a minha
+  escolha» (com a versão nova) ou «Usar o estado atual».
+- **Panorama** (`ClassRecordPanorama`): rol da janela (quem esteve na turma em
+  algum dia dela, mais quem tem alguma contagem), contagens por consultas
+  agrupadas sobre `RecordFollowupCounter` e `ConsolidatedAbsences` (o mesmo
+  número dos cartões), estados dos casos, cobertura (dias com TPC marcado,
+  aulas lançadas e por lançar). `null` com `no_data` / `not_applicable` —
+  nunca um zero inventado. Ordenação, filtro e pesquisa no browser, sobre a
+  tabela de uma turma.
+
 ## Índices e desempenho
 
 Contagens por `GROUP BY` no servidor; índice novo
