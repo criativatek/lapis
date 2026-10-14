@@ -59,17 +59,38 @@ class ClassProfileMigrationController extends Controller
             return back()->withErrors(['reason' => __('Versão de perfil inválida.')]);
         }
 
+        // Acesso técnico (ADR-0014): quem confirma é o administrador, em nome do
+        // professor que a sessão representa. Decide-se aqui, na borda HTTP — o
+        // serviço não conhece sessões.
+        $representedTeacher = $this->user();
+        $impersonatorId = $request->session()->get('impersonator_id');
+        $impersonator = $impersonatorId === null || (int) $impersonatorId === (int) $representedTeacher->getKey()
+            ? null
+            : User::query()->whereKey($impersonatorId)->first();
+
         try {
-            $migration = $this->migrator->migrate($class, $toVersion, $data['reason'], $this->user());
+            $migration = $this->migrator->migrate(
+                $class,
+                $toVersion,
+                $data['reason'],
+                $impersonator ?? $representedTeacher,
+                $impersonator === null ? null : $representedTeacher,
+            );
         } catch (ProfileMigrationException $exception) {
             return back()->withErrors(['reason' => $exception->getMessage()]);
         }
 
+        $toVersion->loadMissing(['profile', 'scale']);
+        $affected = $migration->affected_enrollment_count;
+
         Inertia::flash('toast', ['type' => 'success', 'message' => __(
-            'Turma migrada: :affected alunos afetados, :recalculated propostas recalculadas.',
+            'Turma atualizada para «:profile», versão :version (:scale): :affected :students com a proposta alterada.',
             [
-                'affected' => $migration->affected_enrollment_count,
-                'recalculated' => $migration->recalculated_result_count,
+                'profile' => $toVersion->profile->name,
+                'version' => $toVersion->version_number,
+                'scale' => $toVersion->scale->name,
+                'affected' => $affected,
+                'students' => $affected === 1 ? __('aluno') : __('alunos'),
             ],
         )]);
 

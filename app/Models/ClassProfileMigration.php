@@ -25,14 +25,15 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed> $impact_preview
  * @property int $affected_enrollment_count
  * @property int $recalculated_result_count
- * @property int $confirmed_by
+ * @property int $confirmed_by Quem de facto confirmou (em acesso técnico, o administrador).
+ * @property int|null $on_behalf_of_user_id O professor representado em acesso técnico; null na sessão do próprio.
  * @property Carbon $confirmed_at
  * @property string $reason
  */
 #[Fillable([
     'class_id', 'from_version_id', 'to_version_id', 'impact_preview',
     'affected_enrollment_count', 'recalculated_result_count',
-    'confirmed_by', 'confirmed_at', 'reason',
+    'confirmed_by', 'on_behalf_of_user_id', 'confirmed_at', 'reason',
 ])]
 class ClassProfileMigration extends Model
 {

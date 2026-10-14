@@ -491,7 +491,8 @@ Registo explícito da migração de uma turma entre versões (§10.2, A4). Sem e
 | `impact_preview` | `JSON` | não | Pré-visualização apresentada ao professor **antes** de confirmar (§10.2): por aluno, valor antes/depois. Documento imutável. |
 | `affected_enrollment_count` | `SMALLINT UNSIGNED` | não | |
 | `recalculated_result_count` | `INT UNSIGNED` | não | |
-| `confirmed_by` | `BIGINT UNSIGNED` | não | FK `users` · `ON DELETE RESTRICT` |
+| `confirmed_by` | `BIGINT UNSIGNED` | não | FK `users` · `ON DELETE RESTRICT`. Quem de facto confirmou; em acesso técnico (ADR-0014) é o administrador. |
+| `on_behalf_of_user_id` | `BIGINT UNSIGNED` | sim | FK `users` · `ON DELETE RESTRICT`. O professor representado em acesso técnico; `NULL` quando confirmou o próprio (e nas linhas anteriores à 0.166.0). |
 | `confirmed_at` | `DATETIME` | não | |
 | `reason` | `VARCHAR(500)` | não | Obrigatório |
 

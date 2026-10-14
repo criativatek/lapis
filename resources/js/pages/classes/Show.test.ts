@@ -88,8 +88,14 @@ function baseProps() {
     };
 }
 
-function mountPage() {
-    const wrapper = mount(Show, { props: baseProps() });
+function mountPage(schoolClassOverrides: Record<string, unknown> = {}) {
+    const props = baseProps();
+    const wrapper = mount(Show, {
+        props: {
+            ...props,
+            schoolClass: { ...props.schoolClass, ...schoolClassOverrides },
+        },
+    });
 
     wrappers.push(wrapper);
 
@@ -330,5 +336,46 @@ describe('classes/Show — eliminar turma em preparação', () => {
 
         expect(deleteButton(eligible)).toBeDefined();
         expect(deleteButton(notEligible)).toBeUndefined();
+    });
+});
+
+describe('classes/Show — perfil, versão e escala', () => {
+    const profile = { name: 'Perfil Teste', version_number: 2, scale_name: 'Percentagem (0 a 100)' };
+
+    it('diz o perfil, a versão e a escala da turma', () => {
+        const text = mountPage({ profile, profile_update: null }).text();
+
+        expect(text).toContain('Avaliada por:');
+        expect(text).toContain('Perfil Teste');
+        expect(text).toContain('versão 2');
+        expect(text).toContain('Percentagem (0 a 100)');
+    });
+
+    it('sem versão mais recente não mostra aviso nem botão', () => {
+        const wrapper = mountPage({ profile, profile_update: null });
+
+        expect(wrapper.find('[data-testid="profile-update"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Rever e aplicar alterações');
+    });
+
+    it('com versão mais recente avisa e leva à pré-visualização existente', () => {
+        const wrapper = mountPage({
+            profile,
+            profile_update: {
+                version_number: 3,
+                scale_name: 'Escala 1 a 5',
+                review_url: '/classes/class-1/profile-migration?to=01VERSION',
+            },
+        });
+        const notice = wrapper.get('[data-testid="profile-update"]');
+
+        expect(notice.text()).toContain('Existe uma versão mais recente deste perfil: versão 3, Escala 1 a 5.');
+        expect(notice.text()).toContain('A turma continua na versão 2 até rever e aplicar as alterações.');
+
+        const link = notice.get('a');
+
+        expect(link.text()).toBe('Rever e aplicar alterações');
+        expect(link.attributes('href')).toBe('/classes/class-1/profile-migration?to=01VERSION');
+        expect(link.classes()).toContain('min-h-11');
     });
 });

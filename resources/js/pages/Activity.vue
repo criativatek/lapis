@@ -11,6 +11,8 @@ type Event = {
     event: string;
     summary: string | null;
     causer: string | null;
+    /** Feito pelo suporte técnico em nome de quem vê (ADR-0014). */
+    technical_access?: boolean;
     subject_type: string | null;
     at: string;
 };
@@ -106,6 +108,7 @@ function when(iso: string): string {
                     </div>
                     <p v-if="event.summary" class="text-sm break-words text-muted-foreground">{{ event.summary }}</p>
                     <p v-if="event.causer && !isMine" class="text-xs text-muted-foreground">por {{ event.causer }}</p>
+                    <p v-if="event.technical_access" class="text-xs text-muted-foreground">Feito pelo suporte técnico, em seu nome.</p>
                 </div>
             </li>
         </ul>

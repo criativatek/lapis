@@ -145,7 +145,12 @@ describe('lessons/sequences/Index — aplicar ao calendário', () => {
 
         const wrapper = await openDialog();
 
-        await wrapper.find('input[type="date"]').setValue('2026-10-15');
+        // A data tem de MUDAR para pedir uma nova pré-visualização. O campo abre
+        // com a data de hoje, por isso uma data fixa deixava de mudar no dia em
+        // que o calendário lá chegasse (falhou a 2026-10-15).
+        const dateInput = wrapper.find('input[type="date"]');
+        const changedDate = (dateInput.element as HTMLInputElement).value === '2026-10-15' ? '2026-10-16' : '2026-10-15';
+        await dateInput.setValue(changedDate);
         await flushPromises();
 
         resolveFirst(jsonResponse(previewBody({ plan_token: 'antiga', steps: [stepOf('fill', null, 'Antiga')] })));

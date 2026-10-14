@@ -31,7 +31,13 @@ class ActivityController extends Controller
         $user = $this->user();
 
         return Inertia::render('Activity', [
-            'events' => $this->present(AuditEvent::query()->where('causer_id', $user->getKey())),
+            'events' => $this->present(
+                AuditEvent::query()->where(fn (Builder $query) => $query
+                    ->where('causer_id', $user->getKey())
+                    // O que o suporte técnico fez em nome deste utilizador (ADR-0014).
+                    ->orWhere('properties->acting_as_user_id', $user->getKey())),
+                $user,
+            ),
             'scope' => 'mine',
         ]);
     }
@@ -41,7 +47,7 @@ class ActivityController extends Controller
         $user = $this->user();
 
         return Inertia::render('Activity', [
-            'events' => $this->present(AuditEvent::query()->visibleTo($user)),
+            'events' => $this->present(AuditEvent::query()->visibleTo($user), $user),
             // Drives the page's own heading, not an access decision — the query
             // above has already decided what is IN the events.
             'scope' => $user->ownsCurrentOrganization() ? 'organization' : 'own',
@@ -50,9 +56,9 @@ class ActivityController extends Controller
 
     /**
      * @param  Builder<AuditEvent>  $query
-     * @return array<int, array{ulid: string, event: string, summary: string|null, causer: string|null, subject_type: string|null, at: string}>
+     * @return array<int, array{ulid: string, event: string, summary: string|null, causer: string|null, technical_access: bool, subject_type: string|null, at: string}>
      */
-    protected function present(Builder $query): array
+    protected function present(Builder $query, User $viewer): array
     {
         return $query
             ->with('causer')
@@ -60,14 +66,24 @@ class ActivityController extends Controller
             ->orderByDesc('id')
             ->limit(100)
             ->get()
-            ->map(fn (AuditEvent $event) => [
-                'ulid' => $event->ulid,
-                'event' => $event->event,
-                'summary' => $event->summary,
-                'causer' => $event->causer?->name,
-                'subject_type' => $event->subject_type,
-                'at' => $event->created_at->toIso8601String(),
-            ])
+            ->map(function (AuditEvent $event) use ($viewer): array {
+                // Feito pelo suporte técnico em nome de alguém (ADR-0014) e visto
+                // por quem não é o autor: nunca o nome, o email nem o id do
+                // administrador — só que foi o suporte. O próprio administrador
+                // continua a ver o seu nome.
+                $technicalAccess = isset($event->properties['acting_as_user_id'])
+                    && (int) $event->causer_id !== (int) $viewer->getKey();
+
+                return [
+                    'ulid' => $event->ulid,
+                    'event' => $event->event,
+                    'summary' => $event->summary,
+                    'causer' => $technicalAccess ? 'Suporte técnico Lapispro' : $event->causer?->name,
+                    'technical_access' => $technicalAccess,
+                    'subject_type' => $event->subject_type,
+                    'at' => $event->created_at->toIso8601String(),
+                ];
+            })
             ->values()
             ->all();
     }

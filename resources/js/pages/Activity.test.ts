@@ -106,4 +106,43 @@ describe('Activity', () => {
         expect(text).toContain('Registo criado');
         expect(text).not.toContain('Ação registada');
     });
+
+    it('um evento feito pelo suporte técnico diz-o, sem nome de administrador', () => {
+        const text = mount(Activity, {
+            props: {
+                events: [
+                    event({
+                        event: 'class.profile_migrated',
+                        causer: 'Suporte técnico Lapispro',
+                        technical_access: true,
+                    }),
+                ],
+                scope: 'mine',
+            },
+        }).text();
+
+        expect(text).toContain('Feito pelo suporte técnico, em seu nome');
+        expect(text).not.toContain('Admin Nome');
+    });
+
+    it('na auditoria da organização o autor é «Suporte técnico Lapispro»', () => {
+        pageProps.modules = ['audit_log'];
+        const text = mount(Activity, {
+            props: {
+                events: [event({ causer: 'Suporte técnico Lapispro', technical_access: true })],
+                scope: 'organization',
+            },
+        }).text();
+
+        expect(text).toContain('por Suporte técnico Lapispro');
+        expect(text).toContain('Feito pelo suporte técnico, em seu nome');
+    });
+
+    it('um evento antigo, sem marca, aparece como estava', () => {
+        const text = mount(Activity, {
+            props: { events: [event({ technical_access: false })], scope: 'mine' },
+        }).text();
+
+        expect(text).not.toContain('suporte técnico');
+    });
 });

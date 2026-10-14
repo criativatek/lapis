@@ -84,7 +84,10 @@ class AuditEvent extends Model
      * The organization owner reads the trail whole — the audit log is an
      * institutional security function, not a personal diary, and the owner is
      * the one authority this schema has above "a teacher who belongs here".
-     * Everyone else reads only what THEY caused: `causer_id = $user->id`. A
+     * Everyone else reads only what THEY caused — `causer_id = $user->id` — plus what
+     * support did in their name during a technical access (`acting_as_user_id`,
+     * ADR-0014): the actor there is the administrator, but the teacher is entitled
+     * to see what was done to their own data. A
      * system-caused row (`causer_id` null) never equals anyone's id, so a
      * plain equality already excludes it for a member without a special case
      * — and the owner still sees it, because the unscoped branch above
@@ -105,6 +108,7 @@ class AuditEvent extends Model
             return $query;
         }
 
-        return $query->where('causer_id', $user->getKey());
+        return $query->where(fn (Builder $inner) => $inner->where('causer_id', $user->getKey())
+            ->orWhere('properties->acting_as_user_id', $user->getKey()));
     }
 }
