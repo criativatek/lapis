@@ -75,7 +75,9 @@ function submit(): void {
             <p>
                 Esta turma é avaliada pela versão {{ assessedBy.version }}<template v-if="assessedBy.profile"> do perfil «{{ assessedBy.profile }}»</template>, na escala «{{ assessedBy.scale }}».
                 <template v-if="!assessedBy.scale_has_levels">
-                    Essa escala não tem níveis, por isso as perguntas por domínio e a classificação proposta não têm opções. As respostas escritas podem ser guardadas.
+                    Essa escala não tem níveis, por isso as perguntas por domínio e a classificação proposta não têm opções.
+                    Se a turma vier a ser migrada para uma versão com níveis, estas perguntas passam a tê-los — desde que ainda não haja
+                    autoavaliações guardadas nesta turma.
                 </template>
                 <template v-else>
                     As perguntas sem opções vêm de uma configuração anterior da turma e mantêm-se porque já há autoavaliações registadas com elas.
@@ -87,6 +89,10 @@ function submit(): void {
         </div>
 
         <form class="space-y-6" @submit.prevent="submit">
+            <p v-if="form.errors.answers" role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {{ form.errors.answers }}
+            </p>
+
             <SelfAssessmentBlocks
                 v-model:answers="form.answers"
                 v-model:texts="form.texts"

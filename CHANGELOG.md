@@ -42,13 +42,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - **O professor vê em que versão e em que escala a turma é avaliada**, e se o
   perfil já tem uma versão mais recente que a turma ainda não usa. Ativar uma
   versão nova nunca mudou a versão das turmas já associadas, e o formulário
-  passa a dizê-lo. O formulário do aluno (ligação assinada) não recebe nada
-  disto.
-- **O modelo de autoavaliação acompanha a turma enquanto ninguém respondeu.**
-  Quando a turma passa para outra versão do perfil (migração auditável), um
-  modelo sem respostas é retirado (fica guardado, inativo) e o seguinte é
-  derivado da versão atual, com a escala e os domínios dessa versão. Um modelo
-  com respostas fica exatamente como estava.
+  passa a dizê-lo. O formulário do aluno (ligação assinada) mostra só o nome da
+  escala de cada pergunta, nada sobre o perfil ou as suas versões.
+- **As perguntas da autoavaliação acompanham a turma enquanto nenhuma
+  autoavaliação foi guardada.** Quando a turma passa para outra versão do
+  perfil (migração auditável), o modelo antigo é retirado na visita seguinte
+  (fica guardado, inativo, e a troca fica na Atividade) e o novo é derivado da
+  versão atual, com a escala e os domínios dessa versão. Basta uma
+  autoavaliação guardada, mesmo em branco, para o modelo ficar exatamente como
+  estava. O aviso ao professor diz isto antes de se gravar.
+- **Um formulário aberto antes de a turma mudar de versão é recusado por
+  inteiro**, com uma mensagem a pedir para o voltar a abrir. Nada é gravado
+  contra perguntas que já não são as da turma, e nada se perde em silêncio. O
+  mesmo vale para um pedido com perguntas de outro modelo. Gravar e trocar o
+  modelo são serializados pelo mesmo bloqueio da turma que a migração de
+  perfil usa.
 
 ## [0.165.0] — 2026-10-13
 

@@ -7,7 +7,7 @@ import Edit from './Edit.vue';
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: (_, { slots }) => () => h('div', slots.default?.()) }),
     Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
-    useForm: <T extends object>(data: T) => reactive({ ...data, processing: false, post: vi.fn() }),
+    useForm: <T extends object>(data: T) => reactive({ ...data, errors: {}, processing: false, post: vi.fn() }),
 }));
 
 const percentage: SelfAssessmentQuestion = {
@@ -23,7 +23,7 @@ const percentage: SelfAssessmentQuestion = {
     answer_text: null,
 };
 
-function mountWith(questions: SelfAssessmentQuestion[], currentVersion: number | null) {
+function mountWith(questions: SelfAssessmentQuestion[], currentVersion: number | null, classScale = { scale: 'Percentagem (0 a 100)', scale_has_levels: false }) {
     return mount(Edit, {
         props: {
             schoolClass: { ulid: 'class-1', label: '8.º A' },
@@ -36,8 +36,7 @@ function mountWith(questions: SelfAssessmentQuestion[], currentVersion: number |
             assessedBy: {
                 profile: 'Avaliação final',
                 version: 3,
-                scale: 'Percentagem (0 a 100)',
-                scale_has_levels: false,
+                ...classScale,
                 current_version: currentVersion,
             },
         },
@@ -52,6 +51,17 @@ describe('self-assessments/Edit — the scale the class is actually on', () => {
         expect(note.text()).toContain('Essa escala não tem níveis');
         // The profile has moved on; the class has not.
         expect(note.text()).toContain('versão mais recente (6), mas esta turma continua na versão 3');
+        // Saving now fixes these questions for the class; the teacher is told
+        // before, not after.
+        expect(note.text()).toContain('desde que ainda não haja autoavaliações guardadas nesta turma');
+    });
+
+    it('explains questions kept from an earlier configuration when the class itself is now on levels', () => {
+        const note = mountWith([percentage], null, { scale: 'Escala 1 a 5', scale_has_levels: true }).get('[data-test="assessed-by"]');
+
+        expect(note.text()).toContain('na escala «Escala 1 a 5»');
+        expect(note.text()).toContain('vêm de uma configuração anterior da turma');
+        expect(note.text()).not.toContain('Essa escala não tem níveis');
     });
 
     it('does not mention a newer version when the class is on the active one', () => {

@@ -5,6 +5,9 @@ namespace Tests\Feature\SelfAssessment;
 use App\Models\AcademicPeriod;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
+use App\Models\AuditEvent;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\Scale;
 use App\Models\ScaleLevel;
 use App\Models\SchoolClass;
@@ -12,13 +15,17 @@ use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentTemplate;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\MigrateClassProfile;
 use App\Services\Assessment\ProfileBuilder;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\URL;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -134,6 +141,23 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         return array_values(array_filter($questions, fn (array $question): bool => $question['answer_kind'] === 'scale'));
     }
 
+    /**
+     * The first row whose `$key` is exactly `$value` — over the plain arrays a
+     * page's props arrive as.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function firstWhere(mixed $rows, string $key, mixed $value): ?array
+    {
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            if (is_array($row) && ($row[$key] ?? null) === $value) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
     private function migrateToTheLevelVersion(): void
     {
         $this->inTenant(fn () => app(MigrateClassProfile::class)->migrate(
@@ -155,8 +179,8 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $class = SchoolClass::whereKey($this->class->id)->firstOrFail();
 
             $this->assertSame($this->percentageVersion->id, $class->assessment_profile_version_id);
-            $this->assertSame('Percentagem (0 a 100)', $class->profileVersion?->scale->name);
-            $this->assertSame($this->levelVersion->id, $class->profileVersion?->profile->current_version_id);
+            $this->assertSame('Percentagem (0 a 100)', $class->profileVersion->scale->name);
+            $this->assertSame($this->levelVersion->id, $class->profileVersion->profile->current_version_id);
         });
     }
 
@@ -192,7 +216,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
     public function a_level_of_another_scale_is_not_accepted_on_a_scale_without_levels(): void
     {
         $props = $this->formPage();
-        $global = collect($this->scaleQuestions($props))->firstWhere('role', 'global');
+        $global = $this->firstWhere($this->scaleQuestions($props), 'role', 'global');
         $this->assertNotNull($global);
 
         $four = $this->inTenant(fn (): int => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->levels()->where('code', '4')->firstOrFail()->id);
@@ -232,7 +256,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $this->assertSame('Escala 1 a 5', $question['scale']);
         }
 
-        $global = collect($questions)->firstWhere('role', SelfAssessmentQuestionRole::Global->value);
+        $global = $this->firstWhere($questions, 'role', SelfAssessmentQuestionRole::Global->value);
         $this->assertNotNull($global);
         $this->assertSame('Nível que proponho para a minha avaliação neste período', $global['prompt']);
 
@@ -246,6 +270,14 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $this->assertCount(7, $templates[0]->questions, 'as perguntas do modelo retirado ficam como estavam');
             $this->assertTrue($templates[1]->is_active);
             $this->assertSame($this->levelVersion->id, $templates[1]->assessment_profile_version_id);
+
+            // On the record: it happened on a visit, and nobody would otherwise
+            // know the questions had changed.
+            $retired = AuditEvent::where('event', 'self_assessment.template_retired')->sole();
+            $this->assertSame($templates[0]->id, $retired->subject_id);
+            $this->assertSame($this->teacher->id, $retired->causer_id);
+            $this->assertSame($this->percentageVersion->id, $retired->properties['from_profile_version_id']);
+            $this->assertSame($this->levelVersion->id, $retired->properties['to_profile_version_id']);
         });
     }
 
@@ -256,13 +288,13 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         $this->migrateToTheLevelVersion();
 
         $questions = $this->scaleQuestions($this->formPage());
-        $global = collect($questions)->firstWhere('role', 'global');
-        $domain = collect($questions)->firstWhere('domain', 'Comportamento');
+        $global = $this->firstWhere($questions, 'role', 'global');
+        $domain = $this->firstWhere($questions, 'domain', 'Comportamento');
         $this->assertNotNull($global);
         $this->assertNotNull($domain);
 
-        $four = collect($global['levels'])->firstWhere('code', '4');
-        $three = collect($domain['levels'])->firstWhere('code', '3');
+        $four = $this->firstWhere($global['levels'], 'code', '4');
+        $three = $this->firstWhere($domain['levels'], 'code', '3');
         $this->assertNotNull($four);
         $this->assertNotNull($three);
 
@@ -280,7 +312,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         });
 
         // Shown back on the form as the level that was chosen.
-        $reloaded = collect($this->scaleQuestions($this->formPage()))->keyBy('id');
+        $reloaded = array_column($this->scaleQuestions($this->formPage()), null, 'id');
         $this->assertSame($four['id'], $reloaded[$global['id']]['answer_level_id']);
         $this->assertSame($three['id'], $reloaded[$domain['id']]['answer_level_id']);
     }
@@ -289,7 +321,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
     public function a_template_with_answers_is_never_swapped_under_them(): void
     {
         // A written answer recorded on the percentage template.
-        $rationale = collect($this->formPage()['questions'])->firstWhere('role', 'rationale');
+        $rationale = $this->firstWhere($this->formPage()['questions'], 'role', 'rationale');
         $this->assertNotNull($rationale);
 
         $this->actingAs($this->teacher)
@@ -302,7 +334,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
 
         // Same template, same questions, the answer still where it was: what a
         // student already said is not reassigned to questions they never saw.
-        $this->assertSame('Estudei mais para os testes.', collect($after['questions'])->firstWhere('id', $rationale['id'])['answer_text'] ?? null);
+        $this->assertSame('Estudei mais para os testes.', $this->firstWhere($after['questions'], 'id', $rationale['id'])['answer_text'] ?? null);
 
         $this->inTenant(function (): void {
             $templates = SelfAssessmentTemplate::where('class_id', $this->class->id)->get();
@@ -311,6 +343,152 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $this->assertTrue($templates[0]->is_active);
             $this->assertSame(1, SelfAssessment::where('self_assessment_template_id', $templates[0]->id)->count());
         });
+    }
+
+    #[Test]
+    public function a_form_opened_before_the_migration_is_refused_whole_rather_than_emptied(): void
+    {
+        // The form is open on the percentage template when the class moves.
+        $open = $this->formPage();
+        $rationale = $this->firstWhere($open['questions'], 'role', 'rationale');
+        $this->assertNotNull($rationale);
+
+        $this->migrateToTheLevelVersion();
+
+        // Submitting it would answer questions the class no longer asks. It is
+        // refused, out loud — never saved against the new template, where every
+        // answer would be dropped and an empty «submitted» left behind.
+        $this->actingAs($this->teacher)
+            ->from($this->formUrl())
+            ->post($this->formUrl(), ['answers' => [], 'texts' => [$rationale['id'] => 'Escrito antes da migração.']])
+            ->assertRedirect($this->formUrl())
+            ->assertSessionHasErrors('answers');
+
+        $this->inTenant(function (): void {
+            $this->assertSame(0, SelfAssessment::count());
+            $this->assertSame(0, SelfAssessmentResponse::count());
+        });
+
+        // Opened again, the form asks on the class's scale, and saves.
+        $global = $this->firstWhere($this->scaleQuestions($this->formPage()), 'role', 'global');
+        $this->assertNotNull($global);
+        $this->assertCount(5, $global['levels']);
+
+        $this->actingAs($this->teacher)
+            ->post($this->formUrl(), ['answers' => [$global['id'] => $global['levels'][3]['id']], 'texts' => []])
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(fn () => $this->assertSame(1, SelfAssessment::count()));
+    }
+
+    #[Test]
+    public function a_question_of_another_template_is_refused_whole(): void
+    {
+        $rationale = $this->firstWhere($this->formPage()['questions'], 'role', 'rationale');
+        $this->assertNotNull($rationale);
+
+        $this->actingAs($this->teacher)
+            ->post($this->formUrl(), ['answers' => [], 'texts' => [$rationale['id'] => 'Válida.', 999999 => 'De outro modelo.']])
+            ->assertSessionHasErrors('answers');
+
+        $this->inTenant(fn () => $this->assertSame(0, SelfAssessment::count()));
+    }
+
+    #[Test]
+    public function a_self_assessment_saved_blank_keeps_the_template_too(): void
+    {
+        // «Guardar» on the percentage form with nothing filled in still records
+        // a self-assessment for the period. Replacing the template now would
+        // leave that one behind and let a second be saved for the same student
+        // and period — of which every screen reads one.
+        $this->formPage();
+        $this->actingAs($this->teacher)->post($this->formUrl(), ['answers' => [], 'texts' => []])->assertSessionHasNoErrors();
+
+        $this->migrateToTheLevelVersion();
+
+        $after = $this->formPage();
+
+        foreach ($this->scaleQuestions($after) as $question) {
+            $this->assertSame([], $question['levels']);
+            $this->assertSame('Percentagem (0 a 100)', $question['scale']);
+        }
+
+        // The class is on 1–5 now; the questions say why they are not.
+        $this->assertSame('Escala 1 a 5', $after['assessedBy']['scale']);
+        $this->assertTrue($after['assessedBy']['scale_has_levels']);
+        $this->inTenant(fn () => $this->assertSame(1, SelfAssessmentTemplate::where('class_id', $this->class->id)->count()));
+    }
+
+    #[Test]
+    public function the_students_signed_link_follows_the_class_and_carries_no_configuration(): void
+    {
+        $this->subscribeToPro();
+
+        $url = URL::temporarySignedRoute('self-assessments.public.edit', Carbon::now()->addDays(7), [
+            'classUlid' => $this->class->ulid,
+            'periodUlid' => $this->period->ulid,
+            'enrollmentUlid' => $this->enrollmentUlid,
+        ]);
+
+        /** @var array<string, mixed> $before */
+        $before = $this->get($url)->assertOk()->viewData('page')['props'];
+        $this->assertSame([], $this->scaleQuestions($before)[0]['levels']);
+        $this->assertSame('Percentagem (0 a 100)', $this->scaleQuestions($before)[0]['scale']);
+        // How the class is configured is the teacher's business.
+        $this->assertArrayNotHasKey('assessedBy', $before);
+
+        $this->migrateToTheLevelVersion();
+
+        /** @var array<string, mixed> $after */
+        $after = $this->get($url)->assertOk()->viewData('page')['props'];
+        $global = $this->firstWhere($this->scaleQuestions($after), 'role', 'global');
+        $this->assertNotNull($global);
+        $this->assertSame(['1', '2', '3', '4', '5'], array_column($global['levels'], 'code'));
+
+        $this->post($url, ['answers' => [$global['id'] => $global['levels'][2]['id']], 'texts' => []])->assertSessionHasNoErrors();
+
+        $this->inTenant(function () use ($global): void {
+            $this->assertSame($global['levels'][2]['id'], SelfAssessmentResponse::where('self_assessment_question_id', $global['id'])->sole()->scale_level_id);
+            // Retired on the student's visit: nobody was signed in to cause it.
+            $this->assertNull(AuditEvent::where('event', 'self_assessment.template_retired')->sole()->causer_id);
+        });
+    }
+
+    private function subscribeToPro(): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $this->teacher->personalOrganization()->getKey())
+            ->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $this->teacher->personalOrganization()->getKey(),
+            'plan_id' => Plan::where('key', 'pro')->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
+        ]);
+
+        app(Entitlements::class)->flush();
+    }
+
+    #[Test]
+    public function technical_access_sees_exactly_the_form_the_teacher_sees(): void
+    {
+        // Technical access (ADR-0014) is the teacher's own session with an
+        // impersonator recorded on it: nothing about which template, which
+        // scale or which levels depends on who is looking.
+        $normal = $this->formPage();
+
+        $response = $this->actingAs($this->teacher)
+            ->withSession(['impersonator_id' => 999])
+            ->get($this->formUrl());
+        $response->assertOk();
+
+        /** @var array<string, mixed> $page */
+        $page = $response->viewData('page');
+
+        $this->assertSame($normal['questions'], $page['props']['questions']);
+        $this->assertSame($normal['assessedBy'], $page['props']['assessedBy']);
+        $this->inTenant(fn () => $this->assertSame(1, SelfAssessmentTemplate::where('class_id', $this->class->id)->count()));
     }
 
     #[Test]

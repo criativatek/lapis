@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentTemplate;
+use App\Services\Audit\AuditLog;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,33 +22,66 @@ use Illuminate\Support\Facades\DB;
  */
 class SelfAssessmentTemplateProvider
 {
+    public function __construct(protected AuditLog $audit) {}
+
+    /**
+     * The template the form is built from: derived on first use, and derived
+     * again when the class has moved to another profile version while nobody
+     * had saved a self-assessment against the old one.
+     */
     public function forClass(SchoolClass $class): SelfAssessmentTemplate
     {
         $existing = $this->activeTemplateOf($class);
 
-        if ($existing !== null && $this->retireIfLeftBehind($existing, $class)) {
-            $existing = $this->activeTemplateOf($class);
-        }
-
-        if ($existing !== null) {
+        // The common case reads and goes: the template already follows the class.
+        if ($existing !== null && ! $this->isLeftBehind($existing, $class)) {
             return $this->completeTemplateThatPredatesRoles($existing, $class);
         }
 
+        // Deriving, and retiring, one request at a time per class — under the
+        // lock MigrateClassProfile also takes. A whole class opening projected
+        // links at once must not derive one template each, and a save (which
+        // takes the same lock) must not land on a template between the check
+        // that it is unanswered and its retiring.
         return DB::transaction(function () use ($class): SelfAssessmentTemplate {
-            $template = SelfAssessmentTemplate::create([
-                'assessment_profile_version_id' => $class->assessment_profile_version_id,
-                'class_id' => $class->id,
-                'name' => "Autoavaliação — {$class->subject->name}",
-                'is_active' => true,
-            ]);
+            $locked = $this->lockClass($class);
+            $existing = $this->activeTemplateOf($locked);
 
-            $scale = $this->scaleFor($class);
+            if ($existing !== null && ! $this->isLeftBehind($existing, $locked)) {
+                return $this->completeTemplateThatPredatesRoles($existing, $locked);
+            }
 
-            $this->addDomainQuestions($template, $class, $scale);
-            $this->addRoleQuestions($template, $scale);
+            if ($existing !== null) {
+                $this->retire($existing, $locked);
+            }
 
-            return $template->load('questions');
+            return $this->derive($locked);
         });
+    }
+
+    /**
+     * The template a submitted form may be saved against: the active one, as
+     * long as it still follows the class or has already been answered. Null
+     * when there is none, or when the next visit would replace it — the form
+     * that was submitted then asked questions that are no longer the class's.
+     *
+     * Never derives nor retires anything: a save records what was asked, it
+     * does not change what is asked. Call it inside a transaction that holds
+     * lockClass(), so the answer cannot change before the write.
+     */
+    public function answerableFor(SchoolClass $class): ?SelfAssessmentTemplate
+    {
+        $template = $this->activeTemplateOf($class);
+
+        return $template === null || $this->isLeftBehind($template, $class) ? null : $template;
+    }
+
+    /**
+     * The class row, locked, read again — its profile version as it is now.
+     */
+    public function lockClass(SchoolClass $class): SchoolClass
+    {
+        return SchoolClass::query()->whereKey($class->getKey())->lockForUpdate()->firstOrFail();
     }
 
     protected function activeTemplateOf(SchoolClass $class): ?SelfAssessmentTemplate
@@ -67,30 +101,56 @@ class SelfAssessmentTemplateProvider
      * from a percentage to 1–5 would go on offering a percentage's levels,
      * which is to say none.
      *
-     * So a template nobody has answered follows the class: it is retired —
-     * kept, with its questions, never deleted — and a fresh one is derived from
-     * the version the class is on now.
-     *
-     * One with answers stays exactly where it is. What a student already said
-     * was said to those questions on that scale; moving it, or leaving it behind
-     * under a template the form no longer shows, would be deciding for them
-     * what it meant.
-     *
-     * @return bool whether the template was retired
+     * So a template against which no self-assessment was ever saved follows the
+     * class. One that has any — even a saved one with every question left
+     * blank — stays exactly where it is: what a student already said was said
+     * to those questions on that scale, and a second template for the same
+     * period would leave two self-assessments for one student, of which every
+     * screen reads one.
      */
-    protected function retireIfLeftBehind(SelfAssessmentTemplate $template, SchoolClass $class): bool
+    protected function isLeftBehind(SelfAssessmentTemplate $template, SchoolClass $class): bool
     {
-        if ($template->assessment_profile_version_id === $class->assessment_profile_version_id) {
-            return false;
-        }
+        return $template->assessment_profile_version_id !== $class->assessment_profile_version_id
+            && ! SelfAssessment::query()->where('self_assessment_template_id', $template->id)->exists();
+    }
 
-        if (SelfAssessment::query()->where('self_assessment_template_id', $template->id)->exists()) {
-            return false;
-        }
+    /**
+     * Retired, never deleted: the row and its questions stay as they were, and
+     * the change is on the record — it happens on a visit, possibly the
+     * student's, and nobody would otherwise know the questions had changed.
+     */
+    protected function retire(SelfAssessmentTemplate $template, SchoolClass $class): void
+    {
+        $template->forceFill(['is_active' => false])->save();
 
-        SelfAssessmentTemplate::query()->whereKey($template->id)->where('is_active', true)->update(['is_active' => false]);
+        $this->audit->record(
+            'self_assessment.template_retired',
+            $template,
+            null,
+            "Perguntas da autoavaliação de {$class->label} atualizadas para a versão de perfil da turma.",
+            [
+                'class_id' => $class->id,
+                'from_profile_version_id' => $template->assessment_profile_version_id,
+                'to_profile_version_id' => $class->assessment_profile_version_id,
+            ],
+        );
+    }
 
-        return true;
+    protected function derive(SchoolClass $class): SelfAssessmentTemplate
+    {
+        $template = SelfAssessmentTemplate::create([
+            'assessment_profile_version_id' => $class->assessment_profile_version_id,
+            'class_id' => $class->id,
+            'name' => "Autoavaliação — {$class->subject->name}",
+            'is_active' => true,
+        ]);
+
+        $scale = $this->scaleFor($class);
+
+        $this->addDomainQuestions($template, $class, $scale);
+        $this->addRoleQuestions($template, $scale);
+
+        return $template->load('questions');
     }
 
     /**

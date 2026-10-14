@@ -110,8 +110,9 @@ class SelfAssessmentController extends Controller
      * edited to «Escala 1 a 5» can leave its classes on a percentage — and a
      * self-assessment asked on a percentage has no levels to choose from.
      *
-     * Only for the teacher. The student's signed-link form gets the questions
-     * and nothing about how the class is configured.
+     * Only for the teacher. The student's signed-link form gets the questions,
+     * each naming the scale it is asked on, and nothing about the profile or
+     * its versions.
      *
      * @return array{profile: string|null, version: int, scale: string, scale_has_levels: bool, current_version: int|null}|null
      */
