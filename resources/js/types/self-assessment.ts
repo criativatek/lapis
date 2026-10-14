@@ -29,8 +29,10 @@ export type SelfAssessmentQuestion = {
     domain: string | null;
     prompt: string;
     answer_kind: string;
-    /** Empty for a written question. */
+    /** Empty for a written question — and for a scale question whose scale has no levels to choose from. */
     levels: SelfAssessmentLevel[];
+    /** The name of the scale a scale question is asked on; null for a written question. */
+    scale: string | null;
     answer_level_id: number | null;
     answer_text: string | null;
 };

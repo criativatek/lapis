@@ -50,7 +50,7 @@ class SelfAssessmentRecorder
     public function formProps(SchoolClass $class, AcademicPeriod $period, Enrollment $enrollment): array
     {
         $template = $this->templates->forClass($class);
-        $template->questions->load('domain');
+        $template->questions->load(['domain', 'scale']);
 
         $existing = SelfAssessment::query()
             ->where('enrollment_id', $enrollment->id)
@@ -193,6 +193,11 @@ class SelfAssessmentRecorder
                     : (string) $question->prompt,
                 'answer_kind' => (string) $question->answer_kind,
                 'levels' => $question->answer_kind === 'scale' && $scaleId !== null ? ($levels[$scaleId] ?? []) : [],
+                // Named, so that a scale with no levels to choose from — a
+                // percentage, a 0–20 without bands — is SAID on the form rather
+                // than left as a select holding only «—». Nothing is offered in
+                // its place: a 1–5 the class is not assessed on is not an answer.
+                'scale' => $question->answer_kind === 'scale' ? $question->scale?->name : null,
                 'answer_level_id' => $response?->scale_level_id,
                 'answer_text' => $response?->text_value,
             ];

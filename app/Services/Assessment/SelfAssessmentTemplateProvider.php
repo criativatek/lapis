@@ -5,6 +5,7 @@ namespace App\Services\Assessment;
 use App\Models\Domain;
 use App\Models\Scale;
 use App\Models\SchoolClass;
+use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentTemplate;
 use Illuminate\Support\Facades\DB;
@@ -22,11 +23,11 @@ class SelfAssessmentTemplateProvider
 {
     public function forClass(SchoolClass $class): SelfAssessmentTemplate
     {
-        $existing = SelfAssessmentTemplate::query()
-            ->where('class_id', $class->id)
-            ->where('is_active', true)
-            ->with('questions')
-            ->first();
+        $existing = $this->activeTemplateOf($class);
+
+        if ($existing !== null && $this->retireIfLeftBehind($existing, $class)) {
+            $existing = $this->activeTemplateOf($class);
+        }
 
         if ($existing !== null) {
             return $this->completeTemplateThatPredatesRoles($existing, $class);
@@ -47,6 +48,49 @@ class SelfAssessmentTemplateProvider
 
             return $template->load('questions');
         });
+    }
+
+    protected function activeTemplateOf(SchoolClass $class): ?SelfAssessmentTemplate
+    {
+        return SelfAssessmentTemplate::query()
+            ->where('class_id', $class->id)
+            ->where('is_active', true)
+            ->with('questions')
+            ->first();
+    }
+
+    /**
+     * A template is derived from the profile version the class had when it was
+     * first opened — its domains and its scale. Activating a newer version
+     * never moves a class (§10.2), but migrating the class does, and a template
+     * left on the old version keeps asking on the old scale: a class moved
+     * from a percentage to 1–5 would go on offering a percentage's levels,
+     * which is to say none.
+     *
+     * So a template nobody has answered follows the class: it is retired —
+     * kept, with its questions, never deleted — and a fresh one is derived from
+     * the version the class is on now.
+     *
+     * One with answers stays exactly where it is. What a student already said
+     * was said to those questions on that scale; moving it, or leaving it behind
+     * under a template the form no longer shows, would be deciding for them
+     * what it meant.
+     *
+     * @return bool whether the template was retired
+     */
+    protected function retireIfLeftBehind(SelfAssessmentTemplate $template, SchoolClass $class): bool
+    {
+        if ($template->assessment_profile_version_id === $class->assessment_profile_version_id) {
+            return false;
+        }
+
+        if (SelfAssessment::query()->where('self_assessment_template_id', $template->id)->exists()) {
+            return false;
+        }
+
+        SelfAssessmentTemplate::query()->whereKey($template->id)->where('is_active', true)->update(['is_active' => false]);
+
+        return true;
     }
 
     /**

@@ -36,6 +36,14 @@ class SelfAssessmentQuestion extends Model
     }
 
     /**
+     * @return BelongsTo<Scale, $this>
+     */
+    public function scale(): BelongsTo
+    {
+        return $this->belongsTo(Scale::class);
+    }
+
+    /**
      * Whether this question is coherent with itself.
      *
      * The two ways of identifying a question are exclusive: a question is about

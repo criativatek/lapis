@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.165.1] — 2026-10-14
+
+> **Correção.** Numa turma avaliada em «Percentagem (0 a 100)», os seletores
+> da autoavaliação (por domínio e «Classificação que proponho…») abriam só com
+> «—». Uma percentagem não tem níveis para escolher, e a turma continuava na
+> versão do perfil que tinha quando foi associada, embora o editor do perfil já
+> mostrasse uma versão nova em «Escala 1 a 5». Sem migrações.
+
+### Corrigido
+
+- **A autoavaliação diz quando não há níveis para escolher.** Uma pergunta de
+  escala cuja escala não tem níveis deixa de aparecer como um seletor vazio:
+  aparece uma explicação que nomeia a escala, e a pergunta fica por responder.
+  Não se oferece uma escala que a turma não usa.
+- **O professor vê em que versão e em que escala a turma é avaliada**, e se o
+  perfil já tem uma versão mais recente que a turma ainda não usa. Ativar uma
+  versão nova nunca mudou a versão das turmas já associadas, e o formulário
+  passa a dizê-lo. O formulário do aluno (ligação assinada) não recebe nada
+  disto.
+- **O modelo de autoavaliação acompanha a turma enquanto ninguém respondeu.**
+  Quando a turma passa para outra versão do perfil (migração auditável), um
+  modelo sem respostas é retirado (fica guardado, inativo) e o seguinte é
+  derivado da versão atual, com a escala e os domínios dessa versão. Um modelo
+  com respostas fica exatamente como estava.
+
 ## [0.165.0] — 2026-10-13
 
 > **Correção da 0.164.0.** A consulta de «Registos» deixou o registo diário —
