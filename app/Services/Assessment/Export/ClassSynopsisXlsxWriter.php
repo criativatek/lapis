@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment\Export;
 
+use App\Services\Assessment\DecisionScaleReader;
 use App\Support\Assessment\ReadingVocabulary;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -233,12 +234,14 @@ class ClassSynopsisXlsxWriter
                     $bands,
                 );
                 $decision = $continuous['decision'] ?? null;
-                $this->text(
-                    $sheet,
-                    $continuousColumn + 2,
-                    $row,
-                    (string) ($decision['final']['code'] ?? $decision['final']['label'] ?? $decision['final_value'] ?? ''),
-                );
+                $decidedText = (string) ($decision['final']['code'] ?? $decision['final']['label'] ?? $decision['final_value'] ?? '');
+
+                // Um valor decidido numa escala de percentagem lê-se como percentagem.
+                if ($decidedText !== '' && ($decision['final'] ?? null) === null && ($decision['final_value_is_percentage'] ?? false) === true) {
+                    $decidedText = DecisionScaleReader::percentText($decidedText);
+                }
+
+                $this->text($sheet, $continuousColumn + 2, $row, $decidedText);
                 $sheet->setCellValue([$continuousColumn + 3, $row], (int) ($continuous['counted_units'] ?? 0));
                 $sheet->getStyle([$continuousColumn + 3, $row])->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             }

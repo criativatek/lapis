@@ -57,6 +57,7 @@ class BuildEvaluationSheet
         protected SelfAssessmentReading $selfAssessments,
         protected DomainAppreciationDecisions $domainDecisions,
         protected FormalProposalBasis $basis,
+        protected DecisionScaleReader $decisionScales,
     ) {}
 
     /**
@@ -373,6 +374,10 @@ class BuildEvaluationSheet
         $stored = $classification->proposed_value;
         $current = $basis?->proposedValue;
 
+        // Um valor decidido lê-se na escala em que foi tomado, não na da turma de
+        // hoje: depois de uma migração de perfil, 65 continua a ser 65 %.
+        $decidedOn = $this->decisionScales->read($classification, $scale);
+
         return [
             'status' => $classification->status->value,
             'proposed_value' => $classification->proposed_value,
@@ -391,6 +396,9 @@ class BuildEvaluationSheet
                 && $current !== null
                 && Bc::compare(Bc::of((string) $stored), Bc::of((string) $current)) !== 0,
             'final_value' => $classification->final_value,
+            'final_value_is_percentage' => $decidedOn['is_percentage'],
+            // O nome da escala em que foi decidido; só quando difere da atual.
+            'final_value_scale' => $decidedOn['foreign_scale'],
             'final_scale_level_id' => $classification->final_scale_level_id,
             'final_scale_level_code' => $classification->finalScaleLevel?->code,
             'final_scale_level_label' => $classification->finalScaleLevel?->label,

@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { formatPoints, pct } from '@/lib/chartTheme';
+import { decidedValueText } from '@/lib/decidedValue';
 
 /**
  * Acompanhamento do Aluno — print/PDF output.
@@ -77,6 +78,10 @@ type ClassificationRow = {
     is_decided: boolean;
     assigned: Level | null;
     assigned_value: string | null;
+    /** The value was decided on a percentage scale: «65%», never a level. */
+    assigned_value_is_percentage?: boolean;
+    /** The scale the value was decided on, when it is not the class's scale today. */
+    assigned_value_scale?: string | null;
     proposal: { label?: string | null; value?: string | null } | null;
     differs_from_proposal: boolean;
 };
@@ -166,7 +171,13 @@ const props = defineProps<{
         value: string | null;
         band: Level | null;
         coverage: Coverage;
-        classification: { status?: string; final?: Level | null; final_value?: string | null } | null;
+        classification: {
+            status?: string;
+            final?: Level | null;
+            final_value?: string | null;
+            final_value_is_percentage?: boolean;
+            final_value_scale?: string | null;
+        } | null;
         self_assessment: Level | null;
     };
     moments: Moment[];
@@ -242,7 +253,7 @@ const assignedLabel = computed(() => {
     const classification = props.headline.classification;
     const decided = classification?.status === 'confirmed' || classification?.status === 'published';
 
-    return decided ? (classification?.final?.code ?? classification?.final_value ?? null) : null;
+    return decided ? (classification?.final?.code ?? decidedValueText(classification?.final_value, classification?.final_value_is_percentage)) : null;
 });
 
 const withValueMoments = computed(() => props.moments.filter((moment) => moment.value !== null));
@@ -482,7 +493,7 @@ function dimensionClass(state: string): string {
                         <tr v-for="row in classifications" :key="row.period_id">
                             <td>{{ row.period_label }}</td>
                             <td>
-                                <template v-if="row.is_decided">{{ row.assigned?.code ?? row.assigned_value }}</template>
+                                <template v-if="row.is_decided">{{ row.assigned?.code ?? decidedValueText(row.assigned_value, row.assigned_value_is_percentage) }}</template>
                                 <template v-else>Sem classificação atribuída</template>
                             </td>
                             <td>

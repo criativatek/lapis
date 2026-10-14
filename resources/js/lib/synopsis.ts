@@ -242,7 +242,14 @@ export type SynopticContinuousReading = {
      * enviou a identidade completa (`levelPayload`); era este tipo que a
      * descrevia mais estreita do que ela é.
      */
-    decision: { final: SynopticIdentifiedLevel | null; final_value: string | null } | null;
+    decision: {
+        final: SynopticIdentifiedLevel | null;
+        final_value: string | null;
+        /** O valor foi decidido numa escala de percentagem: lê-se «65%», nunca um nível. */
+        final_value_is_percentage?: boolean;
+        /** A escala em que o valor foi decidido, quando não é a da turma hoje. */
+        final_value_scale?: string | null;
+    } | null;
 };
 
 export type SynopticStudent = {

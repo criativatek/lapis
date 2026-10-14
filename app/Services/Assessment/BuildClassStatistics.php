@@ -1468,6 +1468,21 @@ class BuildClassStatistics
     }
 
     /**
+     * True when the decision is a bare value taken on a scale other than the
+     * one the class is on now. The read model says so in `final_value_scale`.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    protected function isDecidedOnAnotherScale(array $row): bool
+    {
+        $classification = $row['period']['classification'] ?? null;
+
+        return is_array($classification)
+            && ($classification['final'] ?? null) === null
+            && ($classification['final_value_scale'] ?? null) !== null;
+    }
+
+    /**
      * The band the teacher's own decision names — the grade, as a mention.
      *
      * On a levelled scale this IS the decision: the level they chose, carried
@@ -1489,6 +1504,12 @@ class BuildClassStatistics
 
         if ($final !== null) {
             return $final;
+        }
+
+        // A value decided on ANOTHER scale (the class was migrated afterwards) is
+        // not placed in a band of this one: 65 % is not a point of a 1–5.
+        if ($this->isDecidedOnAnotherScale($row)) {
+            return null;
         }
 
         return $this->bandPayload($this->bandForNumericDecision($classification['final_value'] ?? null, $scale));
@@ -1513,6 +1534,11 @@ class BuildClassStatistics
             $level = $this->assignedLevelOf($row, $scale);
 
             return $level === null ? null : (string) $level['scale_level_id'];
+        }
+
+        // The same rule: a number decided elsewhere is not a group of this scale.
+        if ($this->isDecidedOnAnotherScale($row)) {
+            return null;
         }
 
         $classification = $row['period']['classification'];
@@ -1734,11 +1760,19 @@ class BuildClassStatistics
         $counts = [];
         $mentions = [];
         $classified = 0;
+        $unplaced = 0;
         $withoutClassification = 0;
 
         foreach ($rows as $row) {
             if (! $this->hasAssignedClassification($row)) {
                 $withoutClassification++;
+
+                continue;
+            }
+
+            // Decided on another scale: counted apart, never as a grade of this one.
+            if ($this->isDecidedOnAnotherScale($row)) {
+                $unplaced++;
 
                 continue;
             }
@@ -1791,9 +1825,10 @@ class BuildClassStatistics
             'bands' => $entries,
             'mode' => 'values',
             'classified' => $classified,
-            // Every assigned value gets a row here, so nothing is «unplaced»:
-            // not having a band is a missing mention, not a missing grade.
-            'unplaced' => 0,
+            // Every assigned value gets a row here, so nothing is «unplaced» for
+            // want of a band: that is a missing mention, not a missing grade.
+            // Only a value decided on another scale is left out of the rows.
+            'unplaced' => $unplaced,
             'without_classification' => $withoutClassification,
         ];
     }

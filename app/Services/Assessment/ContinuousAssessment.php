@@ -56,6 +56,7 @@ class ContinuousAssessment
 {
     public function __construct(
         protected ScaleProposalResolver $proposals,
+        protected DecisionScaleReader $decisionScales,
     ) {}
 
     /**
@@ -86,7 +87,7 @@ class ContinuousAssessment
         // declarado de 1 da igualdade por omissão.
         [$units, $scale, $roundingMode, $roundingScale, $weightsDeclared] = $this->configuration($class, $periods);
 
-        $decisions = $this->finalUnitDecisions($periods);
+        $decisions = $this->finalUnitDecisions($periods, $scale);
 
         $students = [];
         $enrollmentIds = $this->enrollmentIdsIn($formalByPeriod);
@@ -499,7 +500,7 @@ class ContinuousAssessment
      * @param  Collection<int, AcademicPeriod>  $periods
      * @return array<int, array<string, mixed>>
      */
-    protected function finalUnitDecisions(Collection $periods): array
+    protected function finalUnitDecisions(Collection $periods, ?Scale $scale): array
     {
         if ($periods->isEmpty()) {
             return [];
@@ -517,11 +518,16 @@ class ContinuousAssessment
         $byEnrollment = [];
 
         foreach ($classifications as $classification) {
+            // Um valor decidido lê-se na escala em que foi tomado, não na da turma de hoje.
+            $decidedOn = $this->decisionScales->read($classification, $scale);
+
             $byEnrollment[(int) $classification->enrollment_id] = [
                 'status' => $classification->status->value,
                 'proposed' => $this->levelPayload($classification->proposedScaleLevel),
                 'final' => $this->levelPayload($classification->finalScaleLevel),
                 'final_value' => $classification->final_value,
+                'final_value_is_percentage' => $decidedOn['is_percentage'],
+                'final_value_scale' => $decidedOn['foreign_scale'],
             ];
         }
 

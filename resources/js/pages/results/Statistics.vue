@@ -36,6 +36,7 @@ import {
     TONE_COLOURS,
 } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
+import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import type { Evolution } from '@/lib/results';
 import { card, INSET, PAGE } from '@/lib/surfaces';
@@ -72,7 +73,16 @@ type Student = {
     assigned_key: string | null;
     domains: DomainCell[];
     self_assessment: Level;
-    classification: { status: string; is_published: boolean; final: Level; proposed: Level } | null;
+    classification: {
+        status: string;
+        is_published: boolean;
+        final: Level;
+        proposed: Level;
+        /** A decision written only as a value, read on the scale it was taken on. */
+        final_value?: string | null;
+        final_value_is_percentage?: boolean;
+        final_value_scale?: string | null;
+    } | null;
     /**
      * H3: a proveniência quando esta classificação vem de um resultado
      * externo — nunca presente para uma evidência desta disciplina. Rotulado
@@ -2359,6 +2369,18 @@ const studentRows = computed(() => {
                                      classificação decidida nesta disciplina. -->
                                 <span v-if="selected.external" class="ml-1 text-xs font-normal text-muted-foreground">
                                     (externo · {{ selected.external.origin }})
+                                </span>
+                            </p>
+                            <!-- Decidida só em valor (sem nível): o número, na escala
+                                 em que foi tomada — «65%», nunca um nível 65. -->
+                            <p
+                                v-else-if="selected.classification?.final_value"
+                                class="mt-1 text-sm font-medium"
+                                :title="decidedScaleNote(selected.classification.final_value_scale) ?? undefined"
+                            >
+                                {{ decidedValueText(selected.classification.final_value, selected.classification.final_value_is_percentage) }}
+                                <span v-if="selected.classification.final_value_scale" class="ml-1 text-xs font-normal text-muted-foreground">
+                                    (escala «{{ selected.classification.final_value_scale }}»)
                                 </span>
                             </p>
                             <!-- M4: a proveniência tem de aparecer mesmo

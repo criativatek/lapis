@@ -58,6 +58,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   mesmo vale para um pedido com perguntas de outro modelo. Gravar e trocar o
   modelo são serializados pelo mesmo bloqueio da turma que a migração de
   perfil usa.
+- **Uma decisão lê-se na escala em que foi tomada.** Depois de uma turma passar
+  de «Percentagem (0 a 100)» para «Escala 1 a 5», uma classificação publicada
+  como 65 aparecia como «65» na coluna do nível (Classificações, Pauta,
+  Resultados, Quadro Síntese, Evolução do aluno e exportações). Passa a ler-se
+  «65%», com a nota da escala em que foi decidida, e a Estatística não a coloca
+  num nível da escala atual. A exportação para o Inovar não escreve como nível
+  uma decisão tomada noutra escala: a coluna fica vazia e o aviso diz porquê.
+  O número nunca é convertido nem recalculado.
+- **A pré-visualização da migração de perfil explica a mudança.** Mostra a
+  escala de origem e de destino, os domínios com os pesos de cada versão e se as
+  regras de cálculo mudam, e cada célula traz a proposta antes e depois lida na
+  escala certa («78%» → «4 — Bom»). Deixa de dizer «0 alunos afetados» quando é
+  só a escala que muda, e conta também as decisões que se mantêm.
 
 ## [0.165.0] — 2026-10-13
 

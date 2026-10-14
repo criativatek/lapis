@@ -118,6 +118,18 @@ export type EvaluationSheetClassification = {
      */
     proposal_is_stale?: boolean;
     final_value: string | null;
+    /**
+     * `final_value` é uma percentagem — a escala em que a decisão foi TOMADA é
+     * de percentagem. Ausente nas fotografias guardadas antes disto existir:
+     * lê-se como «não».
+     */
+    final_value_is_percentage?: boolean;
+    /**
+     * O nome da escala em que um valor foi decidido, quando não é a da turma
+     * hoje (a turma foi migrada entre versões do perfil). Null/ausente quando é
+     * a mesma.
+     */
+    final_value_scale?: string | null;
     final_scale_level_id: number | null;
     /** Ausente nos snapshots guardados antes da 0.130.1. */
     final_scale_level_code?: string | null;

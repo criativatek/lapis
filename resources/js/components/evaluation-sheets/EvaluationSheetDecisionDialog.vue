@@ -65,7 +65,8 @@ watch(
     () => props.student,
     (student) => {
         chosenLevelId.value = student?.classification?.final_scale_level_id ?? null;
-        chosenValue.value = student?.classification?.final_value ?? '';
+        // Um valor decidido noutra escala não é um valor desta: não se pré-preenche.
+        chosenValue.value = student?.classification?.final_value_scale ? '' : (student?.classification?.final_value ?? '');
     },
     { immediate: true },
 );
@@ -156,7 +157,10 @@ const assigned = computed(() => {
     return readable(
         classification.final_scale_level_code,
         classification.final_scale_level_label,
-        classification.final_value,
+        // Um valor decidido numa escala de percentagem lê-se como percentagem.
+        classification.final_value !== null && classification.final_value_is_percentage === true
+            ? `${String(Number(classification.final_value)).replace('.', ',')}%`
+            : classification.final_value,
     );
 });
 

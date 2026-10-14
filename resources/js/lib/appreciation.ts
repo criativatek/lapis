@@ -1,3 +1,4 @@
+import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import type {
     EvaluationSheetClassification,
@@ -260,16 +261,21 @@ export function assignedLevel(
         code: classification.final_scale_level_code,
         label: classification.final_scale_level_label,
     };
-    const decidedText = levelText(decided, showQuantitative) ?? classification.final_value;
+    const decidedValue = decidedValueText(classification.final_value, classification.final_value_is_percentage);
+    const decidedText = levelText(decided, showQuantitative) ?? decidedValue;
 
     if (decidedText !== null) {
-        const detail = levelDetail(decided, showQuantitative) ?? classification.final_value;
+        const detail = levelDetail(decided, showQuantitative) ?? decidedValue;
+        // Um valor decidido noutra escala (a turma foi migrada depois) é dito como
+        // foi tomado — nunca reinterpretado na escala de hoje.
+        const scaleNote = decidedValue === null ? null : decidedScaleNote(classification.final_value_scale);
+        const elsewhere = scaleNote === null ? '' : ` ${scaleNote}.`;
 
         return {
             level: decided,
             text: decidedText,
             origin: 'decided',
-            description: `Decisão do professor: ${detail}.`,
+            description: `Decisão do professor: ${detail}.${elsewhere}`,
             detail,
         };
     }

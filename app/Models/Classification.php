@@ -144,6 +144,17 @@ class Classification extends Model
     }
 
     /**
+     * The profile version that produced this classification — and so the scale
+     * its decision was taken on, whatever scale the class is on today.
+     *
+     * @return BelongsTo<AssessmentProfileVersion, $this>
+     */
+    public function profileVersion(): BelongsTo
+    {
+        return $this->belongsTo(AssessmentProfileVersion::class, 'assessment_profile_version_id');
+    }
+
+    /**
      * @return BelongsTo<CalculationSnapshot, $this>
      */
     public function snapshot(): BelongsTo

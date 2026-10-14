@@ -1,17 +1,43 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowRight, TriangleAlert } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 
-type Cell = { period_label: string; state: 'none' | 'kept' | 'refreshed'; before: string | null; after: string | null; changed: boolean };
+type Cell = {
+    period_label: string;
+    state: 'none' | 'kept' | 'refreshed';
+    /** The normalized percentage, as the engine holds it. */
+    before: string | null;
+    after: string | null;
+    /** Ready to show: the proposal read on the scale of the origin / of the target version. */
+    before_text: string | null;
+    after_text: string | null;
+    changed: boolean;
+};
 type Row = { name: string; class_number: number | null; cells: Cell[]; changed: boolean };
+type Version = {
+    version: number;
+    name: string;
+    scale: { name: string; kind: string } | null;
+    domains: { name: string; weight: string }[];
+};
+type Comparison = {
+    scale_changes: boolean;
+    domains_same: boolean;
+    weights_same: boolean;
+    rules_same: boolean;
+    domains: { name: string; from_weight: string | null; to_weight: string | null; changed: boolean }[];
+};
 type Preview = {
-    from: { version: number; name: string } | null;
-    to: { version: number; name: string };
+    from: Version | null;
+    to: Version;
+    comparison: Comparison;
     periods: string[];
     rows: Row[];
     affected_enrollment_count: number;
     recalculated_result_count: number;
+    kept_result_count: number;
 };
 
 const props = defineProps<{
@@ -25,9 +51,40 @@ const form = useForm({
     reason: '',
 });
 
-// "—" for a null (no computable result), never 0.
-function value(cell: string | null): string {
-    return cell === null ? '—' : `${Number(cell).toFixed(1)}%`;
+// What the engine holds underneath, as a percentage of the maximum. Shown small and
+// only where the scale changes, because there the headline text is no longer that
+// percentage. "—" for a null (no computable result), never 0.
+function normalized(cell: string | null): string {
+    return cell === null ? '—' : `${Number(cell).toFixed(1).replace('.', ',')}%`;
+}
+
+function weight(value: string | null): string {
+    return value === null ? '—' : `${value.replace('.', ',')}%`;
+}
+
+// An example taken from this very preview: the first student whose proposal is
+// read differently once the class is on the new scale.
+const example = computed(() => {
+    for (const row of props.preview.rows) {
+        for (const cell of row.cells) {
+            if (cell.state === 'refreshed' && cell.changed && cell.before_text && cell.after_text && cell.before_text !== '—' && cell.after_text !== '—') {
+                return { name: row.name, period: cell.period_label, before: cell.before_text, after: cell.after_text };
+            }
+        }
+    }
+
+    return null;
+});
+
+// The sentence about the percentage not moving is only true when everything
+// that produces it is the same.
+const sameCalculation = computed(
+    () => props.preview.comparison.domains_same && props.preview.comparison.weights_same && props.preview.comparison.rules_same,
+);
+
+// «1 aluno», «2 alunos» — the header is read as a sentence.
+function counted(count: number, one: string, many: string): string {
+    return `${count} ${count === 1 ? one : many}`;
 }
 
 function submit(): void {
@@ -51,9 +108,78 @@ function submit(): void {
             <ArrowRight class="size-4 text-muted-foreground" />
             <span class="font-medium">{{ preview.to.name }} v{{ preview.to.version }}</span>
             <span class="ml-auto text-muted-foreground">
-                {{ preview.affected_enrollment_count }} alunos afetados · {{ preview.recalculated_result_count }} resultados recalculados
+                {{ counted(preview.affected_enrollment_count, 'aluno com a proposta alterada', 'alunos com a proposta alterada') }} ·
+                {{ counted(preview.recalculated_result_count, 'proposta recalculada', 'propostas recalculadas') }} ·
+                {{ counted(preview.kept_result_count, 'decisão mantida', 'decisões mantidas') }}
             </span>
         </div>
+
+        <!-- O QUE MUDA ENTRE AS DUAS VERSÕES, dito por extenso: a escala, os
+             domínios e os pesos, e as regras de cálculo. Comparar só os
+             números escondia a mudança quando era a escala que mudava. -->
+        <section class="space-y-3 rounded-lg border border-border p-4 text-sm" aria-label="Comparação entre as versões">
+            <p>
+                <span class="font-medium">Escala:</span>{{ ' ' }}
+                <span
+                    v-if="preview.comparison.scale_changes"
+                    class="ml-1 inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                >
+                    <TriangleAlert class="size-3" aria-hidden="true" />
+                    {{ preview.from?.scale?.name ?? '—' }} → {{ preview.to.scale?.name ?? '—' }}
+                </span>
+                <span v-else class="ml-1 text-muted-foreground">sem alteração ({{ preview.to.scale?.name ?? '—' }})</span>
+            </p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full max-w-xl text-sm">
+                    <caption class="sr-only">
+                        Domínios e pesos de cada versão
+                    </caption>
+                    <thead class="text-left text-xs text-muted-foreground">
+                        <tr>
+                            <th class="py-1 pr-3 font-medium">Domínio</th>
+                            <th class="px-3 py-1 text-right font-medium">Peso na origem</th>
+                            <th class="px-3 py-1 text-right font-medium">Peso no destino</th>
+                            <th class="py-1 pl-3 font-medium"><span class="sr-only">Estado</span></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <tr v-for="domain in preview.comparison.domains" :key="domain.name">
+                            <td class="py-1 pr-3">{{ domain.name }}</td>
+                            <td class="px-3 py-1 text-right tabular-nums text-muted-foreground">{{ weight(domain.from_weight) }}</td>
+                            <td class="px-3 py-1 text-right tabular-nums">{{ weight(domain.to_weight) }}</td>
+                            <td class="py-1 pl-3 text-xs" :class="domain.changed ? 'font-semibold text-amber-700 dark:text-amber-400' : 'text-muted-foreground'">
+                                {{ domain.changed ? 'alterado' : 'iguais' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <span class="font-medium">Regras de cálculo:</span>{{ ' ' }}
+                <span class="ml-1" :class="preview.comparison.rules_same ? 'text-muted-foreground' : 'font-semibold text-amber-700 dark:text-amber-400'">
+                    {{ preview.comparison.rules_same ? 'iguais' : 'alteradas' }}
+                </span>
+            </p>
+
+            <div
+                v-if="preview.comparison.scale_changes"
+                class="space-y-1 rounded-md bg-muted/40 px-3 py-2 text-muted-foreground"
+                data-testid="scale-change-explanation"
+            >
+                <p v-if="sameCalculation">
+                    O resultado em percentagem de cada aluno não muda. Muda a proposta, que passa a ser lida na nova escala: o nível da banda em
+                    que esse resultado cai.
+                </p>
+                <p v-else>A proposta de cada aluno passa a ser lida na nova escala: o nível da banda em que o resultado calculado cai.</p>
+                <p v-if="example">
+                    Por exemplo, a proposta de {{ example.name }} ({{ example.period }}), hoje lida como {{ example.before }}, passa a ser lida como
+                    {{ example.after }}.
+                </p>
+                <p>As decisões já confirmadas ou publicadas ficam como foram tomadas, na escala de origem — não são convertidas nem recalculadas.</p>
+            </div>
+        </section>
 
         <p class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
             <TriangleAlert class="mt-0.5 size-4 shrink-0" />
@@ -85,18 +211,28 @@ function submit(): void {
                         </td>
                         <template v-for="(cell, index) in row.cells" :key="index">
                             <td class="border-l border-border px-3 py-2 text-right tabular-nums text-muted-foreground">
-                                {{ cell.state === 'none' ? '—' : value(cell.before) }}
+                                {{ cell.state === 'none' ? '—' : (cell.before_text ?? '—') }}
+                                <span v-if="cell.state === 'refreshed' && preview.comparison.scale_changes" class="block text-[11px]">
+                                    resultado {{ normalized(cell.before) }}
+                                </span>
                             </td>
                             <td class="px-3 py-2 text-right tabular-nums">
                                 <span v-if="cell.state === 'none'" class="text-muted-foreground">—</span>
-                                <span v-else-if="cell.state === 'kept'" class="text-xs text-muted-foreground" title="Decisão confirmada — mantida">mantida</span>
-                                <span v-else-if="cell.changed" class="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
-                                    {{ value(cell.after) }}
-                                    <TriangleAlert class="size-3" aria-hidden="true" />
-                                    <span class="text-xs font-normal">alterado</span>
+                                <span v-else-if="cell.state === 'kept'" class="text-xs text-muted-foreground" title="Decisão confirmada ou publicada — mantida como foi tomada">
+                                    mantida
+                                </span>
+                                <span v-else-if="cell.changed" class="inline-flex flex-col items-end">
+                                    <span class="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+                                        {{ cell.after_text ?? '—' }}
+                                        <TriangleAlert class="size-3" aria-hidden="true" />
+                                        <span class="text-xs font-normal">alterado</span>
+                                    </span>
+                                    <span v-if="preview.comparison.scale_changes" class="text-[11px] font-normal text-muted-foreground">
+                                        resultado {{ normalized(cell.after) }}
+                                    </span>
                                 </span>
                                 <span v-else class="text-muted-foreground">
-                                    {{ value(cell.after) }}
+                                    {{ cell.after_text ?? '—' }}
                                 </span>
                             </td>
                         </template>

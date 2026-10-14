@@ -292,3 +292,74 @@ describe('assignedLevel', () => {
         expect(assignedLevel(null, true).origin).toBe('none');
     });
 });
+
+describe('assignedLevel — um valor decidido lê-se na escala em que foi tomado', () => {
+    // O caso de produção: a turma passou de «Percentagem (0 a 100)» a «Escala 1 a
+    // 5», e a decisão publicada é um 65 sem nível.
+    const valueOnly = {
+        status: 'published',
+        proposed_value: '3',
+        proposed_scale_level_id: 3,
+        proposed_scale_level_code: 'N2',
+        proposed_scale_level_label: 'Em desenvolvimento',
+        final_value: '65.000',
+        final_scale_level_id: null,
+        final_scale_level_code: null,
+        final_scale_level_label: null,
+        override_reason: null,
+    };
+
+    it('em percentagem lê-se «65%» e nunca «65.000» nem «65» como se fosse um nível', () => {
+        const reading = assignedLevel({ ...valueOnly, final_value_is_percentage: true, final_value_scale: 'Percentagem (0 a 100)' }, true);
+
+        expect(reading.text).toBe('65%');
+        expect(reading.origin).toBe('decided');
+        expect(reading.detail).toBe('65%');
+    });
+
+    it('diz em que escala foi decidida quando difere da da turma hoje', () => {
+        const reading = assignedLevel({ ...valueOnly, final_value_is_percentage: true, final_value_scale: 'Percentagem (0 a 100)' }, true);
+
+        expect(reading.description).toBe(
+            'Decisão do professor: 65%. Decidida na escala «Percentagem (0 a 100)» (versão anterior do perfil).',
+        );
+    });
+
+    it('numa turma em percentagem que nunca migrou é «65%» sem nota de escala', () => {
+        const reading = assignedLevel({ ...valueOnly, final_value_is_percentage: true, final_value_scale: null }, true);
+
+        expect(reading.text).toBe('65%');
+        expect(reading.description).toBe('Decisão do professor: 65%.');
+    });
+
+    it('sem as chaves novas (fotografia antiga) o valor lê-se exatamente como antes', () => {
+        const reading = assignedLevel({ ...valueOnly, final_value: '16' }, true);
+
+        expect(reading.text).toBe('16');
+        expect(reading.description).toBe('Decisão do professor: 16.');
+    });
+
+    it('um valor em escala de intervalo continua a ser o número, sem «%»', () => {
+        const reading = assignedLevel({ ...valueOnly, final_value: '16', final_value_is_percentage: false, final_value_scale: null }, false);
+
+        expect(reading.text).toBe('16');
+    });
+
+    it('um nível decidido continua a ser o nível, e as chaves novas não o tocam', () => {
+        const reading = assignedLevel(
+            {
+                ...valueOnly,
+                final_value: '4.000',
+                final_scale_level_id: 4,
+                final_scale_level_code: 'N3',
+                final_scale_level_label: 'Consolidado',
+                final_value_is_percentage: false,
+                final_value_scale: null,
+            },
+            true,
+        );
+
+        expect(reading.text).toBe('N3');
+        expect(reading.description).not.toContain('Decidida na escala');
+    });
+});

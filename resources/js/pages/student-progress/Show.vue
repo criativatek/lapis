@@ -31,6 +31,7 @@ import {
     percentAxis,
 } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
+import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { card, INSET } from '@/lib/surfaces';
 
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
@@ -103,6 +104,10 @@ type ClassificationRow = {
     is_decided: boolean;
     assigned: Level | null;
     assigned_value: string | null;
+    /** The value was decided on a percentage scale: «65%», never a level. */
+    assigned_value_is_percentage?: boolean;
+    /** The scale the value was decided on, when it is not the class's scale today. */
+    assigned_value_scale?: string | null;
     is_published: boolean;
     proposal: { label?: string | null; value?: string | null } | null;
     differs_from_proposal: boolean;
@@ -289,7 +294,13 @@ const props = defineProps<{
         supplementary_value: string | null;
         band: Level | null;
         coverage: Coverage;
-        classification: { status?: string; final?: Level | null; final_value?: string | null } | null;
+        classification: {
+            status?: string;
+            final?: Level | null;
+            final_value?: string | null;
+            final_value_is_percentage?: boolean;
+            final_value_scale?: string | null;
+        } | null;
         self_assessment: Level | null;
         evolution: Evolution;
         continuous_evolution: Evolution;
@@ -487,8 +498,15 @@ const assignedLabel = computed(() => {
         return null;
     }
 
-    return classification?.final?.code ?? classification?.final_value ?? null;
+    return classification?.final?.code ?? decidedValueText(classification?.final_value, classification?.final_value_is_percentage);
 });
+
+/** Where the value was decided on another scale than the class's today, said as it was taken. */
+const assignedTitle = computed(() => (props.headline.classification?.final?.code ? null : decidedScaleNote(props.headline.classification?.final_value_scale)));
+
+function assignedText(row: ClassificationRow): string | null {
+    return row.assigned?.code ?? decidedValueText(row.assigned_value, row.assigned_value_is_percentage);
+}
 
 // ------------------------------------------------------- gráfico principal
 
@@ -1072,7 +1090,7 @@ const PURPOSE_LABEL: Record<string, string> = {
                         <dt class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Classificação atribuída
                         </dt>
-                        <dd v-if="assignedLabel" class="mt-1 text-2xl font-semibold tabular-nums">
+                        <dd v-if="assignedLabel" class="mt-1 text-2xl font-semibold tabular-nums" :title="assignedTitle ?? undefined">
                             {{ assignedLabel }}
                         </dd>
                         <dd v-else class="mt-1 text-sm text-muted-foreground">Sem classificação atribuída</dd>
@@ -1456,8 +1474,8 @@ const PURPOSE_LABEL: Record<string, string> = {
                             <span class="text-sm">{{ row.period_label }}</span>
                             <span class="flex items-baseline gap-2 text-sm">
                                 <template v-if="row.is_decided">
-                                    <span class="text-lg font-semibold tabular-nums">
-                                        {{ row.assigned?.code ?? row.assigned_value }}
+                                    <span class="text-lg font-semibold tabular-nums" :title="row.assigned ? undefined : (decidedScaleNote(row.assigned_value_scale) ?? undefined)">
+                                        {{ assignedText(row) }}
                                     </span>
                                     <span v-if="row.assigned?.label" class="text-xs text-muted-foreground">
                                         {{ row.assigned.label }}
