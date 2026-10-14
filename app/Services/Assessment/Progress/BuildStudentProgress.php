@@ -460,6 +460,8 @@ class BuildStudentProgress
                 'is_decided' => $decided,
                 'assigned' => $decided ? ($classification['final'] ?? null) : null,
                 'assigned_value' => $decided ? ($classification['final_value'] ?? null) : null,
+                'assigned_value_is_percentage' => $decided && (bool) ($classification['final_value_is_percentage'] ?? false),
+                'assigned_value_scale' => $decided ? ($classification['final_value_scale'] ?? null) : null,
                 'is_published' => (bool) ($classification['is_published'] ?? false),
                 // Secondary, always, and labelled as a proposal wherever it is
                 // shown.

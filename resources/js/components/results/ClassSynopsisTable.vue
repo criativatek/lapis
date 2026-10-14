@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, ChevronRight, CircleAlert, Camera } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { CONTINUOUS, CONTINUOUS_EXPLANATION } from '@/lib/readings';
 import {
     appreciationClasses,
@@ -119,6 +120,14 @@ const totalColumns = computed(
         props.synopsis.moments.reduce((total, moment) => total + momentColumns(moment), 0) +
         (props.showQuantitative ? 3 : 2),
 );
+
+/** A decision written only as a value, said as it was taken — and on which scale, when that is not today's. */
+function decidedValueTitle(decision: NonNullable<NonNullable<SynopticStudent['continuous']>['decision']>): string {
+    const text = decidedValueText(decision.final_value, decision.final_value_is_percentage) ?? '';
+    const note = decidedScaleNote(decision.final_value_scale);
+
+    return note === null ? `Decisão do professor: ${text}` : `Decisão do professor: ${text}. ${note}.`;
+}
 
 function readingOf(student: SynopticStudent, key: string): SynopticReadingRow | undefined {
     return student.moments.find((reading) => reading.moment_key === key);
@@ -476,6 +485,13 @@ const continuousUnitsSentence = computed(() => {
                                     class="rounded px-1.5 py-0.5 text-xs font-semibold"
                                     :title="`Decisão do professor: ${student.continuous.decision.final.code} — ${student.continuous.decision.final.label}`"
                                 >{{ student.continuous.decision.final.code }}</span>
+                                <!-- Decidida só em valor (sem nível): lê-se na escala em que foi
+                                     tomada, «65%» e nunca um nível 65. -->
+                                <span
+                                    v-else-if="student.continuous?.decision?.final_value"
+                                    class="rounded px-1.5 py-0.5 text-xs font-semibold"
+                                    :title="decidedValueTitle(student.continuous.decision)"
+                                >{{ decidedValueText(student.continuous.decision.final_value, student.continuous.decision.final_value_is_percentage) }}</span>
                                 <span
                                     v-else
                                     class="text-muted-foreground"

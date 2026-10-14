@@ -310,7 +310,11 @@ class ResultsProgressionTest extends TestCase
         $screen = (string) file_get_contents(resource_path('js/pages/results/Show.vue'));
 
         $this->assertStringContainsString('{{ row.self_assessment.code }}', $screen);
-        $this->assertStringContainsString('{{ row.classification.final.code }}', $screen);
+        // The decided cell now also carries a decision written only as a value, in
+        // the same place and the same token: the level's code first, the value only
+        // when there is no level.
+        $this->assertStringContainsString('{{ row.classification.final?.code ?? valueDecision(row) }}', $screen);
+        $this->assertStringContainsString('{{ row.classification?.final?.code ?? valueDecision(row) }}', $screen);
 
         // Neither cell is the mention on its own any more…
         $this->assertStringNotContainsString('{{ row.self_assessment.label }}', $screen);

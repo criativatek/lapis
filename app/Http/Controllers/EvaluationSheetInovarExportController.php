@@ -370,7 +370,12 @@ class EvaluationSheetInovarExportController extends Controller
                 Carbon::parse($this->capture->defaultEffectiveDate($period)->toDateString()),
                 $this->user(),
                 adapter: 'inovar',
-                extraWarnings: $this->exportWarnings($preview, $decided, (bool) $context['include_level']),
+                extraWarnings: $this->exportWarnings(
+                    $preview,
+                    $decided,
+                    (bool) $context['include_level'],
+                    $this->levels->onAnotherScale($period, self::SCOPE, $this->matchedEnrollmentIds($preview['students'])),
+                ),
                 file: new GeneratedExportFile(
                     disk: EvaluationSheetExportStorage::DISK,
                     path: $path,
@@ -544,6 +549,15 @@ class EvaluationSheetInovarExportController extends Controller
      */
     protected function decidedLevels(AcademicPeriod $period, array $students): array
     {
+        return $this->levels->for($period, self::SCOPE, $this->matchedEnrollmentIds($students));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $students
+     * @return list<int>
+     */
+    protected function matchedEnrollmentIds(array $students): array
+    {
         $enrollmentIds = [];
 
         foreach ($students as $student) {
@@ -552,7 +566,7 @@ class EvaluationSheetInovarExportController extends Controller
             }
         }
 
-        return $this->levels->for($period, self::SCOPE, $enrollmentIds);
+        return $enrollmentIds;
     }
 
     /**
@@ -567,9 +581,10 @@ class EvaluationSheetInovarExportController extends Controller
      *
      * @param  array<string, mixed>  $preview
      * @param  array<int, string>  $decided
+     * @param  array<int, string>  $onAnotherScale  matrícula → nome da escala em que a decisão foi tomada, quando não é a da turma
      * @return list<string>
      */
-    protected function exportWarnings(array $preview, array $decided, bool $includeLevel): array
+    protected function exportWarnings(array $preview, array $decided, bool $includeLevel, array $onAnotherScale = []): array
     {
         /** @var list<string> $warnings */
         $warnings = array_values($preview['summary']['warnings']);
@@ -579,15 +594,32 @@ class EvaluationSheetInovarExportController extends Controller
         }
 
         $missing = [];
+        $elsewhere = [];
 
         foreach ($preview['students'] as $student) {
-            if ($student['matched'] && ! isset($decided[(int) $student['enrollment_id']])) {
-                $missing[] = (string) $student['display_name'];
+            if (! $student['matched'] || isset($decided[(int) $student['enrollment_id']])) {
+                continue;
             }
+
+            // Decidida, mas noutra escala: dizê-lo, em vez de afirmar que não
+            // há decisão — há, e não é um nível desta escala.
+            $scaleName = $onAnotherScale[(int) $student['enrollment_id']] ?? null;
+
+            if ($scaleName !== null) {
+                $elsewhere[] = [(string) $student['display_name'], $scaleName];
+
+                continue;
+            }
+
+            $missing[] = (string) $student['display_name'];
         }
 
         foreach ($missing as $name) {
             $warnings[] = "{$name}: sem classificação decidida — a coluna do nível fica vazia na grelha exportada.";
+        }
+
+        foreach ($elsewhere as [$name, $scaleName]) {
+            $warnings[] = "{$name}: decisão tomada na escala «{$scaleName}» — não é um nível desta escala; a coluna do nível fica vazia.";
         }
 
         return $warnings;

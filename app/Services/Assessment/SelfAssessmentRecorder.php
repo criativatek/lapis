@@ -16,6 +16,7 @@ use App\Models\SelfAssessmentTemplate;
 use App\Support\Assessment\ImprovementPrompt;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * The self-assessment fill-in form (§15) and its save logic, shared between the
@@ -50,7 +51,7 @@ class SelfAssessmentRecorder
     public function formProps(SchoolClass $class, AcademicPeriod $period, Enrollment $enrollment): array
     {
         $template = $this->templates->forClass($class);
-        $template->questions->load('domain');
+        $template->questions->load(['domain', 'scale']);
 
         $existing = SelfAssessment::query()
             ->where('enrollment_id', $enrollment->id)
@@ -93,13 +94,29 @@ class SelfAssessmentRecorder
         array $validated,
         SelfAssessmentFilledBy $filledBy,
     ): void {
-        $template = $this->templates->forClass($class);
+        DB::transaction(function () use ($class, $validated, $period, $enrollment, $filledBy): void {
+            // Under the class's lock, the one the template provider derives and
+            // retires under: the template cannot change between this check and
+            // the write below.
+            $template = $this->templates->answerableFor($this->templates->lockClass($class));
 
-        /** @var Collection<int, SelfAssessmentQuestion> $questions */
-        $questions = $template->questions->keyBy('id');
-        $levelIds = $this->levelIdsByScale($template);
+            // A form built from questions that are no longer the class's — the
+            // class moved to another profile version while it was open — is
+            // refused WHOLE, out loud. Saving it against the new template would
+            // drop every answer it carries (they answer questions the new one
+            // does not have) and still record a submitted, empty self-assessment.
+            $submitted = array_map('intval', array_keys(($validated['answers'] ?? []) + ($validated['texts'] ?? [])));
 
-        DB::transaction(function () use ($validated, $period, $enrollment, $template, $questions, $levelIds, $filledBy): void {
+            if ($template === null || array_diff($submitted, $template->questions->modelKeys()) !== []) {
+                throw ValidationException::withMessages([
+                    'answers' => __('As perguntas desta autoavaliação mudaram depois de o formulário ter sido aberto. Nada foi guardado: o formulário foi atualizado — responda de novo e guarde.'),
+                ]);
+            }
+
+            /** @var Collection<int, SelfAssessmentQuestion> $questions */
+            $questions = $template->questions->keyBy('id');
+            $levelIds = $this->levelIdsByScale($template);
+
             $selfAssessment = SelfAssessment::updateOrCreate(
                 [
                     'enrollment_id' => $enrollment->id,
@@ -193,6 +210,11 @@ class SelfAssessmentRecorder
                     : (string) $question->prompt,
                 'answer_kind' => (string) $question->answer_kind,
                 'levels' => $question->answer_kind === 'scale' && $scaleId !== null ? ($levels[$scaleId] ?? []) : [],
+                // Named, so that a scale with no levels to choose from — a
+                // percentage, a 0–20 without bands — is SAID on the form rather
+                // than left as a select holding only «—». Nothing is offered in
+                // its place: a 1–5 the class is not assessed on is not an answer.
+                'scale' => $question->answer_kind === 'scale' ? $question->scale?->name : null,
                 'answer_level_id' => $response?->scale_level_id,
                 'answer_text' => $response?->text_value,
             ];

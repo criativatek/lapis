@@ -4,6 +4,7 @@ namespace App\Services\Reporting\Sections;
 
 use App\Domain\Reporting\ContentSource;
 use App\Domain\Reporting\SectionKey;
+use App\Services\Assessment\DecisionScaleReader;
 use App\Services\Reporting\ComposedSection;
 use App\Services\Reporting\Narrative\Absence;
 use App\Services\Reporting\Narrative\Phrase;
@@ -54,7 +55,7 @@ class StudentClassificationComposer implements SectionComposer
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    $this->decisionSentence($assigned, $value),
+                    $this->decisionSentence($assigned, $this->withUnit($value, $classification)),
                     $this->sideSentence($assigned),
                 ]),
                 Phrase::paragraph([$this->divergenceSentence($student, $value)]),
@@ -82,6 +83,20 @@ class StudentClassificationComposer implements SectionComposer
             $written,
             is_string($label) && $label !== $written ? '('.$label.')' : null,
         );
+    }
+
+    /**
+     * A value decided on a percentage scale is read as a percentage — 65 is
+     * 65 %, never a level 65. The number itself is never touched.
+     */
+    protected function withUnit(mixed $value, mixed $classification): mixed
+    {
+        if (! is_string($value) || $value === '' || ! is_array($classification)
+            || ($classification['final_value_is_percentage'] ?? false) !== true) {
+            return $value;
+        }
+
+        return DecisionScaleReader::percentText($value);
     }
 
     protected function sideSentence(mixed $assigned): ?string

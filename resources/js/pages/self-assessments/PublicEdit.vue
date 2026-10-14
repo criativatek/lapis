@@ -61,6 +61,10 @@ function submit(): void {
         </div>
 
         <form class="space-y-6" @submit.prevent="submit">
+            <p v-if="form.errors.answers" role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {{ form.errors.answers }}
+            </p>
+
             <SelfAssessmentBlocks
                 v-model:answers="form.answers"
                 v-model:texts="form.texts"

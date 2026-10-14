@@ -300,6 +300,12 @@ class ContinuousAssessmentTest extends TestCase
             $constructor->getParameters(),
         );
 
-        $this->assertSame(['App\Services\Assessment\ScaleProposalResolver'], $dependencies);
+        // O leitor da escala de uma decisão só APRESENTA — diz em que escala um valor
+        // foi decidido — e não tem maneira de ir buscar resultado nenhum: não abre
+        // a garantia de que este serviço só vê unidades formais.
+        $this->assertSame([
+            'App\Services\Assessment\ScaleProposalResolver',
+            'App\Services\Assessment\DecisionScaleReader',
+        ], $dependencies);
     }
 }

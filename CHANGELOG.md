@@ -25,6 +25,53 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.165.1] — 2026-10-14
+
+> **Correção.** Numa turma avaliada em «Percentagem (0 a 100)», os seletores
+> da autoavaliação (por domínio e «Classificação que proponho…») abriam só com
+> «—». Uma percentagem não tem níveis para escolher, e a turma continuava na
+> versão do perfil que tinha quando foi associada, embora o editor do perfil já
+> mostrasse uma versão nova em «Escala 1 a 5». Sem migrações.
+
+### Corrigido
+
+- **A autoavaliação diz quando não há níveis para escolher.** Uma pergunta de
+  escala cuja escala não tem níveis deixa de aparecer como um seletor vazio:
+  aparece uma explicação que nomeia a escala, e a pergunta fica por responder.
+  Não se oferece uma escala que a turma não usa.
+- **O professor vê em que versão e em que escala a turma é avaliada**, e se o
+  perfil já tem uma versão mais recente que a turma ainda não usa. Ativar uma
+  versão nova nunca mudou a versão das turmas já associadas, e o formulário
+  passa a dizê-lo. O formulário do aluno (ligação assinada) mostra só o nome da
+  escala de cada pergunta, nada sobre o perfil ou as suas versões.
+- **As perguntas da autoavaliação acompanham a turma enquanto nenhuma
+  autoavaliação foi guardada.** Quando a turma passa para outra versão do
+  perfil (migração auditável), o modelo antigo é retirado na visita seguinte
+  (fica guardado, inativo, e a troca fica na Atividade) e o novo é derivado da
+  versão atual, com a escala e os domínios dessa versão. Basta uma
+  autoavaliação guardada, mesmo em branco, para o modelo ficar exatamente como
+  estava. O aviso ao professor diz isto antes de se gravar.
+- **Um formulário aberto antes de a turma mudar de versão é recusado por
+  inteiro**, com uma mensagem visível; o formulário reabre com as perguntas
+  atuais e é preciso responder de novo. Nada é gravado contra perguntas que já
+  não são as da turma, e nada se perde em silêncio. O
+  mesmo vale para um pedido com perguntas de outro modelo. Gravar e trocar o
+  modelo são serializados pelo mesmo bloqueio da turma que a migração de
+  perfil usa.
+- **Uma decisão lê-se na escala em que foi tomada.** Depois de uma turma passar
+  de «Percentagem (0 a 100)» para «Escala 1 a 5», uma classificação publicada
+  como 65 aparecia como «65» na coluna do nível (Classificações, Pauta,
+  Resultados, Quadro Síntese, Evolução do aluno e exportações). Passa a ler-se
+  «65%», com a nota da escala em que foi decidida, e a Estatística não a coloca
+  num nível da escala atual. A exportação para o Inovar não escreve como nível
+  uma decisão tomada noutra escala: a coluna fica vazia e o aviso diz porquê.
+  O número nunca é convertido nem recalculado.
+- **A pré-visualização da migração de perfil explica a mudança.** Mostra a
+  escala de origem e de destino, os domínios com os pesos de cada versão e se as
+  regras de cálculo mudam, e cada célula traz a proposta antes e depois lida na
+  escala certa («78%» → «4 — Bom»). Deixa de dizer «0 alunos afetados» quando é
+  só a escala que muda, e conta também as decisões que se mantêm.
+
 ## [0.165.0] — 2026-10-13
 
 > **Correção da 0.164.0.** A consulta de «Registos» deixou o registo diário —

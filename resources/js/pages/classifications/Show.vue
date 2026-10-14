@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import { decidedScaleNote } from '@/lib/decidedValue';
 import { ACCUMULATED, ACCUMULATED_EXPLANATION, ACCUMULATED_LONG } from '@/lib/readings';
 import { statusToneClasses } from '@/lib/statusTone';
 
@@ -14,7 +15,15 @@ type Proposal = {
     is_percentage: boolean;
 };
 /** What the teacher decided, on the scale: «4» plus «Bom», or just a number. */
-type Decision = { code: string; label: string | null; scale_level_id: number | null };
+type Decision = {
+    code: string;
+    label: string | null;
+    scale_level_id: number | null;
+    /** The value was decided on a percentage scale: it is read as «65%», never as a level. */
+    is_percentage?: boolean;
+    /** The scale the value was decided on, when it is not the class's scale today. */
+    scale_name?: string | null;
+};
 /** The student's own overall judgement, as Resultados shows it. */
 type SelfAssessment = { code: string; label: string; sequence: number; is_negative: boolean } | null;
 type Level = { id: number; code: string; label: string };
@@ -90,12 +99,21 @@ function onScale(value: string): string {
  * interval scale's decision is a number and is read as one.
  */
 function decisionText(decision: Decision): string {
-    return decision.scale_level_id === null ? onScale(decision.code) : decision.code;
+    if (decision.scale_level_id !== null) {
+        return decision.code;
+    }
+
+    return decision.is_percentage === true ? `${onScale(decision.code)}%` : onScale(decision.code);
 }
 
 /** «4 — Bom» when the scale has bands, «15» when it is an interval. */
 function decisionTitle(decision: Decision): string {
-    return decision.label === null ? decisionText(decision) : `${decision.code} — ${decision.label}`;
+    const text = decision.label === null ? decisionText(decision) : `${decision.code} — ${decision.label}`;
+
+    // A value decided on another scale is said as it was taken, never re-read on today's.
+    const note = decidedScaleNote(decision.scale_name);
+
+    return note === null ? text : `${text} — ${note}`;
 }
 
 // The proposal already comes translated to the profile's scale — a 4, a "Bom",
@@ -208,7 +226,10 @@ function openEditor(row: Row): void {
     const decided = row.classification?.decision ?? null;
 
     confirmForm.final_scale_level_id = decided?.scale_level_id ?? row.classification?.proposed_scale_level_id ?? null;
-    confirmForm.final_value = decided !== null && decided.scale_level_id === null ? decided.code : (row.classification?.proposal.value ?? null);
+    // A value decided on another scale is not a value of this one: it is not
+    // carried into the editor.
+    confirmForm.final_value =
+        decided !== null && decided.scale_level_id === null && !decided.scale_name ? decided.code : (row.classification?.proposal.value ?? null);
     confirmForm.override_reason = row.classification?.observation ?? '';
 }
 

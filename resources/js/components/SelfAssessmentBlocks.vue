@@ -48,8 +48,21 @@ const blocks = computed(() =>
             >
                 <span class="mb-1 block" :class="question.role === 'global' ? 'font-medium' : ''">{{ question.prompt }}</span>
 
+                <!-- A scale with nothing to choose from — a percentage, a 0–20
+                     without bands — is said, not shown as a select holding only
+                     «—». Nothing is offered in its place: a level of some other
+                     scale is not an answer on this one. -->
+                <span
+                    v-if="question.answer_kind === 'scale' && question.levels.length === 0"
+                    role="note"
+                    class="block rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                    data-test="scale-without-levels"
+                >
+                    Não há níveis para escolher<template v-if="question.scale">: a escala «{{ question.scale }}» não tem níveis</template>. Esta pergunta fica por responder.
+                </span>
+
                 <select
-                    v-if="question.answer_kind === 'scale'"
+                    v-else-if="question.answer_kind === 'scale'"
                     v-model="answers[question.id]"
                     class="w-full max-w-xs rounded-md border border-border bg-background px-2 py-1.5"
                 >

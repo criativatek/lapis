@@ -8,6 +8,7 @@ import CoverageWarning from '@/components/CoverageWarning.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
+import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
@@ -77,6 +78,12 @@ type Row = {
         is_published: boolean;
         proposed: Level;
         final: Level;
+        /** A decision written as a bare value (no level). Absent until the server sends it. */
+        final_value?: string | null;
+        /** The value was decided on a percentage scale: «65%», never a level. */
+        final_value_is_percentage?: boolean;
+        /** The scale the value was decided on, when it is not the class's scale today. */
+        final_value_scale?: string | null;
         differs_from_proposal: boolean;
     } | null;
 };
@@ -237,6 +244,25 @@ function canDecide(row: Row): boolean {
     }
 
     return row.classification === null || row.classification.can_change;
+}
+
+/**
+ * A decision written ONLY as a value — no level to name. Shown where a level
+ * would be, so a published 65 on a percentage is not a blank cell, and read on
+ * the scale it was taken on.
+ */
+function valueDecision(row: Row): string | null {
+    if (row.classification === null || row.classification.final !== null) {
+        return null;
+    }
+
+    return decidedValueText(row.classification.final_value, row.classification.final_value_is_percentage);
+}
+
+function valueDecisionTitle(row: Row): string {
+    const note = decidedScaleNote(row.classification?.final_value_scale);
+
+    return note === null ? 'Decisão do professor.' : `Decisão do professor. ${note}.`;
 }
 
 function openDecision(row: Row): void {
@@ -512,27 +538,38 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                             <!-- Published: the value, and the reason it can no
                                  longer be touched. -->
                             <span
-                                v-else-if="row.classification?.is_published && row.classification.final"
+                                v-else-if="row.classification?.is_published && (row.classification.final || valueDecision(row))"
                                 class="inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold"
-                                :class="levelClasses(row.classification.final)"
-                                :title="`${row.classification.final.code} — ${row.classification.final.label}. Esta classificação já foi publicada.`"
+                                :class="row.classification.final ? levelClasses(row.classification.final) : undefined"
+                                :title="
+                                    row.classification.final
+                                        ? `${row.classification.final.code} — ${row.classification.final.label}. Esta classificação já foi publicada.`
+                                        : `${valueDecisionTitle(row)} Esta classificação já foi publicada.`
+                                "
                             >
-                                {{ row.classification.final.code }}
+                                <!-- A decision written only as a value (a percentage, an
+                                     interval) takes the same place as a level, read on the
+                                     scale it was decided on: «65%», never a level 65. -->
+                                {{ row.classification.final?.code ?? valueDecision(row) }}
                                 <Lock class="size-3 font-normal opacity-60" />
                             </span>
 
                             <!-- Decided and still open: the value, click to change. -->
                             <button
-                                v-else-if="row.classification?.final"
+                                v-else-if="row.classification?.final || valueDecision(row)"
                                 type="button"
                                 class="rounded px-2 py-0.5 font-bold hover:ring-1 hover:ring-border"
-                                :class="levelClasses(row.classification.final)"
-                                :title="`${row.classification.final.code} — ${row.classification.final.label}. Clique para alterar.`"
+                                :class="row.classification?.final ? levelClasses(row.classification.final) : undefined"
+                                :title="
+                                    row.classification?.final
+                                        ? `${row.classification.final.code} — ${row.classification.final.label}. Clique para alterar.`
+                                        : `${valueDecisionTitle(row)} Clique para alterar.`
+                                "
                                 @click="openDecision(row)"
                             >
-                                {{ row.classification.final.code }}
+                                {{ row.classification?.final?.code ?? valueDecision(row) }}
                                 <span
-                                    v-if="row.classification.differs_from_proposal"
+                                    v-if="row.classification?.differs_from_proposal"
                                     class="ml-0.5 text-xs font-normal"
                                     title="Diferente da proposta do Lapispro."
                                 >·</span>

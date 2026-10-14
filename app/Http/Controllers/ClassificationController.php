@@ -7,11 +7,13 @@ use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Assessment\ConfirmClassification;
+use App\Services\Assessment\DecisionScaleReader;
 use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
@@ -40,6 +42,7 @@ class ClassificationController extends Controller
         protected ScaleProposalResolver $proposals,
         protected BuildResultsProgression $progression,
         protected OpenClassification $opener,
+        protected DecisionScaleReader $decisionScales,
     ) {}
 
     public function show(Request $request, SchoolClass $class, ?string $period = null): Response
@@ -152,7 +155,7 @@ class ClassificationController extends Controller
                         'proposed_scale_level_id' => $classification->proposed_scale_level_id,
                         // The decision, on the scale. Null while it is still only
                         // a proposal — and never filled in from one (§6).
-                        'decision' => $this->decisionPayload($classification),
+                        'decision' => $this->decisionPayload($classification, $scale),
                         'overridden' => $classification->wasOverridden(),
                         'observation' => $classification->override_reason,
                         // «Usar proposta» is how a FIRST decision is made, so it
@@ -173,7 +176,7 @@ class ClassificationController extends Controller
      *
      * @return array<string, mixed>|null
      */
-    protected function decisionPayload(Classification $classification): ?array
+    protected function decisionPayload(Classification $classification, ?Scale $currentScale): ?array
     {
         $level = $classification->finalScaleLevel;
 
@@ -182,6 +185,9 @@ class ClassificationController extends Controller
                 'code' => (string) $level->code,
                 'label' => (string) $level->label,
                 'scale_level_id' => (int) $level->id,
+                // A level is read as the level it is, on whatever scale.
+                'is_percentage' => false,
+                'scale_name' => null,
             ];
         }
 
@@ -189,11 +195,18 @@ class ClassificationController extends Controller
             return null;
         }
 
-        // An interval scale has no band to name: the number is the whole answer.
+        // An interval scale has no band to name: the number is the whole answer,
+        // on the scale the decision was TAKEN on — which after a profile
+        // migration is not necessarily the class's scale today.
+        $taken = $this->decisionScales->read($classification, $currentScale);
+
         return [
             'code' => (string) $classification->final_value,
             'label' => null,
             'scale_level_id' => null,
+            'is_percentage' => $taken['is_percentage'],
+            // Filled only when it differs from the class's scale now.
+            'scale_name' => $taken['foreign_scale'],
         ];
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Assessment\Export;
 
+use App\Services\Assessment\DecisionScaleReader;
 use RuntimeException;
 
 /**
@@ -275,7 +276,12 @@ class EvaluationSheetCsvWriter
             ?? $classification['final_value'];
 
         if ($final !== null) {
-            return [(string) $final, 'Decisão do professor'];
+            // Um valor decidido numa escala de percentagem lê-se como percentagem:
+            // 65 é 65%, nunca o nível 65.
+            $isPercentage = ($classification['final_scale_level_code'] ?? $classification['final_scale_level_label'] ?? null) === null
+                && ($classification['final_value_is_percentage'] ?? false) === true;
+
+            return [$isPercentage ? DecisionScaleReader::percentText((string) $final) : (string) $final, 'Decisão do professor'];
         }
 
         $proposed = $classification['proposed_scale_level_code']

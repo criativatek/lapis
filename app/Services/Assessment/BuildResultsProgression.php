@@ -53,6 +53,7 @@ class BuildResultsProgression
         protected ClassResultsCalculator $calculator,
         protected ScaleProposalResolver $proposals,
         protected SelfAssessmentReading $selfAssessments,
+        protected DecisionScaleReader $decisionScales,
     ) {}
 
     /**
@@ -484,9 +485,15 @@ class BuildResultsProgression
                 'proposed' => $level($classification->proposedScaleLevel),
                 'final' => null,
                 'final_value' => null,
+                'final_value_is_percentage' => false,
+                'final_value_scale' => null,
                 'differs_from_proposal' => false,
             ];
         }
+
+        // A value decided is a value on the scale it was decided on, which after
+        // a profile migration is not necessarily the class's scale today.
+        $decidedOn = $this->decisionScales->read($classification, $scale);
 
         return [
             'ulid' => $classification->ulid,
@@ -518,6 +525,9 @@ class BuildResultsProgression
             // because on a levelled scale both are set and the level is the
             // more specific statement.
             'final_value' => $classification->final_value,
+            'final_value_is_percentage' => $decidedOn['is_percentage'],
+            // Filled only when the decision was taken on another scale than the class's now.
+            'final_value_scale' => $decidedOn['foreign_scale'],
             'differs_from_proposal' => $classification->final_scale_level_id !== null
                 && $classification->proposed_scale_level_id !== null
                 && $classification->final_scale_level_id !== $classification->proposed_scale_level_id,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import SelfAssessmentBlocks from '@/components/SelfAssessmentBlocks.vue';
 import type { SelfAssessmentQuestion } from '@/types/self-assessment';
@@ -12,7 +13,24 @@ const props = defineProps<{
     questions: SelfAssessmentQuestion[];
     earlierReflection: string | null;
     status: string | null;
+    /**
+     * The class's OWN profile version and scale — not necessarily the version
+     * the profile editor shows, since activating a newer one never moves a
+     * class that already had one. Null for a class without a profile.
+     */
+    assessedBy: {
+        profile: string | null;
+        version: number;
+        scale: string;
+        scale_has_levels: boolean;
+        /** The profile's active version, when it is not the class's own. */
+        current_version: number | null;
+    } | null;
 }>();
+
+// Said once, above the form, when a scale question has nothing to choose from:
+// which version and which scale the class is actually on, and why.
+const withoutLevels = computed(() => props.questions.some((question) => question.answer_kind === 'scale' && question.levels.length === 0));
 
 // Two maps by question id: the chosen level for scale questions, the written
 // answer for the rest. Each written answer stays its own — merging them would
@@ -48,7 +66,33 @@ function submit(): void {
             </Link>
         </div>
 
+        <div
+            v-if="assessedBy && withoutLevels"
+            role="note"
+            class="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+            data-test="assessed-by"
+        >
+            <p>
+                Esta turma é avaliada pela versão {{ assessedBy.version }}<template v-if="assessedBy.profile"> do perfil «{{ assessedBy.profile }}»</template>, na escala «{{ assessedBy.scale }}».
+                <template v-if="!assessedBy.scale_has_levels">
+                    Essa escala não tem níveis, por isso as perguntas por domínio e a classificação proposta não têm opções.
+                    Se a turma vier a ser migrada para uma versão com níveis, estas perguntas passam a tê-los — desde que ainda não haja
+                    autoavaliações guardadas nesta turma.
+                </template>
+                <template v-else>
+                    As perguntas sem opções vêm de uma configuração anterior da turma e mantêm-se porque já há autoavaliações registadas com elas.
+                </template>
+            </p>
+            <p v-if="assessedBy.current_version !== null">
+                O perfil tem uma versão mais recente ({{ assessedBy.current_version }}), mas esta turma continua na versão {{ assessedBy.version }}: ativar uma versão nova não altera as turmas que já estavam associadas.
+            </p>
+        </div>
+
         <form class="space-y-6" @submit.prevent="submit">
+            <p v-if="form.errors.answers" role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {{ form.errors.answers }}
+            </p>
+
             <SelfAssessmentBlocks
                 v-model:answers="form.answers"
                 v-model:texts="form.texts"

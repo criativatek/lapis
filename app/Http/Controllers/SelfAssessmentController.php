@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\AssessmentProfile;
 use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
@@ -96,7 +97,44 @@ class SelfAssessmentController extends Controller
         $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
             ->where('ulid', $period)->firstOrFail();
 
-        return Inertia::render('self-assessments/Edit', $this->recorder->formProps($class, $selected, $enrollment));
+        return Inertia::render('self-assessments/Edit', [
+            ...$this->recorder->formProps($class, $selected, $enrollment),
+            'assessedBy' => $this->assessedBy($class),
+        ]);
+    }
+
+    /**
+     * What the class is ACTUALLY assessed by: its own profile version, which is
+     * not necessarily the one the profile editor shows. Activating a newer
+     * version never moves a class that already had one (§10.2), so a profile
+     * edited to «Escala 1 a 5» can leave its classes on a percentage — and a
+     * self-assessment asked on a percentage has no levels to choose from.
+     *
+     * Only for the teacher. The student's signed-link form gets the questions,
+     * each naming the scale it is asked on, and nothing about the profile or
+     * its versions.
+     *
+     * @return array{profile: string|null, version: int, scale: string, scale_has_levels: bool, current_version: int|null}|null
+     */
+    protected function assessedBy(SchoolClass $class): ?array
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null) {
+            return null;
+        }
+
+        $profile = AssessmentProfile::withTrashed()->whereKey($version->assessment_profile_id)->first();
+        $current = $profile?->currentVersion;
+
+        return [
+            'profile' => $profile?->name,
+            'version' => (int) $version->version_number,
+            'scale' => $version->scale->name,
+            'scale_has_levels' => $version->scale->levels()->exists(),
+            // The profile's active version, only when it is not the class's own.
+            'current_version' => $current !== null && $current->id !== $version->id ? (int) $current->version_number : null,
+        ];
     }
 
     public function store(Request $request, SchoolClass $class, string $period, Enrollment $enrollment): RedirectResponse
