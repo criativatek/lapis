@@ -52,8 +52,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   autoavaliação guardada, mesmo em branco, para o modelo ficar exatamente como
   estava. O aviso ao professor diz isto antes de se gravar.
 - **Um formulário aberto antes de a turma mudar de versão é recusado por
-  inteiro**, com uma mensagem a pedir para o voltar a abrir. Nada é gravado
-  contra perguntas que já não são as da turma, e nada se perde em silêncio. O
+  inteiro**, com uma mensagem visível; o formulário reabre com as perguntas
+  atuais e é preciso responder de novo. Nada é gravado contra perguntas que já
+  não são as da turma, e nada se perde em silêncio. O
   mesmo vale para um pedido com perguntas de outro modelo. Gravar e trocar o
   modelo são serializados pelo mesmo bloqueio da turma que a migração de
   perfil usa.

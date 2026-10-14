@@ -109,7 +109,7 @@ class SelfAssessmentRecorder
 
             if ($template === null || array_diff($submitted, $template->questions->modelKeys()) !== []) {
                 throw ValidationException::withMessages([
-                    'answers' => __('As perguntas desta autoavaliação mudaram depois de o formulário ter sido aberto. Nada foi guardado: copie o que escreveu e volte a abrir o formulário.'),
+                    'answers' => __('As perguntas desta autoavaliação mudaram depois de o formulário ter sido aberto. Nada foi guardado: o formulário foi atualizado — responda de novo e guarde.'),
                 ]);
             }
 
