@@ -172,7 +172,7 @@ class ClassController extends Controller
     {
         Gate::authorize('view', $class);
 
-        $class->load(['subject', 'academicYear', 'profileVersion.profile']);
+        $class->load(['subject', 'academicYear', 'profileVersion.profile', 'profileVersion.scale']);
 
         $timezone = $this->currentOrganization->get()->timezone;
         $today = CarbonImmutable::now($timezone)->toDateString();
@@ -248,7 +248,9 @@ class ClassController extends Controller
                 'grade_level' => $class->grade_level,
                 'status' => $class->status->value,
                 'status_label' => $class->status->label(),
-                'profile_name' => $class->profileVersion?->profile->name,
+                'profile_name' => $class->profileVersion?->profile?->name,
+                'profile' => $this->profileSummary($class),
+                'profile_update' => $this->profileUpdateOffer($class),
                 'subject_id' => $class->subject_id,
                 'archived' => $class->isArchived(),
                 'archived_at' => $class->archived_at?->toDateString(),
@@ -763,5 +765,62 @@ class ClassController extends Controller
         $user = request()->user();
 
         return $user;
+    }
+
+    /**
+     * Que perfil, em que versão e em que escala a turma está a ser avaliada AGORA
+     * — a versão da turma, não a corrente do perfil (que só a migração move).
+     *
+     * @return array{name: string, version_number: int, scale_name: string|null}|null
+     */
+    protected function profileSummary(SchoolClass $class): ?array
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null || $version->profile === null) {
+            return null;
+        }
+
+        return [
+            'name' => $version->profile->name,
+            'version_number' => $version->version_number,
+            'scale_name' => $version->scale?->name,
+        ];
+    }
+
+    /**
+     * A oferta de «Rever e aplicar alterações»: só numa turma não arquivada,
+     * quando o perfil tem uma versão corrente ativa, mais recente do que a da
+     * turma, e quem vê pode alterar a turma. Não migra nada — leva à pré-visualização existente, que traz as
+     * validações e a confirmação com motivo.
+     *
+     * @return array{version_number: int, scale_name: string|null, review_url: string}|null
+     */
+    protected function profileUpdateOffer(SchoolClass $class): ?array
+    {
+        $classVersion = $class->profileVersion;
+        $profile = $classVersion?->profile;
+
+        // Uma turma arquivada é histórico: a versão com que foi avaliada fica como
+        // estava, e nada no ecrã convida a mudá-la.
+        if ($class->isArchived() || $classVersion === null || $profile === null || $profile->current_version_id === null
+            || $profile->current_version_id === $classVersion->id
+            || ! Gate::allows('update', $class)) {
+            return null;
+        }
+
+        $current = $profile->currentVersion()->with('scale')->first();
+
+        if ($current === null
+            || $current->status !== ProfileVersionStatus::Active
+            || $current->version_number <= $classVersion->version_number) {
+            return null;
+        }
+
+        return [
+            'version_number' => $current->version_number,
+            'scale_name' => $current->scale?->name,
+            'review_url' => route('classes.profile-migration.create', ['class' => $class->ulid, 'to' => $current->ulid], false),
+        ];
     }
 }

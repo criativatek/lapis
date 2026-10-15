@@ -175,13 +175,13 @@ class MigrateClassProfile
         ];
     }
 
-    public function migrate(SchoolClass $class, AssessmentProfileVersion $toVersion, string $reason, User $teacher): ClassProfileMigration
+    public function migrate(SchoolClass $class, AssessmentProfileVersion $toVersion, string $reason, User $actor, ?User $onBehalfOf = null): ClassProfileMigration
     {
         if ($toVersion->status !== ProfileVersionStatus::Active) {
             throw ProfileMigrationException::notActive();
         }
 
-        return DB::transaction(function () use ($class, $toVersion, $reason, $teacher): ClassProfileMigration {
+        return DB::transaction(function () use ($class, $toVersion, $reason, $actor, $onBehalfOf): ClassProfileMigration {
             // Lock the class and re-read its version inside the transaction: two
             // concurrent migrations must not both record "from V1" and race the
             // final FK — the audit chain has to reflect the real sequence.
@@ -221,7 +221,8 @@ class MigrateClassProfile
                 // the record and the toast never disagree.
                 'affected_enrollment_count' => $preview['affected_enrollment_count'],
                 'recalculated_result_count' => $preview['recalculated_result_count'],
-                'confirmed_by' => $teacher->id,
+                'confirmed_by' => $actor->id,
+                'on_behalf_of_user_id' => $onBehalfOf?->id,
                 'confirmed_at' => now(),
                 'reason' => $reason,
             ]);
@@ -229,7 +230,7 @@ class MigrateClassProfile
             $this->audit->record(
                 'class.profile_migrated',
                 $locked,
-                $teacher,
+                $actor,
                 "Turma migrada para a versão {$toVersion->version_number}: {$preview['affected_enrollment_count']} alunos afetados.",
                 [
                     'from_version_id' => $fromVersion?->id,
@@ -237,6 +238,12 @@ class MigrateClassProfile
                     'affected_enrollment_count' => $preview['affected_enrollment_count'],
                     'reason' => $reason,
                     'migration_id' => $migration->id,
+                    // Acesso técnico (ADR-0014): o ator é o administrador e o
+                    // evento diz em nome de quem; o controlador é que decide.
+                    ...($onBehalfOf === null ? [] : [
+                        'acting_as_user_id' => $onBehalfOf->id,
+                        'technical_access' => true,
+                    ]),
                 ],
             );
 

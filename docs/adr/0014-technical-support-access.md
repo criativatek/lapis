@@ -112,6 +112,33 @@ governação (sair, remover, transferir a organização) independentemente desta
 ADR. O que muda é que qualquer escrita feita durante o acesso fica
 corretamente atribuída a quem a fez.
 
+### 8. Adenda de 2026-10-15 — causer explícito igual ao representado
+
+A secção 5 só corrigia o caminho em que o chamador NÃO passa causer. Um
+chamador que passava `$this->user()` — em impersonação, o professor — ficava
+gravado em nome do professor e sem marca nenhuma, contra o que a secção 7
+promete. `AuditLog::record()` passa a tratar um causer explícito que seja
+exatamente o utilizador autenticado, durante uma impersonação, como o caminho
+implícito: causer = administrador e `properties['acting_as_user_id']` = o
+representado. Um causer explícito que seja OUTRA pessoa, ou a ausência de
+impersonação, não muda nada.
+
+Serviços chamados com um ator explícito que já é o administrador (por exemplo
+`MigrateClassProfile::migrate()`, decidido pelo controlador a partir de
+`impersonator_id`) continuam a passar o administrador como causer e gravam eles
+próprios `acting_as_user_id` e `technical_access`. Onde uma linha de negócio
+guarda o utilizador (`class_profile_migrations.confirmed_by`), ganha também
+`on_behalf_of_user_id`: `confirmed_by` é quem de facto confirmou, a nova coluna é
+o professor representado (NULL fora do acesso técnico). A titularidade da linha
+não muda — continua da organização da turma.
+
+**Os eventos e linhas anteriores não são reatribuídos.** Não há migração de
+dados nem inferência de autoria (por IP ou por hora): o que ficou gravado em nome
+do professor fica como está.
+
+Na Atividade, o professor passa a ver também os eventos feitos em seu nome pelo
+suporte, apresentados como «Suporte técnico Lapispro» — nunca o nome, o email
+ou o id do administrador, nem o ticket ou o identificador do acesso.
 ## Consequences
 
 - Os nomes dos eventos de auditoria (`admin.impersonation_started`,

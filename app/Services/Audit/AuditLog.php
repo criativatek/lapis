@@ -27,6 +27,8 @@ class AuditLog
     ): AuditEvent {
         if ($causer === null) {
             $causer = $this->resolveCauser($properties);
+        } else {
+            $causer = $this->attributeToImpersonator($causer, $properties);
         }
 
         return AuditEvent::create([
@@ -39,6 +41,42 @@ class AuditLog
             'properties' => $properties === [] ? null : $properties,
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * ADR-0014: durante o acesso técnico, o ator real é o administrador. Um
+     * chamador que passa `$this->user()` como causer (o professor representado)
+     * seria gravado em nome do professor e sem marca; aqui é tratado exatamente
+     * como o caminho implícito. Um causer que seja OUTRA pessoa, ou a ausência
+     * de impersonação, deixa tudo como está.
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    protected function attributeToImpersonator(User $causer, array &$properties): User
+    {
+        $impersonatorId = session('impersonator_id');
+
+        if ($impersonatorId === null) {
+            return $causer;
+        }
+
+        $currentUserId = auth()->id();
+
+        if ($currentUserId === null
+            || (int) $currentUserId === (int) $impersonatorId
+            || (int) $causer->getKey() !== (int) $currentUserId) {
+            return $causer;
+        }
+
+        $impersonator = User::query()->whereKey($impersonatorId)->first();
+
+        if ($impersonator === null) {
+            return $causer;
+        }
+
+        $properties['acting_as_user_id'] ??= $currentUserId;
+
+        return $impersonator;
     }
 
     /**

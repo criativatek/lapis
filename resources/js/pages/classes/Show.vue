@@ -96,6 +96,21 @@ const props = defineProps<{
         status: string;
         status_label: string;
         profile_name: string | null;
+        /** A versão DA TURMA (não a corrente do perfil): nome, versão e escala. */
+        profile?: {
+            name: string;
+            version_number: number;
+            scale_name: string | null;
+        } | null;
+        /**
+         * Só quando existe uma versão ativa mais recente e quem vê pode alterar
+         * a turma. Não migra nada: `review_url` abre a pré-visualização.
+         */
+        profile_update?: {
+            version_number: number;
+            scale_name: string | null;
+            review_url: string;
+        } | null;
         archived: boolean;
         archived_at: string | null;
         eligible_for_deletion_at: string | null;
@@ -707,15 +722,44 @@ function deleteResult(student: Student): void {
             </div>
         </div>
 
-        <p
-            v-if="schoolClass.profile_name"
-            class="text-sm text-muted-foreground"
-        >
-            Avaliada por:
-            <span class="font-medium text-foreground">{{
-                schoolClass.profile_name
-            }}</span>
-        </p>
+        <div v-if="schoolClass.profile_name" class="space-y-3">
+            <p class="text-sm text-muted-foreground">
+                Avaliada por:
+                <span class="font-medium text-foreground">{{
+                    schoolClass.profile_name
+                }}</span>
+                <template v-if="schoolClass.profile">
+                    · versão {{ schoolClass.profile.version_number
+                    }}<template v-if="schoolClass.profile.scale_name">
+                        · {{ schoolClass.profile.scale_name }}</template
+                    >
+                </template>
+            </p>
+            <div
+                v-if="schoolClass.profile_update"
+                data-testid="profile-update"
+                class="flex flex-col gap-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+            >
+                <p class="text-muted-foreground">
+                    Existe uma versão mais recente deste perfil: versão
+                    {{ schoolClass.profile_update.version_number
+                    }}<template v-if="schoolClass.profile_update.scale_name"
+                        >, {{ schoolClass.profile_update.scale_name }}</template
+                    >. A turma continua na versão
+                    {{ schoolClass.profile?.version_number }} até rever e
+                    aplicar as alterações.
+                </p>
+                <Button
+                    as-child
+                    variant="outline"
+                    class="min-h-11 shrink-0"
+                >
+                    <Link :href="schoolClass.profile_update.review_url"
+                        >Rever e aplicar alterações</Link
+                    >
+                </Button>
+            </div>
+        </div>
         <div
             v-else
             class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"

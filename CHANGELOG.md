@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.166.0] — 2026-10-15
+
+> **Rever e aplicar uma versão nova do perfil, e acesso técnico bem atribuído.**
+> A página da turma diz em que versão e em que escala a turma é avaliada e, se o
+> perfil já tem uma versão ativa mais recente, leva à pré-visualização da
+> migração. Há uma migration nova (`on_behalf_of_user_id`); nada é reatribuído
+> nos registos antigos.
+
+### Adicionado
+
+- **A página da turma mostra o perfil, a versão e a escala.** «Avaliada por:
+  Nome · versão N · Escala», sempre a versão da turma e não a mais recente do
+  perfil.
+- **«Rever e aplicar alterações».** Quando o perfil tem uma versão ativa mais
+  recente do que a da turma e quem vê pode alterar a turma, aparece um aviso
+  discreto («A turma continua na versão N até rever e aplicar as alterações») e
+  um botão que abre a pré-visualização existente. Nada é migrado no ecrã da
+  turma: o motivo e a confirmação continuam a ser os da pré-visualização.
+- **Depois de confirmar, a mensagem diz o que ficou aplicado:** perfil, versão,
+  escala e quantos alunos têm a proposta alterada.
+- **«Minha atividade» mostra o que o suporte técnico fez em seu nome**, como
+  «Suporte técnico Lapispro» e «Feito pelo suporte técnico, em seu nome». Nunca
+  aparece o nome, o email ou o identificador do administrador.
+
+### Corrigido
+
+- **Durante o acesso técnico, uma ação auditada com o utilizador como autor
+  explícito ficava em nome do professor.** O registo de auditoria trata agora
+  esse caso como os restantes (ADR-0014): autor = administrador e
+  `acting_as_user_id` = professor representado.
+- **A migração de perfil feita em acesso técnico fica atribuída a quem a fez.**
+  `class_profile_migrations.confirmed_by` é o administrador e a coluna nova
+  `on_behalf_of_user_id` é o professor representado (vazia quando confirma o
+  próprio). A titularidade não muda.
+- **Os eventos e migrações anteriores não são reatribuídos:** ficam como estão.
+- Migration nova: `2026_11_20_000100_add_on_behalf_of_user_id_to_class_profile_migrations_table`
+  (reversível).
 ## [0.165.1] — 2026-10-14
 
 > **Correção.** Numa turma avaliada em «Percentagem (0 a 100)», os seletores
