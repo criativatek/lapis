@@ -248,7 +248,7 @@ const title = computed(() =>
                     </p>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div class="grid items-start gap-3 sm:grid-cols-3">
                     <div class="grid gap-1.5">
                         <Label for="timetable-slot-day">Dia</Label>
                         <NativeSelect
@@ -287,7 +287,7 @@ const title = computed(() =>
                     </div>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid items-start gap-3 sm:grid-cols-2">
                     <div class="grid gap-1.5">
                         <Label for="timetable-slot-starts-on"
                             >Válido desde

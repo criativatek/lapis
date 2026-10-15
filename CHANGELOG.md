@@ -66,6 +66,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Alterado
 
+- **Editar um tempo no lugar corrige também as aulas vazias já geradas.** Sem
+  histórico relevante a edição é retroativa; por isso, ao mudar o dia ou as
+  horas, as preparações vazias que ficaram desencontradas do tempo novo saem e a
+  turma é renumerada — a vista semanal volta a gerá-las à hora certa. Antes, a
+  aula antiga ficava ao lado da nova (ou impedia a nova de nascer). Uma aula com
+  qualquer conteúdo (sumário, plano, resultado, assiduidade, rascunho incluído)
+  nunca é tocada; com histórico, a alteração continua a versionar.
 - **Depois de confirmar uma importação de horário**, o professor é levado ao
   Horário do Professor (e não à lista de turmas), com um aviso a convidar a rever
   e corrigir.

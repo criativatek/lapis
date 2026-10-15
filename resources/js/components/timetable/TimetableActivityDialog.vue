@@ -133,7 +133,7 @@ const title = computed(() =>
             </DialogHeader>
 
             <form class="space-y-3" @submit.prevent="submit">
-                <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid items-start gap-3 sm:grid-cols-2">
                     <div class="grid gap-1.5">
                         <Label for="timetable-activity-kind">Tipo</Label>
                         <NativeSelect
@@ -186,7 +186,7 @@ const title = computed(() =>
                     <InputError :message="form.errors.class_ulid" />
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div class="grid items-start gap-3 sm:grid-cols-3">
                     <div class="grid gap-1.5">
                         <Label for="timetable-activity-day">Dia</Label>
                         <NativeSelect
@@ -225,7 +225,7 @@ const title = computed(() =>
                     </div>
                 </div>
 
-                <div class="grid gap-3 sm:grid-cols-2">
+                <div class="grid items-start gap-3 sm:grid-cols-2">
                     <div class="grid gap-1.5">
                         <Label for="timetable-activity-starts-on"
                             >Válido desde
