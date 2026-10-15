@@ -277,12 +277,19 @@ class InstrumentController extends Controller
             ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id],
         );
 
-        $prepared = $instrument->status === InstrumentStatus::Prepared;
-        Inertia::flash('toast', ['type' => 'success', 'message' => $prepared
-            ? 'Grelha de correção preparada para lançar resultados.'
-            : 'Grelha guardada. Pode continuar a preparação mais tarde.']);
+        // Only a draft is still being prepared, so only a draft goes back to the
+        // editor with «continue later». Prepared, or already in use (in
+        // correction, concluded…): the teacher edited a live element and goes
+        // back to its grid, with a message that does not talk about preparation.
+        Inertia::flash('toast', ['type' => 'success', 'message' => match ($instrument->status) {
+            InstrumentStatus::Draft => 'Grelha guardada. Pode continuar a preparação mais tarde.',
+            InstrumentStatus::Prepared => 'Grelha de correção preparada para lançar resultados.',
+            default => 'Alterações guardadas.',
+        }]);
 
-        return $prepared ? to_route('instruments.show', $instrument->ulid) : to_route('instruments.edit', $instrument->ulid);
+        return $instrument->status === InstrumentStatus::Draft
+            ? to_route('instruments.edit', $instrument->ulid)
+            : to_route('instruments.show', $instrument->ulid);
     }
 
     /**

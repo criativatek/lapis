@@ -214,4 +214,61 @@ class InstrumentEditTest extends TestCase
             ->put("/instruments/{$instrument->ulid}", ['items' => []])
             ->assertForbidden();
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function updatePayload(Instrument $instrument): array
+    {
+        return [
+            'title' => 'Teste renomeado',
+            'academic_period_id' => $instrument->academic_period_id,
+            'instrument_type_id' => $instrument->instrument_type_id,
+            'applied_on' => $instrument->applied_on->toDateString(),
+            'submission_intent' => 'prepare',
+            'purpose' => $instrument->purpose,
+            'counts_toward_classification' => true,
+            'total_points' => 100,
+            'allow_bonus' => false,
+            'items' => $instrument->items()->orderBy('sequence')->get()->map(fn ($item) => [
+                'ulid' => $item->ulid,
+                'code' => $item->code,
+                'points_possible' => (float) $item->points_possible,
+            ])->all(),
+        ];
+    }
+
+    #[Test]
+    public function saving_an_element_already_in_use_returns_to_its_grid_without_talking_about_preparation(): void
+    {
+        foreach (['in_correction', 'completed'] as $status) {
+            $this->inTenant(function () use ($status): void {
+                ['instrument' => $instrument] = $this->scenario();
+                $instrument->update(['status' => $status]);
+
+                $this->actingAs($this->user)
+                    ->put("/instruments/{$instrument->ulid}", $this->updatePayload($instrument))
+                    ->assertRedirect(route('instruments.show', $instrument->ulid));
+
+                $this->assertSame('Teste renomeado', $instrument->refresh()->title);
+                $this->assertSame($status, $instrument->status->value);
+            });
+        }
+    }
+
+    #[Test]
+    public function saving_a_draft_still_returns_to_the_editor_to_continue_later(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument] = $this->scenario();
+            $instrument->update(['status' => 'draft']);
+
+            $payload = $this->updatePayload($instrument);
+            $payload['submission_intent'] = 'save';
+
+            $this->actingAs($this->user)
+                ->put("/instruments/{$instrument->ulid}", $payload)
+                ->assertRedirect(route('instruments.edit', $instrument->ulid));
+        });
+    }
 }

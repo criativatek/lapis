@@ -6,6 +6,7 @@ import Heading from '@/components/Heading.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { percentFor, qualitativeLabelFor } from '@/lib/instrumentQualitativeRating';
 
 type InstrumentHeader = {
@@ -17,6 +18,7 @@ type InstrumentHeader = {
     purpose_label: string;
     counts_toward_classification: boolean;
     state_label: string;
+    status: string;
 };
 
 type Summary = { applicable: number; completed: number; pending: number; absent: number; under_review: number };
@@ -119,6 +121,20 @@ const stateBadgeClass: Record<string, string> = {
             <span>·</span>
             <span>Contabiliza para classificação: {{ instrument.counts_toward_classification ? 'Sim' : 'Não' }}</span>
             <Badge variant="secondary">{{ instrument.state_label }}</Badge>
+        </div>
+
+        <!--
+            As ações do elemento vivem no cabeçalho, e não só nas linhas dos
+            alunos: com zero alunos aplicáveis a tabela nem existe, e a única
+            saída para a grelha (e para a edição do nome) desaparecia com ela.
+        -->
+        <div class="flex flex-wrap items-center gap-2">
+            <Button as-child size="sm">
+                <Link :href="`/instruments/${instrument.ulid}?from=assessments`">Abrir grelha de correção</Link>
+            </Button>
+            <Button v-if="instrument.status !== 'cancelled'" as-child variant="outline" size="sm">
+                <Link :href="`/instruments/${instrument.ulid}/edit`">Editar elemento de avaliação</Link>
+            </Button>
         </div>
 
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">

@@ -200,7 +200,7 @@ class InstrumentDiagnosticEligibilityHttpTest extends TestCase
                         ['ulid' => $q2->ulid, 'code' => 'Q2', 'points_possible' => 40],
                     ],
                 ])
-                ->assertRedirect(route('instruments.edit', $instrument->ulid));
+                ->assertRedirect(route('instruments.show', $instrument->ulid));
 
             $fresh = $instrument->fresh();
             $this->assertSame('diagnostic', $fresh->purpose);

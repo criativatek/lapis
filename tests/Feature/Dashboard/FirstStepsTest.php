@@ -62,8 +62,8 @@ class FirstStepsTest extends TestCase
                 ->where('firstSteps.all_done', false)
                 ->where('firstSteps.items.0.id', 'class')
                 ->where('firstSteps.items.0.completed', false)
-                ->where('firstSteps.items.0.cta.label', 'Criar turma')
-                ->where('firstSteps.items.0.cta.href', route('classes.create'))
+                ->where('firstSteps.items.0.cta.label', 'Criar ano letivo')
+                ->where('firstSteps.items.0.cta.href', route('academic-years.create'))
                 ->where('firstSteps.items.1.id', 'student')
                 ->where('firstSteps.items.1.completed', false)
                 ->where('firstSteps.items.1.cta', null)
@@ -74,6 +74,57 @@ class FirstStepsTest extends TestCase
                 ->where('firstSteps.items.3.completed', false)
                 ->where('firstSteps.items.3.cta', null),
         );
+    }
+
+    #[Test]
+    public function the_class_step_points_to_the_subjects_when_there_is_a_year_but_no_subject(): void
+    {
+        $this->inTenant(fn () => AcademicYear::factory()->recycle($this->organization)->create());
+
+        $this->actingAs($this->teacher)->get(route('dashboard'))->assertInertia(
+            fn (Assert $page) => $page
+                ->where('firstSteps.items.0.completed', false)
+                ->where('firstSteps.items.0.cta.label', 'Adicionar disciplina')
+                ->where('firstSteps.items.0.cta.href', route('subjects.index')),
+        );
+    }
+
+    #[Test]
+    public function the_class_step_offers_creating_the_class_once_year_and_subject_exist(): void
+    {
+        $this->inTenant(function (): void {
+            AcademicYear::factory()->recycle($this->organization)->create();
+            Subject::factory()->recycle($this->organization)->create();
+        });
+
+        $this->actingAs($this->teacher)->get(route('dashboard'))->assertInertia(
+            fn (Assert $page) => $page
+                ->where('firstSteps.items.0.cta.label', 'Criar turma')
+                ->where('firstSteps.items.0.cta.href', route('classes.create')),
+        );
+    }
+
+    #[Test]
+    public function a_member_who_is_not_the_owner_is_told_to_ask_instead_of_getting_a_button(): void
+    {
+        $colleague = User::factory()->create();
+        $this->organization->members()->attach($colleague, ['joined_at' => now()]);
+
+        $this->withSession(['organization_id' => $this->organization->id])
+            ->actingAs($colleague)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('firstSteps.items.0.cta', null)
+                ->where('firstSteps.items.0.description', 'Ainda não existe um ano letivo. Peça ao responsável da organização que o crie.'));
+
+        $this->inTenant(fn () => AcademicYear::factory()->recycle($this->organization)->create());
+
+        $this->withSession(['organization_id' => $this->organization->id])
+            ->actingAs($colleague)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('firstSteps.items.0.cta', null)
+                ->where('firstSteps.items.0.description', 'Ainda não existem disciplinas. Peça ao responsável da organização que as adicione.'));
     }
 
     #[Test]
