@@ -24,6 +24,7 @@ use App\Models\User;
 use App\Rules\BelongsToCurrentOrganization;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Audit\AuditLog;
+use App\Services\Classes\ClassProfileUpdateOffer;
 use App\Services\Classes\ClassRoster;
 use App\Services\Classes\ReusableStudents;
 use App\Services\Classes\SchoolClassHistory;
@@ -51,6 +52,7 @@ class ClassController extends Controller
         protected CurrentOrganization $currentOrganization,
         protected ArchiveSchoolClass $archiveSchoolClass,
         protected AuditLog $audit,
+        protected ClassProfileUpdateOffer $profileUpdateOffer,
     ) {}
 
     public function index(): Response
@@ -789,38 +791,13 @@ class ClassController extends Controller
     }
 
     /**
-     * A oferta de «Rever e aplicar alterações»: só numa turma não arquivada,
-     * quando o perfil tem uma versão corrente ativa, mais recente do que a da
-     * turma, e quem vê pode alterar a turma. Não migra nada — leva à pré-visualização existente, que traz as
-     * validações e a confirmação com motivo.
+     * A oferta de «Rever e aplicar alterações» — as regras vivem em
+     * ClassProfileUpdateOffer, partilhadas com a autoavaliação.
      *
      * @return array{version_number: int, scale_name: string|null, review_url: string}|null
      */
     protected function profileUpdateOffer(SchoolClass $class): ?array
     {
-        $classVersion = $class->profileVersion;
-        $profile = $classVersion?->profile;
-
-        // Uma turma arquivada é histórico: a versão com que foi avaliada fica como
-        // estava, e nada no ecrã convida a mudá-la.
-        if ($class->isArchived() || $classVersion === null || $profile === null || $profile->current_version_id === null
-            || $profile->current_version_id === $classVersion->id
-            || ! Gate::allows('update', $class)) {
-            return null;
-        }
-
-        $current = $profile->currentVersion()->with('scale')->first();
-
-        if ($current === null
-            || $current->status !== ProfileVersionStatus::Active
-            || $current->version_number <= $classVersion->version_number) {
-            return null;
-        }
-
-        return [
-            'version_number' => $current->version_number,
-            'scale_name' => $current->scale?->name,
-            'review_url' => route('classes.profile-migration.create', ['class' => $class->ulid, 'to' => $current->ulid], false),
-        ];
+        return $this->profileUpdateOffer->for($class);
     }
 }

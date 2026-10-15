@@ -67,6 +67,14 @@ class SelfAssessment extends Model
     }
 
     /**
+     * @return BelongsTo<SelfAssessmentTemplate, $this>
+     */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(SelfAssessmentTemplate::class, 'self_assessment_template_id');
+    }
+
+    /**
      * @return HasMany<SelfAssessmentResponse, $this>
      */
     public function responses(): HasMany

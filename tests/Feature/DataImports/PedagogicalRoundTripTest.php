@@ -97,6 +97,52 @@ class PedagogicalRoundTripTest extends TestCase
     }
 
     #[Test]
+    public function a_number_answered_on_a_scale_without_levels_comes_back_as_the_same_number(): void
+    {
+        $class = $this->scenario('complete', includePedagogicalRecords: true);
+        $originProgression = $this->progression($class);
+
+        $origin = collect($originProgression['students'])->firstWhere('name', 'Bruno Completo')['periods'][0]['domains'][1]['self_assessment'];
+        $this->assertSame('16,5', $origin['code']);
+        $this->assertSame('16,5 numa escala de 0 a 20', $origin['label']);
+
+        $restoredProgression = $this->roundTrip($class);
+
+        $this->inTenant(function (): void {
+            $numeric = SelfAssessmentResponse::whereNotNull('numeric_value')->sole();
+
+            $this->assertSame('16.500', $numeric->numeric_value);
+            $this->assertNull($numeric->scale_level_id);
+            $this->assertNull($numeric->text_value);
+
+            // The level answers of the same backup stay level answers.
+            $this->assertSame(2, SelfAssessmentResponse::whereNotNull('scale_level_id')->whereNull('numeric_value')->count());
+        });
+
+        $restored = collect($restoredProgression['students'])->firstWhere('name', 'Bruno Completo')['periods'][0]['domains'][1]['self_assessment'];
+        $this->assertSame($origin, $restored);
+    }
+
+    #[Test]
+    public function a_number_outside_the_scale_of_its_question_is_not_restored(): void
+    {
+        $class = $this->scenario('complete', includePedagogicalRecords: true);
+
+        // Written straight to the table — the form never would: 25 on a 0–20
+        // question. The backup carries it, and the restore does not write it.
+        $this->inTenant(fn () => SelfAssessmentResponse::whereNotNull('numeric_value')->sole()->forceFill(['numeric_value' => '25'])->save());
+
+        $this->roundTrip($class);
+
+        $this->inTenant(function (): void {
+            $this->assertSame(0, SelfAssessmentResponse::whereNotNull('numeric_value')->count());
+
+            // Everything else of the same backup is restored as it was.
+            $this->assertSame(2, SelfAssessmentResponse::whereNotNull('scale_level_id')->whereNull('numeric_value')->count());
+        });
+    }
+
+    #[Test]
     public function partial_coverage_keeps_a_derived_non_zero_result_after_round_trip(): void
     {
         $class = $this->scenario('partial');
@@ -303,6 +349,31 @@ class PedagogicalRoundTripTest extends TestCase
                 'scale_level_id' => $level->id,
             ]);
         }
+
+        // A number written on a scale WITHOUT levels (schema v16): another
+        // student answers the second domain on «Escala 0 a 20» — a value, not a
+        // level, and with no level to point at.
+        $numericQuestion = SelfAssessmentQuestion::create([
+            'self_assessment_template_id' => $template->id,
+            'domain_id' => $domains[1]->id,
+            'prompt' => 'Que classificação te darias em raciocínio?',
+            'answer_kind' => 'scale',
+            'scale_id' => Scale::where('name', 'Escala 0 a 20')->firstOrFail()->id,
+            'sequence' => 3,
+        ]);
+        $numericSelfAssessment = SelfAssessment::create([
+            'enrollment_id' => $enrollments[1]->id,
+            'academic_period_id' => $period->id,
+            'self_assessment_template_id' => $template->id,
+            'status' => SelfAssessmentStatus::Submitted,
+            'filled_by' => SelfAssessmentFilledBy::TeacherInterview,
+            'submitted_at' => '2025-12-11 10:00:00',
+        ]);
+        SelfAssessmentResponse::create([
+            'self_assessment_id' => $numericSelfAssessment->id,
+            'self_assessment_question_id' => $numericQuestion->id,
+            'numeric_value' => '16.5',
+        ]);
 
         Classification::create([
             'enrollment_id' => $enrollments[0]->id,

@@ -206,8 +206,8 @@ class ResultsAnalysisNotesPortabilityTest extends TestCase
 
         // Schema v14 added the class notebook on top; the v13 collection and
         // its documented shape are exactly what they were.
-        $this->assertSame(15, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(15, $backup['schema_version']);
+        $this->assertSame(16, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(16, $backup['schema_version']);
         $this->assertContains('results_analysis_notes', $backup['capabilities']);
         $this->assertNotEmpty($backup['results_analysis_notes']);
 

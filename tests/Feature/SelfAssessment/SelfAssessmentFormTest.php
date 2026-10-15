@@ -9,6 +9,7 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentQuestionRole;
+use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentTemplate;
 use App\Models\User;
 use App\Services\Assessment\SelfAssessmentTemplateProvider;
@@ -371,12 +372,16 @@ class SelfAssessmentFormTest extends TestCase
             return $elsewhere->levels()->create(['code' => 'X', 'label' => 'De outra escala', 'sequence' => 1])->id;
         });
 
+        // Refused out loud — it used to be skipped in silence, which left a
+        // form that looked saved and was not — and nothing is saved: not the
+        // answer, and not the self-assessment that would have held it.
         $this->actingAs($this->teacher())
             ->post("/classes/{$classUlid}/self-assessments/{$periodUlid}/{$enrollmentUlid}", ['answers' => [$global->id => $foreign]])
-            ->assertRedirect();
+            ->assertSessionHasErrors("answers.{$global->id}");
 
         app(CurrentOrganization::class)->runFor($this->teacher()->personalOrganization(), function (): void {
-            $this->assertSame(0, SelfAssessment::firstOrFail()->responses()->count());
+            $this->assertSame(0, SelfAssessment::count());
+            $this->assertSame(0, SelfAssessmentResponse::count());
         });
     }
 

@@ -39,7 +39,8 @@ use Tests\TestCase;
  * later edited to «Escala 1 a 5» and the new version activated. The editor
  * shows 1–5; the class is still on the percentage version, because activating
  * a version never moves a class (§10.2). A percentage has no levels to choose
- * from, and the form used to offer a select holding nothing but «—».
+ * from, and the form used to offer a select holding nothing but «—». It is now
+ * answered with a number between the scale's own limits (SelfAssessmentAnswerScale).
  */
 class SelfAssessmentScaleOfTheClassTest extends TestCase
 {
@@ -185,7 +186,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
     }
 
     #[Test]
-    public function a_question_on_a_scale_without_levels_says_so_instead_of_offering_an_empty_choice(): void
+    public function a_question_on_a_scale_without_levels_is_answered_with_a_number_instead_of_an_empty_choice(): void
     {
         $props = $this->formPage();
         $questions = $this->scaleQuestions($props);
@@ -196,24 +197,27 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         foreach ($questions as $question) {
             // Nothing to choose from, and nothing invented to fill the gap.
             $this->assertSame([], $question['levels']);
-            // The form names the scale, so the empty list is explained rather
-            // than looking like a fault.
+            // The form names the scale, and says HOW it is answered: a number,
+            // never a select.
             $this->assertSame('Percentagem (0 a 100)', $question['scale']);
+            $this->assertSame('number', $question['answer']['mode']);
+            $this->assertSame('%', $question['answer']['unit']);
+            $this->assertSame('Escreve uma percentagem de 0 a 100, sem casas decimais.', $question['answer']['instruction']);
         }
 
         // And the teacher is told which version and which scale the class is
-        // actually assessed on — and that the profile has moved on since.
-        $this->assertSame([
-            'profile' => 'Avaliação final',
-            'version' => 1,
-            'scale' => 'Percentagem (0 a 100)',
-            'scale_has_levels' => false,
-            'current_version' => 2,
-        ], $props['assessedBy']);
+        // actually assessed by — and that the profile has moved on since.
+        $configuration = $props['configuration'];
+        $this->assertSame('Avaliação final', $configuration['profile']);
+        $this->assertSame(1, $configuration['version']);
+        $this->assertSame('Percentagem (0 a 100)', $configuration['scale']);
+        $this->assertSame('current', $configuration['state']);
+        $this->assertSame(2, $configuration['review']['version']);
+        $this->assertSame('Escala 1 a 5', $configuration['review']['scale']);
     }
 
     #[Test]
-    public function a_level_of_another_scale_is_not_accepted_on_a_scale_without_levels(): void
+    public function a_level_is_not_accepted_on_a_scale_that_is_answered_with_a_number(): void
     {
         $props = $this->formPage();
         $global = $this->firstWhere($this->scaleQuestions($props), 'role', 'global');
@@ -222,16 +226,16 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         $four = $this->inTenant(fn (): int => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->levels()->where('code', '4')->firstOrFail()->id);
 
         $this->actingAs($this->teacher)
+            ->from($this->formUrl())
             ->post($this->formUrl(), ['answers' => [$global['id'] => $four], 'texts' => []])
-            ->assertRedirect();
+            ->assertRedirect($this->formUrl())
+            ->assertSessionHasErrors("answers.{$global['id']}");
 
-        // A 4 «on a percentage» is not a value the class's scale has; the
-        // answer is not stored as one.
-        $this->inTenant(function () use ($global): void {
-            $this->assertFalse(SelfAssessmentResponse::query()
-                ->where('self_assessment_question_id', $global['id'])
-                ->whereNotNull('scale_level_id')
-                ->exists());
+        // A 4 «on a percentage» is not a value the class's scale has. It used to
+        // be skipped in silence; now it is refused, and nothing at all is saved.
+        $this->inTenant(function (): void {
+            $this->assertSame(0, SelfAssessmentResponse::count());
+            $this->assertSame(0, SelfAssessment::count());
         });
     }
 
@@ -413,9 +417,13 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $this->assertSame('Percentagem (0 a 100)', $question['scale']);
         }
 
-        // The class is on 1–5 now; the questions say why they are not.
-        $this->assertSame('Escala 1 a 5', $after['assessedBy']['scale']);
-        $this->assertTrue($after['assessedBy']['scale_has_levels']);
+        // The class is on 1–5 now; the teacher is told the form still asks the
+        // way it was answered, and what the class uses today.
+        $configuration = $after['configuration'];
+        $this->assertSame('Percentagem (0 a 100)', $configuration['scale']);
+        $this->assertSame('previous', $configuration['state']);
+        $this->assertSame('Escala 1 a 5', $configuration['class_criteria']['scale']);
+        $this->assertSame(1, $configuration['saved_count']);
         $this->inTenant(fn () => $this->assertSame(1, SelfAssessmentTemplate::where('class_id', $this->class->id)->count()));
     }
 
@@ -436,8 +444,13 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         $this->assertSame('Percentagem (0 a 100)', $this->scaleQuestions($before)[0]['scale']);
         // How the class is configured is the teacher's business.
         $this->assertArrayNotHasKey('assessedBy', $before);
+        $this->assertArrayNotHasKey('configuration', $before);
+        $this->assertArrayNotHasKey('earlierRounds', $before);
 
-        $this->migrateToTheLevelVersion();
+        // The class moves to another version OUTSIDE the migration flow (which
+        // would follow it at once, in the teacher's name): the next visit — the
+        // student's — is what derives the new template.
+        $this->inTenant(fn () => SchoolClass::whereKey($this->class->id)->firstOrFail()->update(['assessment_profile_version_id' => $this->levelVersion->id]));
 
         /** @var array<string, mixed> $after */
         $after = $this->get($url)->assertOk()->viewData('page')['props'];
@@ -487,7 +500,7 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
         $page = $response->viewData('page');
 
         $this->assertSame($normal['questions'], $page['props']['questions']);
-        $this->assertSame($normal['assessedBy'], $page['props']['assessedBy']);
+        $this->assertSame($normal['configuration'], $page['props']['configuration']);
         $this->inTenant(fn () => $this->assertSame(1, SelfAssessmentTemplate::where('class_id', $this->class->id)->count()));
     }
 
@@ -507,8 +520,9 @@ class SelfAssessmentScaleOfTheClassTest extends TestCase
             $this->assertCount(5, $question['levels']);
         }
 
-        $this->assertTrue($second['assessedBy']['scale_has_levels']);
-        $this->assertNull($second['assessedBy']['current_version'], 'a turma já está na versão ativa do perfil');
+        $this->assertSame('levels', $second['configuration']['answer']['mode']);
+        $this->assertSame('current', $second['configuration']['state']);
+        $this->assertNull($second['configuration']['review'], 'a turma já está na versão ativa do perfil');
         $this->inTenant(fn () => $this->assertSame(1, SelfAssessmentTemplate::where('class_id', $this->class->id)->count()));
     }
 }

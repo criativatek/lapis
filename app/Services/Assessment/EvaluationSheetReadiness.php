@@ -528,6 +528,9 @@ class EvaluationSheetReadiness
         return SelfAssessment::query()
             ->where('academic_period_id', $period->getKey())
             ->whereIn('enrollment_id', $enrollmentIds)
+            // Oldest template first: the newest one prevails in keyBy().
+            ->orderBy('self_assessment_template_id')
+            ->orderBy('id')
             ->get()
             ->keyBy('enrollment_id');
     }

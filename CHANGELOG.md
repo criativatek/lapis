@@ -25,6 +25,80 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.167.0] — 2026-10-15
+
+> **A autoavaliação herda os critérios da turma.** Os domínios, as ponderações e
+> a escala vêm da versão do perfil aplicada à turma, mostram-se ao professor e ao
+> aluno e não se editam na autoavaliação. Em escalas sem níveis (0 a 20,
+> percentagem, escalas próprias) responde-se com um número, validado também no
+> servidor. Quando os critérios da turma mudam e já há respostas, as respostas
+> ficam com os critérios em que foram dadas e o professor pode iniciar uma nova
+> autoavaliação com os critérios atuais. Há uma migration nova
+> (`self_assessment_responses.numeric_value`) e o backup passa a `schema_version`
+> 16.
+
+### Adicionado
+
+- **Critérios herdados, ditos por extenso.** Na lista e na ficha da
+  autoavaliação: «Esta autoavaliação utiliza os critérios de avaliação da turma:
+  Perfil · versão N · Escala», com os domínios e as ponderações. Para os
+  alterar, a página da turma e «Rever e aplicar alterações» — não há um segundo
+  fluxo de migração.
+- **O aluno vê como é avaliado:** os domínios com as ponderações, a escala da
+  turma e, em cada pergunta, como responder («Escolhe um nível de 1 (Fraco) a 5
+  (Muito Bom).», «Escreve um valor de 0 a 20, sem casas decimais.»). Sem perfil,
+  versão nem termos técnicos.
+- **Resposta numérica** em escalas de intervalo, com os limites da escala e a
+  precisão da versão do perfil (`rounding_scale`); aceita vírgula decimal. Uma
+  resposta fora dos limites ou com casas a mais é recusada no servidor, pela
+  sessão do professor e pela ligação assinada do aluno, e nada é guardado.
+- **«Iniciar nova autoavaliação com os critérios atuais»**, só quando a turma
+  mudou de versão e a autoavaliação já tem respostas. O modelo anterior é
+  retirado, nunca apagado; respostas e critérios ficam como estavam e continuam
+  visíveis ao professor («Autoavaliação anterior deste período»).
+- **Personalizar as perguntas de reflexão** na lista da turma — só as escritas,
+  e só enquanto nenhum aluno lhes respondeu. A redação personalizada passa para
+  a autoavaliação seguinte. Auditado (`self_assessment.questions_reworded`).
+- **A pré-visualização da alteração do perfil explica o efeito na
+  autoavaliação:** ainda não aberta, acompanha a nova versão (sem respostas), ou
+  fica com os critérios anteriores (com respostas, quantas e de que períodos).
+
+### Alterado
+
+- **A pergunta global é a apreciação do aluno**, dita como tal no formulário;
+  não há, nem passa a haver, um resultado global calculado da autoavaliação.
+- **Um modelo sem respostas acompanha a turma no momento da migração**, auditado
+  em nome de quem a confirmou (e do professor representado, em acesso técnico),
+  em vez de esperar pela próxima visita.
+- **Duas autoavaliações do mesmo aluno no mesmo período** (uma anterior, uma
+  nova): Resultados, Pauta, Quadro Síntese, Classificações e Relatórios leem a
+  mais recente; a anterior aparece quando não há outra.
+- **«Acima»/«abaixo» só entre bandas da mesma escala** no progresso do aluno e
+  no relatório.
+- Um nível de outra escala deixa de ser ignorado em silêncio: o formulário é
+  recusado com a indicação da pergunta.
+
+### Corrigido
+
+- **Uma escala sem níveis já não deixa a autoavaliação por responder.** Uma
+  turma em percentagem ou em 0 a 20 responde com um número; uma escala sem
+  níveis nem limites válidos diz ao professor o que está mal e como resolver.
+- **A ficha de autoavaliação do professor aceitava um aluno de outra turma** da
+  mesma conta, pelo identificador no endereço; passa a responder 404 e nada é
+  gravado.
+- **Um modelo antigo (anterior às perguntas de reflexão) com respostas** era
+  completado na escala nova da turma depois de uma migração; passa a sê-lo na
+  sua própria escala.
+- **Um formulário aberto antes de uma pergunta de reflexão ser reescrita** é
+  recusado por inteiro, em vez de guardar a resposta sob a redação nova.
+
+### Dados
+
+- Migration nova: `2026_11_21_000100_add_numeric_value_to_self_assessment_responses_table`
+  (`DECIMAL(6,3) NULL`, reversível). Nenhum dado existente é alterado.
+- Backup `schema_version` 16: `self_assessment_responses[].numeric_value`
+  (ausente num backup ≤ 15, lido como vazio).
+
 ## [0.166.0] — 2026-10-15
 
 > **Rever e aplicar uma versão nova do perfil, e acesso técnico bem atribuído.**

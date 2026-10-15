@@ -8,6 +8,7 @@ use App\Models\SelfAssessment;
 use App\Models\SelfAssessmentQuestionRole;
 use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentStatus;
+use App\Support\Assessment\SelfAssessmentAnswerScale;
 use Illuminate\Support\Collection;
 
 /**
@@ -64,7 +65,14 @@ class SelfAssessmentReading
             ->where('academic_period_id', $period->getKey())
             ->whereIn('enrollment_id', $attendingIds)
             ->whereIn('status', [SelfAssessmentStatus::Submitted, SelfAssessmentStatus::Reviewed])
-            ->with(['responses.question', 'responses.scaleLevel'])
+            ->with(['responses.question.scale', 'responses.scaleLevel.scale'])
+            // Oldest template first: a student may have one self-assessment for
+            // the period under earlier criteria and another under the current
+            // ones, and keyBy() keeps the last — the newer template's. The
+            // earlier one is shown when there is no newer one, never hidden
+            // and never converted.
+            ->orderBy('self_assessment_template_id')
+            ->orderBy('id')
             ->get()
             ->keyBy('enrollment_id');
     }
@@ -126,17 +134,37 @@ class SelfAssessmentReading
      * nunca no lugar dele; `sequence` e `is_negative` são o que permite a um
      * ecrã dar-lhe cor sem ler o rótulo (§7).
      *
+     * Uma resposta numérica (escala 0 a 20, percentagem, escala própria) lê-se
+     * pelo mesmo caminho, mas SEM `sequence`: um intervalo não tem banda, e os
+     * ecrãs que comparam só o fazem quando os dois lados têm `sequence`.
+     *
      * @return array<string, mixed>|null
      */
     protected function level(SelfAssessmentResponse $response): ?array
     {
         $level = $response->scaleLevel;
 
-        return $level === null ? null : [
-            'code' => (string) $level->code,
-            'label' => (string) $level->label,
-            'sequence' => (int) $level->sequence,
-            'is_negative' => (bool) $level->is_negative,
+        if ($level !== null) {
+            return [
+                'code' => (string) $level->code,
+                'label' => (string) $level->label,
+                'sequence' => (int) $level->sequence,
+                'is_negative' => (bool) $level->is_negative,
+                'scale' => $level->scale?->name,
+                // Which scale the answer was given on — an answer kept from
+                // earlier criteria may be on another scale than the class's
+                // decision, and two sequences only compare on the same one.
+                'scale_id' => (int) $level->scale_id,
+            ];
+        }
+
+        if ($response->numeric_value === null) {
+            return null;
+        }
+
+        return [
+            ...SelfAssessmentAnswerScale::for($response->question?->scale, 0)->readable((string) $response->numeric_value),
+            'scale_id' => $response->question?->scale_id,
         ];
     }
 }

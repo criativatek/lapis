@@ -69,6 +69,12 @@ class StudentSelfAssessmentComposer implements SectionComposer
             return null;
         }
 
+        // …and the SAME scale: a self-assessment kept from earlier criteria may
+        // have been given on another one, and a 4 there is not a 4 here.
+        if (isset($self['scale_id'], $assigned['scale_id']) && (int) $self['scale_id'] !== (int) $assigned['scale_id']) {
+            return null;
+        }
+
         $grade = (string) ($assigned['code'] ?? $assigned['label'] ?? '');
 
         return Phrase::sentence(

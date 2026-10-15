@@ -7,6 +7,7 @@ use App\Models\Enrollment;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessmentFilledBy;
 use App\Services\Assessment\SelfAssessmentRecorder;
+use App\Services\Assessment\SelfAssessmentTemplateProvider;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
@@ -24,13 +25,22 @@ use Inertia\Response;
  */
 class PublicSelfAssessmentController extends Controller
 {
-    public function __construct(protected SelfAssessmentRecorder $recorder) {}
+    public function __construct(protected SelfAssessmentRecorder $recorder, protected SelfAssessmentTemplateProvider $templates) {}
 
     public function edit(Request $request, string $classUlid, string $periodUlid, string $enrollmentUlid): Response
     {
         return $this->withResolvedContext($classUlid, $periodUlid, $enrollmentUlid, function ($class, $period, $enrollment) use ($request) {
+            $form = $this->recorder->formProps($class, $period, $enrollment);
+            $template = $this->templates->forClass($class);
+
+            // What an earlier round HELD is the teacher's to read; the student is
+            // told only that there is one.
+            $hasEarlierRound = $this->recorder->hasEarlierRound($class, $period, $enrollment, $template);
+            unset($form['earlierRounds']);
+
             return Inertia::render('self-assessments/PublicEdit', [
-                ...$this->recorder->formProps($class, $period, $enrollment),
+                ...$form,
+                'hasEarlierRound' => $hasEarlierRound,
                 // The exact signed URL (path + expires + signature) the form
                 // posts back to — a signature covers the path and query
                 // string, not the verb, so re-submitting it as a POST is
@@ -47,6 +57,10 @@ class PublicSelfAssessmentController extends Controller
             'answers.*' => ['nullable', 'integer'],
             'texts' => ['array'],
             'texts.*' => ['nullable', 'string', 'max:5000'],
+            'numbers' => ['array'],
+            'numbers.*' => ['nullable', 'string', 'max:32'],
+            'template' => ['nullable', 'string', 'max:26'],
+            'revision' => ['nullable', 'string', 'max:64'],
         ]);
 
         return $this->withResolvedContext($classUlid, $periodUlid, $enrollmentUlid, function ($class, $period, $enrollment) use ($request, $validated) {

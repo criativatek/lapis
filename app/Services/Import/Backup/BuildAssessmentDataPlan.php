@@ -609,7 +609,8 @@ class BuildAssessmentDataPlan
             return [
                 'classification' => 'new', 'reason' => null, 'self_assessment_ulid' => $row['self_assessment_ulid'],
                 'question_role' => $row['question_role'], 'question_sequence' => $row['question_sequence'],
-                'scale_level' => $row['scale_level'], 'text_value' => $row['text_value'], 'boolean_value' => $row['boolean_value'],
+                'scale_level' => $row['scale_level'], 'numeric_value' => $row['numeric_value'] ?? null,
+                'text_value' => $row['text_value'], 'boolean_value' => $row['boolean_value'],
             ];
         })->values()->all();
     }

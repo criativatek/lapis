@@ -1064,6 +1064,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     Route::middleware(['module:self_assessments', 'usage:assessment'])->group(function () {
         Route::get('self-assessments', [SelfAssessmentController::class, 'index'])->name('self-assessments.index');
         Route::get('classes/{class}/self-assessments/{period?}', [SelfAssessmentController::class, 'show'])->name('self-assessments.show');
+        // A new self-assessment with the class's current criteria, and the wording of
+        // the reflection questions. Both before the {period}/{enrollment} routes.
+        Route::post('classes/{class}/self-assessments/renew', [SelfAssessmentController::class, 'renew'])->name('self-assessments.renew');
+        Route::put('classes/{class}/self-assessments/questions', [SelfAssessmentController::class, 'updateQuestions'])->name('self-assessments.questions.update');
         // Must come before the {enrollment} wildcard route below, or "links"
         // would itself be swallowed as an (invalid) enrollment ulid. Gated by
         // its own module — the base plan keeps self_assessments (the teacher

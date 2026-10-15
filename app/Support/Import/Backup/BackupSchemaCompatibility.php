@@ -7,7 +7,11 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (15) is what GenerateDataExport writes today. Version 15 adds the
+ * CURRENT (16) is what GenerateDataExport writes today. Version 16 adds
+ * `self_assessment_responses[].numeric_value` — the number a student wrote on a
+ * scale without levels (0–20, a percentage, a scale of the organization's own),
+ * as a decimal string (DECIMAL(6,3)), null when the answer is a level or a
+ * text. Absent in a backup ≤15 → null; nothing else changes. Version 15 adds the
  * follow-up of the logbook — `record_followup_cases` (student × class ×
  * period × category, with the alert) and `record_followup_confirmations`
  * (the teacher's «Registado no Inovar» declarations, undone ones included,
@@ -75,7 +79,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 15;
+    public const int CURRENT = 16;
 
     public const int MINIMUM_SUPPORTED = 2;
 

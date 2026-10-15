@@ -35,4 +35,49 @@ export type SelfAssessmentQuestion = {
     scale: string | null;
     answer_level_id: number | null;
     answer_text: string | null;
+    /** How this scale question is answered — read from the scale itself. Null for a written question. */
+    answer: SelfAssessmentAnswerScale | null;
+    /** The numeric answer, without trailing zeros ('16', '16.5'); null when empty or when answered by level. */
+    answer_number: string | null;
 };
+
+/**
+ * HOW a scale question is answered: by choosing a level, by writing a number
+ * inside the limits of the scale, or not at all (a scale with a fault).
+ * Decided server-side from the class's scale; the page never infers it.
+ */
+export type SelfAssessmentAnswerScale = {
+    mode: 'levels' | 'number' | 'unavailable';
+    levels: SelfAssessmentLevel[];
+    min: string | null;
+    max: string | null;
+    step: string;
+    decimals: number;
+    unit: '%' | null;
+    instruction: string;
+    /** The explanation shown to the teacher when mode is `unavailable`. */
+    problem: string | null;
+};
+
+/** The criteria a self-assessment form was built from: the scale and the domains with their weights. */
+export type SelfAssessmentCriteria = { scale: string | null; domains: { name: string; weight: string }[] };
+
+/** A self-assessment of this student in this period, filled in under earlier criteria. Read-only. */
+export type SelfAssessmentEarlierRound = { submitted_at: string | null; criteria: string; answers: { prompt: string; value: string | null }[] };
+
+export type SelfAssessmentConfiguration = {
+    profile: string | null;
+    version: number | null;
+    scale: string | null;
+    domains: { name: string; weight: string }[];
+    answer: SelfAssessmentAnswerScale | null;
+    state: 'current' | 'previous' | 'no_profile';
+    class_criteria: { profile: string | null; version: number | null; scale: string | null } | null;
+    saved_count: number;
+    can_renew: boolean;
+    can_edit: boolean;
+    class_url: string;
+    review: { version: number; scale: string | null; url: string } | null;
+};
+
+export type SelfAssessmentReflectionQuestion = { id: number; role: string; role_label: string; prompt: string; answered: boolean };

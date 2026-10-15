@@ -29,7 +29,10 @@ type Comparison = {
     rules_same: boolean;
     domains: { name: string; from_weight: string | null; to_weight: string | null; changed: boolean }[];
 };
+/** What changing the class's profile does to the self-assessment: nothing is ever converted or deleted. */
+type SelfAssessmentImpact = { state: 'not_started' | 'follows' | 'kept' | 'unchanged'; saved_count: number; student_count: number; periods: string[] };
 type Preview = {
+    self_assessment?: SelfAssessmentImpact;
     from: Version | null;
     to: Version;
     comparison: Comparison;
@@ -85,6 +88,11 @@ const sameCalculation = computed(
 // «1 aluno», «2 alunos» — the header is read as a sentence.
 function counted(count: number, one: string, many: string): string {
     return `${count} ${count === 1 ? one : many}`;
+}
+
+// «1 autoavaliação guardada», «3 autoavaliações guardadas».
+function savedLabel(count: number): string {
+    return count === 1 ? '1 autoavaliação guardada' : `${count} autoavaliações guardadas`;
 }
 
 function submit(): void {
@@ -179,6 +187,26 @@ function submit(): void {
                 </p>
                 <p>As decisões já confirmadas ou publicadas ficam como foram tomadas, na escala de origem — não são convertidas nem recalculadas.</p>
             </div>
+        </section>
+
+        <section v-if="preview.self_assessment" class="space-y-2 rounded-lg border border-border p-4 text-sm" aria-labelledby="migration-self-assessment" data-testid="self-assessment-impact">
+            <h2 id="migration-self-assessment" class="font-semibold">Autoavaliação</h2>
+
+            <p v-if="preview.self_assessment.state === 'not_started'">A autoavaliação ainda não foi aberta nesta turma. Quando for, usa os critérios desta versão.</p>
+            <p v-else-if="preview.self_assessment.state === 'follows'">
+                A autoavaliação ainda não tem respostas: passa a usar os domínios, as ponderações e a escala desta versão.
+            </p>
+            <template v-else-if="preview.self_assessment.state === 'kept'">
+                <p>
+                    Já há {{ savedLabel(preview.self_assessment.saved_count) }}<template v-if="preview.self_assessment.periods.length"> ({{ preview.self_assessment.periods.join(', ') }})</template>.
+                    Ficam ligadas aos critérios em que foram preenchidas: nada é apagado, convertido nem redistribuído. Depois de aplicar, pode iniciar uma nova autoavaliação com os critérios atuais na página Autoavaliação da turma.
+                </p>
+                <p v-if="preview.comparison.scale_changes">As respostas já dadas continuam na escala {{ preview.from?.scale?.name ?? '—' }}.</p>
+                <p v-if="!preview.comparison.domains_same">
+                    Os domínios acrescentados só aparecem na nova autoavaliação; as respostas a domínios retirados ficam no histórico.
+                </p>
+            </template>
+            <p v-else>A autoavaliação já usa os critérios desta versão.</p>
         </section>
 
         <p class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
