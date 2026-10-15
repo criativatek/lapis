@@ -13,6 +13,7 @@ use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Lessons\LessonNumbering;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -32,6 +33,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
         protected ReviseRecurringLessonSlot $reviseRecurringLessonSlot,
         protected LinkSplitLessonSlot $linkSplitLessonSlot,
         protected ReconcileLessonsWithSlotValidity $reconcileLessons,
+        protected LessonNumbering $numbering,
         protected CurrentOrganization $currentOrganization,
     ) {}
 
@@ -95,13 +97,29 @@ class LessonScheduleController extends Controller implements HasMiddleware
         // reconciliação tiver de recusar (renumeraria histórico lecionado) a
         // edição reverte com ela.
         return DB::transaction(function () use ($request, $recurringLessonSlot, $timezone, $validated): RedirectResponse {
+            $originClassId = (int) $recurringLessonSlot->class_id;
+            $targetClassId = (int) $validated['class_id'];
+
             // Turma primeiro, tempo depois: uma materialização da mesma turma
-            // espera por esta edição em vez de ler a vigência a meio.
-            SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
+            // espera por esta edição em vez de ler a vigência a meio. Quando o
+            // tempo muda de turma bloqueiam-se as DUAS, sempre por ordem de id,
+            // para que duas edições cruzadas não se bloqueiem uma à outra.
+            SchoolClass::query()
+                ->whereKey(array_values(array_unique([$originClassId, $targetClassId])))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
 
             $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
 
-            return $this->reconciled(back(), $recurringLessonSlot->class_id);
+            if ($targetClassId !== $originClassId) {
+                // As aulas vazias da turma de destino que ficaram fora da
+                // vigência acertam-se aqui; a regeneração faz-se ao abrir a
+                // semana.
+                $this->reconcileLessons->execute($targetClassId);
+            }
+
+            return $this->reconciled(back(), $originClassId);
         });
     }
 
@@ -111,83 +129,113 @@ class LessonScheduleController extends Controller implements HasMiddleware
         string $timezone,
         ValidatedInput $validated,
     ): void {
-        if (! $recurringLessonSlot->requiresVersioning($timezone)) {
-            DB::transaction(function () use (
-                $recurringLessonSlot,
-                $request,
-                $timezone,
-                $validated,
-            ): void {
-                /** @var RecurringLessonSlot $locked */
-                $locked = RecurringLessonSlot::query()
-                    ->whereKey($recurringLessonSlot->getKey())
-                    ->lockForUpdate()
-                    ->firstOrFail();
+        /** @var RecurringLessonSlot $locked */
+        $locked = RecurringLessonSlot::query()
+            ->whereKey($recurringLessonSlot->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
 
-                if ($locked->requiresVersioning($timezone)) {
-                    $effectiveFrom = $validated['effective_from'] ?? null;
+        $targetClassId = (int) $validated['class_id'];
+        $changesClass = $targetClassId !== (int) $locked->class_id;
 
-                    if (! is_string($effectiveFrom) || trim($effectiveFrom) === '') {
-                        throw ValidationException::withMessages([
-                            'effective_from' => __(
-                                'Este tempo adquiriu histórico durante a gravação; indique a partir de quando a alteração passa a vigorar.',
-                            ),
-                        ]);
-                    }
+        // A REVERIFICAÇÃO SOB BLOQUEIO. `effective_from` é exigido por
+        // `rules()`, que corre antes; entre esse instante e este, o tempo pode
+        // ter adquirido histórico (uma aula gravada noutro separador) e passado
+        // a exigir versionamento sem que o pedido traga a data. Sem esta guarda
+        // o que o professor via era um TypeError em vez da pergunta que falta
+        // responder.
+        //
+        // MUDAR DE TURMA TAMBÉM VERSIONA quando alguma aula do tempo carrega
+        // conteúdo: a aula com sumário, plano, faltas ou lecionada fica na
+        // turma original, e a turma nova só recebe aulas a partir da data.
+        $mustRevise = $locked->requiresVersioning($timezone)
+            || ($changesClass && $locked->hasLessonsCarryingContent());
 
-                    $revised = $this->reviseRecurringLessonSlot->execute($locked, $effectiveFrom, [
-                        'class_group_id' => $validated['class_group_id'] ?? null,
-                        'day_of_week' => $validated['day_of_week'],
-                        'starts_at' => $validated['starts_at'],
-                        'ends_at' => $validated['ends_at'],
-                        'ends_on' => $validated['ends_on'],
-                    ]);
-                    $this->linkIfRequested($request, $revised);
+        if ($mustRevise) {
+            $effectiveFrom = $validated['effective_from'] ?? null;
 
-                    return;
-                }
+            if (! is_string($effectiveFrom) || trim($effectiveFrom) === '') {
+                throw ValidationException::withMessages([
+                    'effective_from' => __(
+                        'Este tempo adquiriu histórico durante a gravação; indique a partir de quando a alteração passa a vigorar.',
+                    ),
+                ]);
+            }
 
-                $locked->update($validated->except('class_id', 'effective_from', 'same_lesson_as'));
-                $this->linkIfRequested($request, $locked);
-                $locked->lessons()
-                    ->where('status', LessonStatus::Preparation)
-                    ->whereDoesntHave('summary')
-                    ->whereDoesntHave('plan')
-                    ->update(['class_group_id' => $locked->class_group_id]);
-            });
+            $revised = $this->reviseRecurringLessonSlot->execute($locked, $effectiveFrom, [
+                'class_id' => $targetClassId,
+                // `?? null` e não a chave a seco: um cliente antigo — ou o
+                // formulário de uma turma sem grupos, que nem desenha o campo —
+                // não envia `class_group_id` de todo, e a ausência quer dizer
+                // exatamente o mesmo que NULL: turma inteira.
+                'class_group_id' => $validated['class_group_id'] ?? null,
+                'day_of_week' => $validated['day_of_week'],
+                'starts_at' => $validated['starts_at'],
+                'ends_at' => $validated['ends_at'],
+                'ends_on' => $validated['ends_on'],
+            ]);
+            $this->linkIfRequested($request, $revised);
 
             return;
         }
 
-        // A MESMA REVERIFICAÇÃO QUE O RAMO COM BLOQUEIO JÁ FAZIA, e que faltava
-        // aqui. `effective_from` é exigido por `rules()`, que corre antes das
-        // regras `after()`; entre esse instante e este, o slot pode ter
-        // adquirido histórico (uma aula gravada noutro separador) e passado a
-        // exigir versionamento sem que o pedido traga a data. Sem esta guarda, o
-        // que o professor via era um TypeError — «Argument #2 must be of type
-        // string, null given» — em vez da pergunta que falta responder.
-        $effectiveFrom = $validated['effective_from'] ?? null;
+        $attributes = $validated->except('effective_from', 'same_lesson_as');
 
-        if (! is_string($effectiveFrom) || trim($effectiveFrom) === '') {
-            throw ValidationException::withMessages([
-                'effective_from' => __(
-                    'Este tempo adquiriu histórico durante a gravação; indique a partir de quando a alteração passa a vigorar.',
-                ),
-            ]);
+        if ($changesClass) {
+            // O grupo e a chave «mesma lição» eram da turma antiga; na nova
+            // começam limpos (a validação já recusou um grupo de outra turma).
+            $attributes['class_group_id'] = $validated['class_group_id'] ?? null;
+            $attributes['split_lesson_key'] = null;
         }
 
-        $revised = $this->reviseRecurringLessonSlot->execute($recurringLessonSlot, $effectiveFrom, [
-            // `?? null` e não a chave a seco: um cliente antigo — ou o
-            // formulário de uma turma sem grupos, que nem desenha o campo — não
-            // envia `class_group_id` de todo, e a ausência quer dizer
-            // exatamente o mesmo que NULL: turma inteira.
-            'class_group_id' => $validated['class_group_id'] ?? null,
-            'day_of_week' => $validated['day_of_week'],
-            'starts_at' => $validated['starts_at'],
-            'ends_at' => $validated['ends_at'],
-            'ends_on' => $validated['ends_on'],
-        ]);
-        $this->linkIfRequested($request, $revised);
+        $originClassId = (int) $locked->class_id;
+        $locked->update($attributes);
+        $this->linkIfRequested($request, $locked);
+
+        if ($changesClass) {
+            // Só preparações vazias geradas pelo horário saem (nenhuma aula
+            // deste tempo tem conteúdo ao mudar de turma, garantido acima), e a
+            // turma nova volta a gerá-las. A numeração da turma de origem fecha.
+            // Mudar só o dia ou as horas continua a NÃO tocar nas aulas já
+            // materializadas — o contrato que os testes do horário fixam.
+            if ($this->removeEmptyLessons($locked) > 0) {
+                $this->numbering->resequence($originClassId);
+            }
+        }
+
+        if (! $changesClass) {
+            $locked->lessons()
+                ->where('status', LessonStatus::Preparation)
+                ->whereDoesntHave('summary')
+                ->whereDoesntHave('plan')
+                ->update(['class_group_id' => $locked->class_group_id]);
+        }
+    }
+
+    /**
+     * Apaga as aulas do tempo que NÃO carregam nada: preparação, sem resultado,
+     * sem assiduidade (nem rascunho), sem sumário e sem plano — o mesmo critério
+     * de `ReconcileLessonsWithSlotValidity`. Devolve quantas saíram.
+     */
+    private function removeEmptyLessons(RecurringLessonSlot $slot): int
+    {
+        $removed = 0;
+
+        $slot->lessons()
+            ->where('status', LessonStatus::Preparation)
+            ->whereNull('outcome')
+            ->whereNull('attendance_recorded_at')
+            ->whereDoesntHave('summary')
+            ->whereDoesntHave('plan')
+            ->whereDoesntHave('attendances')
+            ->lockForUpdate()
+            ->get()
+            ->each(function (Lesson $lesson) use (&$removed): void {
+                $lesson->delete();
+                $removed++;
+            });
+
+        return $removed;
     }
 
     /**
@@ -233,6 +281,34 @@ class LessonScheduleController extends Controller implements HasMiddleware
         $this->refuseDuringImpersonation($request);
 
         $timezone = $this->currentOrganization->get()->timezone;
+
+        // «DEIXA DE VIGORAR A PARTIR DE» (0.168.0, opcional). Sem data, tudo
+        // fica como sempre foi (apaga o que nunca produziu nada; fecha-se na
+        // véspera o que já produziu). Com data, o tempo fecha-se na véspera
+        // dela — e as aulas vazias que ficam fora da vigência saem, as que têm
+        // conteúdo ficam —, tenha ou não histórico: o professor disse quando.
+        $effectiveFrom = $this->stopEffectiveFrom($request, $recurringLessonSlot, $timezone);
+
+        if ($effectiveFrom !== null) {
+            return DB::transaction(function () use ($recurringLessonSlot, $effectiveFrom): RedirectResponse {
+                SchoolClass::query()->whereKey($recurringLessonSlot->class_id)->lockForUpdate()->firstOrFail();
+
+                /** @var RecurringLessonSlot $locked */
+                $locked = RecurringLessonSlot::query()
+                    ->whereKey($recurringLessonSlot->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $closesOn = CarbonImmutable::parse($effectiveFrom)->subDay()->toDateString();
+
+                // Clamp, NUNCA estender: um `ends_on` já anterior fica como está.
+                if ($locked->ends_on === null || $locked->ends_on->toDateString() > $closesOn) {
+                    $locked->update(['ends_on' => $closesOn]);
+                }
+
+                return $this->reconciled(back(), $locked->class_id);
+            });
+        }
 
         if (! $recurringLessonSlot->requiresVersioning($timezone)) {
             // `$hasLessons` NUNCA é lido fora da transação. Lido cedo e sem
@@ -293,6 +369,37 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
             return $this->reconciled(back(), $locked->class_id);
         });
+    }
+
+    /**
+     * A data opcional de «deixa de vigorar a partir de». Não anterior a hoje
+     * (o passado não se reescreve) e posterior ao início do tempo (fechar na
+     * véspera de um dia anterior ao próprio início violaria a CHECK da tabela).
+     */
+    private function stopEffectiveFrom(Request $request, RecurringLessonSlot $slot, string $timezone): ?string
+    {
+        $validated = $request->validate(['effective_from' => ['nullable', 'date_format:Y-m-d']]);
+        $effectiveFrom = $validated['effective_from'] ?? null;
+
+        if (! is_string($effectiveFrom) || $effectiveFrom === '') {
+            return null;
+        }
+
+        if ($effectiveFrom < CarbonImmutable::now($timezone)->startOfDay()->toDateString()) {
+            throw ValidationException::withMessages([
+                'effective_from' => __('A data a partir da qual deixa de vigorar não pode ser anterior a hoje.'),
+            ]);
+        }
+
+        if ($slot->starts_on !== null && $effectiveFrom <= $slot->starts_on->toDateString()) {
+            throw ValidationException::withMessages([
+                'effective_from' => __('A data a partir da qual deixa de vigorar tem de ser posterior ao início deste horário (:date).', [
+                    'date' => $slot->starts_on->toDateString(),
+                ]),
+            ]);
+        }
+
+        return $effectiveFrom;
     }
 
     /**

@@ -386,6 +386,9 @@ class ClassArchiveLifecycleTest extends TestCase
             // A marca de «esta ocorrência foi eliminada de propósito»: a
             // ausência de uma aula, e não história a proteger.
             'cancelled_lesson_occurrences',
+            // `nullOnDelete`: a turma é só uma referência informativa de uma
+            // atividade não letiva do horário (0.168.0), que sobrevive sem ela.
+            'timetable_activities',
         ];
 
         $pointingAtClasses = [];

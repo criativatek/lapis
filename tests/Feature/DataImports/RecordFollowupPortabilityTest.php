@@ -286,8 +286,8 @@ class RecordFollowupPortabilityTest extends TestCase
 
         $json = $this->backupJson($this->backupUpload());
 
-        $this->assertSame(16, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(16, $json['schema_version']);
+        $this->assertSame(17, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(17, $json['schema_version']);
         $this->assertContains('record_followup_cases', $json['capabilities']);
         $this->assertContains('record_followup_confirmations', $json['capabilities']);
 

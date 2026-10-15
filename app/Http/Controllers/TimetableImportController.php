@@ -233,7 +233,10 @@ class TimetableImportController extends Controller implements HasMiddleware
             ),
         ]);
 
-        return to_route('classes.index');
+        // O DESTINO É O HORÁRIO DO PROFESSOR (0.168.0): uma importação de PDF
+        // raramente sai perfeita, e é aí que o professor a vê inteira e a
+        // corrige — turma, horas, em falta — sem ir turma a turma.
+        return to_route('timetable.index');
     }
 
     /**
@@ -261,6 +264,8 @@ class TimetableImportController extends Controller implements HasMiddleware
         if ($unassociated > 0) {
             $parts[] = __(':total entrada(s) não foram associadas.', ['total' => $unassociated]);
         }
+
+        $parts[] = __('Reveja o horário e corrija o que for preciso: turma, horas ou aulas em falta.');
 
         return implode(' ', $parts);
     }

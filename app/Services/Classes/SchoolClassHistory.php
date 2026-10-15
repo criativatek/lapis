@@ -31,6 +31,11 @@ use Illuminate\Support\Facades\DB;
  * marca de «esta ocorrência do horário foi eliminada de propósito»: diz à
  * materialização para não criar uma aula, e a ausência de uma aula não é
  * história que se proteja.
+ *
+ * E UMA É `nullOnDelete()`: `timetable_activities.class_id` (0.168.0). Uma
+ * atividade não letiva («DT 6.º D») só refere a turma a título informativo — a
+ * atividade é do horário do professor e sobrevive sem ela —, pelo que a turma
+ * se elimina sem que isto a bloqueie nem apague nada.
  */
 class SchoolClassHistory
 {

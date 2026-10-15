@@ -31,6 +31,7 @@ use App\Models\ResultState;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
 use App\Models\TeacherAbsenceReason;
+use App\Models\TimetableActivityKind;
 use App\Support\Assessment\SupportedCalculationRules;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
@@ -264,6 +265,10 @@ class ValidateBackupPayload
         $followups = $this->followupRows->validate($decoded, $rowIssues);
         $canonical['record_followup_cases'] = $followups['cases'];
         $canonical['record_followup_confirmations'] = $followups['confirmations'];
+
+        // Schema v17 — the exporter's own non-teaching timetable activities.
+        // Absent in a backup ≤16: `?? []`, zero rows, never an error.
+        $canonical['timetable_activities'] = $this->validTimetableActivityRows($decoded, $rowIssues);
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
     }
@@ -2017,6 +2022,108 @@ class ValidateBackupPayload
             'created_at' => $createdAt['value'],
             'updated_at' => $updatedAt['value'],
             'edited_at' => $editedAt['value'],
+        ];
+    }
+
+    /**
+     * Schema v17 — the exporter's own non-teaching activities
+     * (`TimetableActivity`). The whitelist is exactly the ten keys the export
+     * writes; `id`, `organization_id`, `user_id` and `class_id` are dropped
+     * even if a hand-edited file carries them. A second row with the same
+     * `ulid` in the SAME file is reported and the first one kept.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validTimetableActivityRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['timetable_activities'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'author_email', 'kind', 'title', 'class_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'];
+        $seenUlids = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $result = $this->validTimetableActivityRow(array_intersect_key($row, array_flip($allowedKeys)), $rowIssues);
+
+            if ($result === null) {
+                continue;
+            }
+
+            $resultUlid = is_string($result['ulid']) ? $result['ulid'] : null;
+
+            if ($resultUlid !== null && isset($seenUlids[$resultUlid])) {
+                $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => $resultUlid, 'reason' => $this->t('Atividade não letiva duplicada neste ficheiro.')];
+
+                continue;
+            }
+
+            $seenUlids[(string) $resultUlid] = true;
+            $validated[] = $result;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validTimetableActivityRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $kind = is_string($row['kind'] ?? null) ? TimetableActivityKind::tryFrom($row['kind']) : null;
+        $title = is_string($row['title'] ?? null) ? trim($row['title']) : null;
+        $classUlidResult = $this->optionalUlidOrInvalidate($row['class_ulid'] ?? null);
+        $classUlid = $classUlidResult['ok'] ? $classUlidResult['value'] : null;
+        $startsAt = $this->nullableTime($row['starts_at'] ?? null);
+        $endsAt = $this->nullableTime($row['ends_at'] ?? null);
+        $startsAt = $startsAt === null ? null : substr($startsAt, 0, 5);
+        $endsAt = $endsAt === null ? null : substr($endsAt, 0, 5);
+        $startsOn = $this->nullableDate($row['starts_on'] ?? null);
+        $endsOn = $this->nullableDate($row['ends_on'] ?? null);
+
+        // A date that is present but malformed is not «open»: it would widen
+        // the validity window in silence.
+        $datesOk = (($row['starts_on'] ?? null) === null || $startsOn !== null)
+            && (($row['ends_on'] ?? null) === null || $endsOn !== null);
+
+        $valid = $datesOk && $this->isUlid($ulid)
+            && $kind !== null
+            && $title !== null && $title !== '' && mb_strlen($title, 'UTF-8') <= 60
+            && $classUlidResult['ok']
+            && is_int($row['day_of_week'] ?? null) && $row['day_of_week'] >= 1 && $row['day_of_week'] <= 7
+            && $startsAt !== null && $endsAt !== null && $endsAt > $startsAt
+            && ($startsOn === null || $endsOn === null || $endsOn >= $startsOn);
+
+        if (! $valid) {
+            // A fixed sentence — never the title.
+            $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => is_string($ulid) && $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t('Atividade não letiva com campos em falta ou inválidos.')];
+
+            return null;
+        }
+
+        return [
+            'ulid' => $ulid,
+            'author_email' => $this->nullableString($row['author_email'] ?? null),
+            'kind' => $kind->value,
+            'title' => $title,
+            'class_ulid' => $classUlid,
+            'day_of_week' => $row['day_of_week'],
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'starts_on' => $startsOn,
+            'ends_on' => $endsOn,
         ];
     }
 

@@ -86,6 +86,7 @@ use App\Http\Controllers\SupportClassStudentController;
 use App\Http\Controllers\SupportController;
 use App\Http\Controllers\TeacherTimetableController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\TimetableActivityController;
 use App\Http\Controllers\TimetableImportController;
 use App\Http\Controllers\VoucherValidationController;
 use Illuminate\Support\Facades\Route;
@@ -648,6 +649,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('lesson-slots', [LessonScheduleController::class, 'store'])->name('lesson-slots.store');
         Route::put('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'update'])->name('lesson-slots.update');
         Route::delete('lesson-slots/{recurringLessonSlot}', [LessonScheduleController::class, 'destroy'])->name('lesson-slots.destroy');
+
+        // Atividades nao letivas do horario do professor (0.168.0): tabela
+        // propria, nunca lida pela materializacao de aulas.
+        Route::post('timetable-activities', [TimetableActivityController::class, 'store'])->name('timetable-activities.store');
+        Route::put('timetable-activities/{timetableActivity}', [TimetableActivityController::class, 'update'])->name('timetable-activities.update');
+        Route::delete('timetable-activities/{timetableActivity}', [TimetableActivityController::class, 'destroy'])->name('timetable-activities.destroy');
         Route::post('classes/{class}/lessons/materialize', [LessonScheduleController::class, 'materialize'])->name('lessons.materialize');
 
         // Os grupos em que uma turma se desdobra (T1/T2). Aqui dentro, e não
