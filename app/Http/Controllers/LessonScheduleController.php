@@ -192,15 +192,14 @@ class LessonScheduleController extends Controller implements HasMiddleware
         $locked->update($attributes);
         $this->linkIfRequested($request, $locked);
 
-        if ($changesClass) {
-            // Só preparações vazias geradas pelo horário saem (nenhuma aula
-            // deste tempo tem conteúdo ao mudar de turma, garantido acima), e a
-            // turma nova volta a gerá-las. A numeração da turma de origem fecha.
-            // Mudar só o dia ou as horas continua a NÃO tocar nas aulas já
-            // materializadas — o contrato que os testes do horário fixam.
-            if ($this->removeEmptyLessons($locked) > 0) {
-                $this->numbering->resequence($originClassId);
-            }
+        // EDITAR NO LUGAR É RETROATIVO (o tempo não tem histórico a proteger),
+        // por isso as aulas VAZIAS que já não batem com o padrão novo saem —
+        // ao mudar de turma, todas; ao mudar só o dia ou as horas, as que ficaram
+        // desencontradas — e a materialização volta a gerá-las à hora certa ao
+        // abrir a semana. Uma aula com qualquer conteúdo nunca é tocada.
+        // A numeração da turma de origem fecha.
+        if ($this->removeEmptyLessons($locked, onlyMismatched: ! $changesClass) > 0) {
+            $this->numbering->resequence($originClassId);
         }
 
         if (! $changesClass) {
@@ -215,11 +214,15 @@ class LessonScheduleController extends Controller implements HasMiddleware
     /**
      * Apaga as aulas do tempo que NÃO carregam nada: preparação, sem resultado,
      * sem assiduidade (nem rascunho), sem sumário e sem plano — o mesmo critério
-     * de `ReconcileLessonsWithSlotValidity`. Devolve quantas saíram.
+     * de `ReconcileLessonsWithSlotValidity`. Com `$onlyMismatched`, só as que já
+     * não correspondem ao dia e às horas atuais do tempo (as `starts_at` e
+     * `ends_at` das aulas são hora local). Devolve quantas saíram.
      */
-    private function removeEmptyLessons(RecurringLessonSlot $slot): int
+    private function removeEmptyLessons(RecurringLessonSlot $slot, bool $onlyMismatched = false): int
     {
         $removed = 0;
+        $startsAt = substr((string) $slot->starts_at, 0, 5);
+        $endsAt = substr((string) $slot->ends_at, 0, 5);
 
         $slot->lessons()
             ->where('status', LessonStatus::Preparation)
@@ -230,7 +233,14 @@ class LessonScheduleController extends Controller implements HasMiddleware
             ->whereDoesntHave('attendances')
             ->lockForUpdate()
             ->get()
-            ->each(function (Lesson $lesson) use (&$removed): void {
+            ->each(function (Lesson $lesson) use (&$removed, $onlyMismatched, $slot, $startsAt, $endsAt): void {
+                if ($onlyMismatched
+                    && $lesson->starts_at->dayOfWeekIso === (int) $slot->day_of_week
+                    && $lesson->starts_at->format('H:i') === $startsAt
+                    && $lesson->ends_at->format('H:i') === $endsAt) {
+                    return;
+                }
+
                 $lesson->delete();
                 $removed++;
             });

@@ -356,6 +356,80 @@ class TimetableCorrectionTest extends TestCase
         $this->assertNull($this->inTenant(fn () => $slot->fresh()->ends_on));
     }
 
+    // ------------------------------- editar no lugar é retroativo nas aulas vazias
+
+    #[Test]
+    public function changing_the_hours_in_place_leaves_one_lesson_per_day_at_the_new_hours(): void
+    {
+        // O caso real: tempo em vigor, aulas materializadas num dia JÁ PASSADO
+        // (segunda 12/10) e num futuro (segunda 19/10), horas mudadas no lugar.
+        $slot = $this->slot($this->seventhC, 1, '09:20', '10:10');
+
+        foreach (['2026-10-12', '2026-10-19'] as $week) {
+            $this->actingAs($this->teacher)->withSession($this->tenantSession())
+                ->get("/lessons?week={$week}")->assertOk();
+        }
+
+        $this->inTenant(fn () => $this->assertSame(2, Lesson::query()->where('recurring_lesson_slot_id', $slot->id)->count()));
+
+        $this->putSlot($slot, $this->seventhC, ['starts_at' => '09:30', 'ends_at' => '10:20'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $this->inTenant(fn (): int => RecurringLessonSlot::query()->count()));
+
+        foreach (['2026-10-12', '2026-10-19'] as $week) {
+            $this->actingAs($this->teacher)->withSession($this->tenantSession())
+                ->get("/lessons?week={$week}")->assertOk();
+        }
+
+        $this->inTenant(function () use ($slot): void {
+            $lessons = Lesson::query()->where('recurring_lesson_slot_id', $slot->id)->orderBy('starts_at')->get();
+
+            $this->assertSame(
+                [['2026-10-12 09:30', '10:20'], ['2026-10-19 09:30', '10:20']],
+                $lessons->map(fn (Lesson $lesson): array => [$lesson->starts_at->format('Y-m-d H:i'), $lesson->ends_at->format('H:i')])->all(),
+            );
+        });
+    }
+
+    #[Test]
+    public function an_in_place_retime_never_touches_a_lesson_that_carries_anything(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '09:20', '10:10');
+
+        foreach (['2026-10-12', '2026-10-19'] as $week) {
+            $this->actingAs($this->teacher)->withSession($this->tenantSession())
+                ->get("/lessons?week={$week}")->assertOk();
+        }
+
+        // Só assiduidade (rascunho): não conta como histórico que obrigue a
+        // versionar, mas é conteúdo — esta aula fica exatamente como está.
+        $kept = $this->inTenant(fn (): Lesson => Lesson::query()->where('starts_at', 'like', '2026-10-12%')->sole());
+        $this->inTenant(fn () => $kept->forceFill(['attendance_recorded_at' => CarbonImmutable::now()])->save());
+
+        $this->putSlot($slot, $this->seventhC, ['starts_at' => '09:30', 'ends_at' => '10:20'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->inTenant(function () use ($kept, $slot): void {
+            $now = Lesson::query()->findOrFail($kept->id);
+            $this->assertSame('2026-10-12 09:20', $now->starts_at->format('Y-m-d H:i'));
+            $this->assertSame($slot->id, $now->recurring_lesson_slot_id);
+            $this->assertNotNull($now->attendance_recorded_at);
+
+            // A vazia de 19/10 saiu; a de 12/10 ficou (conteúdo).
+            $this->assertSame(1, Lesson::query()->where('recurring_lesson_slot_id', $slot->id)->count());
+        });
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/lessons?week=2026-10-19')->assertOk();
+
+        $this->inTenant(function () use ($slot): void {
+            $future = Lesson::query()->where('recurring_lesson_slot_id', $slot->id)->where('starts_at', 'like', '2026-10-19%')->get();
+            $this->assertCount(1, $future);
+            $this->assertSame('09:30', $future->first()->starts_at->format('H:i'));
+        });
+    }
+
     // ------------------------------------------------------ o percurso inteiro
 
     #[Test]
@@ -484,9 +558,20 @@ class TimetableCorrectionTest extends TestCase
         $this->inTenant(function () use ($monday0830, $taught, $empty, $emptyWrongHours): void {
             $this->assertTaughtLessonIntact($taught, $monday0830);
             $this->assertNull(Lesson::query()->find($empty->id));
-            // Mudar só as horas nunca toca nas aulas já materializadas (o
-            // contrato do horário): a preparação vazia fica onde estava.
-            $this->assertNotNull(Lesson::query()->find($emptyWrongHours->id));
+            // A edição no lugar é retroativa: a preparação vazia desencontrada
+            // das horas novas saiu…
+            $this->assertNull(Lesson::query()->find($emptyWrongHours->id));
+        });
+
+        // …e ao materializar essa semana nasce UMA só aula do tempo, às 09:30–10:20.
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->get('/lessons?week=2026-10-19')->assertOk();
+
+        $this->inTenant(function () use ($monday0920): void {
+            $lessons = Lesson::query()->where('recurring_lesson_slot_id', $monday0920->id)->get();
+            $this->assertCount(1, $lessons);
+            $this->assertSame('2026-10-19 09:30', $lessons->first()->starts_at->format('Y-m-d H:i'));
+            $this->assertSame('10:20', $lessons->first()->ends_at->format('H:i'));
         });
 
         // 5. E nada disto criou aulas por causa da atividade.
