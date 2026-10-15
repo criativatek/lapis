@@ -909,7 +909,9 @@ class SelfAssessmentInheritedCriteriaTest extends TestCase
             $event = AuditEvent::where('event', 'self_assessment.questions_reworded')->sole();
 
             $this->assertSame($this->teacher->id, $event->causer_id);
-            $this->assertSame([[
+            // MySQL hands JSON back with its keys reordered; the order is not
+            // what is being asserted.
+            $this->assertSameJsonPayload([[
                 'question_id' => $liked['id'],
                 'role' => 'liked',
                 'from' => 'Atividade de que mais gostei',
