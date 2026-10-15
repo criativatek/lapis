@@ -146,6 +146,6 @@ class SelfAssessmentRecoveryCheckTest extends TestCase
 
         config(['lapis.self_assessment.read_only' => true]);
 
-        $this->artisan('lapis:self-assessment-recovery-check')->expectsOutputToContain('modo só de leitura: ligado');
+        $this->artisan('lapis:self-assessment-recovery-check')->expectsOutputToContain('modo só de leitura: ligado (restauros de backup suspensos)');
     }
 }

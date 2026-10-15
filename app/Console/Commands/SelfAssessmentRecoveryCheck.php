@@ -48,7 +48,7 @@ class SelfAssessmentRecoveryCheck extends Command
         $this->line("  alunos com duas autoavaliações num período: {$twoInOnePeriod}");
         $this->line("  novas autoavaliações iniciadas: {$renewed}");
         $this->line("  reflexões personalizadas (informativo): {$reworded}");
-        $this->line('  modo só de leitura: '.($readOnly ? 'ligado' : 'desligado'));
+        $this->line('  modo só de leitura: '.($readOnly ? 'ligado (restauros de backup suspensos)' : 'desligado'));
 
         if ($numeric === 0 && $twoInOnePeriod === 0 && $renewed === 0) {
             $this->info('Cenário a): nada que a 0.166.0 não saiba ler. O rollback só de código é uma recuperação completa.');

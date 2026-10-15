@@ -10,6 +10,8 @@ use App\Services\Audit\AuditLog;
 use App\Services\Import\Backup\BuildImportPlan;
 use App\Services\Import\Backup\ReadBackupUpload;
 use App\Services\Import\Backup\ValidateBackupPayload;
+use App\Support\Assessment\SelfAssessmentReadOnlyException;
+use App\Support\Assessment\SelfAssessmentWrites;
 use App\Support\Import\Backup\BackupValidationException;
 use App\Support\Import\DataImportTempStorage;
 use App\Support\Retention\RetentionPolicy;
@@ -193,8 +195,20 @@ class DataImportController extends Controller
         Gate::authorize('confirm', $dataImport);
         $this->refuseDuringImpersonation($request);
 
+        // Recovery containment (docs/self-assessment-recovery.md): while the
+        // self-assessment is read-only, no backup is restored. Said here, before
+        // the executor, so the import stays exactly as it was — confirmable,
+        // its upload kept — rather than being recorded as a failure below.
+        if (SelfAssessmentWrites::readOnly()) {
+            return back()->withErrors(['import' => SelfAssessmentWrites::restoreRefusal()]);
+        }
+
         try {
             $imported = $this->executor->execute($dataImport, $request->user());
+        } catch (SelfAssessmentReadOnlyException $exception) {
+            // The mode was switched on between the check above and the write:
+            // the same refusal, and still not a failure.
+            return back()->withErrors(['import' => $exception->getMessage()]);
         } catch (Throwable $exception) {
             // Uma falha técnica do restauro, só com o código (nunca a mensagem).
             $usage->failure(UsageFeature::ImportExport, UsageFailureCode::fromThrowable($exception), 'data-imports.confirm');

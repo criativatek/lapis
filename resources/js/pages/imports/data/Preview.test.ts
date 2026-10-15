@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
 import Preview from './Preview.vue';
 
+// The errors a confirmation comes back with — set per test, cleared after.
+const { formErrors } = vi.hoisted(() => ({ formErrors: {} as Record<string, string> }));
+
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({
         setup:
@@ -22,6 +25,7 @@ vi.mock('@inertiajs/vue3', () => ({
         reactive({
             ...data,
             processing: false,
+            errors: formErrors,
             post: vi.fn(),
             delete: vi.fn(),
         }),
@@ -96,6 +100,7 @@ function mountPreview() {
 
 afterEach(() => {
     wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+    Object.keys(formErrors).forEach((key) => delete formErrors[key]);
 });
 
 function mountFollowupPreview(summary: Record<string, unknown> | null = null) {
@@ -192,5 +197,19 @@ describe('imports/data/Preview — recusas de linhas filhas', () => {
 
         expect(issues).toHaveLength(5);
         issues.forEach((li) => expect(li.text().startsWith('—')).toBe(false));
+    });
+
+    it('diz porque é que a confirmação não importou — por exemplo, restauros suspensos durante a recuperação', () => {
+        const message = 'O restauro de cópias de segurança está temporariamente suspenso, enquanto a autoavaliação está só de leitura. Nada foi importado; a cópia carregada fica guardada e pode ser confirmada mais tarde.';
+        formErrors.import = message;
+
+        const alert = mountPreview().get('[data-test="import-error"]');
+
+        expect(alert.attributes('role')).toBe('alert');
+        expect(alert.text()).toBe(message);
+    });
+
+    it('sem erro de confirmação, não mostra aviso', () => {
+        expect(mountPreview().find('[data-test="import-error"]').exists()).toBe(false);
     });
 });

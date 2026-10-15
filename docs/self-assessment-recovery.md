@@ -58,7 +58,7 @@ grep -q '^LAPIS_SELF_ASSESSMENT_READ_ONLY=' .env \
   && sed -i 's/^LAPIS_SELF_ASSESSMENT_READ_ONLY=.*/LAPIS_SELF_ASSESSMENT_READ_ONLY=true/' .env \
   || echo 'LAPIS_SELF_ASSESSMENT_READ_ONLY=true' >> .env
 php artisan config:cache
-php artisan lapis:self-assessment-recovery-check     # tem de dizer «modo só de leitura: ligado»
+php artisan lapis:self-assessment-recovery-check     # tem de dizer «modo só de leitura: ligado (restauros de backup suspensos)»
 php artisan up
 ```
 
@@ -69,6 +69,12 @@ Com o modo ligado:
 - **Nenhuma escrita na autoavaliação.** Gravar pelo professor ou pela ligação do aluno, iniciar uma nova
   autoavaliação e personalizar reflexões são recusados com uma mensagem («A autoavaliação está temporariamente só de
   leitura…»). Abrir um formulário também não cria nem retira modelos. Não há escritas incompatíveis.
+- **Nenhum restauro de backup.** Configurações → Importar dados continua a aceitar o carregamento e a mostrar a
+  pré-visualização, mas a confirmação é recusada antes de se escrever o que quer que seja («O restauro de cópias de
+  segurança está temporariamente suspenso…»). A importação fica por confirmar e o ficheiro carregado fica guardado;
+  pode ser confirmada depois de o modo ser desligado (dentro do prazo de retenção habitual dos carregamentos). O
+  mecanismo está no próprio executor do restauro (`ExecuteDataImport`), por isso vale para qualquer caminho que o
+  chame, e não depende de ninguém se lembrar de não restaurar.
 - A migração de turmas continua a funcionar. O modelo sem respostas não acompanha a turma no momento: acompanha na
   primeira visita depois de o modo ser desligado (o caminho que já existia).
 - Nada é apagado nem alterado: respostas, modelos e auditoria ficam como estão.
@@ -90,8 +96,8 @@ Com o modo ligado:
 ### 3.4 Limitações enquanto o modo só de leitura está ligado
 
 - Professores e alunos não conseguem preencher nem corrigir autoavaliações. A ligação do aluno abre, mas não grava.
-- O restauro de um backup (Exportar/Importar dados) **não** é bloqueado e continua a escrever autoavaliações. Num
-  incidente, não restaurar backups até o modo ser desligado.
+- O restauro de backups fica suspenso para todas as organizações enquanto o modo estiver ligado, não só para a
+  autoavaliação: um backup é restaurado inteiro ou não é restaurado.
 - A pré-visualização de uma migração continua a dizer que um modelo sem respostas acompanha a nova versão. Acompanha,
   mas só quando o modo for desligado.
 

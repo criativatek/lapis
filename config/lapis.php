@@ -475,9 +475,11 @@ return [
     | parar de mexer na autoavaliação enquanto se corrige ou restaura um estado,
     | sem retirar o módulo da vista de ninguém.
     |
-    | O restauro de uma cópia de segurança NÃO é bloqueado por este interruptor:
-    | é uma operação do administrador sobre a organização inteira, com o seu
-    | próprio registo, e impedi-la aqui impediria a própria recuperação.
+    | O restauro de cópias de segurança TAMBÉM fica suspenso: um backup traz
+    | autoavaliações, modelos e respostas, e restaurá-lo escreveria exatamente
+    | o que o modo existe para impedir. A confirmação é recusada antes de se
+    | escrever o que quer que seja e a cópia carregada fica guardada para ser
+    | confirmada depois (ExecuteDataImport, DataImportController::confirm).
     |
     */
 

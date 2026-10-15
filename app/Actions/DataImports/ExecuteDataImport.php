@@ -12,6 +12,8 @@ use App\Models\Student;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Import\Backup\BuildImportPlan;
+use App\Support\Assessment\SelfAssessmentReadOnlyException;
+use App\Support\Assessment\SelfAssessmentWrites;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -61,6 +63,14 @@ class ExecuteDataImport
 
     public function execute(DataImport $import, User $actor): DataImport
     {
+        // A backup restored during a recovery would write self-assessments,
+        // templates and answers while the self-assessment is read-only. Refused
+        // before anything is read or locked, so nothing about the import —
+        // its state, its upload — changes (SelfAssessmentWrites).
+        if (SelfAssessmentWrites::readOnly()) {
+            throw SelfAssessmentReadOnlyException::restore();
+        }
+
         return DB::transaction(function () use ($import, $actor): DataImport {
             $lockedImport = DataImport::query()->whereKey($import->getKey())->lockForUpdate()->firstOrFail();
 

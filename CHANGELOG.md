@@ -77,7 +77,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   iniciada.», com os domínios, os pesos e a escala desse modelo.
 - **Modo só de leitura da autoavaliação** (`LAPIS_SELF_ASSESSMENT_READ_ONLY`),
   para recuperação: nada se grava (professor, aluno, nova autoavaliação,
-  reflexões, modelos), tudo continua visível. Comando só de leitura
+  reflexões, modelos) e nenhum backup é restaurado — a confirmação do restauro
+  é recusada antes de qualquer escrita e a cópia carregada fica guardada —, tudo
+  continua visível. Comando só de leitura
   `lapis:self-assessment-recovery-check` e procedimento em
   `docs/self-assessment-recovery.md`.
 
