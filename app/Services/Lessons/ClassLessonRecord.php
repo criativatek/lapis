@@ -34,7 +34,7 @@ final class ClassLessonRecord
     /**
      * @return array{
      *     totals: array{planned: int, counted_as_taught: int, subject_development: int, teacher_absent: int, class_external_activity: int, not_recorded: int},
-     *     rows: list<array{date: string, context_label: string, lesson_number: int|null, outcome: string, note: string|null}>,
+     *     rows: list<array{date: string, context_label: string, lesson_number: int|null, lesson_number_end: int|null, outcome: string, note: string|null}>,
      * }
      */
     public function for(SchoolClass $class, ?string $from = null, ?string $to = null, ?CarbonImmutable $now = null): array
@@ -77,6 +77,7 @@ final class ClassLessonRecord
                 'date' => $lesson->starts_at->copy()->setTimezone(self::TIMEZONE)->toDateString(),
                 'context_label' => $lesson->contextLabel(),
                 'lesson_number' => $lesson->lesson_number,
+                'lesson_number_end' => $lesson->lesson_number_end,
                 'outcome' => $outcome->value ?? 'not_recorded',
                 'note' => $outcome === LessonOutcome::ClassExternalActivity ? $lesson->outcome_note : null,
             ];

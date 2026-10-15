@@ -68,6 +68,10 @@ class ReconcileLessonsWithSlotValidity
         $preserved = 0;
 
         return DB::transaction(function () use ($classId, $strict, &$removed, &$preserved): array {
+            // A FOTOGRAFIA DA GUARDA (só no caminho estrito), antes de apagar
+            // seja o que for.
+            $snapshot = $strict ? $this->numbering->guardSnapshot($classId) : [];
+
             /** @var RecurringLessonSlot $slot */
             foreach (RecurringLessonSlot::query()->where('class_id', $classId)->orderBy('id')->get() as $slot) {
                 if ($slot->starts_on === null && $slot->ends_on === null) {
@@ -145,7 +149,7 @@ class ReconcileLessonsWithSlotValidity
 
             if ($removed > 0) {
                 if ($strict) {
-                    $this->numbering->resequence($classId);
+                    $this->numbering->resequence($classId, $snapshot);
                 } else {
                     $this->numbering->numberMaterializedLessons($classId);
                 }

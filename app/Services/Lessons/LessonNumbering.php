@@ -51,33 +51,95 @@ use Illuminate\Validation\ValidationException;
  * operação exigisse mudar o número de uma aula lecionada, é recusada antes de
  * escrever. A única exceção é `rebuild()`, a correção histórica controlada que
  * só `lapis:renumber-lessons --apply` chama.
+ *
+ * O NÚMERO É SUGERIDO, NÃO IMPOSTO (0.169.0). O professor pode indicar o número
+ * (ou o intervalo «11–12») de uma aula — quem começa a usar o Lapispro a meio do
+ * ano, ou precisa de acertar a sequência. Uma unidade de lição é então de um de
+ * três TIPOS:
+ *  - MANUAL: o professor indicou o número (`lesson_number_manual`). Nunca é
+ *    recalculado;
+ *  - HISTÓRICO: não é manual, mas já foi lecionada (ou fechada com número). O
+ *    número que tem é a história e também não é recalculado;
+ *  - LIVRE: todas as outras — o número é SUGERIDO por esta classe.
+ * MANUAL e HISTÓRICO são FIXAS: uma unidade fixa nunca muda de número por
+ * derivação. As livres derivam das fixas: depois da unidade numerada anterior
+ * +1, saltando os números já ocupados, e — se vierem antes da primeira fixa —
+ * para trás a partir dela. Quando não há lugar exato, a livre fica SEM número
+ * (nunca duplica, nunca invade um intervalo fixo), exceto se já tinha um número
+ * guardado e livre, que é preservado. Numa turma sem números manuais e coerente,
+ * o resultado é idêntico ao da numeração sempre derivada de antes.
  */
 final class LessonNumbering
 {
+    private const MANUAL = 'manual';
+
+    private const HISTORY = 'history';
+
+    private const FREE = 'free';
+
+    /** Um intervalo de lições por aula tem limite (o pedido recusa mais de 10); isto é só defesa contra dados estragados. */
+    private const MAX_SPAN = 999;
+
     /**
      * Liga e renumera a turma pela ordem cronológica real.
      *
      * SEMPRE DENTRO DE UMA TRANSAÇÃO DE QUEM CHAMA.
      *
-     * @return array<int, int> lesson_id => número novo, só das aulas que mudaram
+     * A GUARDA DO HISTÓRICO (§14). Sem `$guardSnapshot`, é a de sempre: recusa se
+     * alguma aula fechada, com número e não manual, ficasse com um número
+     * posicional diferente do que tem. Com `$guardSnapshot` — o que
+     * `guardSnapshot()` devolveu ANTES das escritas da operação —, recusa só se
+     * alguma das aulas que estavam COERENTES nesse momento deixasse de estar. É o
+     * que impede uma incoerência criada pelo professor (um número manual que não
+     * respeita a ordem) de deixar a turma presa para sempre: a operação seguinte
+     * só é recusada se ela própria estragar uma aula que estava bem.
+     *
+     * @param  array<int, int>|null  $guardSnapshot  lesson_id => número, de `guardSnapshot()`
+     * @return array<int, int|null> lesson_id => número novo (NULL = ficou sem número), só das aulas que mudaram
      *
      * @throws ValidationException quando fechar a sequência exigiria mudar o
      *                             número de uma aula já lecionada.
      */
-    public function resequence(int $classId): array
+    public function resequence(int $classId, ?array $guardSnapshot = null): array
     {
         $lessons = $this->sequence($classId);
         $links = $this->link($lessons, $this->slotKeys($classId));
-        $preview = $this->changesFor($lessons);
 
         // A recusa acontece antes de qualquer escrita, ligações incluídas.
-        $this->guardTaughtHistory($preview);
+        $this->guardTaughtHistory($lessons, $guardSnapshot);
 
-        $changes = array_map(fn (array $change): int => $change['to'], $preview);
+        $changes = $this->changesFor($this->project($lessons));
         $this->writeLinks($links);
         $this->writeNumbers($changes);
 
-        return $changes;
+        return array_map(fn (array $change): ?int => $change['to'], $changes);
+    }
+
+    /**
+     * As aulas fechadas e COERENTES neste momento: lesson_id => número, para as
+     * fechadas com número, não manuais, cujo número guardado é igual ao
+     * posicional. É a fotografia que `resequence()` compara depois das escritas
+     * de uma operação estrita (eliminar, inserir, fechar, reconciliar) — tirada
+     * por quem chama, já dentro do bloqueio da turma e ANTES de escrever.
+     *
+     * @return array<int, int>
+     */
+    public function guardSnapshot(int $classId): array
+    {
+        $lessons = $this->sequence($classId);
+        $this->link($lessons, $this->slotKeys($classId));
+        $positions = $this->positions($lessons);
+        $snapshot = [];
+
+        foreach ($lessons as $lesson) {
+            $position = $positions[(int) $lesson->getKey()] ?? null;
+
+            if ($position !== null && $lesson->isClosedAndNumbered() && $lesson->lesson_number === $position) {
+                $snapshot[(int) $lesson->getKey()] = $position;
+            }
+        }
+
+        return $snapshot;
     }
 
     /**
@@ -94,11 +156,28 @@ final class LessonNumbering
      * a Lição 3 de setembro para Lição 4, que a execução nunca faria.
      *
      * @param  iterable<Lesson>  $lessons  todas as aulas da turma, no estado hipotético
-     * @return array<int, int> lesson_id => número novo, só das aulas gravadas que mudariam
+     * @return array<int, int|null> lesson_id => número novo, só das aulas gravadas que mudariam
      *
      * @throws ValidationException
      */
     public function previewHypotheticalSequence(int $classId, iterable $lessons): array
+    {
+        return array_map(
+            fn (array $change): ?int => $change['to'],
+            $this->previewHypotheticalChanges($classId, $lessons),
+        );
+    }
+
+    /**
+     * Como `previewHypotheticalSequence()`, mas com o intervalo completo
+     * (início e fim) de cada aula gravada que mudaria.
+     *
+     * @param  iterable<Lesson>  $lessons
+     * @return array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>
+     *
+     * @throws ValidationException
+     */
+    public function previewHypotheticalChanges(int $classId, iterable $lessons): array
     {
         $sorted = new Collection(collect($lessons)
             ->reject(fn (Lesson $lesson): bool => $lesson->outcome === LessonOutcome::TeacherAbsent)
@@ -112,25 +191,28 @@ final class LessonNumbering
             ->all());
 
         $this->link($sorted, $this->slotKeys($classId));
-        $changes = $this->changesFor($sorted);
-        $this->guardTaughtHistory($changes);
 
-        return array_map(fn (array $change): int => $change['to'], array_filter(
-            $changes,
-            fn (array $change): bool => $change['lesson']->exists,
-        ));
+        // As coerentes AGORA (estado gravado) têm de continuar coerentes no
+        // estado hipotético.
+        $this->guardTaughtHistory($sorted, $this->guardSnapshot($classId));
+
+        return $this->changesFor($this->project($sorted));
     }
 
     /**
      * A correção histórica: liga e renumera TUDO, lecionadas incluídas. Nunca é
      * chamada por um caminho normal da aplicação.
      *
+     * AS UNIDADES MANUAIS CONTINUAM FIXAS: o comando corrige o que a derivação
+     * errou, nunca o que o professor indicou. O histórico, esse sim, deixa de ser
+     * fixo — é a razão de ser do comando.
+     *
      * `$slotKeys` permite simular chaves de tempos ainda não gravadas (a
      * simulação do comando). Idempotente: as ligações gravadas não mudam e os
      * números são função delas e da cronologia.
      *
      * @param  array<int, string>  $slotKeyOverrides  slot_id => split_lesson_key
-     * @return array{numbers: array<int, array{lesson: Lesson, from: int|null, to: int}>, links: array<int, string>}
+     * @return array{numbers: array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>, links: array<int, string>}
      */
     public function rebuild(int $classId, bool $write = true, array $slotKeyOverrides = []): array
     {
@@ -144,11 +226,11 @@ final class LessonNumbering
         }
 
         $links = $this->link($lessons, $slotKeys);
-        $numbers = $this->changesFor($lessons);
+        $numbers = $this->changesFor($this->project($lessons, historyFixed: false));
 
         if ($write) {
             $this->writeLinks($links);
-            $this->writeNumbers(array_map(fn (array $change): int => $change['to'], $numbers));
+            $this->writeNumbers($numbers);
         }
 
         return ['numbers' => $numbers, 'links' => $links];
@@ -156,70 +238,172 @@ final class LessonNumbering
 
     /**
      * A numeração no caminho automático: a materialização, que corre sozinha
-     * sempre que alguém abre a semana, e por isso não pode falhar.
+     * sempre que alguém abre a semana, e por isso NUNCA FALHA.
      *
-     * Tenta primeiro a renumeração normal. Se ela colidir com o histórico, cai
-     * no plano B: as aulas novas são ligadas na mesma, e cada aula ainda sem
-     * número recebe o número da sua lição se outra aula dela já o tiver, ou o
-     * número seguinte ao maior já atribuído. Nenhum número já escrito muda, e o
-     * desvio fica registado.
+     * Liga as aulas novas e aplica a derivação, sem guarda: o histórico e os
+     * números manuais são fixos e nenhum muda. Uma aula nova a que a derivação
+     * não encontra lugar (a materializar uma semana anterior a uma Lição 1
+     * lecionada, por exemplo) fica SEM número — já não recebe «o maior número +
+     * 1», que a punha fora de ordem face ao histórico. O desvio fica registado.
      *
-     * @return array<int, int>
+     * @param  list<int>  $newLessonIds  as aulas que esta materialização acabou de criar
+     * @return array<int, int|null>
      */
-    public function numberMaterializedLessons(int $classId): array
+    public function numberMaterializedLessons(int $classId, array $newLessonIds = []): array
     {
-        try {
-            return $this->resequence($classId);
-        } catch (ValidationException) {
-            // Plano B, descrito acima.
-        }
-
         $lessons = $this->sequence($classId);
-        $this->writeLinks($this->link($lessons, $this->slotKeys($classId)));
+        $links = $this->link($lessons, $this->slotKeys($classId));
+        $changes = $this->changesFor($this->project($lessons));
 
-        $next = (int) $lessons->max('lesson_number');
-        $changes = [];
-
-        foreach ($this->units($lessons) as $unit) {
-            $unnumbered = array_filter($unit, fn (Lesson $lesson): bool => $lesson->lesson_number === null);
-
-            if ($unnumbered === []) {
-                continue;
-            }
-
-            $numbered = array_values(array_filter($unit, fn (Lesson $lesson): bool => $lesson->lesson_number !== null));
-            $number = $numbered === [] ? ++$next : (int) $numbered[0]->lesson_number;
-
-            foreach ($unnumbered as $lesson) {
-                $changes[(int) $lesson->getKey()] = $number;
-            }
-        }
-
+        $this->writeLinks($links);
         $this->writeNumbers($changes);
 
-        // NÃO SILENCIOSO: estas aulas ficam com números fora de ordem face às
-        // lecionadas. Só ids e números, nunca dados de alunos.
-        if ($changes !== []) {
-            Log::warning('lessons.numbering.out_of_order_fallback', [
+        // NÃO SILENCIOSO: aulas novas (ou que tinham número) que ficaram sem
+        // lugar na sequência. Só ids, nunca dados de alunos.
+        $unnumbered = [];
+
+        foreach ($changes as $lessonId => $change) {
+            if ($change['to'] === null) {
+                $unnumbered[$lessonId] = $lessonId;
+            }
+        }
+
+        foreach ($newLessonIds as $lessonId) {
+            $change = $changes[$lessonId] ?? null;
+            $lesson = $lessons->first(fn (Lesson $candidate): bool => (int) $candidate->getKey() === $lessonId);
+
+            if ($lesson !== null && ($change === null ? $lesson->lesson_number === null : $change['to'] === null)) {
+                $unnumbered[$lessonId] = $lessonId;
+            }
+        }
+
+        if ($unnumbered !== []) {
+            Log::warning('lessons.numbering.unnumbered_without_room', [
                 'class_id' => $classId,
-                'assigned' => $changes,
+                'lessons' => array_values($unnumbered),
             ]);
         }
 
-        return $changes;
+        return array_map(fn (array $change): ?int => $change['to'], $changes);
     }
 
     /**
      * O que a renumeração FARIA, sem escrever nada (§20).
      *
-     * @return array<int, array{lesson: Lesson, from: int|null, to: int}>
+     * @return array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>
      */
     public function previewResequence(int $classId): array
     {
         $lessons = $this->sequence($classId);
         $this->link($lessons, $this->slotKeys($classId));
 
-        return $this->changesFor($lessons);
+        return $this->changesFor($this->project($lessons));
+    }
+
+    /**
+     * A turma como ficaria se a unidade de uma aula passasse a ter um número
+     * imposto — sem escrever nada. É o cálculo único da alteração manual do
+     * professor (SetLessonNumber): a pré-visualização e a execução leem o mesmo
+     * resultado.
+     *
+     * `$override` impõe a uma unidade: `manual` = um intervalo indicado;
+     * `automatic` = a unidade deixa de ser manual e conta como LIVRE, mesmo que
+     * esteja fechada (o número guardado é ignorado, e por isso também não é
+     * preservado). `changes` compara sempre com o que está GRAVADO.
+     *
+     * @param  array{mode: string, start: int|null, end: int|null}|null  $override
+     * @return array{records: list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>, changes: array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>, links: array<int, string>, target: int|null}
+     */
+    public function projectClass(int $classId, ?int $targetLessonId = null, ?array $override = null): array
+    {
+        $lessons = $this->sequence($classId);
+        $links = $this->link($lessons, $this->slotKeys($classId));
+        $originals = $this->triples($lessons);
+        $target = null;
+
+        if ($targetLessonId !== null) {
+            foreach ($this->units($lessons) as $index => $unit) {
+                foreach ($unit as $lesson) {
+                    if ((int) $lesson->getKey() !== $targetLessonId) {
+                        continue;
+                    }
+
+                    $target = $index;
+
+                    foreach ($unit as $member) {
+                        if ($override !== null && $override['mode'] === 'manual') {
+                            $member->lesson_number = $override['start'];
+                            $member->lesson_number_end = $override['end'];
+                            $member->lesson_number_manual = true;
+                        } elseif ($override !== null) {
+                            $member->lesson_number = null;
+                            $member->lesson_number_end = null;
+                            $member->lesson_number_manual = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        $records = $this->project($lessons);
+
+        return [
+            'records' => $records,
+            'changes' => $this->changesFor($records, $originals),
+            'links' => $links,
+            'target' => $target,
+        ];
+    }
+
+    /**
+     * Uma ausência do professor numa aula MANUAL não gera saltos: a lição que
+     * estava nela passa à próxima unidade da turma (qualquer público), desde que
+     * essa seja LIVRE. Se for fixa — manual ou histórica —, o manual da ausente
+     * perde-se. Chamado depois de a ausência estar gravada (já fora da sequência).
+     *
+     * @return bool se o intervalo passou a outra unidade
+     */
+    public function handOverManualNumber(Lesson $absent, int $start, ?int $end): bool
+    {
+        $lessons = $this->sequence((int) $absent->class_id);
+        $this->link($lessons, $this->slotKeys((int) $absent->class_id));
+
+        foreach ($this->units($lessons) as $unit) {
+            $first = $unit[0];
+            $byTime = $first->starts_at->getTimestamp() <=> $absent->starts_at->getTimestamp();
+
+            if ($byTime < 0 || ($byTime === 0 && $first->getKey() <= $absent->getKey())) {
+                continue;
+            }
+
+            if ($this->fixedInterval($unit, true) !== null) {
+                return false;
+            }
+
+            foreach ($unit as $lesson) {
+                DB::table('lessons')->where('id', $lesson->getKey())->update([
+                    'lesson_number' => $start,
+                    'lesson_number_end' => $this->normalizedEnd($start, $end),
+                    'lesson_number_manual' => true,
+                ]);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Escreve o que `projectClass()` calculou: as ligações novas e os números.
+     * SEMPRE DENTRO DE UMA TRANSAÇÃO DE QUEM CHAMA, com a turma bloqueada.
+     *
+     * @param  array{changes: array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>, links: array<int, string>}  $projection
+     */
+    public function commit(array $projection): void
+    {
+        $this->writeLinks($projection['links']);
+        $this->writeNumbers($projection['changes']);
     }
 
     /**
@@ -325,25 +509,282 @@ final class LessonNumbering
     }
 
     /**
-     * @param  array<int, array{lesson: Lesson, from: int|null, to: int}>  $changes
+     * A derivação (ver o docblock da classe). Devolve uma entrada por unidade, na
+     * ordem da cadeia, com o intervalo FINAL de cada uma.
+     *
+     * 1. As unidades FIXAS (manuais e, se `$historyFixed`, históricas) guardam o
+     *    intervalo que têm, e todos os seus números ficam OCUPADOS.
+     * 2. As livres ANTES da primeira fixa numeram-se PARA TRÁS a partir dela: a
+     *    k-ésima a contar da fixa recebe `início − k`. É o que faz com que, com a
+     *    primeira aula registada na Lição 11, abrir uma semana anterior sugira
+     *    10, 9… em vez de 1, 2.
+     * 3. As restantes numeram-se PARA A FRENTE: o fim da unidade numerada
+     *    anterior + 1, saltando os números ocupados; se esse número já alcança a
+     *    próxima fixa, não há lugar.
+     * 4. Sem lugar, a unidade fica sem número — EXCETO se já tinha um número
+     *    guardado (sem fim) que está livre: esse mantém-se. As turmas reais têm
+     *    números do antigo «maior + 1», e a derivação nova não lhos tira.
+     *
+     * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
+     * @return list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>
+     */
+    private function project(Collection $lessons, bool $historyFixed = true): array
+    {
+        $units = $this->units($lessons);
+        $kinds = [];
+        $starts = [];
+        $ends = [];
+        $occupied = [];
+        $fixed = [];
+
+        foreach ($units as $index => $unit) {
+            $interval = $this->fixedInterval($unit, $historyFixed);
+
+            $kinds[$index] = $interval[0] ?? self::FREE;
+            $starts[$index] = $interval[1] ?? null;
+            $ends[$index] = $interval[2] ?? null;
+
+            if ($interval === null) {
+                continue;
+            }
+
+            $fixed[] = $index;
+
+            for ($number = $interval[1]; $number <= ($interval[2] ?? $interval[1]); $number++) {
+                $occupied[$number] = true;
+            }
+        }
+
+        // Para cada posição, a primeira unidade fixa a seguir: a «próxima fixa».
+        $nextFixed = [];
+        $upcoming = null;
+
+        for ($index = count($units) - 1; $index >= 0; $index--) {
+            $nextFixed[$index] = $upcoming;
+
+            if ($kinds[$index] !== self::FREE) {
+                $upcoming = $index;
+            }
+        }
+
+        $first = $fixed[0] ?? null;
+
+        // A corrida inicial: para trás a partir da primeira fixa.
+        if ($first !== null) {
+            $anchor = (int) $starts[$first];
+
+            for ($distance = 1; $first - $distance >= 0; $distance++) {
+                $index = $first - $distance;
+                $candidate = $anchor - $distance;
+
+                $starts[$index] = $this->assign(
+                    $units[$index],
+                    $candidate >= 1 && ! isset($occupied[$candidate]) ? $candidate : null,
+                    $occupied,
+                );
+            }
+        }
+
+        // O resto, para a frente.
+        $previousEnd = 0;
+
+        for ($index = $first ?? 0; $index < count($units); $index++) {
+            if ($kinds[$index] !== self::FREE) {
+                $previousEnd = (int) ($ends[$index] ?? $starts[$index]);
+
+                continue;
+            }
+
+            $candidate = $previousEnd + 1;
+
+            while (isset($occupied[$candidate])) {
+                $candidate++;
+            }
+
+            $upcomingIndex = $nextFixed[$index];
+
+            if ($upcomingIndex !== null && $candidate >= (int) $starts[$upcomingIndex]) {
+                $candidate = null;
+            }
+
+            $number = $this->assign($units[$index], $candidate, $occupied);
+            $starts[$index] = $number;
+
+            // Um número MANTIDO por falta de lugar pode ser antigo e menor (o
+            // «maior + 1» de antes, ou um número de antes de uma correção). Não
+            // faz recuar a contagem: a livre seguinte no mesmo intervalo também
+            // não tem lugar, em vez de ganhar um número fora de ordem.
+            if ($number !== null && $number > $previousEnd) {
+                $previousEnd = $number;
+            }
+        }
+
+        $records = [];
+
+        foreach ($units as $index => $unit) {
+            $records[] = ['lessons' => $unit, 'kind' => $kinds[$index], 'start' => $starts[$index], 'end' => $ends[$index]];
+        }
+
+        return $records;
+    }
+
+    /**
+     * Atribui o número a uma unidade livre e marca-o como ocupado. Sem
+     * candidato, a unidade MANTÉM o número que já tinha, se tinha um (só o
+     * início) e ele está livre; senão fica sem número.
+     *
+     * @param  list<Lesson>  $unit
+     * @param  array<int, true>  $occupied
+     */
+    private function assign(array $unit, ?int $candidate, array &$occupied): ?int
+    {
+        if ($candidate === null) {
+            foreach ($unit as $lesson) {
+                if ($lesson->lesson_number === null) {
+                    continue;
+                }
+
+                if ($lesson->lesson_number_end === null && ! isset($occupied[$lesson->lesson_number])) {
+                    $candidate = $lesson->lesson_number;
+                }
+
+                break;
+            }
+        }
+
+        if ($candidate !== null) {
+            $occupied[$candidate] = true;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * O intervalo fixo de uma unidade, se tiver um: MANUAL (alguma aula com o
+     * número indicado pelo professor) ou, se o histórico conta como fixo,
+     * HISTÓRICO (alguma aula fechada e com número). Nunca derivado.
+     *
+     * @param  list<Lesson>  $unit
+     * @return array{0: string, 1: int, 2: int|null}|null
+     */
+    private function fixedInterval(array $unit, bool $historyFixed): ?array
+    {
+        $manual = $this->manualInterval($unit);
+
+        if ($manual !== null) {
+            return [self::MANUAL, $manual[0], $manual[1]];
+        }
+
+        if ($historyFixed) {
+            foreach ($unit as $lesson) {
+                if ($lesson->isClosedAndNumbered() && $lesson->lesson_number !== null) {
+                    return [self::HISTORY, $lesson->lesson_number, $this->normalizedEnd($lesson->lesson_number, $lesson->lesson_number_end)];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<Lesson>  $unit
+     * @return array{0: int, 1: int|null}|null
+     */
+    private function manualInterval(array $unit): ?array
+    {
+        foreach ($unit as $lesson) {
+            if ($lesson->lesson_number_manual && $lesson->lesson_number !== null) {
+                return [$lesson->lesson_number, $this->normalizedEnd($lesson->lesson_number, $lesson->lesson_number_end)];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Um fim só existe se for posterior ao início — e, por defesa, dentro de um
+     * intervalo razoável: um dado estragado não pode fazer o ciclo dos números
+     * ocupados percorrer milhões de inteiros.
+     */
+    private function normalizedEnd(int $start, ?int $end): ?int
+    {
+        return $end !== null && $end > $start && $end - $start <= self::MAX_SPAN ? $end : null;
+    }
+
+    /**
+     * O número POSICIONAL de cada aula gravada — a regra de antes da 0.169.0, com
+     * as unidades manuais como pontos de recomeço: começa em 1, cada unidade não
+     * manual ocupa uma posição, e uma manual faz a contagem seguir do seu fim +
+     * 1. Só serve a guarda do histórico: sem fixas por histórico, sem nulos e
+     * sem corrida para trás. Aulas de unidades manuais não têm posicional (NULL).
+     *
+     * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
+     * @return array<int, int|null>
+     */
+    private function positions(Collection $lessons): array
+    {
+        $positions = [];
+        $next = 1;
+
+        foreach ($this->units($lessons) as $unit) {
+            $manual = $this->manualInterval($unit);
+
+            if ($manual !== null) {
+                $next = ($manual[1] ?? $manual[0]) + 1;
+
+                foreach ($unit as $lesson) {
+                    if ($lesson->exists) {
+                        $positions[(int) $lesson->getKey()] = null;
+                    }
+                }
+
+                continue;
+            }
+
+            foreach ($unit as $lesson) {
+                if ($lesson->exists) {
+                    $positions[(int) $lesson->getKey()] = $next;
+                }
+            }
+
+            $next++;
+        }
+
+        return $positions;
+    }
+
+    /**
+     * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
+     * @param  array<int, int>|null  $snapshot  ver `resequence()`
      *
      * @throws ValidationException
      */
-    private function guardTaughtHistory(array $changes): void
+    private function guardTaughtHistory(Collection $lessons, ?array $snapshot): void
     {
-        foreach ($changes as $change) {
-            $lesson = $change['lesson'];
+        $positions = $this->positions($lessons);
+
+        foreach ($lessons as $lesson) {
+            if (! $lesson->exists) {
+                continue;
+            }
+
+            $id = (int) $lesson->getKey();
+            $position = $positions[$id] ?? null;
 
             // Uma aula lecionada ainda sem número está a receber o primeiro,
             // não a mudar de número.
-            if ($lesson->isClosedAndNumbered() && $lesson->lesson_number !== null) {
+            $guarded = $snapshot === null
+                ? $lesson->isClosedAndNumbered() && $lesson->lesson_number !== null
+                : isset($snapshot[$id]);
+
+            if ($guarded && $position !== null && $lesson->lesson_number !== $position) {
                 throw ValidationException::withMessages([
                     'lesson_number' => __(
                         'Esta operação mudaria o número da aula de :date, que já foi lecionada (Lição :from → Lição :to). O histórico não é renumerado.',
                         [
                             'date' => $lesson->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
                             'from' => (string) $lesson->lesson_number,
-                            'to' => (string) $change['to'],
+                            'to' => (string) $position,
                         ],
                     ),
                 ]);
@@ -352,29 +793,81 @@ final class LessonNumbering
     }
 
     /**
-     * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
-     * @return array<int, array{lesson: Lesson, from: int|null, to: int}>
+     * As escritas que a derivação pede: por aula gravada, o triplo (início, fim,
+     * manual) quando difere do que está gravado.
+     *
+     *  - unidade MANUAL: todas as aulas recebem o intervalo e a marca (um T2 que
+     *    se junte depois herda-os);
+     *  - unidade HISTÓRICA: só as aulas ainda abertas (ou fechadas sem número);
+     *    uma aula fechada com número nunca é escrita;
+     *  - unidade LIVRE: todas recebem o número derivado, sem fim e sem marca.
+     *
+     * @param  list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>  $records
+     * @param  array<int, array{number: int|null, end: int|null, manual: bool}>  $originals  o gravado, quando o modelo em memória foi alterado para a projeção
+     * @return array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>
      */
-    private function changesFor(Collection $lessons): array
+    private function changesFor(array $records, array $originals = []): array
     {
-        $preview = [];
-        $number = 0;
+        $changes = [];
 
-        foreach ($this->units($lessons) as $unit) {
-            $number++;
-
-            foreach ($unit as $lesson) {
-                if ($lesson->exists && $lesson->lesson_number !== $number) {
-                    $preview[(int) $lesson->getKey()] = [
-                        'lesson' => $lesson,
-                        'from' => $lesson->lesson_number,
-                        'to' => $number,
-                    ];
+        foreach ($records as $record) {
+            foreach ($record['lessons'] as $lesson) {
+                if (! $lesson->exists) {
+                    continue;
                 }
+
+                if ($record['kind'] === self::HISTORY && $lesson->isClosed() && $lesson->lesson_number !== null) {
+                    continue;
+                }
+
+                $id = (int) $lesson->getKey();
+                $from = $originals[$id] ?? [
+                    'number' => $lesson->lesson_number,
+                    'end' => $lesson->lesson_number_end,
+                    'manual' => (bool) $lesson->lesson_number_manual,
+                ];
+                $manual = $record['kind'] === self::MANUAL;
+                $toEnd = $record['kind'] === self::FREE ? null : $record['end'];
+
+                if ($from['number'] === $record['start'] && $from['end'] === $toEnd && $from['manual'] === $manual) {
+                    continue;
+                }
+
+                $changes[$id] = [
+                    'lesson' => $lesson,
+                    'from' => $from['number'],
+                    'from_end' => $from['end'],
+                    'from_manual' => $from['manual'],
+                    'to' => $record['start'],
+                    'to_end' => $toEnd,
+                    'manual' => $manual,
+                ];
             }
         }
 
-        return $preview;
+        return $changes;
+    }
+
+    /**
+     * O que está GRAVADO em cada aula da sequência, antes de qualquer alteração
+     * em memória.
+     *
+     * @param  Collection<int, Lesson>  $lessons
+     * @return array<int, array{number: int|null, end: int|null, manual: bool}>
+     */
+    private function triples(Collection $lessons): array
+    {
+        $triples = [];
+
+        foreach ($lessons as $lesson) {
+            $triples[(int) $lesson->getKey()] = [
+                'number' => $lesson->lesson_number,
+                'end' => $lesson->lesson_number_end,
+                'manual' => (bool) $lesson->lesson_number_manual,
+            ];
+        }
+
+        return $triples;
     }
 
     /**
@@ -412,12 +905,16 @@ final class LessonNumbering
     }
 
     /**
-     * @param  array<int, int>  $changes
+     * @param  array<int, array{to: int|null, to_end: int|null, manual: bool}>  $changes
      */
     private function writeNumbers(array $changes): void
     {
-        foreach ($changes as $lessonId => $assigned) {
-            DB::table('lessons')->where('id', $lessonId)->update(['lesson_number' => $assigned]);
+        foreach ($changes as $lessonId => $change) {
+            DB::table('lessons')->where('id', $lessonId)->update([
+                'lesson_number' => $change['to'],
+                'lesson_number_end' => $change['to_end'],
+                'lesson_number_manual' => $change['manual'],
+            ]);
         }
     }
 

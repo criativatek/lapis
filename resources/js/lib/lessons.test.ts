@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
     emptySummaryReason,
     followsPreviousWithoutBreak,
+    formatLessonNumber,
     isQuickClosable,
     lessonDisplayState,
+    lessonNumberLabel,
     lessonQuickCloseState,
     lessonScope,
     simultaneousLessons,
@@ -161,5 +163,30 @@ describe('regras de ecrã das vistas da semana (0.158.0)', () => {
     it('parágrafos por linha em branco; quebras simples ficam no parágrafo', () => {
         expect(summaryParagraphs('A\nB\n\nC')).toEqual(['A\nB', 'C']);
         expect(summaryOneLine('A\nB\n\nC')).toBe('A · B · C');
+    });
+});
+
+describe('formatLessonNumber / lessonNumberLabel', () => {
+    it('uma só lição: «11» e «Lição 11»', () => {
+        expect(formatLessonNumber(11, null)).toBe('11');
+        expect(formatLessonNumber(11)).toBe('11');
+        expect(lessonNumberLabel(11, null)).toBe('Lição 11');
+    });
+
+    it('várias lições: travessão U+2013, «11–12» e «Lições 11–12»', () => {
+        expect(formatLessonNumber(11, 12)).toBe('11–12');
+        expect(lessonNumberLabel(11, 12)).toBe('Lições 11–12');
+        expect(lessonNumberLabel(11, 12)).not.toContain('-');
+    });
+
+    it('sem número, não há nada para mostrar', () => {
+        expect(formatLessonNumber(null, null)).toBeNull();
+        expect(lessonNumberLabel(null, null)).toBeNull();
+        expect(lessonNumberLabel(undefined, undefined)).toBeNull();
+    });
+
+    it('um fim igual ou inferior ao início conta como uma só lição', () => {
+        expect(formatLessonNumber(11, 11)).toBe('11');
+        expect(lessonNumberLabel(11, 11)).toBe('Lição 11');
     });
 });

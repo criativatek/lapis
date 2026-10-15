@@ -7,6 +7,7 @@ use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\RecordLessonOutcome;
 use App\Actions\Lessons\SaveLessonSummary;
+use App\Actions\Lessons\SetLessonNumber;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
@@ -30,6 +31,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -54,6 +56,7 @@ class LessonController extends Controller implements HasMiddleware
         protected Entitlements $entitlements,
         protected LessonPreparationContext $lessonContext,
         protected UsageRecorder $usage,
+        protected SetLessonNumber $setLessonNumber,
     ) {}
 
     /**
@@ -86,6 +89,12 @@ class LessonController extends Controller implements HasMiddleware
                 'status' => $lesson->status->value,
                 'status_label' => $this->statusLabel($lesson->status),
                 'lesson_number' => $lesson->lesson_number,
+                // O fim de uma aula que corresponde a várias lições («11–12»), e
+                // se o número foi indicado pelo professor (0.169.0). Uma ausência
+                // do professor não tem lição: o ecrã não oferece o campo.
+                'lesson_number_end' => $lesson->lesson_number_end,
+                'lesson_number_manual' => $lesson->lesson_number_manual,
+                'can_set_number' => $lesson->outcome !== LessonOutcome::TeacherAbsent,
                 // A versão do sumário que este ecrã viu — volta no PUT e no
                 // DELETE para o servidor recusar uma gravação sobre texto mais novo.
                 'summary_version' => $lesson->summary_version,
@@ -142,22 +151,26 @@ class LessonController extends Controller implements HasMiddleware
 
         $before = $this->summaryFingerprint($lesson);
 
-        $this->saveLessonSummary->execute(
+        $plan = $this->saveSummaryAndNumber(
+            $request,
             $lesson,
-            [
-                'content' => $request->string('content')->toString(),
-                'private_notes' => $this->nullableString($request, 'private_notes'),
-                'resources' => $this->nullableString($request, 'resources'),
-                'homework' => $this->nullableString($request, 'homework'),
-            ],
-            $this->user($request),
-            $request->absentStudentUlids(),
-            $request->integer('summary_version'),
+            fn () => $this->saveLessonSummary->execute(
+                $lesson,
+                [
+                    'content' => $request->string('content')->toString(),
+                    'private_notes' => $this->nullableString($request, 'private_notes'),
+                    'resources' => $this->nullableString($request, 'resources'),
+                    'homework' => $this->nullableString($request, 'homework'),
+                ],
+                $this->user($request),
+                $request->absentStudentUlids(),
+                $request->integer('summary_version'),
+            ),
         );
 
         $this->recordSummarySaved($lesson, $before);
 
-        return back()->with('success', 'Sumário guardado.');
+        return $this->summarySavedResponse($plan);
     }
 
     /**
@@ -173,17 +186,91 @@ class LessonController extends Controller implements HasMiddleware
 
         $before = $this->summaryFingerprint($lesson);
 
-        $this->saveLessonSummary->execute(
+        $plan = $this->saveSummaryAndNumber(
+            $request,
             $lesson,
-            ['content' => $request->string('content')->toString()],
-            $this->user($request),
-            null,
-            $request->integer('summary_version'),
+            fn () => $this->saveLessonSummary->execute(
+                $lesson,
+                ['content' => $request->string('content')->toString()],
+                $this->user($request),
+                null,
+                $request->integer('summary_version'),
+            ),
         );
 
         $this->recordSummarySaved($lesson, $before);
 
-        return back()->with('success', 'Sumário guardado.');
+        return $this->summarySavedResponse($plan);
+    }
+
+    /**
+     * Grava o sumário e, quando o pedido traz o número da lição (0.169.0), o
+     * número — NA MESMA TRANSAÇÃO: uma recusa de qualquer dos dois (um conflito de
+     * número, uma versão de sumário velha) reverte ambos. O número vai primeiro e
+     * toma o bloqueio da turma antes do da aula, que o sumário toma a seguir.
+     *
+     * Sem nenhuma chave `lesson_number*` no pedido a numeração não se toca.
+     *
+     * @param  \Closure(): mixed  $saveSummary
+     * @return array<string, mixed>|null o plano da numeração, se o pedido a trazia
+     */
+    private function saveSummaryAndNumber(LessonSummaryRequest|LessonSummaryContentRequest $request, Lesson $lesson, \Closure $saveSummary): ?array
+    {
+        $change = $request->lessonNumberChange();
+
+        if ($change === null) {
+            $saveSummary();
+
+            return null;
+        }
+
+        return DB::transaction(function () use ($change, $lesson, $request, $saveSummary): array {
+            $plan = $this->setLessonNumber->execute($lesson, $change, $request->lessonNumberConfirmation(), $this->user($request));
+            $saveSummary();
+
+            return $plan;
+        });
+    }
+
+    /**
+     * «Sumário guardado. Lição 11. As aulas seguintes passam a ser numeradas a
+     * partir da Lição 12.» — a mensagem diz o que aconteceu à numeração, e os
+     * avisos (uma vizinha com número incoerente) seguem à parte.
+     *
+     * @param  array<string, mixed>|null  $plan
+     */
+    private function summarySavedResponse(?array $plan): RedirectResponse
+    {
+        $message = 'Sumário guardado.';
+
+        if ($plan !== null && $plan['changed'] === true) {
+            $number = Lesson::formatLessonNumber($plan['result']['start'], $plan['result']['end']);
+
+            $message .= $number === null
+                ? ' A aula ficou sem número.'
+                : ($plan['result']['end'] === null ? ' Lição ' : ' Lições ').$number.'.';
+
+            if ($plan['following_from'] !== null) {
+                $message .= ' As aulas seguintes passam a ser numeradas a partir da Lição '.$plan['following_from'].'.';
+            }
+        }
+
+        $response = back()->with('success', $message);
+
+        // VISÍVEL, NÃO SÓ NA SESSÃO: a flash de sessão `success` não chega a
+        // nenhum ecrã; o que o professor vê é o toast. Uma mudança de numeração
+        // nunca é silenciosa — e os avisos (uma vizinha com número incoerente,
+        // uma aula que fica sem número) vão no mesmo toast, como aviso.
+        if ($plan !== null && $plan['changed'] === true) {
+            $warnings = $plan['warnings'];
+
+            Inertia::flash('toast', [
+                'type' => $warnings === [] ? 'success' : 'warning',
+                'message' => trim($message.' '.implode(' ', $warnings)),
+            ]);
+        }
+
+        return $response;
     }
 
     /**

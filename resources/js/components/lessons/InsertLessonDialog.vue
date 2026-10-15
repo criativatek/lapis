@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatLessonNumber, lessonNumberLabel } from '@/lib/lessons';
 
 type InsertableClass = {
     ulid: string;
@@ -48,7 +49,9 @@ type Preview = {
         from: string;
         to: string;
         lesson_number: number | null;
+        lesson_number_end: number | null;
         lesson_number_to: number | null;
+        lesson_number_to_end: number | null;
     }[];
 };
 
@@ -268,8 +271,12 @@ function submit(): void {
                             class="flex items-center gap-1.5 tabular-nums"
                         >
                             <span v-if="move.lesson_number" class="shrink-0"
-                                >Lição {{ move.lesson_number }} →
-                                {{ move.lesson_number_to ?? move.lesson_number }}</span
+                                >{{ lessonNumberLabel(move.lesson_number, move.lesson_number_end) }} →
+                                {{
+                                    move.lesson_number_to === null
+                                        ? 'sem número'
+                                        : formatLessonNumber(move.lesson_number_to, move.lesson_number_to_end)
+                                }}</span
                             >
                             <span class="shrink-0">{{
                                 dayFormatter.format(new Date(move.from))

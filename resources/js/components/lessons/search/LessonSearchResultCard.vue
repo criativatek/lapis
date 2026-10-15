@@ -18,7 +18,7 @@ import HighlightedSummary from '@/components/lessons/search/HighlightedSummary';
 import LessonIdentity from '@/components/lessons/week/LessonIdentity.vue';
 import LessonStatePill from '@/components/lessons/week/LessonStatePill.vue';
 import { Button } from '@/components/ui/button';
-import { lessonScope, lessonTimeRange } from '@/lib/lessons';
+import { lessonNumberLabel, lessonScope, lessonTimeRange } from '@/lib/lessons';
 import { resultDateLabel } from '@/lib/lessonSummarySearch';
 import type { SummarySearchResult } from '@/lib/lessonSummarySearch';
 import { TURMA_BAND, TURMA_BAND_STRIPED } from '@/lib/turmaTones';
@@ -39,10 +39,12 @@ const emit = defineEmits<{ open: [] }>();
 const scope = computed(() => lessonScope(props.result));
 const date = computed(() => resultDateLabel(props.result));
 const time = computed(() => lessonTimeRange(props.result));
-const numberLabel = computed(() =>
-    props.result.lesson_number === null
-        ? 'Sem número'
-        : `Lição ${props.result.lesson_number}`,
+const numberLabel = computed(
+    () =>
+        lessonNumberLabel(
+            props.result.lesson_number,
+            props.result.lesson_number_end,
+        ) ?? 'Sem número',
 );
 const band = computed(() =>
     scope.value.kind === 'group'

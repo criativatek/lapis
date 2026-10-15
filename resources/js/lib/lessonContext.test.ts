@@ -16,6 +16,7 @@ function entry(ulid: string, startsAt: string): LessonContextEntry {
         starts_at: startsAt,
         ends_at: null,
         lesson_number: null,
+        lesson_number_end: null,
         context_label: '8.º F',
         state: 'taught',
         state_label: 'Lecionada',

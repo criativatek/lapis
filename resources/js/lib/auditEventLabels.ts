@@ -93,6 +93,7 @@ const labels: Record<string, string> = {
     'lesson.summary_reviewed': 'Sumário revisto',
     'lesson.summary_cleared': 'Sumário apagado',
     'lesson.inserted': 'Aula inserida',
+    'lesson.number_set': 'Número da aula alterado',
     'lesson.deleted': 'Aula eliminada',
     'lesson.attendance_recorded': 'Assiduidade registada',
     'lesson.attendance_corrected': 'Assiduidade corrigida',

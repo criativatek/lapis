@@ -43,6 +43,7 @@ vi.mock('@inertiajs/vue3', () => ({
             post: vi.fn(),
             delete: vi.fn(),
             clearErrors: vi.fn(),
+            transform: vi.fn(),
             defaults: vi.fn(),
             data: () => ({ ...data }),
         }) as MockForm;
@@ -104,6 +105,10 @@ function mountPage(
         class_group_label?: string | null;
         summary?: { content: string; private_notes: string | null; resources: string | null; homework: string | null; reviewed_at: string | null } | null;
         summary_version?: number;
+        lesson_number?: number | null;
+        lesson_number_end?: number | null;
+        lesson_number_manual?: boolean;
+        can_set_number?: boolean;
     } = {},
     attendanceOverrides: Partial<typeof defaultAttendance> = {},
     dayEvents: DayEvent[] = [],
@@ -117,6 +122,9 @@ function mountPage(
                 status: 'preparation' as const,
                 status_label: 'Por preparar',
                 lesson_number: 3,
+                lesson_number_end: null,
+                lesson_number_manual: false,
+                can_set_number: true,
                 summary_version: 4,
                 outcome: null,
                 outcome_label: null,
@@ -989,5 +997,120 @@ describe('lessons/Show — gravação confirmada e falhas (0.158.1)', () => {
         await nextTick();
 
         expect(wrapper.find('[data-testid="summary-save-failure"]').exists()).toBe(false);
+    });
+});
+
+describe('lessons/Show — o número da lição (0.169.0)', () => {
+    const transformOf = () => (summaryForm().transform as unknown as { mock: { calls: [(data: Record<string, unknown>) => Record<string, unknown>][] } }).mock.calls[0][0];
+
+    function stubPreview(body: Record<string, unknown>) {
+        const fetchMock = vi.fn((url: string) =>
+            Promise.resolve({
+                ok: true,
+                status: String(url).includes('/number/preview') ? 200 : 204,
+                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lessons: [], has_more: false }),
+            } as Response),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+
+        return fetchMock;
+    }
+
+    const preview = (overrides: Record<string, unknown> = {}) => ({
+        changed: true,
+        result: { start: 14, end: null, manual: true },
+        conflicts: [],
+        effects: [],
+        warnings: [],
+        requires_confirmation: false,
+        confirmation: null,
+        following_from: 15,
+        ...overrides,
+    });
+
+    it('mostra o selo «Lições 11–12» numa aula de várias lições', () => {
+        const wrapper = mountPage({ lesson_number: 11, lesson_number_end: 12 });
+
+        expect(wrapper.text()).toContain('Lições 11–12');
+        expect((wrapper.get('[data-testid="lesson-number-end"]').element as HTMLInputElement).value).toBe('12');
+    });
+
+    it('número igual: grava como sempre, sem pré-visualização nem chaves de numeração', async () => {
+        const fetchMock = stubPreview(preview());
+        const wrapper = mountPage();
+
+        await wrapper.find('form').trigger('submit');
+        await flushPromises();
+
+        expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/number/preview'))).toHaveLength(0);
+        expect(summaryForm().put).toHaveBeenCalledOnce();
+        expect(transformOf()({ content: 'x' })).toEqual({ content: 'x' });
+    });
+
+    it('o número alterado conta como alteração por guardar na guarda de navegação', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.get('[data-testid="lesson-number-start"]').setValue('20');
+        const event = fireInAppNavigation();
+
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('número alterado sem efeitos registados: pré-visualiza e grava logo, com as chaves', async () => {
+        stubPreview(preview());
+        const wrapper = mountPage();
+        await wrapper.get('[data-testid="lesson-number-start"]').setValue('14');
+
+        await wrapper.find('form').trigger('submit');
+        await flushPromises();
+
+        expect(summaryForm().put).toHaveBeenCalledOnce();
+        expect(transformOf()({ content: 'x' })).toEqual({ content: 'x', lesson_number: 14, lesson_number_end: null });
+    });
+
+    it('um conflito aparece junto do campo e não grava', async () => {
+        stubPreview(preview({ conflicts: ['A Lição 14 já está atribuída à aula de 22/10/2026 (8.º F).'] }));
+        const wrapper = mountPage();
+        await wrapper.get('[data-testid="lesson-number-start"]').setValue('14');
+
+        await wrapper.find('form').trigger('submit');
+        await flushPromises();
+
+        expect(summaryForm().put).not.toHaveBeenCalled();
+        expect(wrapper.get('[data-testid="lesson-number-error"]').text()).toContain('A Lição 14 já está atribuída');
+    });
+
+    it('efeitos registados pedem confirmação no painel; «Guardar» envia a confirmação', async () => {
+        stubPreview(
+            preview({
+                effects: [{ ulid: 'x', starts_at: '2026-10-22T09:30:00+01:00', context_label: '8.º F', from: 2, from_end: null, to: 15, to_end: null, recorded: true }],
+                confirmation: 'hash-9',
+            }),
+        );
+        const wrapper = mountPage();
+        await wrapper.get('[data-testid="lesson-number-start"]').setValue('14');
+
+        await wrapper.find('form').trigger('submit');
+        await flushPromises();
+
+        expect(summaryForm().put).not.toHaveBeenCalled();
+        expect(wrapper.get('[data-testid="lesson-number-effects"]').text()).toContain('22/10 · 8.º F · Lição 2 → Lição 15');
+
+        await wrapper.get('[data-testid="lesson-number-confirm"]').trigger('click');
+
+        expect(summaryForm().put).toHaveBeenCalledOnce();
+        expect(transformOf()({ content: 'x' })).toEqual({
+            content: 'x',
+            lesson_number: 14,
+            lesson_number_end: null,
+            lesson_number_confirmation: 'hash-9',
+        });
+    });
+
+    it('professor ausente: sem campo, só a frase', () => {
+        const wrapper = mountPage({ can_set_number: false, lesson_number: null, outcome: 'teacher_absent', outcome_label: 'Professor ausente', can_record_outcome: false });
+
+        expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toContain('Professor ausente: esta aula não tem número de lição.');
+        expect(wrapper.find('[data-testid="lesson-number-start"]').exists()).toBe(false);
     });
 });

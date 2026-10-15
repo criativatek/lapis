@@ -129,8 +129,12 @@ class LessonNumberingTest extends TestCase
 
     /**
      * O caminho automático não pode partir a página: materializar uma semana
-     * antiga atribui números sem renumerar o histórico (LessonNumbering::
+     * antiga não renumera o histórico (LessonNumbering::
      * numberMaterializedLessons).
+     *
+     * DESDE A 0.169.0 a aula antiga fica SEM número: antes da Lição 1 lecionada
+     * não há número livre, e o antigo «maior número + 1» punha-a fora de ordem
+     * (Lição 2 antes da Lição 1). O professor pode indicá-lo à mão.
      */
     #[Test]
     public function materializing_an_earlier_week_never_breaks_on_taught_history(): void
@@ -147,8 +151,7 @@ class LessonNumberingTest extends TestCase
         $this->inTenant($this->organization, function () use ($taught): void {
             $this->assertSame(1, $taught->refresh()->lesson_number);
             $created = Lesson::query()->whereDate('starts_at', '2026-10-01')->sole();
-            $this->assertNotNull($created->lesson_number);
-            $this->assertNotSame(1, $created->lesson_number);
+            $this->assertNull($created->lesson_number);
         });
     }
 

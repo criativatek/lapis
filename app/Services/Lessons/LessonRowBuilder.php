@@ -158,6 +158,9 @@ final class LessonRowBuilder
                 'summary_version' => $lesson->summary_version,
                 'summary_reviewed' => $lesson->summary?->reviewed_at !== null,
                 'lesson_number' => $lesson->lesson_number,
+                'lesson_number_end' => $lesson->lesson_number_end,
+                // Indicado pelo professor (0.169.0): o editor mostra «Número indicado manualmente».
+                'lesson_number_manual' => $lesson->lesson_number_manual,
                 // Decidido no servidor e enviado já decidido — esconder o
                 // botão é apresentação, e DeleteLesson repete a recusa por
                 // sua conta quando o pedido lá chega na mesma.

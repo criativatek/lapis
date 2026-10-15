@@ -135,6 +135,8 @@ function makeLesson(overrides: Partial<WeekLesson> = {}): WeekLesson {
         identity_tone: 'violet',
         day_events: [],
         lesson_number: 12,
+        lesson_number_end: null,
+        lesson_number_manual: false,
         outcome: null,
         outcome_label: null,
         can_delete: true,
@@ -1387,6 +1389,7 @@ describe('pesquisa nos sumários — em todo o ano letivo, no servidor', () => {
             outcome: 'taught',
             outcome_label: 'Lecionada',
             lesson_number: 3,
+            lesson_number_end: null,
             identity_tone: 'violet',
             occurrences: 2,
             segments: [
@@ -1950,5 +1953,216 @@ describe('a página arrumada por função (0.162.0)', () => {
         await nextTick();
         expect(wrapper.find('[data-testid="quick-batch-bar"]').exists()).toBe(false);
         wrapper.unmount();
+    });
+});
+
+describe('editar o sumário no cartão — o número da lição (0.169.0)', () => {
+    const previewResponse = (overrides: Record<string, unknown> = {}) => ({
+        changed: true,
+        result: { start: 12, end: null, manual: true },
+        conflicts: [],
+        effects: [],
+        warnings: [],
+        requires_confirmation: false,
+        confirmation: null,
+        following_from: 13,
+        ...overrides,
+    });
+
+    const recordedEffect = (overrides: Record<string, unknown> = {}) => ({
+        ulid: 'x',
+        starts_at: '2026-10-22T09:30:00+01:00',
+        context_label: '8.º F',
+        from: 2,
+        from_end: null,
+        to: 12,
+        to_end: null,
+        recorded: true,
+        ...overrides,
+    });
+
+    // O painel «Antes desta aula» também usa o fetch: só a pré-visualização do
+    // número responde com `body`, e é só ela que `previewCalls` conta.
+    function respondWith(body: unknown, status = 200) {
+        const fetchMock = vi.fn((url: string) =>
+            Promise.resolve({
+                ok: status < 400,
+                status,
+                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lessons: [], has_more: false }),
+            }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+
+        return {
+            fetchMock,
+            previewCalls: () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/number/preview')),
+        };
+    }
+
+    async function openEditor(lesson = makeLesson()) {
+        const wrapper = mountPage([lesson]);
+        await wrapper.get('[data-testid="edit-lesson-a"]').trigger('click');
+        await nextTick();
+
+        return wrapper;
+    }
+
+    async function changeNumber(wrapper: ReturnType<typeof mountPage>, start: string) {
+        await wrapper.get('[data-testid="lesson-number-start"]').setValue(start);
+    }
+
+    async function save(wrapper: ReturnType<typeof mountPage>) {
+        await wrapper.get('[data-testid="summary-save"]').trigger('click');
+        await flushPromises();
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('o cartão mostra «Lições 11–12» numa aula de várias lições', () => {
+        const wrapper = mountPage([makeLesson({ lesson_number: 11, lesson_number_end: 12 })]);
+
+        expect(wrapper.get('[data-testid="lesson-number"]').text()).toBe('Lições 11–12');
+    });
+
+    it('mostra o número atual no editor do cartão', async () => {
+        const wrapper = await openEditor();
+
+        expect((wrapper.get('[data-testid="lesson-number-start"]').element as HTMLInputElement).value).toBe('12');
+    });
+
+    it('com o número igual, grava sem pré-visualização e sem chaves de numeração', async () => {
+        const { previewCalls } = respondWith(previewResponse());
+        const wrapper = await openEditor();
+        await wrapper.get('[data-testid="summary-editor"] textarea').setValue('Outro texto.');
+
+        await save(wrapper);
+
+        expect(previewCalls()).toHaveLength(0);
+        expect(inertia.router.patch.mock.calls[0][1]).toEqual({ content: 'Outro texto.', summary_version: 3 });
+    });
+
+    it('o número alterado conta como alteração por guardar', async () => {
+        const wrapper = await openEditor();
+        expect(wrapper.get('[data-testid="summary-editor-status"]').text()).toBe('Sem alterações');
+
+        await changeNumber(wrapper, '20');
+
+        expect(wrapper.get('[data-testid="summary-editor-status"]').text()).toContain('Alterações por guardar');
+    });
+
+    it('um conflito mostra-se no campo e NÃO grava', async () => {
+        const { previewCalls } = respondWith(previewResponse({ conflicts: ['A Lição 15 já está atribuída à aula de 22/10/2026 (8.º F).'] }));
+        const wrapper = await openEditor();
+        await changeNumber(wrapper, '15');
+
+        await save(wrapper);
+
+        expect(previewCalls()).toHaveLength(1);
+        expect(String(previewCalls()[0][0])).toBe('/lessons/lesson-a/number/preview');
+        expect(JSON.parse(((previewCalls()[0] as unknown as [string, RequestInit])[1]).body as string)).toEqual({ mode: 'manual', start: 15, end: null });
+        expect(inertia.router.patch).not.toHaveBeenCalled();
+        const error = wrapper.get('[data-testid="lesson-number-error"]');
+        expect(error.attributes('role')).toBe('alert');
+        expect(error.text()).toContain('A Lição 15 já está atribuída');
+    });
+
+    it('sem efeitos registados nem avisos grava logo, com as chaves do número', async () => {
+        respondWith(previewResponse({ effects: [recordedEffect({ recorded: false, from: 13, to: 14 })] }));
+        const wrapper = await openEditor();
+        await changeNumber(wrapper, '13');
+
+        await save(wrapper);
+
+        expect(wrapper.find('[data-testid="lesson-number-confirmation"]').exists()).toBe(false);
+        expect(inertia.router.patch).toHaveBeenCalledOnce();
+        expect(inertia.router.patch.mock.calls[0][1]).toEqual({
+            content: longSummary.trim(),
+            summary_version: 3,
+            lesson_number: 13,
+            lesson_number_end: null,
+        });
+    });
+
+    it('um efeito registado pede confirmação; «Guardar» envia a confirmação do servidor', async () => {
+        respondWith(
+            previewResponse({
+                effects: [recordedEffect()],
+                warnings: ['A aula de 22/10/2026 (Lição 5) vem depois desta e tem um número inferior.'],
+                requires_confirmation: true,
+                confirmation: 'hash-123',
+            }),
+        );
+        const wrapper = await openEditor();
+        await changeNumber(wrapper, '14');
+
+        await save(wrapper);
+
+        expect(inertia.router.patch).not.toHaveBeenCalled();
+        const panel = wrapper.get('[data-testid="lesson-number-confirmation"]');
+        expect(panel.get('[data-testid="lesson-number-effects"]').text()).toContain('22/10 · 8.º F · Lição 2 → Lição 12');
+        expect(panel.get('[data-testid="lesson-number-warnings"]').text()).toContain('tem um número inferior');
+
+        await panel.get('[data-testid="lesson-number-confirm"]').trigger('click');
+
+        expect(inertia.router.patch).toHaveBeenCalledOnce();
+        expect(inertia.router.patch.mock.calls[0][1]).toMatchObject({
+            lesson_number: 14,
+            lesson_number_end: null,
+            lesson_number_confirmation: 'hash-123',
+        });
+    });
+
+    it('«Cancelar» fecha o painel sem gravar e mantém o que se escreveu', async () => {
+        respondWith(previewResponse({ effects: [recordedEffect({ to: null })], confirmation: 'h' }));
+        const wrapper = await openEditor();
+        await changeNumber(wrapper, '14');
+        await save(wrapper);
+
+        expect(wrapper.get('[data-testid="lesson-number-effects"]').text()).toContain('fica sem número');
+
+        await wrapper.get('[data-testid="lesson-number-cancel"]').trigger('click');
+
+        expect(wrapper.find('[data-testid="lesson-number-confirmation"]').exists()).toBe(false);
+        expect(inertia.router.patch).not.toHaveBeenCalled();
+        expect((wrapper.get('[data-testid="lesson-number-start"]').element as HTMLInputElement).value).toBe('14');
+    });
+
+    it('um erro `lesson_number` do servidor fica no campo e não se confunde com o conflito de versão', async () => {
+        respondWith(previewResponse());
+        const wrapper = await openEditor();
+        await changeNumber(wrapper, '13');
+        await save(wrapper);
+        const options = inertia.router.patch.mock.calls[0][2] as VisitOptions;
+
+        options.onError?.({ lesson_number: 'Esta alteração muda o número de outras aulas já registadas. Revê a lista e confirma.' });
+        options.onFinish?.();
+        await nextTick();
+
+        expect(wrapper.get('[data-testid="lesson-number-error"]').text()).toContain('Revê a lista e confirma');
+        expect(wrapper.find('[data-testid="summary-conflict"]').exists()).toBe(false);
+        // O editor continua aberto, com o número escrito.
+        expect((wrapper.get('[data-testid="lesson-number-start"]').element as HTMLInputElement).value).toBe('13');
+    });
+
+    it('«Repor numeração automática» grava com a bandeira automática (numa aula manual)', async () => {
+        respondWith(previewResponse({ result: { start: 12, end: null, manual: false } }));
+        const wrapper = await openEditor(makeLesson({ lesson_number_manual: true }));
+
+        await wrapper.get('[data-testid="lesson-number-reset"]').trigger('click');
+        await save(wrapper);
+
+        expect(inertia.router.patch.mock.calls[0][1]).toMatchObject({ lesson_number_automatic: true });
+        expect(inertia.router.patch.mock.calls[0][1]).not.toHaveProperty('lesson_number');
+    });
+
+    it('professor ausente: o editor não oferece o número', async () => {
+        const wrapper = await openEditor(
+            makeLesson({ outcome: 'teacher_absent', outcome_label: 'Professor ausente', lesson_number: null, status: 'taught', status_label: 'Lecionada' }),
+        );
+
+        expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toContain('Professor ausente');
+        expect(wrapper.find('[data-testid="lesson-number-start"]').exists()).toBe(false);
     });
 });

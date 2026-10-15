@@ -9,6 +9,8 @@ import LessonAttendanceList from '@/components/lessons/LessonAttendanceList.vue'
 import type { LessonAttendance } from '@/components/lessons/LessonAttendanceList.vue';
 import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
+import LessonNumberConfirmation from '@/components/lessons/LessonNumberConfirmation.vue';
+import LessonNumberField from '@/components/lessons/LessonNumberField.vue';
 import LessonOutcomePanel from '@/components/lessons/LessonOutcomePanel.vue';
 import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel.vue';
 import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
@@ -31,7 +33,17 @@ import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
 import { markLessonsStale, recordConfirmedSummary } from '@/lib/confirmedSummaries';
 import { baseOnLabel } from '@/lib/lessonContext';
 import type { LessonBaseSource } from '@/lib/lessonContext';
-import { lessonDisplayState } from '@/lib/lessons';
+import {
+    NO_NUMBER_ERRORS,
+    numberDraftDirty,
+    numberDraftFromLesson,
+    numberSavePayload,
+    previewNeedsConfirmation,
+    requestNumberPreview,
+    validateNumberDraft,
+} from '@/lib/lessonNumber';
+import type { LessonNumberDraft, LessonNumberErrors, LessonNumberPreview } from '@/lib/lessonNumber';
+import { lessonDisplayState, lessonNumberLabel } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
 import { capitalizeFirst } from '@/lib/text';
@@ -43,6 +55,12 @@ type Lesson = {
     status: 'preparation' | 'prepared' | 'taught';
     status_label: string;
     lesson_number: number | null;
+    /** Fim de uma aula que corresponde a várias lições («11–12»); NULL = uma só lição. */
+    lesson_number_end: number | null;
+    /** O número foi indicado pelo professor e não é recalculado (0.169.0). */
+    lesson_number_manual: boolean;
+    /** Falso numa aula de professor ausente: não há lição a numerar. */
+    can_set_number: boolean;
     /**
      * A versão do sumário que esta página leu (`lessons.summary_version`). Vai
      * com cada gravação e com «Limpar sumário»: uma página aberta há horas não
@@ -95,7 +113,45 @@ const summaryForm = useForm({
     absent: initialAbsent,
     summary_version: props.lesson.summary_version ?? 0,
 });
+
+// ------------------------------------------------- o número da lição (0.169.0)
+//
+// O rascunho do número NÃO vive no `summaryForm`: o Inertia enviaria sempre as
+// suas chaves, e um pedido com `lesson_number*` é uma ordem para (re)fixar o
+// número. Só quando o professor o muda é que as chaves entram no pedido
+// (`transform`, abaixo); sem elas o servidor não toca na numeração.
+const numberOriginal = ref<LessonNumberDraft>(numberDraftFromLesson(props.lesson));
+const numberDraft = ref<LessonNumberDraft>(numberDraftFromLesson(props.lesson));
+const numberLocalErrors = ref<LessonNumberErrors>(NO_NUMBER_ERRORS);
+const numberPreview = ref<LessonNumberPreview | null>(null);
+const numberChecking = ref(false);
+/** As chaves a juntar ao PUT em curso; NULL = a numeração não se toca. */
+const pendingNumberKeys = ref<Record<string, unknown> | null>(null);
+
+const numberDirty = computed(() => props.lesson.can_set_number && numberDraftDirty(numberDraft.value, numberOriginal.value));
+// Erros do servidor (`lesson_number*`, na gravação) e locais (validação, conflitos
+// da pré-visualização) aparecem no mesmo sítio: junto do campo.
+const serverErrors = computed(() => summaryForm.errors as Record<string, string | undefined>);
+const numberErrors = computed<LessonNumberErrors>(() => ({
+    number: numberLocalErrors.value.number ?? serverErrors.value.lesson_number ?? null,
+    end: numberLocalErrors.value.end ?? serverErrors.value.lesson_number_end ?? null,
+}));
+
+// Os erros do número não são campos do formulário (as chaves só viajam quando o
+// número muda), por isso o tipo do `useForm` não os conhece.
+function clearNumberErrors(): void {
+    (summaryForm as unknown as { clearErrors: (...fields: string[]) => void }).clearErrors('lesson_number', 'lesson_number_end');
+}
+
+function setNumberDraft(value: LessonNumberDraft): void {
+    numberDraft.value = value;
+    // Um número diferente invalida o que se viu e o que se recusou.
+    numberLocalErrors.value = NO_NUMBER_ERRORS;
+    numberPreview.value = null;
+    clearNumberErrors();
+}
 const taughtForm = useForm({ absent: initialAbsent });
+summaryForm.transform((data) => ({ ...data, ...(pendingNumberKeys.value ?? {}) }));
 const recordForm = useForm({ absent: initialAbsent });
 const clearForm = useForm({ summary_version: props.lesson.summary_version ?? 0 });
 const deleteForm = useForm({});
@@ -265,7 +321,8 @@ function resolveConflict(choice: 'combine' | 'keep-mine' | 'use-stored'): void {
 
 const summaryErrors = computed(() =>
     Object.entries(summaryForm.errors)
-        .filter(([field]) => field !== 'summary_version')
+        // O número tem os erros junto do campo, não no resumo do formulário.
+        .filter(([field]) => !['summary_version', 'lesson_number', 'lesson_number_end'].includes(field))
         .map(([, message]) => message),
 );
 const attendanceErrors = computed(() => [...Object.values(taughtForm.errors), ...Object.values(recordForm.errors)]);
@@ -296,19 +353,106 @@ function releaseSubmission(): void {
     submittingFromThisPage.value = false;
 }
 
-/** Grava o formulário inteiro; resolve `true` só quando a gravação foi aceite. */
-function submitSummary(): Promise<boolean> {
+/**
+ * Grava o formulário inteiro; resolve `true` só quando a gravação foi aceite.
+ *
+ * Número da lição NÃO mudou: grava como sempre, sem chaves `lesson_number*`.
+ * Mudou: primeiro a pré-visualização — um conflito não grava, e efeitos em
+ * aulas já registadas (ou avisos) pedem confirmação no painel antes de gravar.
+ */
+async function submitSummary(): Promise<boolean> {
+    conflictNotice.value = null;
+    saveFailure.value = null;
+
+    if (!numberDirty.value) {
+        return sendSummary(null);
+    }
+
+    const local = validateNumberDraft(numberDraft.value);
+
+    if (local.number !== null || local.end !== null) {
+        numberLocalErrors.value = local;
+        numberPreview.value = null;
+
+        return false;
+    }
+
+    numberLocalErrors.value = NO_NUMBER_ERRORS;
+    numberPreview.value = null;
+    clearNumberErrors();
+    // A verificação também é "guardar": a guarda de navegação não a interroga.
+    submittingFromThisPage.value = true;
+    numberChecking.value = true;
+
+    const result = await requestNumberPreview(props.lesson.ulid, numberDraft.value);
+
+    numberChecking.value = false;
+
+    if (result.kind === 'invalid') {
+        releaseSubmission();
+        numberLocalErrors.value = result.errors;
+
+        return false;
+    }
+
+    if (result.kind === 'failed') {
+        releaseSubmission();
+        saveFailure.value = result.message;
+
+        return false;
+    }
+
+    const preview = result.preview;
+
+    if (preview.conflicts.length > 0) {
+        releaseSubmission();
+        numberLocalErrors.value = { number: preview.conflicts.join(' '), end: null };
+
+        return false;
+    }
+
+    if (!preview.changed) {
+        return sendSummary(null);
+    }
+
+    if (previewNeedsConfirmation(preview)) {
+        releaseSubmission();
+        numberPreview.value = preview;
+
+        return false;
+    }
+
+    return sendSummary(preview);
+}
+
+/** «Guardar» no painel de confirmação: envia a confirmação que o servidor deu. */
+function confirmNumber(): Promise<boolean> {
+    return sendSummary(numberPreview.value);
+}
+
+function sendSummary(preview: LessonNumberPreview | null): Promise<boolean> {
     submittingFromThisPage.value = true;
     conflictNotice.value = null;
     saveFailure.value = null;
+    pendingNumberKeys.value = preview === null ? null : numberSavePayload(numberDraft.value, preview.confirmation);
 
     return new Promise((resolve) => {
         let saved = false;
 
         summaryForm.put(`/lessons/${props.lesson.ulid}/summary`, {
             preserveScroll: true,
+            onError: () => {
+                // O servidor recusou o número (conflito, confirmação em falta
+                // ou desatualizada): o erro fica junto do campo e o «Guardar»
+                // seguinte volta a pedir a pré-visualização.
+                numberPreview.value = null;
+            },
             onSuccess: () => {
                 saved = true;
+                // O número que o servidor guardou é o novo ponto de partida.
+                numberOriginal.value = numberDraftFromLesson(props.lesson);
+                numberDraft.value = numberDraftFromLesson(props.lesson);
+                numberPreview.value = null;
                 // Antes de o formulário se dar por limpo, para a versão nova
                 // ficar também no ponto de partida.
                 summaryForm.summary_version = props.lesson.summary_version ?? 0;
@@ -334,6 +478,7 @@ function submitSummary(): Promise<boolean> {
                 return false;
             },
             onFinish: () => {
+                pendingNumberKeys.value = null;
                 releaseSubmission();
                 resolve(saved);
             },
@@ -360,7 +505,7 @@ function markTaught(): void {
 // «Guardar e continuar», which only continues once the save is accepted);
 // closing the tab or reloading gets the browser's own native protection.
 const guard = useUnsavedChangesGuard({
-    isDirty: () => summaryForm.isDirty,
+    isDirty: () => summaryForm.isDirty || numberDirty.value,
     isSubmitting: () => submittingFromThisPage.value,
     save: submitSummary,
     discard: () => {},
@@ -457,8 +602,8 @@ function goBack(event: MouseEvent): void {
                 <div class="flex items-center gap-2">
                     <!-- O mesmo número que a lista e o horário mostram: é o
                          mesmo campo da mesma aula, e não um contador de ecrã. -->
-                    <Badge v-if="lesson.lesson_number !== null" variant="outline" class="tabular-nums"
-                        >Lição {{ lesson.lesson_number }}</Badge
+                    <Badge v-if="lessonNumberLabel(lesson.lesson_number, lesson.lesson_number_end) !== null" variant="outline" class="tabular-nums"
+                        >{{ lessonNumberLabel(lesson.lesson_number, lesson.lesson_number_end) }}</Badge
                     >
                     <Badge variant="secondary" data-testid="lesson-state" :class="statusToneClasses(lessonDisplayState(lesson).value)">{{
                         lessonDisplayState(lesson).label
@@ -533,6 +678,27 @@ function goBack(event: MouseEvent): void {
                 />
             </div>
 
+            <div class="grid gap-3 rounded-xl border bg-card p-4">
+                <LessonNumberField
+                    :model-value="numberDraft"
+                    :original="numberOriginal"
+                    :manual="lesson.lesson_number_manual"
+                    :can-set="lesson.can_set_number"
+                    :errors="numberErrors"
+                    id-prefix="lesson-number"
+                    :disabled="summaryForm.processing || numberChecking"
+                    @update:model-value="setNumberDraft"
+                />
+                <LessonNumberConfirmation
+                    v-if="numberPreview"
+                    :preview="numberPreview"
+                    :saving="summaryForm.processing"
+                    id-prefix="lesson-number-confirmation"
+                    @confirm="confirmNumber"
+                    @cancel="numberPreview = null"
+                />
+            </div>
+
             <LessonAttendanceList
                 v-if="lesson.outcome === null || lesson.outcome === 'taught'"
                 id="assiduidade"
@@ -574,10 +740,10 @@ function goBack(event: MouseEvent): void {
             </details>
 
             <div class="flex flex-col gap-3 sm:flex-row">
-                <Button type="submit" size="lg" class="min-h-12 flex-1 text-base" :disabled="summaryForm.processing">
-                    <Spinner v-if="summaryForm.processing" />
+                <Button type="submit" size="lg" class="min-h-12 flex-1 text-base" :disabled="summaryForm.processing || numberChecking">
+                    <Spinner v-if="summaryForm.processing || numberChecking" />
                     <Save v-else class="size-5" />
-                    {{ summaryForm.processing ? 'A guardar…' : 'Guardar' }}
+                    {{ summaryForm.processing || numberChecking ? 'A guardar…' : 'Guardar' }}
                 </Button>
                 <Button v-if="lesson.status !== 'taught' && lesson.outcome === null" type="button" size="lg" variant="secondary" class="min-h-12" :disabled="taughtForm.processing" @click="markTaught">
                     <Spinner v-if="taughtForm.processing" />

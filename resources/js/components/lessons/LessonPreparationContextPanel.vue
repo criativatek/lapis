@@ -16,6 +16,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useLessonPreparationContext } from '@/composables/useLessonPreparationContext';
 import { contextDayMonth, firstLine, isLongContextText } from '@/lib/lessonContext';
 import type { LessonContextEntry } from '@/lib/lessonContext';
+import { lessonNumberLabel } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { capitalizeFirst } from '@/lib/text';
 
@@ -105,7 +106,7 @@ function toggle(entry: LessonContextEntry): void {
                 >
                     <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
                         <strong class="font-semibold text-foreground">{{ compact ? contextDayMonth(entry.starts_at) : heading(entry) }}</strong>
-                        <span v-if="entry.lesson_number !== null" class="tabular-nums">Lição {{ entry.lesson_number }}</span>
+                        <span v-if="entry.lesson_number !== null" class="tabular-nums">{{ lessonNumberLabel(entry.lesson_number, entry.lesson_number_end) }}</span>
                         <Badge variant="secondary" data-testid="lesson-context-state" :class="statusToneClasses(entry.state)">{{
                             entry.state_label
                         }}</Badge>

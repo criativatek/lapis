@@ -2,11 +2,14 @@
 
 namespace App\Http\Requests\Lessons;
 
+use App\Http\Requests\Lessons\Concerns\ValidatesLessonNumber;
 use App\Models\Lesson;
 use Illuminate\Foundation\Http\FormRequest;
 
 class LessonSummaryRequest extends FormRequest
 {
+    use ValidatesLessonNumber;
+
     public function authorize(): bool
     {
         $lesson = $this->route('lesson');
@@ -16,6 +19,8 @@ class LessonSummaryRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $this->blankNumberFieldsToNull(['lesson_number', 'lesson_number_end']);
+
         foreach (['content', 'private_notes', 'resources', 'homework'] as $field) {
             if (! is_string($this->input($field))) {
                 continue;
@@ -41,7 +46,20 @@ class LessonSummaryRequest extends FormRequest
             'summary_version' => ['required', 'integer', 'min:0'],
             'absent' => ['sometimes', 'array', 'max:200'],
             'absent.*' => ['string', 'ulid', 'distinct'],
+            // O número da lição indicado pelo professor (0.169.0): tudo
+            // opcional. Sem nenhuma destas chaves a numeração não se toca.
+            ...$this->lessonNumberRules('lesson_number', 'lesson_number_end'),
+            'lesson_number_automatic' => ['sometimes', 'boolean'],
+            'lesson_number_confirmation' => ['nullable', 'string', 'max:64'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return $this->lessonNumberMessages('lesson_number', 'lesson_number_end');
     }
 
     /**

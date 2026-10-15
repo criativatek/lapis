@@ -213,7 +213,7 @@ export type AbsenceDetail = {
     student: { ulid: string; number: number | null; name: string };
     category_label: string;
     window: { is_period: boolean; label: string; period_ulid: string | null };
-    absences: { ulid: string; lesson_ulid: string; date: string; time: string; lesson_number: number | null; context_label: string }[];
+    absences: { ulid: string; lesson_ulid: string; date: string; time: string; lesson_number: number | null; lesson_number_end: number | null; context_label: string }[];
     count: number;
     days: number;
     /** Taught lessons still without attendance in the window — never absences. */

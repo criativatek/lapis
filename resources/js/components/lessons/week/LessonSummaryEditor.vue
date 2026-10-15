@@ -11,6 +11,10 @@
  * O texto cresce com o campo (sem scroll interno). Ctrl+Enter guarda; Esc
  * cancela. Enquanto grava, o texto fica só de leitura, para o que se vê ser
  * exatamente o que foi enviado.
+ *
+ * O NÚMERO DA LIÇÃO (0.169.0) é editado aqui ao lado do texto, mas o rascunho,
+ * a pré-visualização e a gravação são do pai (Index.vue): este componente só
+ * mostra o campo, o painel de confirmação e conta o número como alteração.
  */
 import {
     CalendarClock,
@@ -23,6 +27,8 @@ import {
     Save,
 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import LessonNumberConfirmation from '@/components/lessons/LessonNumberConfirmation.vue';
+import LessonNumberField from '@/components/lessons/LessonNumberField.vue';
 import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
 import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
 import { Button } from '@/components/ui/button';
@@ -32,6 +38,12 @@ import {
     LESSON_SUMMARY_MAX_LENGTH,
     summaryAppendBlockedReason,
 } from '@/lib/lessonDayEvents';
+import { canSetLessonNumber, numberDraftDirty } from '@/lib/lessonNumber';
+import type {
+    LessonNumberDraft,
+    LessonNumberErrors,
+    LessonNumberPreview,
+} from '@/lib/lessonNumber';
 import { isTaughtLesson } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
 
@@ -44,6 +56,12 @@ const props = defineProps<{
     /** Informação neutra depois de uma decisão no conflito (p. ex. textos combinados). */
     notice?: string | null;
     conflict: { stored: string } | null;
+    /** O rascunho do número da lição e o que a aula tinha ao abrir o editor. */
+    number: LessonNumberDraft;
+    numberOriginal: LessonNumberDraft;
+    numberErrors: LessonNumberErrors;
+    /** A pré-visualização que pede confirmação antes de gravar; null = nada a confirmar. */
+    numberPreview: LessonNumberPreview | null;
 }>();
 
 const emit = defineEmits<{
@@ -54,6 +72,9 @@ const emit = defineEmits<{
     combine: [];
     'keep-mine': [];
     'use-stored': [];
+    'update:number': [value: LessonNumberDraft];
+    'confirm-number': [];
+    'cancel-number': [];
 }>();
 
 const textarea = ref<HTMLTextAreaElement | null>(null);
@@ -61,7 +82,14 @@ const conflictPanel = ref<InstanceType<typeof LessonSummaryConflict> | null>(
     null,
 );
 const fieldId = computed(() => `summary-editor-${props.lesson.ulid}`);
-const dirty = computed(() => props.modelValue !== props.original);
+const numberDirty = computed(() =>
+    canSetLessonNumber(props.lesson)
+        ? numberDraftDirty(props.number, props.numberOriginal)
+        : false,
+);
+const dirty = computed(
+    () => props.modelValue !== props.original || numberDirty.value,
+);
 
 const note = computed(() => {
     if (isTaughtLesson(props.lesson)) {
@@ -205,6 +233,25 @@ defineExpose({
                 error
             }}
         </p>
+
+        <LessonNumberField
+            :model-value="number"
+            :original="numberOriginal"
+            :manual="lesson.lesson_number_manual"
+            :can-set="canSetLessonNumber(lesson)"
+            :errors="numberErrors"
+            :id-prefix="`${fieldId}-number`"
+            :disabled="saving"
+            @update:model-value="(value) => emit('update:number', value)"
+        />
+        <LessonNumberConfirmation
+            v-if="numberPreview"
+            :preview="numberPreview"
+            :saving="saving"
+            :id-prefix="`${fieldId}-number-confirmation`"
+            @confirm="emit('confirm-number')"
+            @cancel="emit('cancel-number')"
+        />
 
         <p
             v-if="notice && !conflict"

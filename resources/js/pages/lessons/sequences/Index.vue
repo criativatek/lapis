@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { lessonNumberLabel } from '@/lib/lessons';
 
 type Option = { id: number; label: string };
 
@@ -184,6 +185,7 @@ type PlanStep = {
         starts_at: string;
         ends_at: string | null;
         lesson_number: number | null;
+        lesson_number_end: number | null;
         state_label: string;
         current_summary: string | null;
     };
@@ -768,7 +770,7 @@ function applyAfterSave(): void {
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <span class="tabular-nums">
                                             {{ dayFormatter.format(new Date(step.lesson.starts_at)) }}
-                                            <span v-if="step.lesson.lesson_number" class="text-muted-foreground">· Lição {{ step.lesson.lesson_number }}</span>
+                                            <span v-if="step.lesson.lesson_number" class="text-muted-foreground">· {{ lessonNumberLabel(step.lesson.lesson_number, step.lesson.lesson_number_end) }}</span>
                                         </span>
                                         <Badge :variant="step.kind === 'replace' ? 'destructive' : 'outline'">{{ step.kind === 'closed' ? `${step.lesson.state_label} — não é alterada` : kindLabels[step.kind] }}</Badge>
                                     </div>

@@ -46,7 +46,7 @@ class DeleteLesson
     ) {}
 
     /**
-     * @return array<int, int> as aulas da sequência que mudaram de número
+     * @return array<int, int|null> as aulas da sequência que mudaram de número
      */
     public function execute(Lesson $lesson, User $actor): array
     {
@@ -76,6 +76,11 @@ class DeleteLesson
 
             $classId = $locked->class_id;
 
+            // A FOTOGRAFIA DA GUARDA, antes de qualquer escrita (e já com a turma
+            // bloqueada): as aulas lecionadas que estão coerentes agora têm de o
+            // continuar depois de fechar o buraco.
+            $snapshot = $this->numbering->guardSnapshot($classId);
+
             $this->audit->record(
                 'lesson.deleted',
                 $locked,
@@ -85,6 +90,7 @@ class DeleteLesson
                     'starts_at' => $locked->starts_at->toIso8601String(),
                     'status' => $locked->status->value,
                     'lesson_number' => $locked->lesson_number,
+                    'lesson_number_end' => $locked->lesson_number_end,
                     'had_summary' => $locked->summary()->exists(),
                     'had_plan' => $locked->plan()->exists(),
                 ],
@@ -116,7 +122,7 @@ class DeleteLesson
             // Fecha o buraco que a eliminação deixou. Recusa-se por inteiro se
             // isso exigisse renumerar uma aula já lecionada — caso em que a
             // transação reverte e a aula não chega a ser eliminada.
-            return $this->numbering->resequence($classId);
+            return $this->numbering->resequence($classId, $snapshot);
         });
     }
 }
