@@ -32,7 +32,7 @@ class ReviseRecurringLessonSlot
      * id. Nenhuma delas é reescrita, porque nada aqui escreve em `lessons` — e
      * o grupo de cada aula é um instantâneo guardado na própria aula.
      *
-     * @param  array{class_group_id: int|null, day_of_week: int, starts_at: string, ends_at: string, ends_on: string|null}  $newAttributes
+     * @param  array{class_id?: int, class_group_id: int|null, day_of_week: int, starts_at: string, ends_at: string, ends_on: string|null}  $newAttributes
      */
     public function execute(RecurringLessonSlot $slot, string $effectiveFrom, array $newAttributes): RecurringLessonSlot
     {
@@ -55,11 +55,19 @@ class ReviseRecurringLessonSlot
             // ::store() does not set it either — BelongsToOrganization stamps
             // it from the still-current tenant, which is the same organization
             // $current already belongs to for the whole length of this request.
+            //
+            // MUDAR DE TURMA (0.168.0): a versão nova nasce na turma nova e a
+            // linha antiga fecha-se, intacta, na turma original com as suas
+            // aulas. O grupo e o vínculo «mesma lição» eram da turma antiga e
+            // não os acompanham.
+            $newClassId = $newAttributes['class_id'] ?? $current->class_id;
+            $changesClass = $newClassId !== $current->class_id;
+
             return RecurringLessonSlot::create([
-                'class_id' => $current->class_id,
+                'class_id' => $newClassId,
                 'class_group_id' => $newAttributes['class_group_id'],
                 // O vínculo «mesma lição» é da linhagem do tempo, não da versão.
-                'split_lesson_key' => $newAttributes['class_group_id'] === null ? null : $current->split_lesson_key,
+                'split_lesson_key' => $newAttributes['class_group_id'] === null || $changesClass ? null : $current->split_lesson_key,
                 'day_of_week' => $newAttributes['day_of_week'],
                 'starts_at' => $newAttributes['starts_at'],
                 'ends_at' => $newAttributes['ends_at'],

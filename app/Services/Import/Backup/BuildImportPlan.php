@@ -92,6 +92,7 @@ class BuildImportPlan
         private readonly BuildLessonsPlan $lessonsPlan,
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
         private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
+        private readonly BuildTimetableActivitiesPlan $timetableActivitiesPlan,
         private readonly BuildRecordFollowupPlan $recordFollowupPlan,
     ) {}
 
@@ -143,6 +144,15 @@ class BuildImportPlan
         // gate before looking at anything in the destination.
         $classNotebookEntries = $this->classNotebookEntriesPlan->build(
             $canonical['class_notebook_entries'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+        );
+
+        // Schema v17 — the exporter's own non-teaching activities: the same
+        // author gate, and the class is only a reference.
+        $timetableActivities = $this->timetableActivitiesPlan->build(
+            $canonical['timetable_activities'] ?? [],
             $destination,
             $actor,
             $classesByUlid,
@@ -240,6 +250,7 @@ class BuildImportPlan
             $lessons['rows'],
             $resultsAnalysisNotes['rows'],
             $classNotebookEntries['rows'],
+            $timetableActivities['rows'],
             $recordFollowups['rows'],
         );
 

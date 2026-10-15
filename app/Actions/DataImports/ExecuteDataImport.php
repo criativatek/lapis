@@ -56,6 +56,7 @@ class ExecuteDataImport
         private readonly WriteLessons $lessonsWriter,
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
         private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
+        private readonly WriteTimetableActivities $timetableActivitiesWriter,
         private readonly WriteRecordFollowups $recordFollowupsWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
@@ -154,6 +155,12 @@ class ExecuteDataImport
                 $rows['class_notebook_entries'], $classModels['byUlid'],
             );
 
+            // Schema v17 — the exporter's own non-teaching activities. Only
+            // needs the classes map; authorship was proved in the plan.
+            $timetableActivitiesCreated = $this->timetableActivitiesWriter->write(
+                $rows['timetable_activities'] ?? [], $classModels['byUlid'],
+            );
+
             // Schema v15 — after the logbook records, whose new ulids the
             // declarations point at. Never runs the alert threshold.
             $followupCounts = $this->recordFollowupsWriter->write(
@@ -194,6 +201,7 @@ class ExecuteDataImport
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
                 'class_notebook_entries_created' => $classNotebookEntriesCreated,
+                'timetable_activities_created' => $timetableActivitiesCreated,
                 'record_followup_cases_created' => $followupCounts['cases'],
                 'record_followup_confirmations_created' => $followupCounts['confirmations'],
                 'record_followup_confirmations_incomplete' => $followupCounts['incomplete'],

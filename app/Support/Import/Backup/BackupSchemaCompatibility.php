@@ -7,7 +7,14 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (16) is what GenerateDataExport writes today. Version 16 adds
+ * CURRENT (17) is what GenerateDataExport writes today. Version 17 adds the
+ * `timetable_activities` collection — the teacher's own non-teaching activities
+ * of the timetable (`TimetableActivity`: direção de turma, apoio, reuniões):
+ * `ulid`, `author_email`, `kind`, `title`, optional `class_ulid`, the weekday,
+ * the two times and the optional validity window. Exported only for the
+ * exporting account and restored only by that same account. Absent in a
+ * backup ≤16 (read as an empty list): nothing is restored and nothing at the
+ * destination is deleted because of it. Version 16 adds
  * `self_assessment_responses[].numeric_value` — the number a student wrote on a
  * scale without levels (0–20, a percentage, a scale of the organization's own),
  * as a decimal string (DECIMAL(6,3)), null when the answer is a level or a
@@ -79,7 +86,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 16;
+    public const int CURRENT = 17;
 
     public const int MINIMUM_SUPPORTED = 2;
 

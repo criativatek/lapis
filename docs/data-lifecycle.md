@@ -227,6 +227,25 @@ nunca faz reaparecer um registo eliminado no destino. O dump diário da base
 incluídos, como leva os `evidence_records` eliminados. Detalhe em
 [backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
+## Atividades não letivas do horário (0.168.0)
+
+`timetable_activities` guarda a configuração pessoal do horário de UM professor
+(direção de turma, apoios, reuniões, coordenação). Não é conteúdo pedagógico e
+não tem história a proteger, por isso o ciclo de vida é o mais simples:
+
+- **Eliminar a conta ou a organização apaga-as** (`user_id` e `organization_id`
+  são CASCADE). Ao contrário do caderno, não bloqueiam nada.
+- **Eliminar a turma referida não as apaga**: `class_id` é `NULL ON DELETE` —
+  a turma é só uma referência informativa.
+- **Arquivar a turma não lhes toca**; a atividade continua no horário do
+  professor, porque não é uma aula dessa turma.
+- **Anonimização** (`AnonymiseClosedAccount`): as atividades do professor são
+  apagadas, sem história a proteger — a única coisa que guardam é a designação
+  que ele escreveu (até 60 caracteres).
+- **Exportação e backup**: só as do próprio exportador (schema v17); nunca as
+  de um colega.
+- Nunca geram aulas, sumários nem assiduidade.
+
 ## Acompanhamento dos registos (0.164.0)
 
 `record_followup_cases` e `record_followup_confirmations` guardam o alerta

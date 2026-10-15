@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 16 (atual) | `Supported` | Como a v15, acrescentando `self_assessment_responses[].numeric_value` (0.167.0): o número que o aluno escreveu numa escala **sem níveis** (0 a 20, percentagem, escala própria da organização), como cadeia decimal (`DECIMAL(6,3)` na base) — `null` quando a resposta é um nível ou um texto. É um valor de uma resposta, nunca uma média nem um cálculo. Ausente num backup v≤15 ⇒ `null` (todas as respostas anteriores são por nível ou por texto); nada mais muda. No restauro, um valor que não seja uma cadeia decimal com até 3 inteiros e 3 casas deixa a linha como inválida, em vez de a gravar como outra coisa; e um número que a pergunta não aceita (escala de níveis, fora dos limites da escala, ou ao lado de um nível) não é escrito — o formulário nunca o teria gravado |
+| 17 (atual) | `Supported` | Como a v16, acrescentando `timetable_activities` (0.168.0): as **atividades não letivas** do horário do professor (direção de turma, apoio a alunos, reuniões, coordenação). Só saem as de quem exporta, e só se restauram na conta do próprio autor. Ausente num backup v≤16 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Atividades não letivas (schema v17)](#atividades-não-letivas-schema-v17) |
+| 16 | `LegacyCompatible` | Como a v15, acrescentando `self_assessment_responses[].numeric_value` (0.167.0): o número que o aluno escreveu numa escala **sem níveis** (0 a 20, percentagem, escala própria da organização), como cadeia decimal (`DECIMAL(6,3)` na base) — `null` quando a resposta é um nível ou um texto. É um valor de uma resposta, nunca uma média nem um cálculo. Ausente num backup v≤15 ⇒ `null` (todas as respostas anteriores são por nível ou por texto); nada mais muda. No restauro, um valor que não seja uma cadeia decimal com até 3 inteiros e 3 casas deixa a linha como inválida, em vez de a gravar como outra coisa; e um número que a pergunta não aceita (escala de níveis, fora dos limites da escala, ou ao lado de um nível) não é escrito — o formulário nunca o teria gravado |
 | 15 | `LegacyCompatible` | Como a v14, acrescentando o **acompanhamento dos registos** (0.164.0): `record_followup_cases` (o caso aluno × turma × período × tipo e o alerta que teve) e `record_followup_confirmations` (as declarações «Registado no Inovar», as desfeitas incluídas, com as ocorrências abrangidas como `{ulid, date}`). Referências sempre por ULID, autoria por email. Ausentes num backup v≤14 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Acompanhamento dos registos (schema v15)](#acompanhamento-dos-registos-schema-v15) |
 | 14 | `LegacyCompatible` | Como a v13, acrescentando `class_notebook_entries` — o **Caderno da turma**: registos privados do professor sobre a turma (título opcional, texto, fixação e as três datas). Só sai o caderno de quem exporta, nas turmas que ensina, sem os registos eliminados; só se restaura na conta do próprio autor. Ausente num backup v≤13 ⇒ zero registos restaurados, nunca um erro, e nada é apagado no destino. Ver [Caderno da turma (schema v14)](#caderno-da-turma-schema-v14) |
 | 13 | `LegacyCompatible` | Como a v12, acrescentando `results_analysis_notes` — as observações do professor no separador Resultados de um elemento de avaliação (`context_kind = 'instrument'`, a única forma que existe hoje). Texto livre até 20 000 carateres; uma observação vazia nunca é exportada. Ausente num backup v≤12 ⇒ zero observações restauradas, nunca um erro, e nada é apagado no destino |
@@ -40,10 +41,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 14 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 17 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 14`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 17`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -571,6 +572,40 @@ a quem importa.
 **Cópias integrais da base.** O dump diário (`scripts/backup-database.sh`)
 copia a base inteira sem lista de tabelas: as duas tabelas lá estão sem
 alteração ao script.
+
+## Atividades não letivas (schema v17)
+
+As atividades não letivas (0.168.0) são parte do **horário pessoal** de um
+professor — direção de turma, apoio a alunos, reuniões, coordenação ou cargos.
+**Não são aulas**: vivem na tabela própria `timetable_activities`, nunca em
+`recurring_lesson_slots`, e restaurá-las nunca cria uma `lessons`, um sumário
+nem uma linha de assiduidade.
+
+`timetable_activities` (dez chaves, nem mais nem menos):
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade da atividade |
+| `author_email` | email | o dono (o professor que exporta). Só se restaura quando é o da conta que confirma a importação; qualquer outro ⇒ `invalid` |
+| `kind` | `class_direction`, `student_support`, `meeting`, `coordination`, `other` | outro valor ⇒ a linha é `invalid` |
+| `title` | texto até 60 caracteres | o que o professor escreveu («DT 6.º D»). Nunca aparece nas razões do preview |
+| `class_ulid` | ULID ou `null` | referência **informativa** à turma. Se a turma não puder ser restaurada neste restauro, a atividade é restaurada sem turma — nunca perdida |
+| `day_of_week` | 1 a 7 | fora disto ⇒ `invalid` |
+| `starts_at`, `ends_at` | `HH:MM` | `ends_at` tem de ser posterior a `starts_at` |
+| `starts_on`, `ends_on` | `YYYY-MM-DD` ou `null` | vigência (`null` = aberta); uma data presente mas malformada invalida a linha em vez de a abrir |
+
+**Quem exporta o quê.** `author_email` é sempre o do exportador: um colega
+da mesma organização nunca leva as atividades de outro, qualquer que seja o
+papel. As atividades não são filtradas pelas turmas exportadas — uma atividade
+sem turma continua a ser do horário do professor.
+
+**Idempotência.** A mesma `ulid` na organização ⇒ `existing` (ou `conflict` se
+diverge). A mesma atividade restaurada antes com outra `ulid` (a de origem
+pertencia a outra organização) reconhece-se pelo que é — tipo, designação, dia,
+horas e vigência — e é `existing`. Reimportar o mesmo backup não duplica nada.
+
+**Eliminação.** `user_id` e `organization_id` são `CASCADE`: uma configuração
+pessoal não bloqueia a eliminação da conta nem da organização.
 
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 
