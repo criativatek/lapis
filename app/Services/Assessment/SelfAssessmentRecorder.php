@@ -15,6 +15,7 @@ use App\Models\SelfAssessmentStatus;
 use App\Models\SelfAssessmentTemplate;
 use App\Support\Assessment\ImprovementPrompt;
 use App\Support\Assessment\SelfAssessmentAnswerScale;
+use App\Support\Assessment\SelfAssessmentWrites;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -90,6 +91,11 @@ class SelfAssessmentRecorder
             // necessarily the class's today, once the class has moved on and
             // answers kept the template where it was.
             'criteria' => $this->criteriaOf($template),
+            // Whether those criteria are the class's today. «previous» is a
+            // self-assessment the teacher has not yet restarted after the class
+            // moved on: the student is told it keeps the criteria it began
+            // with, and never that they are the class's.
+            'criteriaState' => $this->criteriaState($template, $class),
             // The improvement question is worded for the calendar this class
             // actually has — «no próximo semestre», «no próximo período», or
             // nothing of the sort in the last moment of the year. Contextualised
@@ -102,6 +108,8 @@ class SelfAssessmentRecorder
             'earlierReflection' => $existing?->reflection,
             'status' => $existing?->status->value,
             'earlierRounds' => $this->earlierRounds($class, $period, $enrollment, $template),
+            // Read-only mode: the screens show what was saved and offer no save.
+            'readOnly' => SelfAssessmentWrites::readOnly(),
         ];
     }
 
@@ -200,6 +208,12 @@ class SelfAssessmentRecorder
         array $validated,
         SelfAssessmentFilledBy $filledBy,
     ): void {
+        // Read-only mode (a containment for recovery): refused before anything
+        // is locked or written, to the teacher and to the student link alike.
+        if (SelfAssessmentWrites::readOnly()) {
+            throw ValidationException::withMessages(['answers' => SelfAssessmentWrites::refusal()]);
+        }
+
         DB::transaction(function () use ($class, $validated, $period, $enrollment, $filledBy): void {
             // Under the class's lock, the one the template provider derives and
             // retires under: the template cannot change between this check and
@@ -453,14 +467,34 @@ class SelfAssessmentRecorder
     }
 
     /**
+     * «current» when the template speaks in the criteria the class is assessed
+     * by (or the class has none yet), «previous» when it was derived from
+     * another version.
+     */
+    protected function criteriaState(SelfAssessmentTemplate $template, SchoolClass $class): string
+    {
+        if ($class->assessment_profile_version_id === null) {
+            return 'current';
+        }
+
+        return $template->assessment_profile_version_id === $class->assessment_profile_version_id ? 'current' : 'previous';
+    }
+
+    /**
      * @return Builder<SelfAssessment>
      */
     protected function earlierRoundsQuery(SchoolClass $class, AcademicPeriod $period, SelfAssessmentTemplate $active): Builder
     {
-        return SelfAssessment::query()
+        $query = SelfAssessment::query()
             ->where('academic_period_id', $period->id)
-            ->whereHas('template', fn ($query) => $query->where('class_id', $class->id))
-            ->where('self_assessment_template_id', '!=', $active->id);
+            ->whereHas('template', fn ($inner) => $inner->where('class_id', $class->id));
+
+        // A template that is not saved (read-only mode, class without one) is
+        // no round of its own: every saved self-assessment of the class is an
+        // earlier one.
+        return $active->exists
+            ? $query->where('self_assessment_template_id', '!=', $active->id)
+            : $query;
     }
 
     /**

@@ -1,3 +1,4 @@
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import type { Coverage } from './assessment';
 
 /**
@@ -45,13 +46,13 @@ export type EvaluationSheetOverall = {
  *
  * Nunca entra no cálculo: é informação comparada com a nota, jamais somada a
  * ela (§15).
+ *
+ * Lida SEMPRE por `@/lib/selfAssessmentReading`: pode ter sido respondida com
+ * critérios anteriores (`previous_criteria`) ou ser a proposta anterior quando a
+ * nova autoavaliação não tem proposta global (`earlier`), e uma pauta guardada
+ * antes disto pode não ter `display` — aí vale o `code`.
  */
-export type EvaluationSheetSelfAssessment = {
-    code: string;
-    label: string;
-    sequence: number;
-    is_negative: boolean;
-};
+export type EvaluationSheetSelfAssessment = NonNullable<SelfAssessmentReading>;
 
 export type EvaluationSheetStudentDomain = {
     domain_id: number;

@@ -7,6 +7,7 @@ import Heading from '@/components/Heading.vue';
 import AccumulatedBreakdownPanel from '@/components/results/AccumulatedBreakdownPanel.vue';
 import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
 import FinalDomainDecisionDialog from '@/components/results/FinalDomainDecisionDialog.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import {
     ACCUMULATED,
@@ -23,6 +24,8 @@ import {
 } from '@/lib/readings';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendPoints, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
+import { anyOtherCriteria, EARLIER_LEGEND_MEANING, EARLIER_MARK } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import type { Synopsis } from '@/lib/synopsis';
 
 /** A band of the profile's own scale. `code` is the value; `label` the mention. */
@@ -43,7 +46,7 @@ type DomainCell = {
     accumulated_average: string | null;
     coverage_warning: boolean;
     evolution: Evolution;
-    self_assessment: Level;
+    self_assessment: SelfAssessmentReading;
     mention: Mention;
 };
 
@@ -55,7 +58,7 @@ type PeriodCell = {
     coverage_warning: boolean;
     evolution: Evolution;
     domains: DomainCell[];
-    self_assessment: Level;
+    self_assessment: SelfAssessmentReading;
     classification: {
         ulid: string;
         status: string;
@@ -122,6 +125,10 @@ const props = defineProps<{
 const periods = computed(() => props.progression.periods);
 const domains = computed(() => props.progression.domains);
 const students = computed(() => props.progression.students);
+
+const hasEarlierMark = computed(() =>
+    anyOtherCriteria(students.value.flatMap((student) => student.periods.flatMap((period) => [period.self_assessment, ...period.domains.map((domain) => domain.self_assessment)]))),
+);
 
 // -------------------------------------------------------------- as duas vistas
 //
@@ -551,11 +558,6 @@ function finalAverageHeaderTitle(domain: { name: string }): string {
 
 function finalMentionHeaderTitle(domain: { name: string }): string {
     return `${domain.name} — ${FINAL_MENTION}: a decisão do professor quando existe, a proposta que sai da ${FINAL_AVERAGE.toLowerCase()} quando não.`;
-}
-
-/** «Autoavaliação do aluno: 3 — Suficiente», for the discreet marker beside a domain's value. */
-function selfAssessmentTitle(level: Level): string {
-    return level === null ? '' : `Autoavaliação do aluno: ${level.code} — ${level.label}`;
 }
 
 function proposalText(proposal: Proposal | undefined): string {
@@ -1006,12 +1008,15 @@ function proposalText(proposal: Proposal | undefined): string {
                                          «Auto 3» diz-se sozinho, e continua a
                                          ser informação de apoio que não entra
                                          em cálculo nenhum (§15, §61). -->
-                                    <sup
+                                    <SelfAssessmentValue
                                         v-if="domainCell(period, domain.id)?.self_assessment"
+                                        :reading="domainCell(period, domain.id)?.self_assessment ?? null"
+                                        :domain="domain.name"
+                                        tag="sup"
+                                        prefix="Auto "
+                                        compact
                                         class="ml-0.5 rounded bg-muted px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
-                                        :title="selfAssessmentTitle(domainCell(period, domain.id)?.self_assessment ?? null)"
-                                        :aria-label="selfAssessmentTitle(domainCell(period, domain.id)?.self_assessment ?? null)"
-                                    >Auto {{ domainCell(period, domain.id)?.self_assessment?.code }}</sup>
+                                    />
                                 </td>
                                 <td
                                     v-if="index > 0"
@@ -1107,12 +1112,13 @@ function proposalText(proposal: Proposal | undefined): string {
                                 <span v-else class="text-muted-foreground">—</span>
                             </td>
                             <td class="px-2 py-1.5 text-center tabular-nums">
-                                <span
+                                <SelfAssessmentValue
                                     v-if="period.self_assessment"
+                                    :reading="period.self_assessment"
+                                    :bands="scaleBands"
+                                    compact
                                     class="rounded px-1.5 py-0.5"
-                                    :class="levelClasses(period.self_assessment)"
-                                    :title="`Autoavaliação do aluno: ${period.self_assessment.code} — ${period.self_assessment.label}`"
-                                >{{ period.self_assessment.code }}</span>
+                                />
                                 <span v-else class="text-muted-foreground" title="O aluno não respondeu à autoavaliação global deste período.">—</span>
                             </td>
                             <!-- The decision of THAT period, kept as it was: a
@@ -1354,6 +1360,10 @@ function proposalText(proposal: Proposal | undefined): string {
                     <strong>{{ decision.label }}</strong>. Cada síntese responde por uma unidade temporal — nenhuma
                     responde pelo ano.
                 </dd>
+            </div>
+            <div v-if="hasEarlierMark" class="sm:col-span-2" data-test="self-assessment-legend">
+                <dt class="inline font-semibold text-foreground">{{ EARLIER_MARK }}</dt>
+                <dd class="inline"> — {{ EARLIER_LEGEND_MEANING }}</dd>
             </div>
             <div>
                 <dt class="font-semibold text-foreground">{{ CONTINUOUS_FINAL }}</dt>

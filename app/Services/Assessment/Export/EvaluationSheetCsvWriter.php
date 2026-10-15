@@ -3,6 +3,7 @@
 namespace App\Services\Assessment\Export;
 
 use App\Services\Assessment\DecisionScaleReader;
+use App\Services\Assessment\SelfAssessmentReading;
 use RuntimeException;
 
 /**
@@ -201,7 +202,7 @@ class EvaluationSheetCsvWriter
                 : ($proposed !== '' ? 'Proposta do Lapispro' : '');
 
             if ($withSelfAssessment) {
-                $row[] = (string) ($studentDomain['self_assessment']['code'] ?? '');
+                $row[] = SelfAssessmentReading::exportText($studentDomain['self_assessment'] ?? null);
             }
 
             if ($studentDomain !== null && ($studentDomain['has_coverage_warning'] ?? false) === true) {
@@ -217,7 +218,7 @@ class EvaluationSheetCsvWriter
         $row[] = (string) ($overall['scale_level_code'] ?? $overall['scale_level_label'] ?? '');
 
         if ($withSelfAssessment) {
-            $row[] = (string) ($student['self_assessment']['code'] ?? '');
+            $row[] = SelfAssessmentReading::exportText($student['self_assessment'] ?? null);
         }
 
         /** @var array<string, mixed>|null $classification */

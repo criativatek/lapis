@@ -216,3 +216,17 @@ describe('self-assessments/Show — the reflection questions', () => {
         expect(wrapper.get('form [role="alert"]').text()).toBe('O texto é demasiado curto.');
     });
 });
+
+describe('self-assessments/Show — read-only mode', () => {
+    it('shows the amber notice when the configuration says so', () => {
+        const wrapper = mount(Show, { props: baseProps({ configuration: configurationOf({ read_only: true, can_renew: false, can_edit: false }) }) });
+
+        expect(wrapper.get('[data-test="read-only-notice"]').text()).toContain('A autoavaliação está temporariamente só de leitura.');
+        expect(wrapper.find('[data-test="renew-start"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="reflection-editor"]').exists()).toBe(false);
+    });
+
+    it('shows no notice otherwise', () => {
+        expect(mount(Show, { props: baseProps() }).find('[data-test="read-only-notice"]').exists()).toBe(false);
+    });
+});

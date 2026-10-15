@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import {
     Dialog,
     DialogContent,
@@ -10,10 +11,10 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { pct } from '@/lib/results';
+import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import type {
     EvaluationSheetDecisionScale,
     EvaluationSheetDomain,
-    EvaluationSheetSelfAssessment,
     EvaluationSheetStudent,
 } from '@/types';
 
@@ -165,22 +166,6 @@ const assigned = computed(() => {
 });
 
 /**
- * A autoavaliação dita por inteiro — de quem é, o código e a menção.
- *
- * Um «4» solto ao lado do nível atribuído seria lido como uma segunda nota; a
- * frase começa por dizer que é o ALUNO a falar de si próprio.
- */
-function selfAssessmentTitle(level: EvaluationSheetSelfAssessment | null | undefined, subject?: string): string | undefined {
-    if (!level) {
-        return undefined;
-    }
-
-    const what = subject === undefined ? 'Autoavaliação do aluno' : `Autoavaliação do aluno — ${subject}`;
-
-    return `${what}: ${level.code} — ${level.label}`;
-}
-
-/**
  * O global do aluno NESTA UNIDADE, em percentagem — a mesma leitura da coluna
  * «Quant.» da grelha e a mesma de cada domínio na lista abaixo.
  *
@@ -209,6 +194,11 @@ const domainRows = computed(() =>
             said: row?.self_assessment ?? null,
         };
     }),
+);
+
+/** Se alguma das leituras mostradas leva a marca «(ant.)» — o que obriga à legenda. */
+const hasEarlierMark = computed(() =>
+    anyOtherCriteria([props.student?.self_assessment ?? null, ...(props.student?.domains.map((domain) => domain.self_assessment ?? null) ?? [])]),
 );
 
 /** Se este aluno se pronunciou de todo — globalmente ou sobre algum domínio. */
@@ -298,9 +288,8 @@ function onOpenChange(open: boolean): void {
                              que nunca se leia como mais um resultado. -->
                         <span v-if="hasSelfAssessment" class="text-muted-foreground">
                             Autoavaliação:
-                            <span class="font-medium" :title="selfAssessmentTitle(student.self_assessment)">
-                                {{ student.self_assessment?.code ?? '—' }}
-                            </span>
+                            <SelfAssessmentValue v-if="student.self_assessment" :reading="student.self_assessment" class="font-medium" />
+                            <span v-else class="font-medium">—</span>
                         </span>
                         <span class="tabular-nums">{{ overall }}</span>
                     </span>
@@ -323,12 +312,9 @@ function onOpenChange(open: boolean): void {
                             <span v-if="row.warning" class="shrink-0 text-amber-600" title="Cobertura parcial ou elementos em falta.">⚠</span>
                         </span>
                         <span class="flex shrink-0 items-center gap-3 tabular-nums">
-                            <span
-                                v-if="hasSelfAssessment"
-                                class="min-w-6 text-right text-muted-foreground"
-                                :title="selfAssessmentTitle(row.said, row.name)"
-                                :aria-label="selfAssessmentTitle(row.said, row.name)"
-                            >{{ row.said ? `A${row.said.code}` : '' }}</span>
+                            <span v-if="hasSelfAssessment" class="min-w-6 text-right text-muted-foreground">
+                                <SelfAssessmentValue v-if="row.said" :reading="row.said" :domain="row.name" prefix="A" compact />
+                            </span>
                             <span class="text-muted-foreground">{{ row.quantitative }}</span>
                             <span class="min-w-6 text-right font-medium" :title="row.levelTitle">{{ row.level ?? '—' }}</span>
                         </span>
@@ -337,6 +323,7 @@ function onOpenChange(open: boolean): void {
                 <p v-if="hasSelfAssessment" class="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
                     «A» é o que o aluno disse de si próprio. É informação de apoio — nunca determina a
                     classificação.
+                    <template v-if="hasEarlierMark">{{ EARLIER_LEGEND }}</template>
                 </p>
             </div>
 

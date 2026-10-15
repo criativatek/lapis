@@ -463,4 +463,28 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Autoavaliação — modo só de leitura
+    |--------------------------------------------------------------------------
+    |
+    | Uma contenção para a recuperação, não uma funcionalidade: com
+    | `LAPIS_SELF_ASSESSMENT_READ_ONLY=true` NADA se escreve na autoavaliação
+    | (respostas, modelos, perguntas), nem pelo professor nem pela ligação do
+    | aluno. As respostas guardadas continuam visíveis. Existe para podermos
+    | parar de mexer na autoavaliação enquanto se corrige ou restaura um estado,
+    | sem retirar o módulo da vista de ninguém.
+    |
+    | O restauro de uma cópia de segurança NÃO é bloqueado por este interruptor:
+    | é uma operação do administrador sobre a organização inteira, com o seu
+    | próprio registo, e impedi-la aqui impediria a própria recuperação.
+    |
+    */
+
+    'self_assessment' => [
+
+        'read_only' => (bool) env('LAPIS_SELF_ASSESSMENT_READ_ONLY', false),
+
+    ],
+
 ];

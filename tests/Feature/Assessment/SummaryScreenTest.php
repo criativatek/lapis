@@ -552,8 +552,15 @@ class SummaryScreenTest extends TestCase
         // «A3» OBRIGAVA A DECIFRAR — o «A» podia ser um nível, uma alínea ou um
         // aviso, e a legenda que o explicava está no fundo da página, longe de
         // quem está a ler a célula. O dado por baixo é exatamente o mesmo.
-        $this->assertStringContainsString('>Auto {{ domainCell(period, domain.id)?.self_assessment?.code }}</sup>', $screen);
-        $this->assertStringContainsString('Autoavaliação do aluno: ${level.code} — ${level.label}', $screen);
+        // The marker is a superscript written «Auto », drawn by the component
+        // that shows the value (its `display`), and the tooltip names the voice.
+        $this->assertStringContainsString('<SelfAssessmentValue', $screen);
+        $this->assertStringContainsString('prefix="Auto "', $screen);
+        $this->assertStringContainsString('tag="sup"', $screen);
+        $this->assertStringContainsString(
+            'Autoavaliação do aluno',
+            (string) file_get_contents(base_path('resources/js/lib/selfAssessmentReading.ts')),
+        );
     }
 
     #[Test]

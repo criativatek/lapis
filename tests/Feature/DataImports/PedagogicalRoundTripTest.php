@@ -143,6 +143,136 @@ class PedagogicalRoundTripTest extends TestCase
     }
 
     #[Test]
+    public function two_self_assessments_of_the_same_student_and_period_come_back_with_their_templates_and_are_read_the_same(): void
+    {
+        $class = $this->scenario('complete', includePedagogicalRecords: true);
+        $this->addSecondRound($class);
+
+        $originProgression = $this->progression($class);
+
+        // What the reading says before the backup: Ana's new self-assessment
+        // has no overall proposal, so the earlier one is shown as such; Bruno's
+        // has one, and it replaces the earlier.
+        $ana = collect($originProgression['students'])->firstWhere('name', 'Ana Completa')['periods'][0];
+        $this->assertSame('4', $ana['self_assessment']['code']);
+        $this->assertTrue($ana['self_assessment']['earlier']);
+        $this->assertSame('12,5', $ana['domains'][0]['self_assessment']['code']);
+
+        $bruno = collect($originProgression['students'])->firstWhere('name', 'Bruno Completo')['periods'][0];
+        $this->assertSame('15', $bruno['self_assessment']['code']);
+        $this->assertFalse($bruno['self_assessment']['earlier']);
+        $this->assertNull($bruno['domains'][1]['self_assessment'], 'nada se junta de outro modelo');
+
+        $before = $this->inTenant(fn (): array => $this->templateAndAnswerFacts());
+
+        $restoredProgression = $this->roundTrip($class);
+
+        $this->assertSame($this->semanticProgression($originProgression), $this->semanticProgression($restoredProgression));
+
+        // The same templates (one retired, one active, on the same version),
+        // the same self-assessments and the same values — to the thousandth.
+        $after = $this->inTenant(fn (): array => $this->templateAndAnswerFacts());
+        $this->assertSame($before, $after);
+        $this->assertSame([false, true], array_column($after['templates'], 'active'));
+    }
+
+    /**
+     * A newer template for the same period, with its own self-assessments:
+     * Ana's has only a domain (a number), Bruno's has the overall proposal.
+     * The first template is retired, as it is when a new one is started.
+     */
+    private function addSecondRound(SchoolClass $class): void
+    {
+        $this->inTenant(function () use ($class): void {
+            $first = SelfAssessmentTemplate::where('class_id', $class->id)->sole();
+            $period = AcademicPeriod::firstOrFail();
+            $zeroToTwenty = Scale::where('name', 'Escala 0 a 20')->firstOrFail();
+            $conhecimento = Domain::where('name', 'Conhecimento')->firstOrFail();
+            [$ana, $bruno] = Enrollment::where('class_id', $class->id)->orderBy('class_number')->get()->all();
+
+            $first->forceFill(['is_active' => false])->save();
+            $second = SelfAssessmentTemplate::create([
+                'assessment_profile_version_id' => $first->assessment_profile_version_id,
+                'class_id' => $class->id,
+                'name' => 'Segunda autoavaliação',
+                'is_active' => true,
+            ]);
+            $global = SelfAssessmentQuestion::create([
+                'self_assessment_template_id' => $second->id,
+                'role' => SelfAssessmentQuestionRole::Global,
+                'prompt' => 'Como avalias globalmente o teu trabalho?',
+                'answer_kind' => 'scale',
+                'scale_id' => $zeroToTwenty->id,
+                'sequence' => 1,
+            ]);
+            $domain = SelfAssessmentQuestion::create([
+                'self_assessment_template_id' => $second->id,
+                'domain_id' => $conhecimento->id,
+                'prompt' => 'Como avalias o teu conhecimento?',
+                'answer_kind' => 'scale',
+                'scale_id' => $zeroToTwenty->id,
+                'sequence' => 2,
+            ]);
+
+            foreach ([[$ana, $domain, '12.5'], [$bruno, $global, '15']] as [$enrollment, $question, $value]) {
+                $selfAssessment = SelfAssessment::create([
+                    'enrollment_id' => $enrollment->id,
+                    'academic_period_id' => $period->id,
+                    'self_assessment_template_id' => $second->id,
+                    'status' => SelfAssessmentStatus::Submitted,
+                    'filled_by' => SelfAssessmentFilledBy::Student,
+                    'submitted_at' => '2025-12-12 10:00:00',
+                ]);
+                SelfAssessmentResponse::create([
+                    'self_assessment_id' => $selfAssessment->id,
+                    'self_assessment_question_id' => $question->id,
+                    'numeric_value' => $value,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * The templates and the answers as the database holds them, without their
+     * ids (which a restore is free to change).
+     *
+     * @return array{templates: list<array{name: string, active: bool, version: int}>, answers: list<array{student: string, template: string, kind: string, value: string}>}
+     */
+    private function templateAndAnswerFacts(): array
+    {
+        $templates = SelfAssessmentTemplate::with('profileVersion')->orderBy('id')->get()
+            ->map(fn (SelfAssessmentTemplate $template): array => [
+                'name' => $template->name,
+                'active' => (bool) $template->is_active,
+                'version' => (int) $template->profileVersion->version_number,
+            ])->all();
+
+        $answers = [];
+
+        foreach (SelfAssessment::with(['template', 'enrollment.student.identity', 'responses.question', 'responses.scaleLevel'])->get() as $selfAssessment) {
+            foreach ($selfAssessment->responses as $response) {
+                if ($response->numeric_value === null && $response->scale_level_id === null) {
+                    continue;
+                }
+
+                $answers[] = [
+                    'student' => (string) $selfAssessment->enrollment->student->identity->display_name,
+                    'template' => (string) $selfAssessment->template->name,
+                    'kind' => $response->question->role?->value ?? 'domain',
+                    // Compared to the thousandth: MySQL gives «12.500», SQLite a number.
+                    'value' => $response->numeric_value !== null
+                        ? number_format((float) $response->numeric_value, 3, '.', '')
+                        : 'nível '.$response->scaleLevel->code,
+                ];
+            }
+        }
+
+        usort($answers, fn (array $left, array $right): int => ($left['student'].$left['template'].$left['kind']) <=> ($right['student'].$right['template'].$right['kind']));
+
+        return ['templates' => $templates, 'answers' => $answers];
+    }
+
+    #[Test]
     public function partial_coverage_keeps_a_derived_non_zero_result_after_round_trip(): void
     {
         $class = $this->scenario('partial');

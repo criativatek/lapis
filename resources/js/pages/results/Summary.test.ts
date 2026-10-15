@@ -673,3 +673,38 @@ describe('Quadro Síntese · por domínio — a conclusão do ano não se repete
         expect(synthesisHeaders(wrapper as VueWrapper, '2.º Semestre')).toContain('Prop.');
     });
 });
+
+describe('Summary — autoavaliação com critérios anteriores', () => {
+    const criteria = 'Avaliação final · versão 1 · Percentagem (0 a 100)';
+    const previous = { code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, scale: 'Percentagem (0 a 100)', previous_criteria: true, criteria, earlier: false };
+
+    async function withOtherCriteria(): Promise<VueWrapper> {
+        const data = props();
+        const cells = data.progression.students[0].periods;
+
+        cells[0].self_assessment = previous as never;
+        cells[1].domains[0].self_assessment = { ...previous, earlier: true } as never;
+
+        const wrapper = mount(Summary, { props: data, global: { stubs } });
+
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+        return wrapper;
+    }
+
+    it('marca «(ant.)» na síntese de cada unidade e no domínio, e explica a marca', async () => {
+        const wrapper = await withOtherCriteria();
+        const marks = wrapper.findAll('[data-test="self-assessment-value"]');
+
+        expect(marks.map((mark) => mark.text())).toEqual(['Auto 70% (ant.)', '70% (ant.)']);
+        expect(marks[1].attributes('aria-label')).toContain(`respondida com critérios anteriores: ${criteria}`);
+        expect(marks[0].attributes('aria-label')).toContain('A nova autoavaliação não tem proposta global');
+        expect(wrapper.get('[data-test="self-assessment-legend"]').text()).toContain('(ant.) — autoavaliação respondida com critérios anteriores');
+    });
+
+    it('sem leituras anteriores não há legenda', async () => {
+        const wrapper = await domainsView();
+
+        expect(wrapper.find('[data-test="self-assessment-legend"]').exists()).toBe(false);
+    });
+});

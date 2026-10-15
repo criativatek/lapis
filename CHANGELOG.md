@@ -62,6 +62,24 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - **A pré-visualização da alteração do perfil explica o efeito na
   autoavaliação:** ainda não aberta, acompanha a nova versão (sem respostas), ou
   fica com os critérios anteriores (com respostas, quantas e de que períodos).
+- **Respostas com critérios anteriores identificadas em todos os ecrãs.**
+  Resultados, Pauta (ecrã, CSV e XLSX), Quadro Síntese, Estatísticas,
+  Classificações, Evolução do aluno (ecrã e impressão), relatórios e o contexto
+  enviado à IA dizem «70% · critérios anteriores» (ou «(ant.)» numa célula
+  estreita, com legenda e o texto completo no nome acessível), com os critérios
+  de origem. Conta qualquer mudança de versão — escala, domínios ou ponderações.
+  O valor fica na escala em que foi dado, sem cor da escala atual.
+- **Nova autoavaliação sem proposta global:** a proposta anterior não desaparece;
+  aparece como «anterior: 70% · critérios anteriores». As respostas por domínio
+  vêm só da autoavaliação atual — nunca se combinam modelos.
+- **O aluno sabe que critérios está a usar:** enquanto o professor não inicia uma
+  nova, a ligação diz «Esta autoavaliação mantém os critérios com que foi
+  iniciada.», com os domínios, os pesos e a escala desse modelo.
+- **Modo só de leitura da autoavaliação** (`LAPIS_SELF_ASSESSMENT_READ_ONLY`),
+  para recuperação: nada se grava (professor, aluno, nova autoavaliação,
+  reflexões, modelos), tudo continua visível. Comando só de leitura
+  `lapis:self-assessment-recovery-check` e procedimento em
+  `docs/self-assessment-recovery.md`.
 
 ### Alterado
 
@@ -91,6 +109,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   sua própria escala.
 - **Um formulário aberto antes de uma pergunta de reflexão ser reescrita** é
   recusado por inteiro, em vez de guardar a resposta sob a redação nova.
+- **O relatório da turma contava só as autoavaliações por nível**; as respostas
+  numéricas passam a contar.
+- **Depois de restaurar ou clonar um backup**, a autoavaliação do modelo ativo
+  continua a ser a atual, qualquer que seja a ordem em que os modelos foram
+  recriados (a exportação passa também a listá-los por ordem de criação).
 
 ### Dados
 

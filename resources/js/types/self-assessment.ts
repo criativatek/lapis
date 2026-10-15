@@ -76,6 +76,8 @@ export type SelfAssessmentConfiguration = {
     saved_count: number;
     can_renew: boolean;
     can_edit: boolean;
+    /** Recovery containment: nothing can be saved, renewed or reworded. The saved answers stay readable. */
+    read_only?: boolean;
     class_url: string;
     review: { version: number; scale: string | null; url: string } | null;
 };

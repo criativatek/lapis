@@ -220,8 +220,11 @@ class GenerateDataExport
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
             ->with(['enrollment.student'])
             ->get();
+        // In creation order: the restore recreates them in the order listed, and
+        // the order is part of what says which round of a class came first.
         $selfAssessmentTemplates = SelfAssessmentTemplate::query()
             ->whereIn('id', $selfAssessments->pluck('self_assessment_template_id')->unique())
+            ->orderBy('id')
             ->get()
             ->keyBy('id');
         $interventions = Intervention::query()->whereIn('class_id', $classIds)->with(['participants', 'supportMeasures'])->get();

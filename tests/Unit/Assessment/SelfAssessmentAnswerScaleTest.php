@@ -213,6 +213,7 @@ class SelfAssessmentAnswerScaleTest extends TestCase
         $this->assertSame([
             'code' => '15,5',
             'label' => '15,5 numa escala de 0 a 20',
+            'display' => '15,5',
             'sequence' => null,
             'is_negative' => false,
             'scale' => 'Escala 0 a 20',
@@ -224,6 +225,7 @@ class SelfAssessmentAnswerScaleTest extends TestCase
 
         $this->assertSame('80', $percentage->readable('80.000')['code']);
         $this->assertSame('80%', $percentage->readable('80.000')['label']);
+        $this->assertSame('80%', $percentage->readable('80.000')['display']);
         $this->assertNull($percentage->readable('80.000')['sequence']);
     }
 

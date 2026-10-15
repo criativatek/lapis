@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import {
     appreciationTone,
     assignedLevel as readAssignedLevel,
@@ -9,9 +10,9 @@ import {
 } from '@/lib/appreciation';
 import type { Appreciation, ToneableBand } from '@/lib/appreciation';
 import { pct } from '@/lib/results';
+import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import type {
     EvaluationSheetDomain,
-    EvaluationSheetSelfAssessment,
     EvaluationSheetStudent,
     EvaluationSheetStudentDomain,
 } from '@/types';
@@ -71,6 +72,10 @@ const props = withDefaults(
         scaleBands?: ToneableBand[];
     }>(),
     { showSelfAssessment: false, decidable: false, scaleBands: () => [] },
+);
+
+const hasEarlierMark = computed(() =>
+    anyOtherCriteria(props.students.flatMap((student) => [student.self_assessment, ...student.domains.map((domain) => domain.self_assessment)])),
 );
 
 const emit = defineEmits<{
@@ -172,24 +177,6 @@ function domainActionLabel(student: EvaluationSheetStudent, domain: EvaluationSh
     }
 
     return `Alterar a apreciação de ${who} — ${cell.description}`;
-}
-
-/**
- * A autoavaliação, dita por inteiro.
- *
- * O CÓDIGO É O QUE SE MOSTRA e a menção acompanha-o no `title`, exatamente como
- * um nível — é o mesmo tipo de juízo, escrito pelo aluno em vez do professor. A
- * frase começa por dizer DE QUEM É, porque um «4» solto numa linha ao lado do
- * nível atribuído seria lido como uma segunda nota.
- */
-function selfAssessmentTitle(level: EvaluationSheetSelfAssessment | null | undefined, subject?: string): string | undefined {
-    if (!level) {
-        return undefined;
-    }
-
-    const what = subject === undefined ? 'Autoavaliação do aluno' : `Autoavaliação do aluno — ${subject}`;
-
-    return `${what}: ${level.code} — ${level.label}`;
 }
 
 /** Fundo muito suave na cor do domínio — identidade visual, nunca desempenho. */
@@ -399,12 +386,15 @@ function domainCellStyle(color: string): Record<string, string> {
                                      quem é a voz — a mesma escrita do Quadro
                                      Síntese, para não haver duas convenções para
                                      a mesma coisa. -->
-                                <sup
+                                <SelfAssessmentValue
                                     v-if="showSelfAssessment && studentDomain(student, domain.domain_id)?.self_assessment"
+                                    :reading="studentDomain(student, domain.domain_id)?.self_assessment ?? null"
+                                    :domain="domain.name"
+                                    tag="sup"
+                                    prefix="A"
+                                    compact
                                     class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal text-muted-foreground"
-                                    :title="selfAssessmentTitle(studentDomain(student, domain.domain_id)?.self_assessment, domain.name)"
-                                    :aria-label="selfAssessmentTitle(studentDomain(student, domain.domain_id)?.self_assessment, domain.name)"
-                                >A{{ studentDomain(student, domain.domain_id)?.self_assessment?.code }}</sup>
+                                />
                                 <CoverageWarning
                                     v-if="showWarnings && !showQuantitative && studentDomain(student, domain.domain_id)?.has_coverage_warning"
                                     :coverage="studentDomain(student, domain.domain_id)!.coverage"
@@ -470,13 +460,7 @@ function domainCellStyle(color: string): Record<string, string> {
                         v-if="showSelfAssessment"
                         class="border-b border-l-2 border-border px-2 py-2 text-center"
                     >
-                        <span
-                            v-if="student.self_assessment"
-                            class="rounded bg-muted px-1.5 py-0.5 text-xs"
-                            :title="selfAssessmentTitle(student.self_assessment)"
-                        >
-                            {{ student.self_assessment.code }}
-                        </span>
+                        <SelfAssessmentValue v-if="student.self_assessment" :reading="student.self_assessment" compact class="rounded bg-muted px-1.5 py-0.5 text-xs" />
                         <span
                             v-else
                             class="text-muted-foreground"
@@ -550,5 +534,9 @@ function domainCellStyle(color: string): Record<string, string> {
                 </tr>
             </tbody>
         </table>
+
+        <p v-if="showSelfAssessment && hasEarlierMark" class="sticky left-0 w-fit max-w-full px-3 py-2 text-xs text-muted-foreground print:text-black" data-test="self-assessment-legend">
+            {{ EARLIER_LEGEND }}
+        </p>
     </div>
 </template>

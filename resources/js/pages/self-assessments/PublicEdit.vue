@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import SelfAssessmentBlocks from '@/components/SelfAssessmentBlocks.vue';
+import SelfAssessmentReadOnlyNotice from '@/components/SelfAssessmentReadOnlyNotice.vue';
 import AuthSimpleLayout from '@/layouts/auth/AuthSimpleLayout.vue';
 import type { SelfAssessmentCriteria, SelfAssessmentQuestion } from '@/types/self-assessment';
 
@@ -16,6 +17,13 @@ const props = defineProps<{
     revision?: string | null;
     /** What the subject is assessed on: the domains with their weights and the scale. No profile, no version. */
     criteria?: SelfAssessmentCriteria | null;
+    /**
+     * `previous`: the teacher has not started a new self-assessment since the class's criteria changed,
+     * so these are the criteria this one was started with — not the class's today. Absent = `current`.
+     */
+    criteriaState?: 'current' | 'previous';
+    /** Containment mode: the form is shown with what is saved, and nothing can be saved. */
+    readOnly?: boolean;
     /** The student already answered this period under earlier criteria. The answer itself is never sent. */
     hasEarlierRound?: boolean;
     questions: SelfAssessmentQuestion[];
@@ -52,6 +60,10 @@ function weight(value: string): string {
 }
 
 function submit(): void {
+    if (props.readOnly) {
+        return;
+    }
+
     // Posts back to the exact signed URL this page was opened with — never a
     // route built from the path params alone, which would be missing the
     // signature and get rejected.
@@ -80,12 +92,15 @@ function submit(): void {
             <p class="text-sm text-muted-foreground">{{ schoolClass.label }} · {{ period.label }}</p>
         </div>
 
+        <SelfAssessmentReadOnlyNotice v-if="readOnly" audience="student" />
+
         <section v-if="criteria" class="space-y-2 rounded-lg border border-border p-3 text-sm" aria-labelledby="how-assessed-title" data-test="how-assessed">
-            <h2 id="how-assessed-title" class="font-semibold">Como é feita a avaliação nesta disciplina</h2>
+            <h2 id="how-assessed-title" class="font-semibold">{{ criteriaState === 'previous' ? 'Critérios desta autoavaliação' : 'Como é feita a avaliação nesta disciplina' }}</h2>
+            <p v-if="criteriaState === 'previous'" data-test="criteria-previous">Esta autoavaliação mantém os critérios com que foi iniciada.</p>
             <ul v-if="criteria.domains.length" class="space-y-0.5">
                 <li v-for="domain in criteria.domains" :key="domain.name">{{ domain.name }} — {{ weight(domain.weight) }}</li>
             </ul>
-            <p v-if="criteria.scale">Respondes na escala da turma: {{ criteria.scale }}.</p>
+            <p v-if="criteria.scale">Respondes na escala {{ criteriaState === 'previous' ? 'desta autoavaliação' : 'da turma' }}: {{ criteria.scale }}.</p>
         </section>
 
         <p v-if="hasEarlierRound" role="note" class="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" data-test="earlier-round-note">
@@ -111,7 +126,7 @@ function submit(): void {
                 <button
                     type="submit"
                     class="min-h-11 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    :disabled="form.processing"
+                    :disabled="form.processing || readOnly"
                 >
                     Guardar autoavaliação
                 </button>

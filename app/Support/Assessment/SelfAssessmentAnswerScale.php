@@ -245,7 +245,10 @@ final readonly class SelfAssessmentAnswerScale
      * nothing to rank one answer against another by — screens that compare do
      * so only when both sides have a sequence.
      *
-     * @return array{code: string, label: string, sequence: null, is_negative: bool, scale: string|null}
+     * `display` is what a cell shows: the number, with «%» when the scale is a
+     * percentage. `label` is the sentence a tooltip or a report can carry.
+     *
+     * @return array{code: string, label: string, display: string, sequence: null, is_negative: bool, scale: string|null}
      */
     public function readable(string $numericValue): array
     {
@@ -264,6 +267,7 @@ final readonly class SelfAssessmentAnswerScale
                 // the number alone, never a made-up range.
                 default => $value,
             },
+            'display' => $this->isPercentage() ? $value.'%' : $value,
             'sequence' => null,
             'is_negative' => false,
             'scale' => $this->scaleName(),

@@ -136,3 +136,38 @@ describe('self-assessments/Edit — the criteria of the class', () => {
         expect((mountWith(configurationOf()).get('input[type="text"]').element as HTMLInputElement).value).toBe('16');
     });
 });
+
+describe('self-assessments/Edit — read-only mode', () => {
+    function mountReadOnly(readOnly: boolean) {
+        return mount(Edit, {
+            props: {
+                schoolClass: { ulid: 'class-1', label: '8.º A' },
+                period: { ulid: 'period-1', label: '1.º Semestre' },
+                student: 'Aluno de teste',
+                enrollmentUlid: 'enrollment-1',
+                template: 'TEMPLATE-ULID',
+                questions: [global],
+                earlierReflection: null,
+                status: null,
+                configuration: configurationOf({ read_only: readOnly }),
+                readOnly,
+            },
+        });
+    }
+
+    it('shows the amber notice and disables «Guardar autoavaliação»', () => {
+        const wrapper = mountReadOnly(true);
+
+        expect(wrapper.get('[data-test="read-only-notice"]').text()).toBe(
+            'A autoavaliação está temporariamente só de leitura. As respostas guardadas continuam visíveis, mas por agora não é possível guardar alterações.',
+        );
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('has neither notice nor disabled button otherwise', () => {
+        const wrapper = mountReadOnly(false);
+
+        expect(wrapper.find('[data-test="read-only-notice"]').exists()).toBe(false);
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined();
+    });
+});

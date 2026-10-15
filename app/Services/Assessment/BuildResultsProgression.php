@@ -622,20 +622,15 @@ class BuildResultsProgression
             ->whereIn('academic_period_id', $periods->pluck('id'))
             ->whereHas('enrollment', fn ($inner) => $inner->where('class_id', $class->id))
             ->whereIn('status', [SelfAssessmentStatus::Submitted, SelfAssessmentStatus::Reviewed])
-            ->with(['responses.question.scale', 'responses.scaleLevel.scale'])
-            // Oldest template first, so that when a student has one for the
-            // same period under earlier criteria and one under the current
-            // ones, the newer overwrites the older below.
-            ->orderBy('self_assessment_template_id')
-            ->orderBy('id');
+            ->with(SelfAssessmentReading::relations());
 
         $cutoff->applyTo($query, 'submitted_at');
 
-        $assessments = $query->get();
-
+        // The newest template's self-assessment per student and period, with
+        // the older ones attached for the overall judgement to fall back on.
         $byKey = [];
 
-        foreach ($assessments as $assessment) {
+        foreach ($this->selfAssessments->newestPerStudentPeriod($query->get()) as $assessment) {
             $byKey[$assessment->enrollment_id.':'.$assessment->academic_period_id] = $assessment;
         }
 

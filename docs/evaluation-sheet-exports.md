@@ -77,6 +77,26 @@ ficheiro histórico continua a dizer exatamente o que dizia.
 O que é proposta e o que é decisão — no global e por domínio — está em
 [evaluation-sheet-decisions.md](evaluation-sheet-decisions.md).
 
+## A autoavaliação no ficheiro: de que critérios vem
+
+A coluna de autoavaliação (a global e a de cada domínio) escreve o que a célula
+mostra e, quando **não** vem dos critérios atuais da turma, **de onde vem** — um
+«70%» respondido numa escala de percentagem nunca pode ler-se como um 70 da
+escala de hoje. Um só ajudante,
+[`SelfAssessmentReading::exportText()`](../app/Services/Assessment/SelfAssessmentReading.php),
+serve o CSV e o Excel:
+
+| Leitura | Célula |
+|---|---|
+| critérios atuais | o valor: `4`, `70%`, `15,5` |
+| `previous_criteria` | `70% (critérios anteriores: Avaliação final · versão 1 · Percentagem (0 a 100))` |
+| `earlier` (a nova autoavaliação não tem proposta global) | `anterior: 70% (critérios anteriores: …)`, ou `anterior: 4 (critérios: …)` se os critérios eram os atuais |
+
+Nada é convertido nem comparado. Um momento guardado antes de estas chaves
+existirem (`display`, `previous_criteria`, `criteria`, `earlier`) exporta o
+código, como sempre exportou: o ficheiro histórico continua a dizer exatamente o
+que dizia.
+
 ## A grelha do Inovar: de quem é cada linha
 
 É a pergunta mais perigosa deste fluxo. Uma menção escrita na linha errada sai

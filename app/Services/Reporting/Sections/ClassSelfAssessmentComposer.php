@@ -52,19 +52,41 @@ class ClassSelfAssessmentComposer implements SectionComposer
         $aligned = 0;
         $below = 0;
         $comparable = 0;
+        $previousCriteria = 0;
+        $withoutNewGlobal = 0;
 
         foreach ($students as $student) {
             $self = $student['self_assessment'] ?? null;
 
-            if (! is_array($self) || ($self['sequence'] ?? null) === null) {
+            if (! is_array($self)) {
                 continue;
             }
 
+            // The overall judgement of a NEW self-assessment that has none is
+            // only the one before it, kept as a reference: not an answer of
+            // this round, and never compared.
+            if (($self['earlier'] ?? false) === true) {
+                $withoutNewGlobal++;
+
+                continue;
+            }
+
+            // Answered is answered, on a levelled scale or on a number: only
+            // the comparison needs levels.
             $answered++;
+
+            if (($self['previous_criteria'] ?? false) === true) {
+                $previousCriteria++;
+            }
 
             $assigned = $student['assigned'] ?? null;
 
-            if (! is_array($assigned) || ($assigned['sequence'] ?? null) === null) {
+            if (($self['sequence'] ?? null) === null
+                || ! is_array($assigned)
+                || ($assigned['sequence'] ?? null) === null
+                // Two levels compare only on the same scale: one answered under
+                // earlier criteria may be on another, and a 4 there is not a 4 here.
+                || (isset($self['scale_id'], $assigned['scale_id']) && (int) $self['scale_id'] !== (int) $assigned['scale_id'])) {
                 continue;
             }
 
@@ -77,28 +99,58 @@ class ClassSelfAssessmentComposer implements SectionComposer
             };
         }
 
-        if ($answered === 0) {
+        if ($answered === 0 && $withoutNewGlobal === 0) {
             return ComposedSection::of(Absence::noSelfAssessment(), [ContentSource::SelfAssessment]);
         }
 
         return ComposedSection::of(
             Phrase::body([
                 Phrase::paragraph([
-                    $this->participationSentence($answered, $total),
+                    $answered === 0 ? null : $this->participationSentence($answered, $total),
                     $this->comparisonSentence($above, $aligned, $below),
                 ]),
                 $this->tendencySentence($comparable, $above, $below),
+                $this->criteriaSentence($previousCriteria, $withoutNewGlobal),
             ]),
             [ContentSource::SelfAssessment, ContentSource::Classification],
             [
                 'students_total' => $total,
                 'answered' => $answered,
+                'previous_criteria' => $previousCriteria,
+                'without_new_global' => $withoutNewGlobal,
                 'comparable' => $comparable,
                 'above' => $above,
                 'aligned' => $aligned,
                 'below' => $below,
             ],
         );
+    }
+
+    /**
+     * The facts about criteria, and nothing else: how many answered under
+     * criteria older than the class's, and how many have only an earlier
+     * proposal because the new self-assessment has none.
+     */
+    protected function criteriaSentence(int $previousCriteria, int $withoutNewGlobal): ?string
+    {
+        $sentences = [];
+
+        if ($previousCriteria > 0) {
+            $sentences[] = Phrase::sentence(
+                Phrase::count($previousCriteria, 'aluno respondeu', 'alunos responderam'),
+                'com critérios anteriores aos atuais da turma',
+            );
+        }
+
+        if ($withoutNewGlobal > 0) {
+            $sentences[] = Phrase::sentence(
+                Phrase::count($withoutNewGlobal, 'aluno ainda não tem', 'alunos ainda não têm'),
+                'proposta global na nova autoavaliação;',
+                $withoutNewGlobal === 1 ? 'tinha uma na anterior' : 'tinham uma na anterior',
+            );
+        }
+
+        return $sentences === [] ? null : Phrase::paragraph($sentences);
     }
 
     /**

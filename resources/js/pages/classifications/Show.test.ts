@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import Show from './Show.vue';
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -145,5 +146,31 @@ describe('classifications/Show — a decisão lê-se na escala em que foi tomada
         const wrapper = mountWith({ code: '16.000', label: null, scale_level_id: null }, false);
 
         expect(decisionCell(wrapper).text()).toBe('16');
+    });
+});
+
+describe('classifications/Show — autoavaliação com critérios anteriores', () => {
+    function mountWithSelfAssessment(selfAssessment: SelfAssessmentReading) {
+        return mount(Show, {
+            props: {
+                schoolClass: { ulid: 'cls-1', label: '7.º A', subject: 'Português', has_profile: true, scale_name: 'Escala 1 a 5', decision_label: 'Nível atribuído', classifies_by_level: true, levels: [], min_value: null, max_value: null },
+                periods: [{ ulid: 'per-1', label: '1.º Semestre', selected: true }],
+                rows: [{ enrollment_ulid: 'enr-1', name: 'Carolina Nunes', photo_url: null, class_number: 1, weighted_average: '78.000000', self_assessment: selfAssessment, classification: null }],
+            },
+        });
+    }
+
+    it('marca «(ant.)» e explica a marca', () => {
+        const wrapper = mountWithSelfAssessment({ code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, scale: 'Percentagem (0 a 100)', previous_criteria: true, criteria: 'Avaliação final · versão 1 · Percentagem (0 a 100)', earlier: false });
+
+        expect(wrapper.get('[data-test="self-assessment-value"]').text()).toBe('70% (ant.)');
+        expect(wrapper.get('[data-test="self-assessment-legend"]').text()).toContain('critérios anteriores');
+    });
+
+    it('não põe legenda numa resposta dos critérios atuais', () => {
+        const wrapper = mountWithSelfAssessment({ code: '4', label: 'Bom', sequence: 4, is_negative: false });
+
+        expect(wrapper.get('[data-test="self-assessment-value"]').text()).toBe('4');
+        expect(wrapper.find('[data-test="self-assessment-legend"]').exists()).toBe(false);
     });
 });

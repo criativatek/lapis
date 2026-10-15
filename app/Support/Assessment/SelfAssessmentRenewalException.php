@@ -21,6 +21,12 @@ class SelfAssessmentRenewalException extends RuntimeException
         return new self(__('Ainda não há autoavaliações guardadas com os critérios anteriores: a autoavaliação acompanha a turma sem ser preciso iniciar uma nova.'));
     }
 
+    /** The self-assessment is read-only (containment mode): nothing is started. */
+    public static function readOnly(): self
+    {
+        return new self(SelfAssessmentWrites::refusal());
+    }
+
     public static function withoutProfile(): self
     {
         return new self(__('A turma não tem perfil de avaliação associado. Associe um perfil na página da turma.'));

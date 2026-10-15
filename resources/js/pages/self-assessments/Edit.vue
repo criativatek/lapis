@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import SelfAssessmentBlocks from '@/components/SelfAssessmentBlocks.vue';
 import SelfAssessmentCriteriaPanel from '@/components/SelfAssessmentCriteriaPanel.vue';
+import SelfAssessmentReadOnlyNotice from '@/components/SelfAssessmentReadOnlyNotice.vue';
 import type { SelfAssessmentConfiguration, SelfAssessmentEarlierRound, SelfAssessmentQuestion } from '@/types/self-assessment';
 
 const props = defineProps<{
@@ -24,6 +25,8 @@ const props = defineProps<{
      * not the latest of the profile, and not editable here.
      */
     configuration: SelfAssessmentConfiguration;
+    /** Containment mode: the form is shown with what is saved, and nothing can be saved. */
+    readOnly?: boolean;
 }>();
 
 // Three maps by question id: the chosen level and the typed number for scale
@@ -53,6 +56,10 @@ const form = useForm<{ template: string | null; revision: string | null; answers
 });
 
 function submit(): void {
+    if (props.readOnly) {
+        return;
+    }
+
     form.post(`/classes/${props.schoolClass.ulid}/self-assessments/${props.period.ulid}/${props.enrollmentUlid}`);
 }
 
@@ -71,6 +78,8 @@ function submittedOn(iso: string | null): string | null {
                 ← Voltar à turma
             </Link>
         </div>
+
+        <SelfAssessmentReadOnlyNotice v-if="readOnly" audience="teacher" />
 
         <SelfAssessmentCriteriaPanel :configuration="configuration" context="form" />
 
@@ -109,7 +118,7 @@ function submittedOn(iso: string | null): string | null {
                 <button
                     type="submit"
                     class="min-h-11 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                    :disabled="form.processing"
+                    :disabled="form.processing || readOnly"
                 >
                     Guardar autoavaliação
                 </button>

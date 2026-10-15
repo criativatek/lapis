@@ -69,14 +69,13 @@ class SelfAssessmentController extends Controller
         // the wrong person; their earlier answers are untouched (§17).
         $enrollments = $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get();
 
-        // Oldest template first, so keyBy() keeps the student's self-assessment
-        // under the newest one: the row reads the status of the most recent round.
+        // Oldest round first, so keyBy() keeps the student's current
+        // self-assessment: the row reads the status of the most recent round.
         $filled = $selected !== null
             ? SelfAssessment::query()
                 ->where('academic_period_id', $selected->id)
                 ->whereIn('enrollment_id', $enrollments->pluck('id'))
-                ->orderBy('self_assessment_template_id')
-                ->orderBy('id')
+                ->oldestRoundFirst()
                 ->get()->keyBy('enrollment_id')
             : collect();
 
@@ -249,8 +248,7 @@ class SelfAssessmentController extends Controller
         $filled = SelfAssessment::query()
             ->where('academic_period_id', $selected->id)
             ->whereIn('enrollment_id', $enrollments->pluck('id'))
-            ->orderBy('self_assessment_template_id')
-            ->orderBy('id')
+            ->oldestRoundFirst()
             ->get()->keyBy('enrollment_id');
 
         $expiresAt = now()->addDays(self::LINK_LIFETIME_DAYS);

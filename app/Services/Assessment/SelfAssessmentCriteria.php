@@ -8,6 +8,7 @@ use App\Models\SchoolClass;
 use App\Models\SelfAssessmentTemplate;
 use App\Services\Classes\ClassProfileUpdateOffer;
 use App\Support\Assessment\SelfAssessmentAnswerScale;
+use App\Support\Assessment\SelfAssessmentWrites;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -35,7 +36,10 @@ class SelfAssessmentCriteria
         $version = $template->profileVersion;
         $classVersion = $class->profileVersion;
 
-        $canEdit = Gate::allows('update', $class);
+        // Read-only mode turns every write off, so nothing is offered to start
+        // or to edit however the permissions read.
+        $readOnly = SelfAssessmentWrites::readOnly();
+        $canEdit = ! $readOnly && Gate::allows('update', $class);
 
         $state = match (true) {
             $version === null && $classVersion === null => 'no_profile',
@@ -64,6 +68,7 @@ class SelfAssessmentCriteria
             'saved_count' => $template->selfAssessments()->count(),
             'can_renew' => $state === 'previous' && $canEdit,
             'can_edit' => $canEdit,
+            'read_only' => $readOnly,
             'class_url' => "/classes/{$class->ulid}",
             'review' => $offer === null ? null : [
                 'version' => $offer['version_number'],

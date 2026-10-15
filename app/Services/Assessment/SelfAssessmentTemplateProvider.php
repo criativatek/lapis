@@ -16,6 +16,8 @@ use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Support\Assessment\ImprovementPrompt;
 use App\Support\Assessment\SelfAssessmentRenewalException;
+use App\Support\Assessment\SelfAssessmentWrites;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -40,6 +42,11 @@ class SelfAssessmentTemplateProvider
      */
     public function forClass(SchoolClass $class): SelfAssessmentTemplate
     {
+        // Read-only mode: nothing is derived, retired or completed on a visit.
+        if (SelfAssessmentWrites::readOnly()) {
+            return $this->templateToRead($class);
+        }
+
         $existing = $this->activeTemplateOf($class);
 
         // The common case reads and goes: the template already follows the class.
@@ -82,6 +89,13 @@ class SelfAssessmentTemplateProvider
      */
     public function followMigratedClass(SchoolClass $lockedClass, User $actor, ?User $onBehalfOf = null): void
     {
+        // Read-only mode: the migration of the class goes on, and the template
+        // follows on the first visit after the mode is switched off (the lazy
+        // path in forClass()).
+        if (SelfAssessmentWrites::readOnly()) {
+            return;
+        }
+
         $existing = $this->activeTemplateOf($lockedClass);
 
         if ($existing === null || ! $this->isLeftBehind($existing, $lockedClass)) {
@@ -111,6 +125,10 @@ class SelfAssessmentTemplateProvider
      */
     public function renew(SchoolClass $class, User $actor): SelfAssessmentTemplate
     {
+        if (SelfAssessmentWrites::readOnly()) {
+            throw SelfAssessmentRenewalException::readOnly();
+        }
+
         return DB::transaction(function () use ($class, $actor): SelfAssessmentTemplate {
             $locked = $this->lockClass($class);
 
@@ -172,6 +190,10 @@ class SelfAssessmentTemplateProvider
      */
     public function rewordReflections(SchoolClass $class, array $prompts, User $actor): void
     {
+        if (SelfAssessmentWrites::readOnly()) {
+            throw ValidationException::withMessages(['prompts' => SelfAssessmentWrites::refusal()]);
+        }
+
         DB::transaction(function () use ($class, $prompts, $actor): void {
             $locked = $this->lockClass($class);
             $template = $this->activeTemplateOf($locked);
@@ -312,6 +334,32 @@ class SelfAssessmentTemplateProvider
             'student_count' => (clone $saved)->distinct()->count('enrollment_id'),
             'periods' => $periods,
         ];
+    }
+
+    /**
+     * The template to SHOW while the self-assessment is read-only: the active
+     * one exactly as it is, or, when the class has none, a template that is not
+     * saved — no questions, the class's own version — so that the screens have
+     * something to render without anything having been written.
+     */
+    protected function templateToRead(SchoolClass $class): SelfAssessmentTemplate
+    {
+        $existing = $this->activeTemplateOf($class);
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $template = new SelfAssessmentTemplate;
+        $template->forceFill([
+            'assessment_profile_version_id' => $class->assessment_profile_version_id,
+            'class_id' => $class->id,
+            'name' => 'Autoavaliação',
+            'is_active' => true,
+        ]);
+        $template->setRelation('questions', new EloquentCollection);
+
+        return $template;
     }
 
     /**

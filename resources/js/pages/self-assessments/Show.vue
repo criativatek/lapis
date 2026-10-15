@@ -4,6 +4,7 @@ import { ChevronRight } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Heading from '@/components/Heading.vue';
 import SelfAssessmentCriteriaPanel from '@/components/SelfAssessmentCriteriaPanel.vue';
+import SelfAssessmentReadOnlyNotice from '@/components/SelfAssessmentReadOnlyNotice.vue';
 import { statusToneClasses } from '@/lib/statusTone';
 import type { SelfAssessmentConfiguration, SelfAssessmentReflectionQuestion } from '@/types/self-assessment';
 
@@ -148,6 +149,8 @@ function saveReflections(): void {
                 </Link>
             </div>
         </div>
+
+        <SelfAssessmentReadOnlyNotice v-if="configuration.read_only" audience="teacher" />
 
         <SelfAssessmentCriteriaPanel :configuration="configuration" context="list">
             <template #renew>

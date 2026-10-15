@@ -88,3 +88,42 @@ describe('self-assessments/PublicEdit — what the student is told', () => {
         expect(wrapper.text()).toContain('É a tua apreciação pessoal da classificação que consideras merecer.');
     });
 });
+
+describe('self-assessments/PublicEdit — criteria still those the self-assessment was started with', () => {
+    it('keeps the wording of the current criteria when the server says they are current', () => {
+        const section = mountWith({ criteriaState: 'current' }).get('[data-test="how-assessed"]');
+
+        expect(section.text()).toContain('Como é feita a avaliação nesta disciplina');
+        expect(section.text()).toContain('Respondes na escala da turma: Percentagem (0 a 100).');
+        expect(section.find('[data-test="criteria-previous"]').exists()).toBe(false);
+    });
+
+    it('says the criteria are those it was started with and never calls the scale «da turma»', () => {
+        const section = mountWith({ criteriaState: 'previous' }).get('[data-test="how-assessed"]');
+
+        expect(section.text()).toContain('Critérios desta autoavaliação');
+        expect(section.text()).not.toContain('Como é feita a avaliação nesta disciplina');
+        expect(section.get('[data-test="criteria-previous"]').text()).toBe('Esta autoavaliação mantém os critérios com que foi iniciada.');
+        expect(section.text()).toContain('Conhecimento — 60%');
+        expect(section.text()).toContain('Respondes na escala desta autoavaliação: Percentagem (0 a 100).');
+        expect(section.text()).not.toContain('da turma');
+    });
+});
+
+describe('self-assessments/PublicEdit — read-only mode', () => {
+    it('is silent and saves normally when the mode is off', () => {
+        const wrapper = mountWith();
+
+        expect(wrapper.find('[data-test="read-only-notice"]').exists()).toBe(false);
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined();
+    });
+
+    it('tells the student to try later and disables the save button', () => {
+        const wrapper = mountWith({ readOnly: true });
+
+        expect(wrapper.get('[data-test="read-only-notice"]').text()).toBe(
+            'A autoavaliação está temporariamente só de leitura. As respostas guardadas continuam visíveis, mas não é possível guardar por agora. Tenta mais tarde.',
+        );
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+    });
+});
