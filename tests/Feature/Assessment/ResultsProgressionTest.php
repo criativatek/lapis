@@ -309,7 +309,11 @@ class ResultsProgressionTest extends TestCase
         // the same judgement written twice.
         $screen = (string) file_get_contents(resource_path('js/pages/results/Show.vue'));
 
-        $this->assertStringContainsString('{{ row.self_assessment.code }}', $screen);
+        // The self-assessment cell is drawn by the one component that shows it,
+        // in its `display` (the number), never in the qualitative mention.
+        $this->assertStringContainsString('<SelfAssessmentValue', $screen);
+        $this->assertStringContainsString(':reading="row.self_assessment"', $screen);
+        $this->assertStringContainsString('displayOf(', (string) file_get_contents(resource_path('js/components/SelfAssessmentValue.vue')));
         // The decided cell now also carries a decision written only as a value, in
         // the same place and the same token: the level's code first, the value only
         // when there is no level.
@@ -320,8 +324,9 @@ class ResultsProgressionTest extends TestCase
         $this->assertStringNotContainsString('{{ row.self_assessment.label }}', $screen);
         $this->assertStringNotContainsString('{{ row.classification.final.label }}', $screen);
 
-        // …and both keep it as support.
-        $this->assertStringContainsString('${row.self_assessment.label}', $screen);
+        // …and both keep it as support (the self-assessment one in the
+        // component's tooltip, written by the shared helper).
+        $this->assertStringContainsString('.label', (string) file_get_contents(resource_path('js/lib/selfAssessmentReading.ts')));
         $this->assertStringContainsString('${row.classification.final.label}', $screen);
     }
 
@@ -354,7 +359,9 @@ class ResultsProgressionTest extends TestCase
             $source = (string) file_get_contents(resource_path($screen));
 
             $this->assertMatchesRegularExpression('/classification\??\.final\??\.code/', $source, $screen);
-            $this->assertMatchesRegularExpression('/self_assessment\??\.code/', $source, $screen);
+            // A autoavaliação é desenhada pelo componente único, que mostra o
+            // `display` (o número), e não a menção.
+            $this->assertStringContainsString('<SelfAssessmentValue', $source, $screen);
             // E a menção nunca é interpolada sozinha numa célula de nível.
             $this->assertStringNotContainsString('{{ row.classification.final.label }}', $source);
         }

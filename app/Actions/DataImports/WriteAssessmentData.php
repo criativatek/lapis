@@ -14,6 +14,7 @@ use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentTemplate;
 use App\Models\StudentItemScore;
+use App\Support\Assessment\SelfAssessmentAnswerScale;
 
 /**
  * Writes the assessment DATA tier a validated backup's plan already
@@ -488,6 +489,7 @@ class WriteAssessmentData
     {
         $created = 0;
         $templateIdBySelfAssessmentId = SelfAssessment::query()->whereIn('id', array_values($selfAssessmentsByUlid))->pluck('self_assessment_template_id', 'id');
+        $questionsById = SelfAssessmentQuestion::query()->with('scale.levels')->whereIn('id', array_values($questionsByKey))->get()->keyBy('id');
 
         foreach ($rows as $row) {
             if ($row['classification'] !== 'new') {
@@ -510,10 +512,28 @@ class WriteAssessmentData
                 continue;
             }
 
+            $scaleLevelId = $this->resolveScaleLevelId($row['scale_level'], $scalesByRef, $scaleLevelsByRef);
+            $numericValue = $row['numeric_value'] ?? null;
+
+            // A number is restored only where the question is answered with
+            // one — on an interval scale, inside its limits — and never beside
+            // a level. The form never stores anything else, so a row that does
+            // is not one this app wrote, and it is not written either.
+            if ($numericValue !== null) {
+                $question = $questionsById->get($questionId);
+                $answerScale = SelfAssessmentAnswerScale::for($question?->scale, 3);
+
+                if ($question === null || $question->answer_kind !== 'scale' || $scaleLevelId !== null
+                    || $answerScale->mode() !== SelfAssessmentAnswerScale::MODE_NUMBER || $answerScale->validate($numericValue) !== null) {
+                    continue;
+                }
+            }
+
             $response = new SelfAssessmentResponse;
             $response->forceFill([
                 'self_assessment_id' => $selfAssessmentId, 'self_assessment_question_id' => $questionId,
-                'scale_level_id' => $this->resolveScaleLevelId($row['scale_level'], $scalesByRef, $scaleLevelsByRef),
+                'scale_level_id' => $scaleLevelId,
+                'numeric_value' => $numericValue,
                 'text_value' => $row['text_value'], 'boolean_value' => $row['boolean_value'],
             ]);
             $response->save();

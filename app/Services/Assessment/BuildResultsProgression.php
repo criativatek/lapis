@@ -454,6 +454,10 @@ class BuildResultsProgression
             'label' => $scaleLevel->label,
             'sequence' => $scaleLevel->sequence,
             'is_negative' => (bool) $scaleLevel->is_negative,
+            // The scale the band belongs to: a student's self-assessment kept
+            // from earlier criteria may be on another one, and the progress
+            // screen only says «acima»/«abaixo» between bands of the same scale.
+            'scale_id' => (int) $scaleLevel->scale_id,
         ];
 
         // A DECISION TAKEN AFTER THE CUTOFF HAD NOT BEEN TAKEN YET.
@@ -618,15 +622,15 @@ class BuildResultsProgression
             ->whereIn('academic_period_id', $periods->pluck('id'))
             ->whereHas('enrollment', fn ($inner) => $inner->where('class_id', $class->id))
             ->whereIn('status', [SelfAssessmentStatus::Submitted, SelfAssessmentStatus::Reviewed])
-            ->with(['responses.question', 'responses.scaleLevel']);
+            ->with(SelfAssessmentReading::relations());
 
         $cutoff->applyTo($query, 'submitted_at');
 
-        $assessments = $query->get();
-
+        // The newest template's self-assessment per student and period, with
+        // the older ones attached for the overall judgement to fall back on.
         $byKey = [];
 
-        foreach ($assessments as $assessment) {
+        foreach ($this->selfAssessments->newestPerStudentPeriod($query->get()) as $assessment) {
             $byKey[$assessment->enrollment_id.':'.$assessment->academic_period_id] = $assessment;
         }
 

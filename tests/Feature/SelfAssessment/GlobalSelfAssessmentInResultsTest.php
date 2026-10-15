@@ -150,13 +150,17 @@ class GlobalSelfAssessmentInResultsTest extends TestCase
     public function the_column_shows_the_number_and_not_the_qualitative_mention(): void
     {
         $screen = (string) file_get_contents(resource_path('js/pages/results/Show.vue'));
+        $value = (string) file_get_contents(resource_path('js/components/SelfAssessmentValue.vue'));
 
-        // The cell's content is the value on the scale…
-        $this->assertStringContainsString('{{ row.self_assessment.code }}', $screen);
-        // …and «Bom» is not what stands in the column.
+        // The cell is drawn by the one component that shows a self-assessment,
+        // from the reading itself…
+        $this->assertStringContainsString('<SelfAssessmentValue', $screen);
+        $this->assertStringContainsString(':reading="row.self_assessment"', $screen);
+        // …whose content is the value on the scale (`display`), and «Bom» is
+        // not what stands in the column.
         $this->assertStringNotContainsString('>{{ row.self_assessment.label }}<', $screen);
-        // The mention is still there, as support.
-        $this->assertStringContainsString('${row.self_assessment.label}', $screen);
+        $this->assertStringNotContainsString('>{{ reading.label }}<', $value);
+        $this->assertStringContainsString('displayOf(', $value);
     }
 
     #[Test]

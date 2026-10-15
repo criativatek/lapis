@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -67,10 +68,35 @@ class SelfAssessment extends Model
     }
 
     /**
+     * @return BelongsTo<SelfAssessmentTemplate, $this>
+     */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(SelfAssessmentTemplate::class, 'self_assessment_template_id');
+    }
+
+    /**
      * @return HasMany<SelfAssessmentResponse, $this>
      */
     public function responses(): HasMany
     {
         return $this->hasMany(SelfAssessmentResponse::class);
+    }
+
+    /**
+     * The rounds of a student's self-assessment, oldest first — so that a
+     * keyBy() keeps the current one: the ACTIVE template's, then the newest
+     * retired one. The same order SelfAssessmentReading presents them in. Not
+     * the template id alone: a restored or cloned backup recreates templates in
+     * the order its file lists them.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeOldestRoundFirst(Builder $query): void
+    {
+        $query
+            ->orderBy(SelfAssessmentTemplate::query()->select('is_active')->whereColumn('self_assessment_templates.id', 'self_assessments.self_assessment_template_id'))
+            ->orderBy('self_assessment_template_id')
+            ->orderBy('id');
     }
 }

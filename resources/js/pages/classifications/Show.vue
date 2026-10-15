@@ -4,9 +4,12 @@ import { CircleAlert, Lock, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { decidedScaleNote } from '@/lib/decidedValue';
 import { ACCUMULATED, ACCUMULATED_EXPLANATION, ACCUMULATED_LONG } from '@/lib/readings';
+import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import { statusToneClasses } from '@/lib/statusTone';
 
 type Proposal = {
@@ -25,7 +28,7 @@ type Decision = {
     scale_name?: string | null;
 };
 /** The student's own overall judgement, as Resultados shows it. */
-type SelfAssessment = { code: string; label: string; sequence: number; is_negative: boolean } | null;
+type SelfAssessment = SelfAssessmentReading;
 type Level = { id: number; code: string; label: string };
 type Classification = {
     ulid: string;
@@ -72,6 +75,7 @@ const props = defineProps<{
 
 const page = usePage();
 const selectedPeriod = computed(() => props.periods.find((period) => period.selected) ?? null);
+const hasEarlierMark = computed(() => anyOtherCriteria(props.rows.map((row) => row.self_assessment)));
 const pending = computed(() => props.rows.filter((row) => row.classification?.can_confirm).length);
 const confirmedCount = computed(() => props.rows.filter((row) => row.classification?.status === 'confirmed').length);
 
@@ -395,10 +399,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                     <span v-else class="text-muted-foreground">—</span>
                                 </td>
                                 <td class="px-3 py-2 text-right tabular-nums">
-                                    <span
-                                        v-if="row.self_assessment"
-                                        :title="`Autoavaliação do aluno: ${row.self_assessment.code} — ${row.self_assessment.label}`"
-                                    >{{ row.self_assessment.code }}</span>
+                                    <SelfAssessmentValue v-if="row.self_assessment" :reading="row.self_assessment" compact />
                                     <span v-else class="text-muted-foreground" title="O aluno não respondeu à autoavaliação global deste período.">—</span>
                                 </td>
                                 <!-- The decision, on the scale — a 4, a 15. Never
@@ -530,6 +531,8 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 </table>
             </div>
         </template>
+
+        <p v-if="hasEarlierMark" class="text-xs text-muted-foreground" data-test="self-assessment-legend">{{ EARLIER_LEGEND }}</p>
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />

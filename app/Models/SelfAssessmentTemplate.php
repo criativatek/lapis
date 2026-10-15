@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -49,5 +50,24 @@ class SelfAssessmentTemplate extends Model
     public function questions(): HasMany
     {
         return $this->hasMany(SelfAssessmentQuestion::class)->orderBy('sequence');
+    }
+
+    /**
+     * The profile version this template was derived from — the criteria its
+     * questions speak in, which are not necessarily the class's today.
+     *
+     * @return BelongsTo<AssessmentProfileVersion, $this>
+     */
+    public function profileVersion(): BelongsTo
+    {
+        return $this->belongsTo(AssessmentProfileVersion::class, 'assessment_profile_version_id');
+    }
+
+    /**
+     * @return HasMany<SelfAssessment, $this>
+     */
+    public function selfAssessments(): HasMany
+    {
+        return $this->hasMany(SelfAssessment::class);
     }
 }

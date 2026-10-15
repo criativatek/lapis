@@ -381,7 +381,16 @@ final class ResultsAnalysisContext
             ? self::nullableScalar($selfAssessment['comparison']['direction'] ?? null)
             : null;
 
-        return $comparison === null ? $label : $label.' ('.$comparison.' da evidência)';
+        // Said out loud, so the model does not read a 70% answered on another
+        // scale as one on the current scale, nor an earlier proposal as this
+        // round answer.
+        $origin = match (true) {
+            ($selfAssessment['earlier'] ?? false) === true => ' (autoavaliação anterior; a nova não tem proposta global)',
+            ($selfAssessment['previous_criteria'] ?? false) === true => ' (critérios anteriores)',
+            default => '',
+        };
+
+        return $comparison === null ? $label.$origin : $label.$origin.' ('.$comparison.' da evidência)';
     }
 
     /** The teacher's own decision, when they have made one. Reported, never judged. */

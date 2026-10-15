@@ -7,6 +7,7 @@
  */
 
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 
 /**
  * Um nível da escala, tal como a apreciação vigente o carrega.
@@ -184,7 +185,7 @@ export type SynopticDomainCell = {
     current: Appreciation;
     trend: SynopticTrend;
     has_coverage_warning: boolean;
-    self_assessment: { code: string; label: string } | null;
+    self_assessment: SelfAssessmentReading;
 };
 
 export type SynopticReadingRow = {
@@ -197,7 +198,7 @@ export type SynopticReadingRow = {
         current: Appreciation;
     } | null;
     domains: SynopticDomainCell[];
-    self_assessment: { code: string; label: string } | null;
+    self_assessment: SelfAssessmentReading;
     trend: SynopticTrend;
 };
 

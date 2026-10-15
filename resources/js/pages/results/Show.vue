@@ -7,11 +7,14 @@ import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
+import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import type { Coverage } from '@/types';
 
 type DomainCol = { id: number; name: string };
@@ -67,7 +70,7 @@ type Row = {
     domains: DomainValue[];
     evolution: Evolution;
     accumulated: string | null;
-    self_assessment: Level;
+    self_assessment: SelfAssessmentReading;
     classification: {
         ulid: string;
         status: string;
@@ -199,6 +202,8 @@ function levelClasses(level: Level): string {
 
     return qualitativeToneClasses[qualitativeToneFor(level, props.scaleBands)];
 }
+
+const hasEarlierMark = computed(() => anyOtherCriteria(props.rows.map((row) => row.self_assessment)));
 
 function domainValue(row: Row, domainId: number): DomainValue | undefined {
     return row.domains.find((domain) => domain.domain_id === domainId);
@@ -477,12 +482,13 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                             <!-- What the student proposed is a value on the
                                  scale — a 4, a 16. The qualitative mention is
                                  support, and never stands in for it. -->
-                            <span
+                            <SelfAssessmentValue
                                 v-if="row.self_assessment"
+                                :reading="row.self_assessment"
+                                :bands="scaleBands"
+                                compact
                                 class="rounded px-2 py-0.5"
-                                :class="levelClasses(row.self_assessment)"
-                                :title="`Autoavaliação do aluno: ${row.self_assessment.code} — ${row.self_assessment.label}`"
-                            >{{ row.self_assessment.code }}</span>
+                            />
                             <span
                                 v-else
                                 class="text-muted-foreground"
@@ -624,6 +630,8 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
             :error="aiAnalysisError"
             pseudonymised
         />
+
+        <p v-if="hasEarlierMark" class="text-xs text-muted-foreground" data-test="self-assessment-legend">{{ EARLIER_LEGEND }}</p>
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" />

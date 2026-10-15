@@ -194,6 +194,17 @@ final class FollowupContext
 
             $line = self::scalar($row['period_label'] ?? null).': o aluno indicou '.$self;
 
+            // Said out loud, so the model does not read a 70% answered on
+            // another scale as one on the current scale, nor an earlier
+            // proposal as this round answer.
+            $reading = is_array($row['self_assessment'] ?? null) ? $row['self_assessment'] : [];
+
+            if (($reading['earlier'] ?? false) === true) {
+                $line .= ' (autoavaliação anterior; a nova não tem proposta global)';
+            } elseif (($reading['previous_criteria'] ?? false) === true) {
+                $line .= ' (critérios anteriores)';
+            }
+
             $comparison = is_array($row['comparison'] ?? null)
                 ? self::nullableScalar($row['comparison']['direction'] ?? null)
                 : null;

@@ -35,6 +35,7 @@ class MigrateClassProfile
         protected AuditLog $audit,
         protected ScaleProposalResolver $proposals,
         protected DecisionScaleReader $decisionScales,
+        protected SelfAssessmentTemplateProvider $selfAssessments,
     ) {}
 
     /**
@@ -172,6 +173,10 @@ class MigrateClassProfile
             'affected_enrollment_count' => $affected,
             'recalculated_result_count' => $recalculated,
             'kept_result_count' => $kept,
+            // What happens to the class's self-assessment: it follows the new
+            // version when nobody has answered it yet, and stays with the
+            // criteria it was filled in with when somebody has.
+            'self_assessment' => $this->selfAssessments->impactOf($class, $toVersion),
         ];
     }
 
@@ -199,6 +204,11 @@ class MigrateClassProfile
             // The FK changed but the loaded relation is still the old version;
             // point it at the new one so the re-proposal computes under it.
             $locked->setRelation('profileVersion', $toVersion);
+
+            // The self-assessment follows the class now, inside the same
+            // transaction and on the record of whoever decided the change —
+            // unless it already holds answers, in which case it stays.
+            $this->selfAssessments->followMigratedClass($locked, $actor, $onBehalfOf);
 
             $periods = AcademicPeriod::query()
                 ->where('academic_year_id', $locked->academic_year_id)

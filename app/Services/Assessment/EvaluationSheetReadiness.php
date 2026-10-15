@@ -528,6 +528,8 @@ class EvaluationSheetReadiness
         return SelfAssessment::query()
             ->where('academic_period_id', $period->getKey())
             ->whereIn('enrollment_id', $enrollmentIds)
+            // Oldest round first: the current one prevails in keyBy().
+            ->oldestRoundFirst()
             ->get()
             ->keyBy('enrollment_id');
     }

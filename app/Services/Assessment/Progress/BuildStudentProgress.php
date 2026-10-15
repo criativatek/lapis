@@ -504,7 +504,15 @@ class BuildStudentProgress
             $comparison = null;
 
             if ($self !== null && $assigned !== null
-                && isset($self['sequence'], $assigned['sequence'])) {
+                // A proposal kept from an earlier self-assessment, because the
+                // new one has none, is a reference and not a reading to rank.
+                && ($self['earlier'] ?? false) !== true
+                && isset($self['sequence'], $assigned['sequence'])
+                // Two levels are comparable only on the SAME scale. A
+                // self-assessment kept from earlier criteria may be on another
+                // one; both readings name their scale by id, and when either
+                // does not say which, the rule stays the one it always was.
+                && (! isset($self['scale_id'], $assigned['scale_id']) || (int) $self['scale_id'] === (int) $assigned['scale_id'])) {
                 $difference = (int) $self['sequence'] - (int) $assigned['sequence'];
 
                 $comparison = [

@@ -63,7 +63,7 @@ function baseProps() {
             band: null,
             coverage: 'complete' as const,
             classification: { status: 'confirmed', final: { code: '4', label: 'Bom' }, final_value: null },
-            self_assessment: { code: '3', label: 'Satisfaz' },
+            self_assessment: { code: '3', label: 'Satisfaz', sequence: 3, is_negative: false },
         },
         moments: [
             { key: 'period-1', kind: 'period' as const, label: '1.º Período', date: '2026-12-15', value: '61.3', reading: 'period' as const, coverage: 'complete' as const, before_enrolment: false },
@@ -72,7 +72,7 @@ function baseProps() {
             { period_id: 1, period_label: '1.º Período', is_decided: true, assigned: { code: '4', label: 'Bom' }, assigned_value: null, proposal: null, differs_from_proposal: false },
         ],
         selfAssessments: [
-            { period_id: 1, period_label: '1.º Período', self_assessment: { code: '3', label: 'Satisfaz' }, assigned: { code: '4', label: 'Bom' }, comparison: { difference: -1, direction: 'below' as const } },
+            { period_id: 1, period_label: '1.º Período', self_assessment: { code: '3', label: 'Satisfaz', sequence: 3, is_negative: false }, assigned: { code: '4', label: 'Bom' }, comparison: { difference: -1, direction: 'below' as const } },
         ],
         domains: {
             rows: [
@@ -196,6 +196,22 @@ describe('student-progress/Print — composition driven by document.sections', (
         });
 
         expect(wrapper.text()).not.toContain('Estado 360º');
+    });
+
+    it('writes the criteria a self-assessment was answered under, because paper has no tooltip', () => {
+        const base = baseProps();
+        const criteria = 'Avaliação final · versão 1 · Percentagem (0 a 100)';
+        const previous = { code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, previous_criteria: true, criteria, earlier: false };
+        const wrapper = mount(Print, {
+            props: {
+                ...base,
+                headline: { ...base.headline, self_assessment: previous },
+                selfAssessments: [{ ...base.selfAssessments[0], self_assessment: { ...previous, earlier: true } }],
+            },
+        });
+
+        expect(wrapper.text()).toContain(`70% · critérios anteriores (${criteria})`);
+        expect(wrapper.text()).toContain(`anterior: 70% · critérios anteriores (${criteria})`);
     });
 
     it('shows the footer disclaimer and the generation date, never new PII', () => {

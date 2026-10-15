@@ -42,6 +42,16 @@ final readonly class ImprovementPrompt
     /** Asked in the last moment of the year, where there is no next one to name. */
     public const CLOSING = 'O que preciso de continuar a melhorar?';
 
+    /**
+     * Whether this sentence is one the app authored, as opposed to one a
+     * teacher wrote — the test a new template uses to decide whether the
+     * question's wording is carried over or generated again.
+     */
+    public static function isAuthored(string $stored): bool
+    {
+        return in_array($stored, [...self::AUTHORED, self::CLOSING], true);
+    }
+
     public static function forPeriod(string $stored, ?AcademicPeriod $next): string
     {
         if (! in_array($stored, self::AUTHORED, true)) {

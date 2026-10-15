@@ -3,6 +3,7 @@
 namespace App\Services\Assessment\Export;
 
 use App\Services\Assessment\DecisionScaleReader;
+use App\Services\Assessment\SelfAssessmentReading;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -228,7 +229,7 @@ class EvaluationSheetXlsxWriter
                 $this->writeText($sheet, $column + 2, $row, $proposed);
 
                 if ($withSelfAssessment) {
-                    $this->writeText($sheet, $column + 3, $row, (string) ($studentDomain['self_assessment']['code'] ?? ''));
+                    $this->writeText($sheet, $column + 3, $row, SelfAssessmentReading::exportText($studentDomain['self_assessment'] ?? null));
                 }
 
                 $this->fill($sheet, $column, $row, $column + ($withSelfAssessment ? 3 : 2), $row, $this->rgb($domain), soft: true);
@@ -251,7 +252,7 @@ class EvaluationSheetXlsxWriter
             $this->writeText($sheet, $column + 2, $row, $this->levelOf($overall));
 
             if ($withSelfAssessment) {
-                $this->writeText($sheet, $column + 3, $row, (string) ($student['self_assessment']['code'] ?? ''));
+                $this->writeText($sheet, $column + 3, $row, SelfAssessmentReading::exportText($student['self_assessment'] ?? null));
                 $column++;
             }
 

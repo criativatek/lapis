@@ -39,6 +39,8 @@ import type { TooltipContent } from '@/lib/chartTheme';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import type { Evolution } from '@/lib/results';
+import { anyOtherCriteria, compactText, detailText, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import { card, INSET, PAGE } from '@/lib/surfaces';
 
 type Band = { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean } | null;
@@ -50,7 +52,7 @@ type DomainCell = {
     accumulated_average: string | null;
     coverage_warning: boolean;
     evolution: Evolution;
-    self_assessment: Level;
+    self_assessment: SelfAssessmentReading;
     mention: Band;
 };
 
@@ -72,7 +74,7 @@ type Student = {
     /** Which group of the assigned distribution they are in. */
     assigned_key: string | null;
     domains: DomainCell[];
-    self_assessment: Level;
+    self_assessment: SelfAssessmentReading;
     classification: {
         status: string;
         is_published: boolean;
@@ -1292,11 +1294,19 @@ const studentTooltip = (index: number, datasetIndex: number): TooltipContent | n
     }
 
     if (cell?.self_assessment) {
-        lines.push({ label: 'Autoavaliação', value: `${cell.self_assessment.code} — ${cell.self_assessment.label}` });
+        lines.push({ label: 'Autoavaliação', value: detailText(cell.self_assessment) });
     }
 
     return { title: domain.name.toUpperCase(), subtitle: student.name, rows: lines };
 };
+
+// The legend is only owed when a «(ant.)» is actually on screen: the table of the
+// selected student is the one place here that writes the compact form.
+const selectedHasEarlierMark = computed(() => {
+    const student = selected.value;
+
+    return student !== null && anyOtherCriteria(student.domains.map((domain) => domain.self_assessment));
+});
 
 const studentRows = computed(() => {
     const student = selected.value;
@@ -1311,7 +1321,7 @@ const studentRows = computed(() => {
         return [
             domain.name, pct(cell?.weighted_average ?? null), pct(cell?.accumulated_average ?? null),
             cell?.mention?.label ?? '—',
-            cell?.self_assessment == null ? '—' : cell.self_assessment.code,
+            cell?.self_assessment == null ? '—' : compactText(cell.self_assessment),
         ];
     });
 });
@@ -2398,7 +2408,10 @@ const studentRows = computed(() => {
                         <div class="rounded-xl border border-border p-3.5">
                             <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Autoavaliação do aluno</p>
                             <p v-if="selected.self_assessment" class="mt-1 text-sm font-medium">
-                                {{ selected.self_assessment.code }} — {{ selected.self_assessment.label }}
+                                {{ detailText(selected.self_assessment) }}
+                            </p>
+                            <p v-if="selected.self_assessment?.criteria && (selected.self_assessment.previous_criteria || selected.self_assessment.earlier)" class="mt-1 text-xs text-muted-foreground">
+                                Critérios: {{ selected.self_assessment.criteria }}
                             </p>
                             <p v-else class="mt-1 text-sm text-muted-foreground">Sem autoavaliação submetida</p>
                         </div>
@@ -2529,7 +2542,7 @@ const studentRows = computed(() => {
                     </section>
 
                     <p class="mt-5 text-xs text-muted-foreground">
-                        Estes números são os mesmos de Resultados e do Quadro Síntese — esta página apenas os agrega.
+                        <template v-if="selectedHasEarlierMark">{{ EARLIER_LEGEND }} </template>Estes números são os mesmos de Resultados e do Quadro Síntese — esta página apenas os agrega.
                     </p>
                 </div>
             </div>

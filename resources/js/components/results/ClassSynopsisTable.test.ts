@@ -100,7 +100,7 @@ function synopsis(): Synopsis {
                                 // O QUE A ALUNA DISSE SOBRE ESTE DOMÍNIO. Vive
                                 // ao lado do que a prova diz, e não entra em
                                 // cálculo nenhum.
-                                self_assessment: { code: '3', label: 'Suficiente' },
+                                self_assessment: { code: '3', label: 'Suficiente', sequence: 3, is_negative: false },
                             },
                         ],
                         self_assessment: null,
@@ -148,14 +148,14 @@ function synopsis(): Synopsis {
 
 const wrappers: ReturnType<typeof mount>[] = [];
 
-function render(showQuantitative = true) {
+function render(showQuantitative = true, data: Synopsis = synopsis()) {
     const wrapper = mount(ClassSynopsisTable, {
         props: {
             classUlid: 'class-1',
             scaleBands: bands,
             canViewStudentProgress: true,
             showQuantitative,
-            synopsis: synopsis(),
+            synopsis: data,
         },
         global: {
             stubs: {
@@ -254,5 +254,49 @@ describe('as duas leituras do ano', () => {
         expect(row.text()).toContain('—');
         // E a coluna formal continua a ter a sua média, que não depende dele.
         expect(row.text()).toContain('89,4 %');
+    });
+});
+
+describe('ClassSynopsisTable — autoavaliação com critérios anteriores', () => {
+    const criteria = 'Avaliação final · versão 1 · Percentagem (0 a 100)';
+
+    // O detalhe por domínio abre-se pelo cabeçalho do momento formal.
+    async function mountTable(data: Synopsis) {
+        const wrapper = render(true, data);
+
+        await wrapper.findAll('thead button')[1]!.trigger('click');
+
+        return wrapper;
+    }
+
+    function withSelfAssessment(reading: Record<string, unknown>) {
+        const data = synopsis();
+        data.students[0]!.moments[1]!.domains[0]!.self_assessment = reading as never;
+
+        return data;
+    }
+
+    it('marca «(ant.)» e explica-a numa legenda quando a resposta tem critérios anteriores', async () => {
+        const wrapper = await mountTable(withSelfAssessment({ code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, scale: 'Percentagem (0 a 100)', previous_criteria: true, criteria, earlier: false }));
+
+        const mark = wrapper.get('sup[data-test="self-assessment-value"]');
+
+        expect(mark.text()).toBe('Auto 70% (ant.)');
+        expect(mark.attributes('aria-label')).toContain(`respondida com critérios anteriores: ${criteria}`);
+        expect(wrapper.get('[data-test="self-assessment-legend"]').text()).toContain('(ant.) — autoavaliação respondida com critérios anteriores');
+    });
+
+    it('trata uma proposta anterior como tal', async () => {
+        const wrapper = await mountTable(withSelfAssessment({ code: '4', label: 'Bom', display: '4', sequence: 4, is_negative: false, previous_criteria: false, earlier: true }));
+
+        expect(wrapper.get('sup[data-test="self-assessment-value"]').text()).toBe('Auto 4 (ant.)');
+        expect(wrapper.get('sup[data-test="self-assessment-value"]').attributes('aria-label')).toContain('A nova autoavaliação não tem proposta global');
+    });
+
+    it('não mostra marca nem legenda quando a resposta é dos critérios atuais ou não tem display (pauta antiga)', async () => {
+        const wrapper = await mountTable(withSelfAssessment({ code: '3', label: 'Suficiente', sequence: 3, is_negative: false }));
+
+        expect(wrapper.get('sup[data-test="self-assessment-value"]').text()).toBe('Auto 3');
+        expect(wrapper.find('[data-test="self-assessment-legend"]').exists()).toBe(false);
     });
 });

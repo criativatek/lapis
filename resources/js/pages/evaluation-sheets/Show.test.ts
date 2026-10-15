@@ -1105,3 +1105,54 @@ describe('a cor de uma apreciação e a sigla da autoavaliação', () => {
         expect(wrapper.text()).not.toContain('autoavaliação do aluno');
     });
 });
+
+describe('evaluation-sheets/Show — autoavaliação com critérios anteriores', () => {
+    const criteria = 'Avaliação final · versão 1 · Percentagem (0 a 100)';
+
+    function propsWithOtherCriteria() {
+        const props = selfAssessedProps();
+        const student = props.sheet.students[0];
+
+        student.self_assessment = { code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, scale: 'Percentagem (0 a 100)', previous_criteria: true, criteria, earlier: false };
+        student.domains[0].self_assessment = { code: '4', label: 'Bom', display: '4', sequence: 4, is_negative: false, previous_criteria: false, earlier: true };
+
+        return props;
+    }
+
+    it('marca «(ant.)» na síntese e no domínio, dá o nome completo e explica a marca', () => {
+        const wrapper = mount(Show, { props: propsWithOtherCriteria() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        const global = carolina.get('td span[data-test="self-assessment-value"]');
+        expect(global.text()).toBe('70% (ant.)');
+        expect(global.attributes('aria-label')).toBe(`Autoavaliação do aluno: 70% (Percentagem (0 a 100)) — respondida com critérios anteriores: ${criteria}`);
+        // Uma leitura de outra escala não toma a cor da escala de hoje.
+        expect(global.classes().join(' ')).not.toMatch(/emerald|red-|blue-|amber-/);
+
+        const perDomain = carolina.get('sup[data-test="self-assessment-value"]');
+        expect(perDomain.text()).toBe('A4 (ant.)');
+        expect(perDomain.attributes('aria-label')).toContain('A nova autoavaliação não tem proposta global');
+
+        expect(wrapper.get('[data-test="self-assessment-legend"]').text()).toContain('(ant.) — autoavaliação respondida com critérios anteriores');
+    });
+
+    it('não põe legenda quando nenhuma leitura é anterior', () => {
+        expect(mount(Show, { props: selfAssessedProps() }).find('[data-test="self-assessment-legend"]').exists()).toBe(false);
+    });
+
+    it('diz por extenso, no painel de decisão, o que é anterior', async () => {
+        const wrapper = mount(Show, { props: propsWithOtherCriteria() });
+        const carolina = wrapper.findAll('tbody tr').find((row) => row.text().includes('Carolina Nunes'))!;
+
+        await carolina
+            .findAll('button')
+            .find((button) => button.attributes('aria-label')?.startsWith('Alterar'))!
+            .trigger('click');
+
+        // Os painéis de testes anteriores ficam no documento: lê-se o último.
+        const panel = Array.from(document.querySelectorAll('[role="dialog"]')).at(-1)!;
+        expect(panel.textContent).toContain('70% · critérios anteriores');
+        expect(panel.textContent).toContain('A4 (ant.)');
+        expect(panel.textContent).toContain('(ant.) — autoavaliação respondida com critérios anteriores');
+    });
+});

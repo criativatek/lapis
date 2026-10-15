@@ -455,6 +455,10 @@ const restoreWarnings = computed<{ warning: string; count: number }[]>(() => {
 });
 
 const confirmForm = useForm({});
+
+// The error a refused confirmation comes back with, under `import`: a failed
+// restore, or restores suspended while the self-assessment is read-only.
+const importError = computed(() => (confirmForm.errors as Record<string, string | undefined> | undefined)?.import ?? null);
 function confirmImport(): void {
     confirmForm.post(`/data-imports/${props.dataImport.ulid}/confirm`);
 }
@@ -806,6 +810,17 @@ const needingReassignment = computed(() => {
                     E mais {{ allIssueRows.length - 20 }} ponto(s).
                 </p>
             </div>
+
+            <!-- Why a confirmation did not import: a failure, or restores
+                 suspended while the self-assessment is read-only. -->
+            <p
+                v-if="importError"
+                role="alert"
+                class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                data-test="import-error"
+            >
+                {{ importError }}
+            </p>
 
             <div class="flex items-center gap-3 border-t border-border pt-5">
                 <Dialog>

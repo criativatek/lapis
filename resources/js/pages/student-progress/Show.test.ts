@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import Show from './Show.vue';
 
 const routerPost = vi.hoisted(() => vi.fn());
@@ -519,5 +520,37 @@ return 'absent';
 
         expect(wrapper.text()).toContain('Aulas com assiduidade registada');
         expect(wrapper.text()).toContain('Sem registo');
+    });
+});
+
+describe('student-progress/Show — autoavaliação com critérios anteriores', () => {
+    const criteria = 'Avaliação final · versão 1 · Percentagem (0 a 100)';
+    const previous = { code: '70', label: '70%', display: '70%', sequence: null, is_negative: false, scale: 'Percentagem (0 a 100)', previous_criteria: true, criteria, earlier: false };
+    const row = (period_id: number, period_label: string, self_assessment: SelfAssessmentReading) => ({ period_id, period_label, self_assessment, assigned: { code: '4', label: 'Bom' }, comparison: null });
+
+    it('escreve por inteiro, no cabeçalho e na lista, uma resposta com critérios anteriores e uma proposta anterior', () => {
+        const base = baseProps();
+        const wrapper = mount(Show, {
+            props: {
+                ...base,
+                headline: { ...base.headline, self_assessment: previous },
+                selfAssessments: [row(1, '1.º Período', previous), row(2, '2.º Período', { ...previous, earlier: true })],
+            },
+        });
+
+        const values = wrapper.findAll('[data-test="self-assessment-value"]');
+
+        expect(values.map((value) => value.text())).toEqual(['70% · critérios anteriores', '70% · critérios anteriores', 'anterior: 70% · critérios anteriores']);
+        expect(values[0]?.attributes('aria-label')).toContain(`respondida com critérios anteriores: ${criteria}`);
+        expect(values[2]?.attributes('aria-label')).toContain('A nova autoavaliação não tem proposta global. Proposta anterior: 70%');
+    });
+
+    it('mantém a leitura com critérios atuais como o valor, sem marcas', () => {
+        const base = baseProps();
+        const current = { code: '4', label: 'Bom', display: '4', sequence: 4, is_negative: false, scale: 'Escala 1 a 5', previous_criteria: false, earlier: false };
+        const wrapper = mount(Show, { props: { ...base, selfAssessments: [row(1, '1.º Período', current)] } });
+
+        expect(wrapper.get('[data-test="self-assessment-value"]').text()).toBe('4');
+        expect(wrapper.text()).not.toContain('critérios anteriores');
     });
 });

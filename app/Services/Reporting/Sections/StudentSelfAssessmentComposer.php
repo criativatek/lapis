@@ -47,12 +47,49 @@ class StudentSelfAssessmentComposer implements SectionComposer
         // the calculation is a fact about Lapispro, not about the student.
         return ComposedSection::of(
             Phrase::paragraph([
-                Phrase::sentence('Na sua autoavaliação, o aluno apreciou o desempenho global como', (string) $self['label']),
+                ...$this->judgementSentences($self),
                 $this->comparisonSentence($student, $self),
             ]),
             [ContentSource::SelfAssessment, ContentSource::Classification],
             ['self_assessment' => $self, 'assigned' => $student['assigned'] ?? null],
         );
+    }
+
+    /**
+     * What the student said, and, when it was not said under the criteria the
+     * class uses now, where it comes from. A 70% on a percentage scale must
+     * never read as a 70 on the current one.
+     *
+     * @param  array<string, mixed>  $self
+     * @return list<string>
+     */
+    protected function judgementSentences(array $self): array
+    {
+        $label = (string) $self['label'];
+        $criteria = ($self['criteria'] ?? null) === null ? null : (string) $self['criteria'];
+
+        if (($self['earlier'] ?? false) === true) {
+            return [
+                'A nova autoavaliação não inclui uma proposta global.',
+                Phrase::sentence(
+                    $criteria === null ? 'Na autoavaliação anterior,' : "Na autoavaliação anterior (critérios: {$criteria}),",
+                    'o aluno apreciou o desempenho global como',
+                    $label,
+                ),
+            ];
+        }
+
+        if (($self['previous_criteria'] ?? false) === true) {
+            return [Phrase::sentence(
+                $criteria === null
+                    ? 'Na sua autoavaliação, respondida com critérios anteriores,'
+                    : "Na sua autoavaliação, respondida com critérios anteriores ({$criteria}),",
+                'o aluno apreciou o desempenho global como',
+                $label,
+            )];
+        }
+
+        return [Phrase::sentence('Na sua autoavaliação, o aluno apreciou o desempenho global como', $label)];
     }
 
     /**
@@ -63,9 +100,20 @@ class StudentSelfAssessmentComposer implements SectionComposer
     {
         $assigned = $student['assigned'] ?? null;
 
+        // A reference to an earlier self-assessment is not compared.
+        if (($self['earlier'] ?? false) === true) {
+            return null;
+        }
+
         // Both readings have to be on the same levelled scale for «acima» and
         // «abaixo» to carry any content at all.
         if (! is_array($assigned) || ($assigned['sequence'] ?? null) === null || ($self['sequence'] ?? null) === null) {
+            return null;
+        }
+
+        // …and the SAME scale: a self-assessment kept from earlier criteria may
+        // have been given on another one, and a 4 there is not a 4 here.
+        if (isset($self['scale_id'], $assigned['scale_id']) && (int) $self['scale_id'] !== (int) $assigned['scale_id']) {
             return null;
         }
 

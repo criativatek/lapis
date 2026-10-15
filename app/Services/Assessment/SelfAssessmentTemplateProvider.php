@@ -2,14 +2,25 @@
 
 namespace App\Services\Assessment;
 
+use App\Models\AcademicPeriod;
+use App\Models\AssessmentProfileVersion;
 use App\Models\Domain;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
+use App\Models\SelfAssessmentQuestion;
 use App\Models\SelfAssessmentQuestionRole;
+use App\Models\SelfAssessmentResponse;
 use App\Models\SelfAssessmentTemplate;
+use App\Models\User;
 use App\Services\Audit\AuditLog;
+use App\Support\Assessment\ImprovementPrompt;
+use App\Support\Assessment\SelfAssessmentRenewalException;
+use App\Support\Assessment\SelfAssessmentWrites;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Provides the self-assessment template for a class (§15). It is derived from the
@@ -31,6 +42,11 @@ class SelfAssessmentTemplateProvider
      */
     public function forClass(SchoolClass $class): SelfAssessmentTemplate
     {
+        // Read-only mode: nothing is derived, retired or completed on a visit.
+        if (SelfAssessmentWrites::readOnly()) {
+            return $this->templateToRead($class);
+        }
+
         $existing = $this->activeTemplateOf($class);
 
         // The common case reads and goes: the template already follows the class.
@@ -55,8 +71,295 @@ class SelfAssessmentTemplateProvider
                 $this->retire($existing, $locked);
             }
 
-            return $this->derive($locked);
+            return $this->derive($locked, $existing);
         });
+    }
+
+    /**
+     * A class has just been moved to another profile version
+     * (MigrateClassProfile, inside its transaction, under its lock). A template
+     * with no self-assessment saved against it follows the class RIGHT AWAY
+     * rather than on the next visit: the migration is the moment the change is
+     * decided, and the audit trail should say who decided it — not whichever
+     * student happens to open a link first.
+     *
+     * One with self-assessments stays where it is, exactly as isLeftBehind()
+     * has always said. With no template at all there is nothing to follow: the
+     * first visit derives one from the class's version.
+     */
+    public function followMigratedClass(SchoolClass $lockedClass, User $actor, ?User $onBehalfOf = null): void
+    {
+        // Read-only mode: the migration of the class goes on, and the template
+        // follows on the first visit after the mode is switched off (the lazy
+        // path in forClass()).
+        if (SelfAssessmentWrites::readOnly()) {
+            return;
+        }
+
+        $existing = $this->activeTemplateOf($lockedClass);
+
+        if ($existing === null || ! $this->isLeftBehind($existing, $lockedClass)) {
+            return;
+        }
+
+        $this->retire($existing, $lockedClass, $actor, $onBehalfOf === null ? [] : [
+            // Acesso técnico (ADR-0014): o ator é o administrador e o evento diz
+            // em nome de quem.
+            'acting_as_user_id' => $onBehalfOf->id,
+            'technical_access' => true,
+        ]);
+
+        $this->derive($lockedClass, $existing);
+    }
+
+    /**
+     * Start a new self-assessment with the class's CURRENT criteria, when the
+     * one in use stayed behind because it already holds answers.
+     *
+     * Nothing is converted and nothing is deleted: the template is retired, its
+     * questions, self-assessments and responses stay as they were, and the new
+     * template is derived from the class's version. A student then has one
+     * self-assessment per template for the same period, every reading takes
+     * the newer one (SelfAssessmentReading), and the older one stays on the
+     * record with the criteria it was filled in with.
+     */
+    public function renew(SchoolClass $class, User $actor): SelfAssessmentTemplate
+    {
+        if (SelfAssessmentWrites::readOnly()) {
+            throw SelfAssessmentRenewalException::readOnly();
+        }
+
+        return DB::transaction(function () use ($class, $actor): SelfAssessmentTemplate {
+            $locked = $this->lockClass($class);
+
+            if ($locked->assessment_profile_version_id === null) {
+                throw SelfAssessmentRenewalException::withoutProfile();
+            }
+
+            $existing = $this->activeTemplateOf($locked);
+
+            if ($existing === null) {
+                throw SelfAssessmentRenewalException::nothingToRenew();
+            }
+
+            if ($existing->assessment_profile_version_id === $locked->assessment_profile_version_id) {
+                throw SelfAssessmentRenewalException::alreadyCurrent();
+            }
+
+            $saved = SelfAssessment::query()->where('self_assessment_template_id', $existing->id)->count();
+
+            if ($saved === 0) {
+                throw SelfAssessmentRenewalException::nothingToRenew();
+            }
+
+            $this->retire($existing, $locked, $actor, ['reason' => 'renewed', 'saved_count' => $saved]);
+
+            $template = $this->derive($locked, $existing);
+            $versionNumber = $locked->profileVersion?->version_number;
+
+            $this->audit->record(
+                'self_assessment.renewed',
+                $template,
+                $actor,
+                "Nova autoavaliação de {$locked->label} com os critérios atuais da turma (versão {$versionNumber}). ".($saved === 1
+                    ? 'A autoavaliação anterior fica guardada com os critérios em que foi preenchida.'
+                    : "As {$saved} autoavaliações anteriores ficam guardadas com os critérios em que foram preenchidas."),
+                [
+                    'class_id' => $locked->id,
+                    'previous_template_id' => $existing->id,
+                    'from_profile_version_id' => $existing->assessment_profile_version_id,
+                    'to_profile_version_id' => $locked->assessment_profile_version_id,
+                    'saved_count' => $saved,
+                ],
+            );
+
+            return $template;
+        });
+    }
+
+    /**
+     * Rewrite the wording of the reflection questions of the active template.
+     *
+     * ONLY THE WRITTEN QUESTIONS. The domains, their weights and the scale are
+     * the class's criteria and are not edited here; neither is the overall
+     * judgement, whose wording is bound to the scale. A reflection that already
+     * has an answer keeps its wording, so that what students answered still
+     * means what it meant when they answered.
+     *
+     * @param  array<int|string, mixed>  $prompts  question id => new wording
+     */
+    public function rewordReflections(SchoolClass $class, array $prompts, User $actor): void
+    {
+        if (SelfAssessmentWrites::readOnly()) {
+            throw ValidationException::withMessages(['prompts' => SelfAssessmentWrites::refusal()]);
+        }
+
+        DB::transaction(function () use ($class, $prompts, $actor): void {
+            $locked = $this->lockClass($class);
+            $template = $this->activeTemplateOf($locked);
+
+            // A page opened before the template was replaced (a new
+            // self-assessment, or the class's criteria followed) names questions
+            // that are no longer the class's: said as what it is, never as a
+            // refusal to edit a criterion nobody tried to edit.
+            $stale = __('As perguntas desta autoavaliação mudaram depois de esta página ter sido aberta. Nada foi guardado: a página foi atualizada — volte a escrever e guarde.');
+
+            if ($template === null) {
+                throw ValidationException::withMessages(['prompts' => $stale]);
+            }
+
+            /** @var Collection<int, SelfAssessmentQuestion> $questions */
+            $questions = $template->questions->keyBy('id');
+            $errors = [];
+            $wanted = [];
+
+            foreach ($prompts as $questionId => $prompt) {
+                $question = $questions->get((int) $questionId);
+
+                if ($question === null) {
+                    throw ValidationException::withMessages(['prompts' => $stale]);
+                }
+
+                if ($question->role === null || $question->answer_kind !== 'text') {
+                    $errors['prompts'] = __('Só as perguntas de reflexão podem ser personalizadas. Os domínios, as ponderações e a escala vêm dos critérios da turma.');
+
+                    continue;
+                }
+
+                $text = is_string($prompt) ? trim($prompt) : '';
+
+                if (mb_strlen($text) < 3 || mb_strlen($text) > 500) {
+                    $errors["prompts.{$question->id}"] = __('A pergunta deve ter entre 3 e 500 caracteres.');
+
+                    continue;
+                }
+
+                $wanted[(int) $question->id] = $text;
+            }
+
+            $answered = $wanted === [] ? [] : SelfAssessmentResponse::query()
+                ->whereIn('self_assessment_question_id', array_keys($wanted))
+                ->whereNotNull('text_value')
+                ->distinct()
+                ->pluck('self_assessment_question_id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
+
+            $changes = [];
+
+            foreach ($wanted as $questionId => $text) {
+                $question = $questions->get($questionId);
+
+                if ($question === null || $text === (string) $question->prompt) {
+                    continue;
+                }
+
+                if (in_array($questionId, $answered, true)) {
+                    $errors["prompts.{$questionId}"] = __('Esta pergunta já tem respostas de alunos. A redação mantém-se, para não mudar o sentido do que já foi respondido.');
+
+                    continue;
+                }
+
+                $changes[] = ['question' => $question, 'to' => $text];
+            }
+
+            if ($errors !== []) {
+                throw ValidationException::withMessages($errors);
+            }
+
+            if ($changes === []) {
+                return;
+            }
+
+            $recorded = [];
+
+            foreach ($changes as $change) {
+                $question = $change['question'];
+
+                $recorded[] = [
+                    'question_id' => $question->id,
+                    'role' => $question->role?->value,
+                    'from' => (string) $question->prompt,
+                    'to' => $change['to'],
+                ];
+
+                $question->forceFill(['prompt' => $change['to']])->save();
+            }
+
+            $this->audit->record(
+                'self_assessment.questions_reworded',
+                $template,
+                $actor,
+                "Perguntas de reflexão da autoavaliação de {$locked->label} personalizadas.",
+                ['class_id' => $locked->id, 'changes' => $recorded],
+            );
+        });
+    }
+
+    /**
+     * What changing the class to another profile version would do to its
+     * self-assessment — read-only, for the preview a teacher confirms.
+     *
+     * @return array{state: string, saved_count: int, student_count: int, periods: list<string>}
+     */
+    public function impactOf(SchoolClass $class, AssessmentProfileVersion $to): array
+    {
+        $template = $this->activeTemplateOf($class);
+
+        if ($template === null) {
+            return ['state' => 'not_started', 'saved_count' => 0, 'student_count' => 0, 'periods' => []];
+        }
+
+        $saved = SelfAssessment::query()->where('self_assessment_template_id', $template->id);
+        $savedCount = (clone $saved)->count();
+
+        $periods = [];
+
+        $labels = AcademicPeriod::query()
+            ->whereIn('id', (clone $saved)->select('academic_period_id'))
+            ->orderBy('sequence')
+            ->pluck('label');
+
+        foreach ($labels as $label) {
+            $periods[] = (string) $label;
+        }
+
+        return [
+            'state' => match (true) {
+                $template->assessment_profile_version_id === $to->id => 'unchanged',
+                $savedCount === 0 => 'follows',
+                default => 'kept',
+            },
+            'saved_count' => $savedCount,
+            'student_count' => (clone $saved)->distinct()->count('enrollment_id'),
+            'periods' => $periods,
+        ];
+    }
+
+    /**
+     * The template to SHOW while the self-assessment is read-only: the active
+     * one exactly as it is, or, when the class has none, a template that is not
+     * saved — no questions, the class's own version — so that the screens have
+     * something to render without anything having been written.
+     */
+    protected function templateToRead(SchoolClass $class): SelfAssessmentTemplate
+    {
+        $existing = $this->activeTemplateOf($class);
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $template = new SelfAssessmentTemplate;
+        $template->forceFill([
+            'assessment_profile_version_id' => $class->assessment_profile_version_id,
+            'class_id' => $class->id,
+            'name' => 'Autoavaliação',
+            'is_active' => true,
+        ]);
+        $template->setRelation('questions', new EloquentCollection);
+
+        return $template;
     }
 
     /**
@@ -84,7 +387,11 @@ class SelfAssessmentTemplateProvider
         return SchoolClass::query()->whereKey($class->getKey())->lockForUpdate()->firstOrFail();
     }
 
-    protected function activeTemplateOf(SchoolClass $class): ?SelfAssessmentTemplate
+    /**
+     * The template in use, with its questions — also for the screens that only
+     * read, which must not derive anything.
+     */
+    public function activeTemplateOf(SchoolClass $class): ?SelfAssessmentTemplate
     {
         return SelfAssessmentTemplate::query()
             ->where('class_id', $class->id)
@@ -118,25 +425,31 @@ class SelfAssessmentTemplateProvider
      * Retired, never deleted: the row and its questions stay as they were, and
      * the change is on the record — it happens on a visit, possibly the
      * student's, and nobody would otherwise know the questions had changed.
+     *
+     * @param  array<string, mixed>  $extra  properties added to the event
      */
-    protected function retire(SelfAssessmentTemplate $template, SchoolClass $class): void
+    protected function retire(SelfAssessmentTemplate $template, SchoolClass $class, ?User $causer = null, array $extra = []): void
     {
         $template->forceFill(['is_active' => false])->save();
 
         $this->audit->record(
             'self_assessment.template_retired',
             $template,
-            null,
+            $causer,
             "Perguntas da autoavaliação de {$class->label} atualizadas para a versão de perfil da turma.",
             [
                 'class_id' => $class->id,
                 'from_profile_version_id' => $template->assessment_profile_version_id,
                 'to_profile_version_id' => $class->assessment_profile_version_id,
+                ...$extra,
             ],
         );
     }
 
-    protected function derive(SchoolClass $class): SelfAssessmentTemplate
+    /**
+     * @param  SelfAssessmentTemplate|null  $previous  the template this one replaces: the reflection questions a teacher worded keep their wording
+     */
+    protected function derive(SchoolClass $class, ?SelfAssessmentTemplate $previous = null): SelfAssessmentTemplate
     {
         $template = SelfAssessmentTemplate::create([
             'assessment_profile_version_id' => $class->assessment_profile_version_id,
@@ -148,7 +461,7 @@ class SelfAssessmentTemplateProvider
         $scale = $this->scaleFor($class);
 
         $this->addDomainQuestions($template, $class, $scale);
-        $this->addRoleQuestions($template, $scale);
+        $this->addRoleQuestions($template, $scale, $previous);
 
         return $template->load('questions');
     }
@@ -172,8 +485,15 @@ class SelfAssessmentTemplateProvider
             return $template;
         }
 
-        DB::transaction(function () use ($template, $class): void {
-            $this->addRoleQuestions($template, $this->scaleFor($class));
+        // The template's OWN scale — the one its domain questions were asked
+        // on — and never the class's. A template that answers kept on an
+        // earlier version would otherwise gain an overall judgement on the
+        // class's new scale: one form asking on two scales.
+        $template->loadMissing('profileVersion.scale');
+        $scale = $template->profileVersion?->scale;
+
+        DB::transaction(function () use ($template, $scale): void {
+            $this->addRoleQuestions($template, $scale);
         });
 
         return $template->load('questions');
@@ -214,7 +534,7 @@ class SelfAssessmentTemplateProvider
      * student's own overall judgement, then the two reflections, then the two
      * about the work itself.
      */
-    protected function addRoleQuestions(SelfAssessmentTemplate $template, ?Scale $scale): void
+    protected function addRoleQuestions(SelfAssessmentTemplate $template, ?Scale $scale, ?SelfAssessmentTemplate $previous = null): void
     {
         $sequence = (int) $template->questions()->max('sequence');
 
@@ -237,7 +557,7 @@ class SelfAssessmentTemplateProvider
         foreach ($this->writtenPrompts($scale) as [$role, $prompt]) {
             $template->questions()->create([
                 'role' => $role,
-                'prompt' => $prompt,
+                'prompt' => $this->wordedByTeacher($previous, $role) ?? $prompt,
                 'answer_kind' => $role->answerKind(),
                 'sequence' => ++$sequence,
             ]);
@@ -261,13 +581,66 @@ class SelfAssessmentTemplateProvider
     }
 
     /**
+     * The wording a teacher gave a reflection question of the template being
+     * replaced, or null when it is one the app wrote itself — in which case
+     * the new template gets the app's wording for ITS scale, since «Porque
+     * proponho este nível?» does not follow a class moved to a 0–20.
+     *
+     * Compared whole against every sentence the app authors for the role, for
+     * any scale; a sentence outside that set is the teacher's own.
+     */
+    protected function wordedByTeacher(?SelfAssessmentTemplate $previous, SelfAssessmentQuestionRole $role): ?string
+    {
+        if ($previous === null) {
+            return null;
+        }
+
+        /** @var SelfAssessmentQuestion|null $question */
+        $question = $previous->questions->firstWhere('role', $role);
+
+        if ($question === null) {
+            return null;
+        }
+
+        $stored = (string) $question->prompt;
+
+        return $this->isGeneratedPrompt($role, $stored) ? null : $stored;
+    }
+
+    protected function isGeneratedPrompt(SelfAssessmentQuestionRole $role, string $prompt): bool
+    {
+        if ($role === SelfAssessmentQuestionRole::Improvement && ImprovementPrompt::isAuthored($prompt)) {
+            return true;
+        }
+
+        foreach ([null, 'level', 'interval'] as $kind) {
+            foreach ($this->writtenPromptsFor($kind) as [$generatedRole, $generated]) {
+                if ($generatedRole === $role && $generated === $prompt) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @return list<array{SelfAssessmentQuestionRole, string}>
      */
     protected function writtenPrompts(?Scale $scale): array
     {
-        $rationale = match (true) {
-            $scale === null => 'Porque me avalio assim?',
-            $scale->kind === 'level' => 'Porque proponho este nível?',
+        return $this->writtenPromptsFor($scale === null ? null : ($scale->kind === 'level' ? 'level' : 'interval'));
+    }
+
+    /**
+     * @param  'level'|'interval'|null  $kind  null when the class has no scale
+     * @return list<array{SelfAssessmentQuestionRole, string}>
+     */
+    protected function writtenPromptsFor(?string $kind): array
+    {
+        $rationale = match ($kind) {
+            null => 'Porque me avalio assim?',
+            'level' => 'Porque proponho este nível?',
             default => 'Porque proponho esta classificação?',
         };
 

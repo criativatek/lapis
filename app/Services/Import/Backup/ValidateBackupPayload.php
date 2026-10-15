@@ -192,7 +192,7 @@ class ValidateBackupPayload
             'self_assessments' => $this->whitelistRows($decoded, 'self_assessments', ['ulid', 'enrollment_ulid', 'academic_period_ulid', 'template_ulid', 'status', 'filled_by', 'reflection', 'submitted_at', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validSelfAssessmentRow($row, $rowIssues);
             }),
-            'self_assessment_responses' => $this->whitelistRows($decoded, 'self_assessment_responses', ['self_assessment_ulid', 'question_role', 'question_sequence', 'scale_level', 'text_value', 'boolean_value'], function (array $row) use (&$rowIssues): ?array {
+            'self_assessment_responses' => $this->whitelistRows($decoded, 'self_assessment_responses', ['self_assessment_ulid', 'question_role', 'question_sequence', 'scale_level', 'numeric_value', 'text_value', 'boolean_value'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validSelfAssessmentResponseRow($row, $rowIssues);
             }),
 
@@ -1222,6 +1222,18 @@ class ValidateBackupPayload
             return null;
         }
 
+        // A number answer is a decimal string that fits the column (DECIMAL(6,3)):
+        // absent or null is a level or a text answer — and every backup before
+        // version 16. Anything else is a row that cannot be restored, said so
+        // instead of being stored as something it is not.
+        $numericValue = $row['numeric_value'] ?? null;
+
+        if ($numericValue !== null && ! $this->isSelfAssessmentNumber($numericValue)) {
+            $rowIssues[] = ['domain' => 'self_assessment_responses', 'ulid' => null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
+
+            return null;
+        }
+
         $booleanValue = $row['boolean_value'] ?? null;
 
         return [
@@ -1229,9 +1241,16 @@ class ValidateBackupPayload
             'question_role' => $this->nullableString($row['question_role'] ?? null),
             'question_sequence' => $this->nullableInt($row['question_sequence'] ?? null),
             'scale_level' => $this->validScaleLevelRef($row['scale_level'] ?? null),
+            'numeric_value' => $numericValue === null ? null : (string) $numericValue,
             'text_value' => $this->nullableString($row['text_value'] ?? null),
             'boolean_value' => is_bool($booleanValue) ? $booleanValue : null,
         ];
+    }
+
+    private function isSelfAssessmentNumber(mixed $value): bool
+    {
+        return (is_string($value) || is_int($value) || is_float($value))
+            && preg_match('/^-?\d{1,3}(\.\d{1,3})?$/', (string) $value) === 1;
     }
 
     /**

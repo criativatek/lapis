@@ -20,6 +20,7 @@ import AiReadingPanel from '@/components/ai/AiReadingPanel.vue';
 import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import { Button } from '@/components/ui/button';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
@@ -32,6 +33,8 @@ import {
 } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
+import { isOtherCriteria } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import { card, INSET } from '@/lib/surfaces';
 
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
@@ -93,7 +96,7 @@ type DomainRow = {
     weighted_average: string | null;
     accumulated_average: string | null;
     mention: Level | null;
-    self_assessment: Level | null;
+    self_assessment: SelfAssessmentReading;
     evolution: Evolution;
     coverage: Coverage;
 };
@@ -116,7 +119,7 @@ type ClassificationRow = {
 type SelfAssessmentRow = {
     period_id: number;
     period_label: string;
-    self_assessment: Level | null;
+    self_assessment: SelfAssessmentReading;
     assigned: Level | null;
     comparison: { difference: number; direction: 'above' | 'below' | 'same' } | null;
 };
@@ -301,7 +304,7 @@ const props = defineProps<{
             final_value_is_percentage?: boolean;
             final_value_scale?: string | null;
         } | null;
-        self_assessment: Level | null;
+        self_assessment: SelfAssessmentReading;
         evolution: Evolution;
         continuous_evolution: Evolution;
     };
@@ -1100,8 +1103,8 @@ const PURPOSE_LABEL: Record<string, string> = {
                         <dt class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             Autoavaliação
                         </dt>
-                        <dd v-if="headline.self_assessment?.code" class="mt-1 text-2xl font-semibold tabular-nums">
-                            {{ headline.self_assessment.code }}
+                        <dd v-if="headline.self_assessment?.code" class="mt-1 font-semibold tabular-nums" :class="isOtherCriteria(headline.self_assessment) ? 'text-base' : 'text-2xl'">
+                            <SelfAssessmentValue :reading="headline.self_assessment" />
                         </dd>
                         <dd v-else class="mt-1 text-sm text-muted-foreground">Sem autoavaliação</dd>
                     </div>
@@ -1511,7 +1514,8 @@ const PURPOSE_LABEL: Record<string, string> = {
                                 <span class="text-xs text-muted-foreground">
                                     Auto
                                     <span class="ml-1 text-base font-semibold tabular-nums text-foreground">
-                                        {{ row.self_assessment?.code ?? '—' }}
+                                        <SelfAssessmentValue v-if="row.self_assessment" :reading="row.self_assessment" />
+                                        <template v-else>—</template>
                                     </span>
                                 </span>
                                 <span class="text-xs text-muted-foreground">

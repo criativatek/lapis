@@ -220,8 +220,11 @@ class GenerateDataExport
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
             ->with(['enrollment.student'])
             ->get();
+        // In creation order: the restore recreates them in the order listed, and
+        // the order is part of what says which round of a class came first.
         $selfAssessmentTemplates = SelfAssessmentTemplate::query()
             ->whereIn('id', $selfAssessments->pluck('self_assessment_template_id')->unique())
+            ->orderBy('id')
             ->get()
             ->keyBy('id');
         $interventions = Intervention::query()->whereIn('class_id', $classIds)->with(['participants', 'supportMeasures'])->get();
@@ -1846,6 +1849,9 @@ class GenerateDataExport
             'question_role' => $question?->role?->value,
             'question_sequence' => $question?->sequence,
             'scale_level' => $this->scaleLevelRef($response->scale_level_id, $refs),
+            // The number written on a scale without levels, as the decimal string
+            // it is stored as — null when the answer is a level or a text.
+            'numeric_value' => $response->numeric_value === null ? null : (string) $response->numeric_value,
             'text_value' => $response->text_value,
             'boolean_value' => $response->boolean_value,
         ];

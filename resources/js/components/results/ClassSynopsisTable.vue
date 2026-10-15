@@ -2,8 +2,10 @@
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, ChevronRight, CircleAlert, Camera } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { CONTINUOUS, CONTINUOUS_EXPLANATION } from '@/lib/readings';
+import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import {
     appreciationClasses,
     appreciationTitle,
@@ -128,6 +130,10 @@ function decidedValueTitle(decision: NonNullable<NonNullable<SynopticStudent['co
 
     return note === null ? `Decisão do professor: ${text}` : `Decisão do professor: ${text}. ${note}.`;
 }
+
+const hasEarlierMark = computed(() =>
+    anyOtherCriteria(props.synopsis.students.flatMap((student) => student.moments.flatMap((reading) => reading.domains.map((cell) => cell.self_assessment)))),
+);
 
 function readingOf(student: SynopticStudent, key: string): SynopticReadingRow | undefined {
     return student.moments.find((reading) => reading.moment_key === key);
@@ -432,12 +438,15 @@ const continuousUnitsSentence = computed(() => {
                                          acompanha quem está a ler a célula.
                                          «Auto 3» diz-se sozinho, e o dado por
                                          baixo é exatamente o mesmo. -->
-                                    <sup
+                                    <SelfAssessmentValue
                                         v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.self_assessment"
+                                        :reading="domainCell(readingOf(student, moment.key), domain.domain_id)?.self_assessment ?? null"
+                                        :domain="domain.name"
+                                        tag="sup"
+                                        prefix="Auto "
+                                        compact
                                         class="ml-0.5 rounded bg-background/70 px-1 text-[10px] font-normal whitespace-nowrap text-muted-foreground"
-                                        :title="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
-                                        :aria-label="`Autoavaliação do aluno — ${domain.name}: ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code} — ${domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.label}`"
-                                    >Auto {{ domainCell(readingOf(student, moment.key), domain.domain_id)!.self_assessment!.code }}</sup>
+                                    />
                                     <span
                                         v-if="domainCell(readingOf(student, moment.key), domain.domain_id)?.trend"
                                         class="ml-0.5 text-[10px]"
@@ -591,5 +600,7 @@ const continuousUnitsSentence = computed(() => {
                 </tbody>
             </table>
         </div>
+
+        <p v-if="hasEarlierMark" class="text-xs text-muted-foreground" data-test="self-assessment-legend">{{ EARLIER_LEGEND }}</p>
     </div>
 </template>

@@ -47,6 +47,8 @@ const labels: Record<string, string> = {
     'record_followup.confirmed': 'Marcado como registado no Inovar',
     'record_followup.unconfirmed': 'Desfeita a marcação de registado no Inovar',
     'self_assessment.recorded': 'Autoavaliação registada',
+    'self_assessment.renewed': 'Nova autoavaliação iniciada',
+    'self_assessment.questions_reworded': 'Perguntas de reflexão personalizadas',
     'self_assessment.template_retired': 'Perguntas da autoavaliação atualizadas',
     'class_group.created': 'Grupo de turma criado',
     'class_group.updated': 'Grupo de turma alterado',

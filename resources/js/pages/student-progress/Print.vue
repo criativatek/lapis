@@ -3,6 +3,8 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { formatPoints, pct } from '@/lib/chartTheme';
 import { decidedValueText } from '@/lib/decidedValue';
+import { printText } from '@/lib/selfAssessmentReading';
+import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 
 /**
  * Acompanhamento do Aluno — print/PDF output.
@@ -89,7 +91,7 @@ type ClassificationRow = {
 type SelfAssessmentRow = {
     period_id: number;
     period_label: string;
-    self_assessment: Level | null;
+    self_assessment: SelfAssessmentReading;
     assigned: Level | null;
     comparison: { difference: number; direction: 'above' | 'below' | 'same' } | null;
 };
@@ -178,7 +180,7 @@ const props = defineProps<{
             final_value_is_percentage?: boolean;
             final_value_scale?: string | null;
         } | null;
-        self_assessment: Level | null;
+        self_assessment: SelfAssessmentReading;
     };
     moments: Moment[];
     classifications: ClassificationRow[];
@@ -341,7 +343,7 @@ function dimensionClass(state: string): string {
                     </div>
                     <div>
                         <dt>Autoavaliação</dt>
-                        <dd>{{ headline.self_assessment?.code ?? 'Sem autoavaliação' }}</dd>
+                        <dd>{{ headline.self_assessment ? printText(headline.self_assessment) : 'Sem autoavaliação' }}</dd>
                     </div>
                     <div>
                         <dt>Cobertura do cálculo</dt>
@@ -469,7 +471,7 @@ function dimensionClass(state: string): string {
                     <tbody>
                         <tr v-for="row in selfAssessments" :key="row.period_id">
                             <td>{{ row.period_label }}</td>
-                            <td>{{ row.self_assessment?.code ?? '—' }}</td>
+                            <td>{{ row.self_assessment ? printText(row.self_assessment) : '—' }}</td>
                             <td>{{ row.assigned?.code ?? '—' }}</td>
                             <td>
                                 <template v-if="row.comparison && row.comparison.direction !== 'same'">
