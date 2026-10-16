@@ -140,6 +140,39 @@ class RecurringLessonSlot extends Model
     }
 
     /**
+     * Alguma aula deste tempo carrega conteúdo — lecionada, fechada, com
+     * sumário, plano ou assiduidade (nem que seja um rascunho)? O MESMO critério
+     * de `ReconcileLessonsWithSlotValidity`: só uma aula vazia pode ser
+     * retirada. Decide se mudar o tempo de TURMA pode ser feito no lugar (as
+     * aulas vazias regeneram-se na turma nova) ou tem de ser versionado (as
+     * aulas com conteúdo ficam na turma original).
+     */
+    public function hasLessonsCarryingContent(): bool
+    {
+        return $this->lessonsCarryingContent()->exists();
+    }
+
+    /**
+     * As aulas deste tempo que carregam conteúdo — o critério de
+     * `hasLessonsCarryingContent()`, para quem precisa de saber QUAIS são.
+     *
+     * @return HasMany<Lesson, $this>
+     */
+    public function lessonsCarryingContent(): HasMany
+    {
+        return $this->lessons()
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('status', LessonStatus::Taught)
+                    ->orWhereNotNull('outcome')
+                    ->orWhereNotNull('attendance_recorded_at')
+                    ->orWhereHas('summary')
+                    ->orWhereHas('plan')
+                    ->orWhereHas('attendances');
+            });
+    }
+
+    /**
      * The real branch condition for LessonScheduleController::update()/
      * destroy(): does changing this slot destructively (in-place edit,
      * hard delete) risk rewriting history, or not?

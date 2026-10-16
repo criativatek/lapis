@@ -12,6 +12,7 @@ import LessonScheduleEditor from '@/components/lessons/LessonScheduleEditor.vue'
 import type { RecurringLessonSlot } from '@/components/lessons/LessonScheduleEditor.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import TableShell from '@/components/TableShell.vue';
+import ScheduleChangeNotice from '@/components/timetable/ScheduleChangeNotice.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -642,6 +643,8 @@ function deleteResult(student: Student): void {
     <Head :title="schoolClass.label" />
 
     <div class="mx-auto w-full max-w-3xl space-y-6 p-4">
+        <ScheduleChangeNotice />
+
         <div class="flex flex-wrap items-start justify-between gap-3">
             <Heading
                 :title="schoolClass.label"

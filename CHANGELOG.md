@@ -25,6 +25,86 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.168.0] — 2026-10-15
+
+> **O Horário do Professor passa a ser o sítio onde o horário se corrige.** Uma
+> importação do PDF raramente sai perfeita; agora o professor, depois de
+> importar, cai no Horário do Professor e corrige ali mesmo a turma, o dia, as
+> horas e a vigência de cada aula, elimina as que sobram e acrescenta as que
+> faltam — sem pedir ajuda ao suporte. E o horário passa a poder ter as
+> atividades que não são aulas: direção de turma, apoios, reuniões, cargos.
+> Há uma migration nova (`timetable_activities`) e o backup passa a
+> `schema_version` 17.
+
+### Adicionado
+
+- **Corrigir uma aula no Horário do Professor.** Clicar num bloco abre um
+  diálogo com a turma («Turma · Disciplina»), o dia, as horas, a vigência e a
+  data de aplicação quando é exigida, e a opção de eliminar. Há «Adicionar
+  aula». Usa as mesmas rotas `lesson-slots` do editor da turma, que continua a
+  funcionar na página de cada turma.
+- **Mudar a turma de uma aula (e com ela a disciplina).** A nova turma tem de
+  ser do professor, da organização, não arquivada e do mesmo ano letivo; o
+  grupo e o vínculo «mesma lição» são limpos. Sem histórico, a alteração faz-se
+  no lugar e as aulas vazias da turma antiga saem. Com histórico (lecionada,
+  fechada, sumário, plano ou faltas, rascunhos incluídos), versiona: a linha
+  antiga fecha na véspera da data de aplicação, a nova nasce na turma nova a
+  partir dessa data, e as aulas com conteúdo ficam na turma original.
+- **«Deixa de vigorar a partir de» ao eliminar uma aula** (opcional): o tempo
+  fecha na véspera dessa data, as aulas com conteúdo ficam sempre e só saem as
+  vazias fora da vigência. Sem data, o comportamento é o de sempre.
+- **Atividades não letivas** (direção de turma, apoio a alunos, reunião,
+  coordenação/cargo, outra), numa tabela própria `timetable_activities`:
+  designação, tipo, turma opcional (informativa), dia, horas e vigência. Aparecem
+  na mesma grelha com aspeto tracejado, sem ligação à turma, e o resumo di-las à
+  parte das aulas. São privadas do professor; não se sobrepõem entre si no mesmo
+  dia e período, mas podem coincidir com uma aula.
+- **Backup:** `timetable_activities` (só as do exportador, restauradas só na
+  conta do autor; a turma é só uma referência). Um backup ≤ v16 continua a
+  restaurar.
+- **Ajuda:** «Corrigir o horário e acrescentar atividades não letivas».
+
+### Alterado
+
+- **Explicação do que ficou preservado.** Quando uma alteração ao horário deixa
+  aulas com registos (sumário, plano, resultado ou assiduidade) na turma ou nas
+  horas anteriores — mudança de turma ou de horas com histórico, edição no lugar
+  em que alguma aula tem conteúdo, ou terminar um tempo —, o professor recebe, ao
+  guardar, um aviso a dizer quantas aulas ficaram, em que turma, a que horas e em
+  que dias (até 3, «e mais N») e porquê. O aviso fica no topo do Horário do
+  Professor e da página da turma até ser fechado; sem nada preservado, a mensagem
+  habitual segue sozinha.
+- **Editar um tempo no lugar corrige também as aulas vazias já geradas.** Sem
+  histórico relevante a edição é retroativa; por isso, ao mudar o dia ou as
+  horas, as preparações vazias que ficaram desencontradas do tempo novo saem e a
+  turma é renumerada — a vista semanal volta a gerá-las à hora certa. Antes, a
+  aula antiga ficava ao lado da nova (ou impedia a nova de nascer). Uma aula com
+  qualquer conteúdo (sumário, plano, resultado, assiduidade, rascunho incluído)
+  nunca é tocada; com histórico, a alteração continua a versionar.
+- **Depois de confirmar uma importação de horário**, o professor é levado ao
+  Horário do Professor (e não à lista de turmas), com um aviso a convidar a rever
+  e corrigir.
+
+### Garantias
+
+- As atividades não letivas nunca geram aulas: nem a materialização da semana,
+  nem «Aulas e Sumários», nem a numeração, nem «Aulas de hoje» as veem.
+  Provado em teste.
+- Sumários lecionados e aulas preparadas com plano nunca se perdem nem mudam de
+  turma, antes ou depois da data de aplicação; só preparações vazias geradas
+  pelo horário podem ser retiradas.
+
+### Limites conhecidos
+
+- Numa edição no lugar, uma aula só com assiduidade (ou outro conteúdo) fica nas
+  horas anteriores: prevalece a preservação dos dados, e o professor é avisado
+  (ver «Explicação do que ficou preservado»).
+- A importação automática das linhas «Não é uma aula de turma» do PDF como
+  atividades não letivas fica para um pedido posterior.
+- As escritas no horário (aulas e atividades) são recusadas durante o acesso
+  técnico.
+- Sem auditoria, como os tempos de aula.
+
 ## [0.167.1] — 2026-10-15
 
 > **Correção.** Duas pessoas ficaram presas em ecrãs sem saída, e ambas

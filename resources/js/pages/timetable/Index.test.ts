@@ -1,6 +1,10 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
+import type {
+    TimetableClassOption,
+    TimetableSlot,
+} from '@/components/timetable/types';
 import Index from './Index.vue';
 import {
     assignTurmaTones,
@@ -10,36 +14,70 @@ import {
 } from './timetable';
 
 const routerGet = vi.hoisted(() => vi.fn());
+const routerDelete = vi.hoisted(() => vi.fn());
+const pageState = vi.hoisted(() => ({ flash: {} as Record<string, unknown> }));
+const formSubmits = vi.hoisted(
+    () =>
+        [] as Array<{
+            method: string;
+            url: string;
+            data: Record<string, unknown>;
+        }>,
+);
 
-vi.mock('@inertiajs/vue3', () => ({
-    router: { get: routerGet },
-    Head: defineComponent({
-        setup:
-            (_, { slots }) =>
-            () =>
-                h('div', slots.default?.()),
-    }),
-    Link: defineComponent({
-        inheritAttrs: false,
-        setup:
-            (_, { attrs, slots }) =>
-            () =>
-                h('a', attrs, slots.default?.()),
-    }),
-}));
+vi.mock('@inertiajs/vue3', async () => {
+    const { reactive } = await import('vue');
 
-type TimetableSlot = {
-    ulid: string;
-    day_of_week: number;
-    starts_at: string;
-    ends_at: string;
-    starts_on: string | null;
-    ends_on: string | null;
-    school_class: { ulid: string; label: string; identity_tone?: string | null };
-    subject: string;
-};
+    return {
+        router: { get: routerGet, delete: routerDelete },
+        usePage: () => pageState,
+        // Um useForm mínimo: dados reativos, sem erros, e os pedidos ficam
+        // registados em vez de irem para a rede.
+        useForm: (initial: Record<string, unknown>) => {
+            let transformer = (data: Record<string, unknown>) => data;
+            const form: Record<string, unknown> = reactive({
+                ...initial,
+                errors: {},
+                processing: false,
+                clearErrors: () => {},
+                transform(callback: typeof transformer) {
+                    transformer = callback;
 
-type ClassOption = { ulid: string; label: string; subject: string };
+                    return form;
+                },
+                post: (url: string) =>
+                    formSubmits.push({
+                        method: 'post',
+                        url,
+                        data: transformer({ ...(form as object) }),
+                    }),
+                put: (url: string) =>
+                    formSubmits.push({
+                        method: 'put',
+                        url,
+                        data: transformer({ ...(form as object) }),
+                    }),
+            });
+
+            return form;
+        },
+        Head: defineComponent({
+            setup:
+                (_, { slots }) =>
+                () =>
+                    h('div', slots.default?.()),
+        }),
+        Link: defineComponent({
+            inheritAttrs: false,
+            setup:
+                (_, { attrs, slots }) =>
+                () =>
+                    h('a', attrs, slots.default?.()),
+        }),
+    };
+});
+
+type ClassOption = TimetableClassOption;
 
 function slot(overrides: Partial<TimetableSlot> = {}): TimetableSlot {
     return {
@@ -78,7 +116,7 @@ const labelsOf = (root: ReturnType<typeof week>) =>
 // --------------------------------------------------- o tom de cada turma
 
 /** Os blocos desenhados dentro de uma leitura da semana. */
-const blocksOf = (root: ReturnType<typeof week>) => root.findAll('li a');
+const blocksOf = (root: ReturnType<typeof week>) => root.findAll('li button');
 
 type Block = ReturnType<typeof blocksOf>[number];
 
@@ -715,14 +753,23 @@ describe('timetable/Index', () => {
         expect(hrefs).toContain('/classes/class-b#horario');
     });
 
-    it("a block links to its own turma's schedule editor, so the week is a way in and not a dead end", () => {
-        const wrapper = mountPage([slot()]);
+    it('a block opens the correction dialog instead of leaving the page', async () => {
+        const wrapper = mountPage(
+            [slot({ school_class: { id: 1, ulid: 'class-a', label: '7.º C' } })],
+            [{ id: 1, ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
+        );
 
         const monday = wrapper.find('section[aria-label="Segunda-feira"]');
 
-        expect(monday.find('a').attributes('href')).toBe(
-            '/classes/class-a#horario',
-        );
+        expect(monday.find('a').exists()).toBe(false);
+        expect(document.body.textContent).not.toContain('Corrigir aula');
+
+        await monday.find('button').trigger('click');
+
+        expect(document.body.textContent).toContain('Corrigir aula');
+        expect(document.body.textContent).toContain('Turma · Disciplina');
+        expect(document.body.textContent).toContain('7.º C · Matemática');
+        wrapper.unmount();
     });
 
     it('offers a way to create a turma when there is not even one to configure', () => {
@@ -740,15 +787,16 @@ describe('timetable/Index', () => {
         expect(link!.attributes('href')).toBe('/classes/create');
     });
 
-    it('never renders a form or a mutating control: the page is a reading', () => {
+    it('has no form and no input until a dialog is opened, only the buttons that open them', () => {
         const wrapper = mountPage(
             [slot()],
-            [{ ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
+            [{ id: 1, ulid: 'class-a', label: '7.º C', subject: 'Matemática' }],
         );
 
         expect(wrapper.findAll('form')).toHaveLength(0);
         expect(wrapper.findAll('input')).toHaveLength(0);
-        expect(wrapper.findAll('button')).toHaveLength(0);
+        expect(wrapper.find('[data-add-lesson]').exists()).toBe(true);
+        expect(wrapper.find('[data-add-activity]').exists()).toBe(true);
     });
 });
 
@@ -841,5 +889,229 @@ describe('timetable — tom guardado por professor e turma', () => {
 
         expect(badgeOf(blocksOf(week(alone))[0] as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.amber.split(' ')));
         expect(badgeOf(blocksOf(week(withAnother))[1] as Block)).toEqual(expect.arrayContaining(TURMA_BADGE.amber.split(' ')));
+    });
+});
+
+
+/**
+ * 0.168.0 — o Horário do Professor é o sítio onde se corrige o horário depois
+ * de uma importação, e onde vivem as atividades que não são aulas.
+ */
+describe('timetable — corrigir o horário e atividades não letivas', () => {
+    const kinds = [
+        { value: 'class_direction', label: 'Direção de turma' },
+        { value: 'meeting', label: 'Reunião' },
+    ];
+
+    const classes = [
+        { id: 1, ulid: 'class-a', label: '7.º C', subject: 'Matemática' },
+        { id: 2, ulid: 'class-b', label: '8.º B', subject: 'Ciências' },
+    ];
+
+    const activity = {
+        ulid: 'act-1',
+        kind: 'class_direction',
+        kind_label: 'Direção de turma',
+        title: 'DT 6.º D',
+        day_of_week: 2,
+        starts_at: '10:30',
+        ends_at: '11:20',
+        starts_on: null,
+        ends_on: null,
+        school_class: { ulid: 'class-a', label: '7.º C' },
+    };
+
+    function mountWith(props: Record<string, unknown>) {
+        return mount(Index, {
+            props: { slots: [], classes, activityKinds: kinds, ...props },
+            attachTo: document.body,
+        });
+    }
+
+    it('draws an activity in the same grid, distinct from a lesson, without a link to a turma', () => {
+        const wrapper = mountWith({
+            slots: [slot({ day_of_week: 2, starts_at: '09:00', ends_at: '09:50' })],
+            activities: [activity],
+        });
+
+        const tuesday = wrapper.find('section[aria-label="Terça-feira"]');
+        const blocks = tuesday.findAll('li button');
+
+        expect(blocks).toHaveLength(2);
+        expect(blocks[0].attributes('data-activity-block')).toBeUndefined();
+        expect(blocks[1].attributes('data-activity-block')).toBeDefined();
+        expect(blocks[1].text()).toContain('DT 6.º D');
+        expect(blocks[1].text()).toContain('Direção de turma');
+        expect(blocks[1].text()).toContain('10:30–11:20');
+        expect(tuesday.findAll('a')).toHaveLength(0);
+        wrapper.unmount();
+    });
+
+    it('shows the grid, not the empty state, when there are only activities', () => {
+        const wrapper = mountWith({ activities: [activity] });
+
+        expect(wrapper.text()).not.toContain('Ainda não tens horário configurado');
+        expect(wrapper.find('section[aria-label="Terça-feira"]').text()).toContain(
+            'DT 6.º D',
+        );
+        wrapper.unmount();
+    });
+
+    it('counts activities apart from lessons in the summary', () => {
+        const wrapper = mountWith({
+            slots: [slot()],
+            activities: [activity, { ...activity, ulid: 'act-2', day_of_week: 3 }],
+        });
+
+        expect(wrapper.text()).toContain('1 aula por semana · 1 turma');
+        expect(wrapper.text()).toContain('2 atividades não letivas');
+        wrapper.unmount();
+    });
+
+    it('adds a non-teaching activity through its own endpoint', async () => {
+        formSubmits.length = 0;
+        const wrapper = mountWith({});
+
+        await wrapper.find('[data-add-activity]').trigger('click');
+
+        expect(document.body.textContent).toContain('Adicionar atividade não letiva');
+        expect(document.body.textContent).toContain('não geram aulas nem sumários');
+
+        const form = document.body.querySelector('form') as HTMLFormElement;
+        await form.dispatchEvent(new Event('submit'));
+
+        expect(formSubmits).toHaveLength(1);
+        expect(formSubmits[0].method).toBe('post');
+        expect(formSubmits[0].url).toBe('/timetable-activities');
+        // Sem turma, a referência vai a null — nunca uma cadeia vazia.
+        expect(formSubmits[0].data.class_ulid).toBeNull();
+        wrapper.unmount();
+    });
+
+    it('edits and deletes an activity, asking before it deletes', async () => {
+        formSubmits.length = 0;
+        routerDelete.mockClear();
+        const wrapper = mountWith({
+            activities: [activity],
+            week: { start: '2026-10-12', end: '2026-10-18', is_current: true },
+        });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(document.body.textContent).toContain('Editar atividade não letiva');
+
+        (document.body.querySelector('[data-remove-activity]') as HTMLElement).click();
+        await wrapper.vm.$nextTick();
+
+        expect(routerDelete).not.toHaveBeenCalled();
+
+        (document.body.querySelector('[data-confirm-remove]') as HTMLElement).click();
+
+        expect(routerDelete).toHaveBeenCalledWith(
+            '/timetable-activities/act-1',
+            expect.anything(),
+        );
+        wrapper.unmount();
+    });
+
+    it('corrects a lesson: a changed turma goes to the server with no group, and the lesson can be added', async () => {
+        formSubmits.length = 0;
+        const wrapper = mountWith({
+            slots: [
+                slot({
+                    ulid: 'slot-x',
+                    class_group_id: 7,
+                    class_group_label: 'T1',
+                    already_in_vigor: false,
+                    requires_versioning: false,
+                    school_class: { id: 1, ulid: 'class-a', label: '7.º C' },
+                }),
+            ],
+        });
+
+        await wrapper.find('section[aria-label="Segunda-feira"] li button').trigger('click');
+
+        const select = document.body.querySelector(
+            '#timetable-slot-class',
+        ) as HTMLSelectElement;
+        select.value = '2';
+        select.dispatchEvent(new Event('change'));
+        await wrapper.vm.$nextTick();
+
+        await (document.body.querySelector('form') as HTMLFormElement).dispatchEvent(
+            new Event('submit'),
+        );
+
+        expect(formSubmits).toHaveLength(1);
+        expect(formSubmits[0].method).toBe('put');
+        expect(formSubmits[0].url).toBe('/lesson-slots/slot-x');
+        expect(formSubmits[0].data.class_id).toBe(2);
+        expect(formSubmits[0].data.class_group_id).toBeNull();
+        wrapper.unmount();
+    });
+
+    it('asks for the application date when the lesson already has history', async () => {
+        const wrapper = mountWith({
+            slots: [
+                slot({
+                    already_in_vigor: true,
+                    requires_versioning: true,
+                    school_class: { id: 1, ulid: 'class-a', label: '7.º C' },
+                }),
+            ],
+        });
+
+        await wrapper.find('section[aria-label="Segunda-feira"] li button').trigger('click');
+
+        expect(document.body.textContent).toContain('Aplicar alteração a partir de');
+        wrapper.unmount();
+    });
+});
+
+
+/**
+ * 0.168.0 — o aviso persistente do que o horário NÃO mudou: aulas com registos
+ * que ficaram na turma ou nas horas anteriores. Vem na flash `scheduleNotice` e
+ * só desaparece quando o professor o fecha.
+ */
+describe('timetable — aviso do que ficou preservado', () => {
+    const message =
+        'Horário guardado. 2 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 09:20 — 12/10 e 14/10 — para não se perder o que lá está. As restantes passam a seguir o horário novo.';
+
+    function mountPageWithFlash(flash: Record<string, unknown>) {
+        pageState.flash = flash;
+
+        return mount(Index, { props: { slots: [], classes: [] } });
+    }
+
+    it('shows the explanation at the top of the page', () => {
+        const wrapper = mountPageWithFlash({ scheduleNotice: { message } });
+        const notice = wrapper.find('[data-schedule-notice]');
+
+        expect(notice.exists()).toBe(true);
+        expect(notice.text()).toContain('Alteração ao horário');
+        expect(notice.text()).toContain('2 aulas com registos');
+        expect(notice.text()).toContain('na 7.º C às 09:20 — 12/10 e 14/10 —');
+        // O primeiro elemento da página, antes de tudo o resto.
+        expect(wrapper.find('main').element.firstElementChild).toBe(notice.element);
+        pageState.flash = {};
+    });
+
+    it('stays until the teacher closes it', async () => {
+        const wrapper = mountPageWithFlash({ scheduleNotice: { message } });
+
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(true);
+
+        await wrapper.find('[data-dismiss-schedule-notice]').trigger('click');
+
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(false);
+        pageState.flash = {};
+    });
+
+    it('draws nothing when no lesson was preserved', () => {
+        const wrapper = mountPageWithFlash({});
+
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(false);
     });
 });

@@ -47,6 +47,7 @@ use App\Models\SelfAssessmentTemplate;
 use App\Models\Student;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
+use App\Models\TimetableActivity;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ScaleProposalResolver;
@@ -204,6 +205,17 @@ class GenerateDataExport
         $classNotebookEntries = ClassNotebookEntry::query()
             ->whereIn('class_id', $classIds)
             ->where('author_id', $user->getKey())
+            ->orderBy('id')
+            ->get();
+
+        // Schema v17 — the teacher's OWN non-teaching activities (DT, apoio,
+        // reuniões). Personal timetable configuration: only those of the
+        // account that exports, never a colleague's, whatever the role. They
+        // reference a class only as information, so they are NOT scoped by
+        // `$classIds` — an activity without a class (or whose class this
+        // export does not carry) is still the teacher's own timetable.
+        $timetableActivities = TimetableActivity::query()
+            ->where('user_id', $user->getKey())
             ->orderBy('id')
             ->get();
 
@@ -433,6 +445,7 @@ class GenerateDataExport
             $lessonAttendances,
             $resultsAnalysisNotes,
             $classNotebookEntries,
+            $timetableActivities,
             $followupBackupRows,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
@@ -1724,6 +1737,31 @@ class GenerateDataExport
     }
 
     /**
+     * Schema v17 — never carries `id`, `organization_id`, `user_id` or
+     * `class_id`. The owner travels as the exporter's email (every row here is
+     * the exporter's own) and the optional class as its ulid, `null` when the
+     * activity has none or the export does not carry that class.
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function timetableActivityRow(TimetableActivity $activity, User $owner, array $refs): array
+    {
+        return [
+            'ulid' => $activity->ulid,
+            'author_email' => $owner->email,
+            'kind' => $activity->kind->value,
+            'title' => $activity->title,
+            'class_ulid' => $this->classUlidRef($activity->class_id, $refs),
+            'day_of_week' => $activity->day_of_week,
+            'starts_at' => substr($activity->starts_at, 0, 5),
+            'ends_at' => substr($activity->ends_at, 0, 5),
+            'starts_on' => $activity->starts_on?->toDateString(),
+            'ends_on' => $activity->ends_on?->toDateString(),
+        ];
+    }
+
+    /**
      * @param  BackupRefs  $refs
      * @return array<int, array<string, mixed>>
      */
@@ -2198,6 +2236,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
+     * @param  Collection<int, TimetableActivity>  $timetableActivities
      * @param  array{record_followup_cases: list<array<string, mixed>>, record_followup_confirmations: list<array<string, mixed>>}  $followupRows
      */
     protected function technicalBackup(
@@ -2239,6 +2278,7 @@ class GenerateDataExport
         Collection $lessonAttendances,
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
+        Collection $timetableActivities,
         array $followupRows = ['record_followup_cases' => [], 'record_followup_confirmations' => []],
     ): string {
         $refs = $this->buildBackupRefs(
@@ -2266,6 +2306,7 @@ class GenerateDataExport
                 'results_analysis_notes',
                 'class_notebook_entries',
                 'record_followup_cases', 'record_followup_confirmations',
+                'timetable_activities',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -2344,6 +2385,9 @@ class GenerateDataExport
             // emails and the occurrences it covered. Counts are recomputed.
             'record_followup_cases' => $followupRows['record_followup_cases'],
             'record_followup_confirmations' => $followupRows['record_followup_confirmations'],
+
+            // Schema v17 — the exporter's own non-teaching activities.
+            'timetable_activities' => $timetableActivities->map(fn (TimetableActivity $activity): array => $this->timetableActivityRow($activity, $user, $refs))->values(),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 

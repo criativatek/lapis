@@ -9,9 +9,19 @@ import {
     FileUp,
     Plus,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import ScheduleChangeNotice from '@/components/timetable/ScheduleChangeNotice.vue';
+import TimetableActivityDialog from '@/components/timetable/TimetableActivityDialog.vue';
+import TimetableBlock from '@/components/timetable/TimetableBlock.vue';
+import TimetableSlotDialog from '@/components/timetable/TimetableSlotDialog.vue';
+import type {
+    TimetableActivity,
+    TimetableActivityKindOption,
+    TimetableClassOption,
+    TimetableSlot,
+} from '@/components/timetable/types';
 import { Button } from '@/components/ui/button';
 import { capitalizeFirst } from '@/lib/text';
 import type { TurmaTone } from './timetable';
@@ -22,34 +32,20 @@ import {
     turmaBarClass,
 } from './timetable';
 
-type TimetableSlot = {
-    ulid: string;
-    day_of_week: number;
-    starts_at: string;
-    ends_at: string;
-    occurs_on?: string;
-    starts_on: string | null;
-    ends_on: string | null;
-    /** `identity_tone`: o tom guardado desta turma para este professor (0.158.0). */
-    school_class: { ulid: string; label: string; identity_tone?: string | null };
-    subject: string;
-};
-
-type ClassOption = {
-    ulid: string;
-    label: string;
-    subject: string;
-    identity_tone?: string | null;
-};
-
 type ConsultedWeek = { start: string; end: string; is_current: boolean };
 
-const props = defineProps<{
-    slots: TimetableSlot[];
-    classes: ClassOption[];
-    week?: ConsultedWeek;
-    today?: string;
-}>();
+const props = withDefaults(
+    defineProps<{
+        slots: TimetableSlot[];
+        classes: TimetableClassOption[];
+        /** As atividades não letivas do professor em vigor nesta semana (0.168.0). */
+        activities?: TimetableActivity[];
+        activityKinds?: TimetableActivityKindOption[];
+        week?: ConsultedWeek;
+        today?: string;
+    }>(),
+    { activities: () => [], activityKinds: () => [] },
+);
 
 // ------------------------------------------------------ a semana consultada
 
@@ -135,14 +131,39 @@ const weekdayColumns = [1, 2, 3, 4, 5];
 /** Fim de semana: raro, e por isso nunca uma coluna reservada de antemão. */
 const weekendDaysOfWeek = [6, 7];
 
-const slotsByDay = computed(() => {
-    const grouped = new Map<number, TimetableSlot[]>();
+/**
+ * O QUE SE DESENHA NA GRELHA: os tempos de aula e as atividades não letivas do
+ * professor, juntos e por hora de início. Duas coisas diferentes na mesma
+ * coluna — a aula leva o tom da turma, a atividade é neutra e tracejada.
+ */
+type DayItem =
+    | { key: string; startsAt: string; slot: TimetableSlot }
+    | { key: string; startsAt: string; activity: TimetableActivity };
 
-    for (const slot of props.slots) {
-        grouped.set(slot.day_of_week, [
-            ...(grouped.get(slot.day_of_week) ?? []),
-            slot,
-        ]);
+const itemsByDay = computed(() => {
+    const grouped = new Map<number, DayItem[]>();
+
+    const items: Array<[number, DayItem]> = [
+        ...props.slots.map((slot): [number, DayItem] => [
+            slot.day_of_week,
+            { key: `slot-${slot.ulid}`, startsAt: slot.starts_at, slot },
+        ]),
+        ...props.activities.map((activity): [number, DayItem] => [
+            activity.day_of_week,
+            {
+                key: `activity-${activity.ulid}`,
+                startsAt: activity.starts_at,
+                activity,
+            },
+        ]),
+    ];
+
+    for (const [dayOfWeek, item] of items) {
+        grouped.set(dayOfWeek, [...(grouped.get(dayOfWeek) ?? []), item]);
+    }
+
+    for (const dayItems of grouped.values()) {
+        dayItems.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
     }
 
     return grouped;
@@ -159,7 +180,7 @@ function dayColumn(dayOfWeek: number) {
     return {
         dayOfWeek,
         label: date ? `${name}, ${date}` : name,
-        slots: slotsByDay.value.get(dayOfWeek) ?? [],
+        items: itemsByDay.value.get(dayOfWeek) ?? [],
     };
 }
 
@@ -183,7 +204,7 @@ const desktopDays = computed(() =>
  */
 const weekendDays = computed(() =>
     weekendDaysOfWeek
-        .filter((dayOfWeek) => slotsByDay.value.has(dayOfWeek))
+        .filter((dayOfWeek) => itemsByDay.value.has(dayOfWeek))
         .map((dayOfWeek) => dayColumn(dayOfWeek)),
 );
 
@@ -193,9 +214,13 @@ const weekendDays = computed(() =>
  * cartões «Sem aulas» empilhados seriam ecrã gasto a dizer que não há nada.
  */
 const days = computed(() =>
-    [...slotsByDay.value.keys()]
+    [...itemsByDay.value.keys()]
         .sort((a, b) => a - b)
         .map((dayOfWeek) => dayColumn(dayOfWeek)),
+);
+
+const noItems = computed(
+    () => props.slots.length === 0 && props.activities.length === 0,
 );
 
 const summary = computed(() => {
@@ -204,8 +229,59 @@ const summary = computed(() => {
         props.slots.map((slot) => slot.school_class.ulid),
     ).size;
 
-    return `${blocks} ${blocks === 1 ? 'aula' : 'aulas'} por semana · ${classCount} ${classCount === 1 ? 'turma' : 'turmas'}`;
+    const base = `${blocks} ${blocks === 1 ? 'aula' : 'aulas'} por semana · ${classCount} ${classCount === 1 ? 'turma' : 'turmas'}`;
+    const extra = props.activities.length;
+
+    // As atividades não letivas não são aulas: dizem-se à parte.
+    return extra > 0
+        ? `${base} · ${extra} ${extra === 1 ? 'atividade não letiva' : 'atividades não letivas'}`
+        : base;
 });
+
+// ------------------------------------------------------ corrigir o horário
+
+const slotDialogOpen = ref(false);
+const editingSlot = ref<TimetableSlot | null>(null);
+const activityDialogOpen = ref(false);
+const editingActivity = ref<TimetableActivity | null>(null);
+
+function addLesson(): void {
+    editingSlot.value = null;
+    slotDialogOpen.value = true;
+}
+
+function editSlot(slot: TimetableSlot): void {
+    editingSlot.value = slot;
+    slotDialogOpen.value = true;
+}
+
+function addActivity(): void {
+    editingActivity.value = null;
+    activityDialogOpen.value = true;
+}
+
+function editActivity(activity: TimetableActivity): void {
+    editingActivity.value = activity;
+    activityDialogOpen.value = true;
+}
+
+function selectItem(item: DayItem): void {
+    if ('slot' in item) {
+        editSlot(item.slot);
+
+        return;
+    }
+
+    editActivity(item.activity);
+}
+
+function slotOf(item: DayItem): TimetableSlot | undefined {
+    return 'slot' in item ? item.slot : undefined;
+}
+
+function activityOf(item: DayItem): TimetableActivity | undefined {
+    return 'activity' in item ? item.activity : undefined;
+}
 
 // ------------------------------------------------------ o tom de cada turma
 
@@ -246,25 +322,19 @@ function barOf(ulid: string): string {
 function badgeOf(ulid: string): string {
     return turmaBadgeClass(toneOf(ulid));
 }
-
-function validity(slot: TimetableSlot): string | null {
-    if (!slot.starts_on && !slot.ends_on) {
-        return null;
-    }
-
-    return `Vigência: ${slot.starts_on ?? 'início do ano'} a ${slot.ends_on ?? 'fim do ano'}`;
-}
 </script>
 
 <template>
     <Head title="Horário do Professor" />
 
     <main class="mx-auto w-full max-w-6xl space-y-8 p-4 pb-24 sm:p-6">
+        <ScheduleChangeNotice />
+
         <div class="space-y-4">
             <Heading
                 title="Horário do Professor"
                 :description="
-                    slots.length
+                    !noItems
                         ? `A tua semana, de todas as turmas juntas — ${summary}.`
                         : 'A tua semana, de todas as turmas juntas.'
                 "
@@ -308,19 +378,53 @@ function validity(slot: TimetableSlot): string | null {
         </div>
 
         <!--
+            É AQUI QUE O HORÁRIO SE CORRIGE (0.168.0). Uma importação raramente
+            sai perfeita: clica numa aula para mudar a turma, o dia, as horas ou
+            a vigência, ou elimina-a; acrescenta as aulas que faltam e as
+            atividades que não são aulas. Tudo isto fala com as mesmas rotas do
+            editor da turma — o servidor decide o que é seguro mudar.
+        -->
+        <section class="space-y-2" aria-label="Corrigir o horário">
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    type="button"
+                    class="min-h-10"
+                    data-add-lesson
+                    :disabled="classes.length === 0"
+                    @click="addLesson"
+                    ><Plus class="size-4" /> Adicionar aula</Button
+                >
+                <Button
+                    type="button"
+                    variant="outline"
+                    class="min-h-10"
+                    data-add-activity
+                    @click="addActivity"
+                    ><Plus class="size-4" /> Adicionar atividade não
+                    letiva</Button
+                >
+            </div>
+            <p class="text-sm text-muted-foreground">
+                Clica num bloco para o corrigir. As atividades não letivas
+                (direção de turma, apoios, reuniões) ficam no horário mas não
+                geram aulas nem sumários.
+            </p>
+        </section>
+
+        <!--
             NOTHING IS CREATED BY OPENING ESTA PÁGINA. Ao contrário da vista
             semanal de «Aulas e Sumários», que materializa as aulas da semana
             que mostra, um horário é a regra e não as suas ocorrências: aqui só
             se lê o que já existe.
         -->
         <EmptyState
-            v-if="slots.length === 0 && week && !week.is_current"
+            v-if="noItems && week && !week.is_current"
             title="Sem aulas nesta semana"
             description="Nenhum bloco do teu horário estava em vigor nesta semana para turmas ativas."
             :icon="CalendarX2"
         />
         <EmptyState
-            v-else-if="slots.length === 0"
+            v-else-if="noItems"
             title="Ainda não tens horário configurado"
             description="Assim que as aulas recorrentes das tuas turmas estiverem definidas, a tua semana aparece aqui. Podes importar o PDF do horário da escola ou definir os blocos à mão, turma a turma."
             :icon="CalendarX2"
@@ -362,36 +466,27 @@ function validity(slot: TimetableSlot): string | null {
                             sem aulas, que não tem turma nenhuma, não leva tom.
                         -->
                         <ul
-                            v-if="day.slots.length"
+                            v-if="day.items.length"
                             class="divide-y rounded-xl border bg-card"
                         >
-                            <li v-for="slot in day.slots" :key="slot.ulid">
-                                <Link
-                                    :href="`/classes/${slot.school_class.ulid}#horario`"
-                                    class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                    :class="barOf(slot.school_class.ulid)"
-                                >
-                                    <time
-                                        class="text-sm font-medium tabular-nums"
-                                        >{{ slot.starts_at }}–{{
-                                            slot.ends_at
-                                        }}</time
-                                    >
-                                    <span
-                                        class="text-sm font-medium"
-                                        :class="badgeOf(slot.school_class.ulid)"
-                                        >{{ slot.school_class.label }}</span
-                                    >
-                                    <span
-                                        class="text-sm text-muted-foreground"
-                                        >{{ slot.subject }}</span
-                                    >
-                                    <span
-                                        v-if="validity(slot)"
-                                        class="text-xs text-muted-foreground"
-                                        >{{ validity(slot) }}</span
-                                    >
-                                </Link>
+                            <li v-for="item in day.items" :key="item.key">
+                                <TimetableBlock
+                                    :lesson-slot="slotOf(item)"
+                                    :activity="activityOf(item)"
+                                    :bar-class="
+                                        'slot' in item
+                                            ? barOf(item.slot.school_class.ulid)
+                                            : undefined
+                                    "
+                                    :badge-class="
+                                        'slot' in item
+                                            ? badgeOf(
+                                                  item.slot.school_class.ulid,
+                                              )
+                                            : undefined
+                                    "
+                                    @select="selectItem(item)"
+                                />
                             </li>
                         </ul>
                         <p
@@ -416,33 +511,24 @@ function validity(slot: TimetableSlot): string | null {
                     >
                         <h2 class="text-sm font-semibold">{{ day.label }}</h2>
                         <ul class="divide-y rounded-xl border bg-card">
-                            <li v-for="slot in day.slots" :key="slot.ulid">
-                                <Link
-                                    :href="`/classes/${slot.school_class.ulid}#horario`"
-                                    class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                    :class="barOf(slot.school_class.ulid)"
-                                >
-                                    <time
-                                        class="text-sm font-medium tabular-nums"
-                                        >{{ slot.starts_at }}–{{
-                                            slot.ends_at
-                                        }}</time
-                                    >
-                                    <span
-                                        class="text-sm font-medium"
-                                        :class="badgeOf(slot.school_class.ulid)"
-                                        >{{ slot.school_class.label }}</span
-                                    >
-                                    <span
-                                        class="text-sm text-muted-foreground"
-                                        >{{ slot.subject }}</span
-                                    >
-                                    <span
-                                        v-if="validity(slot)"
-                                        class="text-xs text-muted-foreground"
-                                        >{{ validity(slot) }}</span
-                                    >
-                                </Link>
+                            <li v-for="item in day.items" :key="item.key">
+                                <TimetableBlock
+                                    :lesson-slot="slotOf(item)"
+                                    :activity="activityOf(item)"
+                                    :bar-class="
+                                        'slot' in item
+                                            ? barOf(item.slot.school_class.ulid)
+                                            : undefined
+                                    "
+                                    :badge-class="
+                                        'slot' in item
+                                            ? badgeOf(
+                                                  item.slot.school_class.ulid,
+                                              )
+                                            : undefined
+                                    "
+                                    @select="selectItem(item)"
+                                />
                             </li>
                         </ul>
                     </section>
@@ -459,31 +545,22 @@ function validity(slot: TimetableSlot): string | null {
                 >
                     <h2 class="text-sm font-semibold">{{ day.label }}</h2>
                     <ul class="divide-y rounded-xl border bg-card">
-                        <li v-for="slot in day.slots" :key="slot.ulid">
-                            <Link
-                                :href="`/classes/${slot.school_class.ulid}#horario`"
-                                class="flex flex-col gap-1 p-3 transition-colors outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
-                                :class="barOf(slot.school_class.ulid)"
-                            >
-                                <time class="text-sm font-medium tabular-nums"
-                                    >{{ slot.starts_at }}–{{
-                                        slot.ends_at
-                                    }}</time
-                                >
-                                <span
-                                    class="text-sm font-medium"
-                                    :class="badgeOf(slot.school_class.ulid)"
-                                    >{{ slot.school_class.label }}</span
-                                >
-                                <span class="text-sm text-muted-foreground">{{
-                                    slot.subject
-                                }}</span>
-                                <span
-                                    v-if="validity(slot)"
-                                    class="text-xs text-muted-foreground"
-                                    >{{ validity(slot) }}</span
-                                >
-                            </Link>
+                        <li v-for="item in day.items" :key="item.key">
+                            <TimetableBlock
+                                :lesson-slot="slotOf(item)"
+                                :activity="activityOf(item)"
+                                :bar-class="
+                                    'slot' in item
+                                        ? barOf(item.slot.school_class.ulid)
+                                        : undefined
+                                "
+                                :badge-class="
+                                    'slot' in item
+                                        ? badgeOf(item.slot.school_class.ulid)
+                                        : undefined
+                                "
+                                @select="selectItem(item)"
+                            />
                         </li>
                     </ul>
                 </section>
@@ -583,5 +660,17 @@ function validity(slot: TimetableSlot): string | null {
                 </section>
             </div>
         </section>
+
+        <TimetableSlotDialog
+            v-model:open="slotDialogOpen"
+            :lesson-slot="editingSlot"
+            :classes="classes"
+        />
+        <TimetableActivityDialog
+            v-model:open="activityDialogOpen"
+            :activity="editingActivity"
+            :kinds="activityKinds"
+            :classes="classes"
+        />
     </main>
 </template>

@@ -110,6 +110,7 @@ const domainGroups: {
             { key: 'interventions', label: 'Estratégias e medidas' },
             { key: 'intervention_reviews', label: 'Revisões de estratégias' },
             { key: 'class_notebook_entries', label: 'Caderno da turma' },
+            { key: 'timetable_activities', label: 'Atividades não letivas' },
             {
                 key: 'record_followup_cases',
                 label: 'Casos de acompanhamento dos registos',
@@ -192,6 +193,10 @@ const summaryGroups: {
             {
                 key: 'class_notebook_entries_created',
                 label: 'Registos do caderno da turma',
+            },
+            {
+                key: 'timetable_activities_created',
+                label: 'Atividades não letivas do horário',
             },
             {
                 key: 'record_followup_cases_created',

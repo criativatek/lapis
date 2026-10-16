@@ -238,7 +238,7 @@ class TimetableImportTest extends TestCase
     #[Test]
     public function confirming_creates_exactly_the_blocks_the_file_described(): void
     {
-        $this->confirm($this->payload())->assertRedirect('/classes');
+        $this->confirm($this->payload())->assertRedirect('/timetable');
 
         $this->inTenant($this->organization, function (): void {
             $this->assertSame(6, RecurringLessonSlot::query()->count());

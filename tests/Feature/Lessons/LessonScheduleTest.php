@@ -562,21 +562,21 @@ class LessonScheduleTest extends TestCase
         $this->assertSame(3, $slot->day_of_week);
         $this->assertStringStartsWith('10:00', $slot->starts_at);
         $this->assertSame($today, $slot->starts_on->toDateString());
-        $this->assertDatabaseHas('lessons', [
-            'recurring_lesson_slot_id' => $slot->id,
-            'class_group_id' => null,
-        ]);
+        // 0.168.0 — a edição no lugar é retroativa: a preparação vazia, que
+        // ficou desencontrada do tempo novo (outro dia, outras horas), sai, e a
+        // materialização volta a gerá-la à hora certa. Continua sem versionar.
+        $this->assertDatabaseMissing('lessons', ['recurring_lesson_slot_id' => $slot->id]);
     }
 
     #[Test]
     public function editing_an_empty_whole_class_lesson_to_a_group_aligns_its_snapshot_without_versioning(): void
     {
         $schoolClass = $this->schoolClassFor($this->teacher);
-        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, null);
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, null, onTodaysWeekday: true);
         $group = $this->groupFor($schoolClass);
         $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
 
-        $this->putSlot($slot, $schoolClass, ['class_group_id' => $group->id])
+        $this->putSlot($slot, $schoolClass, ['class_group_id' => $group->id, 'day_of_week' => $this->todayDayOfWeek()])
             ->assertRedirect()
             ->assertSessionDoesntHaveErrors();
 
@@ -597,11 +597,11 @@ class LessonScheduleTest extends TestCase
         $schoolClass = $this->schoolClassFor($this->teacher);
         $firstGroup = $this->groupFor($schoolClass);
         $secondGroup = $this->groupFor($schoolClass, 'T2');
-        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, $firstGroup->id);
+        $slot = $this->slotWithLesson($schoolClass, LessonStatus::Preparation, $firstGroup->id, onTodaysWeekday: true);
         $lesson = $this->inTenant($this->organization, fn (): Lesson => $slot->lessons()->sole());
         $startsOn = $slot->starts_on?->toDateString();
 
-        $this->putSlot($slot, $schoolClass, ['class_group_id' => $secondGroup->id])
+        $this->putSlot($slot, $schoolClass, ['class_group_id' => $secondGroup->id, 'day_of_week' => $this->todayDayOfWeek()])
             ->assertRedirect()
             ->assertSessionDoesntHaveErrors();
 
@@ -1144,6 +1144,13 @@ class LessonScheduleTest extends TestCase
             $this->teacher,
         ));
         $lesson = $this->inTenant($this->organization, fn (): Lesson => Lesson::query()->sole());
+        // Com conteúdo (um sumário) o tempo exige versionamento — é esse o
+        // caminho que NUNCA toca nas aulas existentes. Sem conteúdo, a edição
+        // faz-se no lugar e retira a aula vazia desencontrada (0.168.0).
+        $this->inTenant($this->organization, fn () => LessonSummary::create([
+            'lesson_id' => $lesson->id,
+            'content' => 'Sumário escrito.',
+        ]));
         $before = $this->lessonRow($lesson->id);
 
         $this->actingAs($this->teacher)
@@ -1638,9 +1645,17 @@ class LessonScheduleTest extends TestCase
         SchoolClass $schoolClass,
         LessonStatus $status = LessonStatus::Preparation,
         ?int $classGroupId = null,
+        bool $onTodaysWeekday = false,
     ): RecurringLessonSlot {
+        // `$onTodaysWeekday`: a aula que `lessonForSlot` cria nasce HOJE. Quando
+        // o caso edita o tempo no lugar, o tempo tem de ser desse dia — uma aula
+        // desencontrada do seu tempo é, desde a 0.168.0, retirada por uma edição
+        // no lugar do dia ou das horas.
         $slot = $this->inTenant($this->organization, fn (): RecurringLessonSlot => RecurringLessonSlot::create(
-            $this->slotAttributes($schoolClass, ['class_group_id' => $classGroupId]),
+            $this->slotAttributes($schoolClass, [
+                'class_group_id' => $classGroupId,
+                ...($onTodaysWeekday ? ['day_of_week' => $this->todayDayOfWeek()] : []),
+            ]),
         ));
         $this->lessonForSlot($slot, $status);
 

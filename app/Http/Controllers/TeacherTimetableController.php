@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
+use App\Models\TimetableActivity;
+use App\Models\TimetableActivityKind;
 use App\Models\User;
 use App\Services\Classes\ClassArchivalWindow;
 use App\Services\Classes\ClassIdentityTones;
@@ -113,7 +115,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         // arquivamento a turma estava viva, e o horário dessa semana mostra-a.
         $slots = RecurringLessonSlot::query()
             ->whereIn('class_id', $schoolClasses->modelKeys())
-            ->with('schoolClass.subject')
+            ->with(['schoolClass.subject', 'classGroup'])
             ->orderBy('day_of_week')
             ->orderBy('starts_at')
             ->get()
@@ -131,7 +133,12 @@ class TeacherTimetableController extends Controller implements HasMiddleware
                 'ends_on' => $slot->ends_on?->toDateString(),
                 'already_in_vigor' => $slot->isAlreadyInVigor($timezone),
                 'requires_versioning' => $slot->requiresVersioning($timezone),
+                // Os grupos (T1/T2) continuam a ser geridos na página da turma;
+                // aqui só se mostram e se preservam ao editar o tempo.
+                'class_group_id' => $slot->class_group_id,
+                'class_group_label' => $slot->classGroup?->label,
                 'school_class' => [
+                    'id' => $slot->schoolClass->id,
                     'ulid' => $slot->schoolClass->ulid,
                     'label' => $slot->schoolClass->label,
                     'identity_tone' => $tones[$slot->schoolClass->id] ?? null,
@@ -148,6 +155,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         $classes = $schoolClasses
             ->filter(fn (SchoolClass $schoolClass): bool => $schoolClass->archived_at === null)
             ->map(fn (SchoolClass $schoolClass) => [
+                'id' => $schoolClass->id,
                 'ulid' => $schoolClass->ulid,
                 'label' => $schoolClass->label,
                 'subject' => $schoolClass->subject->name,
@@ -155,8 +163,43 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ])
             ->values();
 
+        // As atividades NÃO LETIVAS do professor (0.168.0): tabela própria, a
+        // mesma regra de vigência por ocorrência, e nenhuma ligação ao
+        // arquivamento da turma referida — a «DT 6.º D» é uma referência, não
+        // uma aula dessa turma. Nunca geram aulas: esta página continua a não
+        // escrever nada.
+        $activities = TimetableActivity::query()
+            ->where('user_id', $teacher->getKey())
+            ->with('schoolClass')
+            ->orderBy('day_of_week')
+            ->orderBy('starts_at')
+            ->get()
+            ->filter(fn (TimetableActivity $activity): bool => $activity->isInForceOn(
+                $weekStart->addDays($activity->day_of_week - 1)->toDateString(),
+            ))
+            ->map(fn (TimetableActivity $activity) => [
+                'ulid' => $activity->ulid,
+                'kind' => $activity->kind->value,
+                'kind_label' => $activity->kind->label(),
+                'title' => $activity->title,
+                'day_of_week' => $activity->day_of_week,
+                'starts_at' => substr($activity->starts_at, 0, 5),
+                'ends_at' => substr($activity->ends_at, 0, 5),
+                'starts_on' => $activity->starts_on?->toDateString(),
+                'ends_on' => $activity->ends_on?->toDateString(),
+                'school_class' => $activity->schoolClass === null ? null : [
+                    'ulid' => $activity->schoolClass->ulid,
+                    'label' => $activity->schoolClass->label,
+                ],
+            ])
+            ->values();
+
         return Inertia::render('timetable/Index', [
             'slots' => $slots,
+            'activities' => $activities,
+            'activityKinds' => collect(TimetableActivityKind::cases())
+                ->map(fn (TimetableActivityKind $kind): array => ['value' => $kind->value, 'label' => $kind->label()])
+                ->values(),
             'classes' => $classes,
             'week' => [
                 'start' => $weekStart->toDateString(),

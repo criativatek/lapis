@@ -102,6 +102,7 @@ class AnonymiseClosedAccount
             'passkeys' => 0,
             'sessions' => 0,
             'usage_events' => 0,
+            'timetable_activities' => 0,
         ];
 
         // ---- Files first: their paths are attributes of rows about to go. ----
@@ -142,6 +143,13 @@ class AnonymiseClosedAccount
             // Métricas de utilização (docs/usage-insights.md): eventos, agregados
             // e datas de primeira observação saem com a identidade.
             $removed['usage_events'] = $this->forgetUsage->forUser($user);
+
+            // As atividades não letivas são configuração pessoal do horário
+            // (0.168.0), sem história a proteger: saem com a identidade, em vez
+            // de ficarem penduradas numa conta anonimizada.
+            $removed['timetable_activities'] = DB::table('timetable_activities')
+                ->where('user_id', $user->getKey())
+                ->delete();
 
             $this->stripIdentity($user);
         });

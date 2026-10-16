@@ -27,8 +27,12 @@ class RecurringLessonSlotRequest extends FormRequest
         $recurringLessonSlot = $this->route('recurringLessonSlot');
 
         if ($recurringLessonSlot instanceof RecurringLessonSlot) {
-            return $recurringLessonSlot->class_id === $schoolClass->id
-                && $user->can('update', $recurringLessonSlot);
+            // Mudar o tempo de TURMA (0.168.0): o professor tem de lecionar as
+            // DUAS — aquela de onde sai e aquela para onde vai. Sem mudança,
+            // `$schoolClass` é a própria e as duas verificações coincidem.
+            return $user->can('update', $recurringLessonSlot)
+                && ($recurringLessonSlot->class_id === $schoolClass->id
+                    || $user->can('create', [RecurringLessonSlot::class, $schoolClass]));
         }
 
         return $user->can('create', [RecurringLessonSlot::class, $schoolClass]);
@@ -123,6 +127,7 @@ class RecurringLessonSlotRequest extends FormRequest
      */
     public function withValidator(Validator $validator): void
     {
+        $validator->after($this->validateClassChange(...));
         $validator->after($this->validateClassGroup(...));
         $validator->after($this->validateSameLessonAs(...));
         $validator->after($this->validateNoOverlappingSlot(...));
@@ -348,7 +353,51 @@ class RecurringLessonSlotRequest extends FormRequest
     {
         $recurringLessonSlot = $this->route('recurringLessonSlot');
 
-        return $recurringLessonSlot instanceof RecurringLessonSlot
-            && $recurringLessonSlot->requiresVersioning(app(CurrentOrganization::class)->get()->timezone);
+        if (! $recurringLessonSlot instanceof RecurringLessonSlot) {
+            return false;
+        }
+
+        return $recurringLessonSlot->requiresVersioning(app(CurrentOrganization::class)->get()->timezone)
+            || ($this->changesClass($recurringLessonSlot) && $recurringLessonSlot->hasLessonsCarryingContent());
+    }
+
+    /**
+     * O pedido muda este tempo para outra turma?
+     */
+    public function changesClass(RecurringLessonSlot $recurringLessonSlot): bool
+    {
+        return $this->integer('class_id') !== $recurringLessonSlot->class_id;
+    }
+
+    /**
+     * A turma nova tem de poder receber aulas: não arquivada e do mesmo ano
+     * letivo (a disciplina é atributo da turma e vem com ela).
+     */
+    private function validateClassChange(Validator $validator): void
+    {
+        $recurringLessonSlot = $this->route('recurringLessonSlot');
+
+        if (! $recurringLessonSlot instanceof RecurringLessonSlot
+            || $validator->errors()->isNotEmpty()
+            || ! $this->changesClass($recurringLessonSlot)) {
+            return;
+        }
+
+        $target = SchoolClass::query()->find($this->integer('class_id'));
+        $origin = SchoolClass::query()->find($recurringLessonSlot->class_id);
+
+        if ($target === null || $origin === null) {
+            return;
+        }
+
+        if ($target->isArchived()) {
+            $validator->errors()->add('class_id', __('A turma :label está arquivada e não pode receber este horário.', ['label' => $target->label]));
+
+            return;
+        }
+
+        if ($target->academic_year_id !== $origin->academic_year_id) {
+            $validator->errors()->add('class_id', __('A turma escolhida é de outro ano letivo; só é possível mudar o horário para uma turma do mesmo ano.'));
+        }
     }
 }
