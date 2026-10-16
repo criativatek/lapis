@@ -3,6 +3,7 @@
 namespace App\Services\Reporting\Export;
 
 use App\Domain\Reporting\SectionKey;
+use App\Models\Lesson;
 use App\Services\Reporting\Narrative\Grade;
 use App\Services\Reporting\Narrative\Phrase;
 
@@ -105,7 +106,7 @@ class SectionTables
             $rows[] = [
                 self::readableDate((string) ($row['date'] ?? '')),
                 (string) ($row['context_label'] ?? '—'),
-                $row['lesson_number'] === null ? '—' : (string) $row['lesson_number'],
+                self::lessonNumberCell($row),
                 self::lessonOutcomeLabel((string) ($row['outcome'] ?? ''))
                     .(is_string($note) && $note !== '' ? ' — '.$note : ''),
             ];
@@ -120,6 +121,23 @@ class SectionTables
         }
 
         return $tables;
+    }
+
+    /**
+     * «11» ou «11–12» (0.169.0) — uma aula pode corresponder a várias lições, e o
+     * relatório escreve-o como o ecrã.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function lessonNumberCell(array $row): string
+    {
+        $start = $row['lesson_number'] ?? null;
+        $end = $row['lesson_number_end'] ?? null;
+
+        return Lesson::formatLessonNumber(
+            is_numeric($start) ? (int) $start : null,
+            is_numeric($end) ? (int) $end : null,
+        ) ?? '—';
     }
 
     public static function lessonOutcomeLabel(string $outcome): string
@@ -150,7 +168,7 @@ class SectionTables
                 self::readableDate((string) ($row['date'] ?? '')),
                 (string) ($row['subject'] ?? '—'),
                 (string) ($row['context_label'] ?? '—'),
-                $row['lesson_number'] === null ? '—' : (string) $row['lesson_number'],
+                self::lessonNumberCell($row),
                 match ($status) {
                     'present' => 'Presente',
                     'absent' => 'Falta',

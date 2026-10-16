@@ -28,8 +28,10 @@ import {
     shortDayLabel,
 } from '@/lib/lessonDates';
 import {
+    formatLessonNumber,
     lessonDate,
     lessonDisplayState,
+    lessonNumberLabel,
     summaryOneLine,
     summaryParagraphs,
 } from '@/lib/lessons';
@@ -88,9 +90,11 @@ const nextRange = computed<ClassRange | null>(
         ] as ClassRange | null,
 );
 
+// Os extremos do intervalo contam os FINS das aulas de várias lições: «Lições
+// 11 a 14» e não «11 a 13» quando a última aula é a 13–14.
 const numbers = computed(() =>
     props.classView.lessons
-        .map((lesson) => lesson.lesson_number)
+        .flatMap((lesson) => [lesson.lesson_number, lesson.lesson_number_end])
         .filter((value): value is number => value !== null),
 );
 
@@ -365,7 +369,7 @@ const segment =
                     <span>{{
                         lesson.lesson_number === null
                             ? '—'
-                            : `L${lesson.lesson_number}`
+                            : `L${formatLessonNumber(lesson.lesson_number, lesson.lesson_number_end)}`
                     }}</span>
                     <span
                         v-if="lesson.class_group_label"
@@ -413,9 +417,10 @@ const segment =
                         class="mb-2 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground"
                     >
                         <strong class="font-semibold text-foreground">{{
-                            focusedLane.lesson.lesson_number === null
-                                ? 'Sem número'
-                                : `Lição ${focusedLane.lesson.lesson_number}`
+                            lessonNumberLabel(
+                                focusedLane.lesson.lesson_number,
+                                focusedLane.lesson.lesson_number_end,
+                            ) ?? 'Sem número'
                         }}</strong>
                         <span>{{
                             shortDayLabel(lessonDate(focusedLane.lesson))
@@ -538,9 +543,10 @@ const segment =
                             />
                             <template v-if="entry.lesson">
                                 <strong class="font-semibold text-foreground">{{
-                                    entry.lesson.lesson_number === null
-                                        ? 'Sem número'
-                                        : `Lição ${entry.lesson.lesson_number}`
+                                    lessonNumberLabel(
+                                        entry.lesson.lesson_number,
+                                        entry.lesson.lesson_number_end,
+                                    ) ?? 'Sem número'
                                 }}</strong>
                                 <span>{{
                                     shortDayLabel(lessonDate(entry.lesson))

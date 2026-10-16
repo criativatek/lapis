@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { formatLessonNumber } from '@/lib/lessons';
 
 type Row = Record<string, unknown>;
+
+/** «11» / «11–12» (ou «—»): o mesmo número que o servidor escreve nas exportações. */
+function rowLessonNumber(row: Row): string {
+    return (
+        formatLessonNumber(
+            (row.lesson_number as number | null | undefined) ?? null,
+            (row.lesson_number_end as number | null | undefined) ?? null,
+        ) ?? '—'
+    );
+}
 
 const props = defineProps<{
     sectionKey: string;
@@ -260,7 +271,7 @@ function attendanceStatusLabel(status: unknown): string {
                 <tr v-for="(row, index) in classLessonRows" :key="index" class="border-b border-border/50 last:border-0">
                     <td class="py-1.5 pr-3 whitespace-nowrap tabular-nums">{{ row.date }}</td>
                     <td class="py-1.5 pr-3">{{ row.context_label }}</td>
-                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ row.lesson_number ?? '—' }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ rowLessonNumber(row) }}</td>
                     <td class="py-1.5">
                         {{ lessonOutcomeLabel(row.outcome) }}<template v-if="row.note"> — {{ row.note }}</template>
                     </td>
@@ -308,7 +319,7 @@ function attendanceStatusLabel(status: unknown): string {
                     <td class="py-1.5 pr-3 whitespace-nowrap tabular-nums">{{ row.date }}</td>
                     <td class="py-1.5 pr-3">{{ row.subject }}</td>
                     <td class="py-1.5 pr-3">{{ row.context_label }}</td>
-                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ row.lesson_number ?? '—' }}</td>
+                    <td class="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">{{ rowLessonNumber(row) }}</td>
                     <td class="py-1.5">{{ attendanceStatusLabel(row.status) }}</td>
                 </tr>
             </tbody>

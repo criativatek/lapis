@@ -26,7 +26,10 @@ use Illuminate\Validation\ValidationException;
  *
  * O QUE FICA, SEMPRE: tudo o resto. Uma aula fechada é histórico (§14); uma
  * aula com sumário, plano ou faltas tem conteúdo pedagógico que não se perde em
- * silêncio. Ficam como estão, e são devolvidas como `preserved` para quem as
+ * silêncio; e uma aula com NÚMERO INDICADO PELO PROFESSOR (0.169.0) também —
+ * sem sumário, é a parceira T2 de uma lição fixada em T1, a que ficou depois de
+ * «Limpar sumário» ou a que recebeu o número numa ausência: apagá-la perdia uma
+ * decisão do professor. Ficam como estão, e são devolvidas como `preserved` para quem as
  * quiser mostrar.
  *
  * NÃO É UM CANCELAMENTO. Uma CancelledLessonOccurrence diz «esta ocorrência
@@ -56,7 +59,10 @@ class ReconcileLessonsWithSlotValidity
      *                        numberMaterializedLessons()` em vez de recusar —
      *                        as aulas removidas ficam removidas, a turma
      *                        nunca fica sem número atribuído por causa disto.
-     * @return array{removed: int, preserved: int}
+     * @return array{removed: int, preserved: int, renumbered: array<int, int|null>} `renumbered`: lesson_id =>
+     *                                                                               número novo das aulas que a
+     *                                                                               renumeração mudou (NULL = ficou
+     *                                                                               sem número)
      *
      * @throws ValidationException quando `$strict` e fechar a sequência
      *                             mudaria o número de uma aula já lecionada;
@@ -66,8 +72,13 @@ class ReconcileLessonsWithSlotValidity
     {
         $removed = 0;
         $preserved = 0;
+        $renumbered = [];
 
-        return DB::transaction(function () use ($classId, $strict, &$removed, &$preserved): array {
+        return DB::transaction(function () use ($classId, $strict, &$removed, &$preserved, &$renumbered): array {
+            // A FOTOGRAFIA DA GUARDA (só no caminho estrito), antes de apagar
+            // seja o que for.
+            $snapshot = $strict ? $this->numbering->guardSnapshot($classId) : [];
+
             /** @var RecurringLessonSlot $slot */
             foreach (RecurringLessonSlot::query()->where('class_id', $classId)->orderBy('id')->get() as $slot) {
                 if ($slot->starts_on === null && $slot->ends_on === null) {
@@ -144,20 +155,19 @@ class ReconcileLessonsWithSlotValidity
             }
 
             if ($removed > 0) {
-                if ($strict) {
-                    $this->numbering->resequence($classId);
-                } else {
-                    $this->numbering->numberMaterializedLessons($classId);
-                }
+                $renumbered = $strict
+                    ? $this->numbering->resequence($classId, $snapshot)
+                    : $this->numbering->numberMaterializedLessons($classId);
             }
 
-            return ['removed' => $removed, 'preserved' => $preserved];
+            return ['removed' => $removed, 'preserved' => $preserved, 'renumbered' => $renumbered];
         });
     }
 
     private function carriesContent(Lesson $lesson): bool
     {
         return $lesson->isClosed()
+            || $lesson->lesson_number_manual
             || $lesson->status === LessonStatus::Taught
             || $lesson->attendance_recorded_at !== null
             || (bool) $lesson->getAttribute('summary_exists')

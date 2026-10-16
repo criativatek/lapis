@@ -28,9 +28,9 @@ function detail(overrides: Partial<AbsenceDetail> = {}): AbsenceDetail {
         category_label: 'Faltas de presença',
         window: { is_period: true, label: '1.º Período (14/09/2026 a 16/12/2026)', period_ulid: 'P1' },
         absences: [
-            { ulid: 'A1', lesson_ulid: 'L1', date: '2026-10-05', time: '09:30', lesson_number: 12, context_label: '7.º A' },
-            { ulid: 'A2', lesson_ulid: 'L2', date: '2026-10-05', time: '14:00', lesson_number: 13, context_label: '7.º A · T1' },
-            { ulid: 'A3', lesson_ulid: 'L3', date: '2026-10-09', time: '09:30', lesson_number: null, context_label: '7.º A' },
+            { ulid: 'A1', lesson_ulid: 'L1', date: '2026-10-05', time: '09:30', lesson_number: 12, lesson_number_end: null, context_label: '7.º A' },
+            { ulid: 'A2', lesson_ulid: 'L2', date: '2026-10-05', time: '14:00', lesson_number: 13, lesson_number_end: null, context_label: '7.º A · T1' },
+            { ulid: 'A3', lesson_ulid: 'L3', date: '2026-10-09', time: '09:30', lesson_number: null, lesson_number_end: null, context_label: '7.º A' },
         ],
         count: 3,
         days: 2,

@@ -371,6 +371,7 @@ final class RecordFollowupPresenter
                 'date' => $attendance->lesson->starts_at->format('Y-m-d'),
                 'time' => $attendance->lesson->starts_at->format('H:i'),
                 'lesson_number' => $attendance->lesson->lesson_number,
+                'lesson_number_end' => $attendance->lesson->lesson_number_end,
                 'context_label' => $attendance->lesson->contextLabel(),
             ])->all()),
             'count' => $absences->count(),

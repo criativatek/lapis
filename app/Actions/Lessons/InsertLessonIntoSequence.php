@@ -59,7 +59,8 @@ class InsertLessonIntoSequence
      *
      * @return array{
      *     moves: list<array{ulid: string, context_label: string, from: string, to: string,
-     *                       lesson_number: int|null, lesson_number_to: int|null}>,
+     *                       lesson_number: int|null, lesson_number_end: int|null,
+     *                       lesson_number_to: int|null, lesson_number_to_end: int|null}>,
      *     inserted_at: string,
      *     shifted_count: int,
      * }
@@ -77,7 +78,7 @@ class InsertLessonIntoSequence
         // prometa o que a execução recusa, a mesma verificação corre aqui
         // sobre o estado hipotético EM MEMÓRIA — sem escrita, sem transação,
         // sem eventos nem auditoria. A recusa sobe como as de `plan()`.
-        $renumbered = $this->numbering->previewHypotheticalSequence(
+        $renumbered = $this->numbering->previewHypotheticalChanges(
             (int) $class->getKey(),
             $this->hypotheticalSequence($class, $classGroupId, $plan),
         );
@@ -92,7 +93,13 @@ class InsertLessonIntoSequence
                     'from' => $move['lesson']->starts_at->setTimezone('Europe/Lisbon')->toIso8601String(),
                     'to' => $move['occurrence']['starts_at']->toIso8601String(),
                     'lesson_number' => $move['lesson']->lesson_number,
-                    'lesson_number_to' => $renumbered[(int) $move['lesson']->getKey()] ?? $move['lesson']->lesson_number,
+                    'lesson_number_end' => $move['lesson']->lesson_number_end,
+                    'lesson_number_to' => array_key_exists((int) $move['lesson']->getKey(), $renumbered)
+                        ? $renumbered[(int) $move['lesson']->getKey()]['to']
+                        : $move['lesson']->lesson_number,
+                    'lesson_number_to_end' => array_key_exists((int) $move['lesson']->getKey(), $renumbered)
+                        ? $renumbered[(int) $move['lesson']->getKey()]['to_end']
+                        : $move['lesson']->lesson_number_end,
                 ],
                 $plan['moves'],
             ),
@@ -100,7 +107,7 @@ class InsertLessonIntoSequence
     }
 
     /**
-     * @return array{lesson: Lesson, moved: int, renumbered: array<int, int>}
+     * @return array{lesson: Lesson, moved: int, renumbered: array<int, int|null>}
      */
     public function execute(
         SchoolClass $class,
@@ -120,7 +127,11 @@ class InsertLessonIntoSequence
                 ->firstOrFail();
 
             $plan = $this->plan($lockedClass, $classGroupId, $insertAt);
-            ['lesson' => $inserted, 'renumbered' => $renumbered] = $this->apply($lockedClass, $classGroupId, $plan, $actor);
+
+            // A FOTOGRAFIA DA GUARDA, antes de mover seja o que for: as aulas
+            // lecionadas que estão coerentes agora têm de o continuar depois.
+            $snapshot = $this->numbering->guardSnapshot((int) $lockedClass->getKey());
+            ['lesson' => $inserted, 'renumbered' => $renumbered] = $this->apply($lockedClass, $classGroupId, $plan, $actor, $snapshot);
 
             $this->audit->record(
                 'lesson.inserted',
@@ -193,9 +204,10 @@ class InsertLessonIntoSequence
      *     insertion: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int},
      *     moves: list<array{lesson: Lesson, occurrence: array{starts_at: CarbonImmutable, ends_at: CarbonImmutable, slot_id: int}}>,
      * }  $plan
-     * @return array{lesson: Lesson, renumbered: array<int, int>}
+     * @param  array<int, int>  $snapshot  de `LessonNumbering::guardSnapshot()`
+     * @return array{lesson: Lesson, renumbered: array<int, int|null>}
      */
-    private function apply(SchoolClass $class, ?int $classGroupId, array $plan, User $actor): array
+    private function apply(SchoolClass $class, ?int $classGroupId, array $plan, User $actor, array $snapshot): array
     {
         // DE TRÁS PARA A FRENTE. A aula que vai para a última ocorrência
         // move-se primeiro; só depois a que vai ocupar o lugar que ela
@@ -227,7 +239,7 @@ class InsertLessonIntoSequence
 
         return [
             'lesson' => $inserted,
-            'renumbered' => $this->numbering->resequence((int) $class->getKey()),
+            'renumbered' => $this->numbering->resequence((int) $class->getKey(), $snapshot),
         ];
     }
 

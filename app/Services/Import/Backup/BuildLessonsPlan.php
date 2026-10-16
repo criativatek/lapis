@@ -55,6 +55,8 @@ class BuildLessonsPlan
 {
     use ResolvesBackupReferences;
 
+    public function __construct(private readonly FindLessonNumberCollisions $numberCollisions) {}
+
     /**
      * @param  array<int, array<string, mixed>>  $classGroupsIn
      * @param  array<int, array<string, mixed>>  $membershipsIn
@@ -66,7 +68,7 @@ class BuildLessonsPlan
      * @param  array<int, array<string, mixed>>  $attendancesIn
      * @param  Collection<string, array<string, mixed>>  $classesByUlid
      * @param  Collection<string, array<string, mixed>>  $enrollmentsByUlid
-     * @return array{rows: array<string, array<int, array<string, mixed>>>}
+     * @return array{rows: array<string, array<int, array<string, mixed>>>, blocking: list<string>}
      */
     public function build(
         array $classGroupsIn,
@@ -97,6 +99,10 @@ class BuildLessonsPlan
         $lessonRows = $this->classifyLessons($lessonsIn, $destination, $actor, $classesByUlid, $groupsByUlid, $slotsByUlid);
         $lessonsByUlid = collect($lessonRows)->keyBy('ulid');
 
+        // Números de lição que colidem com aulas que o destino JÁ TEM: bloqueia
+        // o restauro inteiro (ver FindLessonNumberCollisions).
+        $blocking = $this->numberCollisions->find($lessonRows, $classesByUlid, $destination);
+
         $summaryRows = $this->classifySummaries($summariesIn, $destination, $actor, $lessonsByUlid);
         $planRows = $this->classifyPlans($plansIn, $destination, $actor, $lessonsByUlid);
         $attendanceRows = $this->classifyAttendances($attendancesIn, $destination, $actor, $classesByUlid, $lessonsByUlid, $enrollmentsByUlid, $enrollmentRealClassIds);
@@ -112,6 +118,7 @@ class BuildLessonsPlan
                 'lesson_plans' => $planRows,
                 'lesson_attendances' => $attendanceRows,
             ],
+            'blocking' => $blocking,
         ];
     }
 
@@ -535,6 +542,7 @@ class BuildLessonsPlan
                 'class_ulid' => $row['class_ulid'], 'class_group_ulid' => $row['class_group_ulid'],
                 'recurring_lesson_slot_ulid' => $row['recurring_lesson_slot_ulid'],
                 'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
+                'lesson_number_end' => $row['lesson_number_end'] ?? null, 'lesson_number_manual' => $row['lesson_number_manual'] ?? false,
                 'lesson_unit_key' => $row['lesson_unit_key'],
                 'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
                 'outcome' => $row['outcome'] ?? null, 'outcome_reason' => $row['outcome_reason'] ?? null,

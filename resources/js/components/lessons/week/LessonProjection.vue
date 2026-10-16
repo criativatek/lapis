@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
                                         class="text-[1.25em] leading-tight font-bold tracking-tight tabular-nums"
                                         data-testid="projection-number"
                                     >
-                                        Lição {{ projection.lessonNumber }}
+                                        {{ projection.lessonNumber }}
                                     </p>
                                     <p
                                         class="text-[0.7em]"

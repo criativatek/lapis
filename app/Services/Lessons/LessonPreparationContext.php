@@ -164,6 +164,7 @@ final class LessonPreparationContext
             'starts_at' => $lesson->starts_at->toIso8601String(),
             'ends_at' => $lesson->ends_at?->toIso8601String(),
             'lesson_number' => $lesson->lesson_number,
+            'lesson_number_end' => $lesson->lesson_number_end,
             'context_label' => $lesson->contextLabel(),
             'state' => $state,
             'state_label' => self::LABELS[$state],

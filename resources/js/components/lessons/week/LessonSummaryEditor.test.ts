@@ -1,13 +1,22 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { numberDraftFromLesson } from '@/lib/lessonNumber';
 import type { WeekLesson } from '@/lib/lessons';
 import LessonSummaryEditor from './LessonSummaryEditor.vue';
 
 const wrappers: VueWrapper[] = [];
 
 function lessonWith(ulid: string): WeekLesson {
-    return { ulid, status: 'preparation', outcome: null, day_events: [] } as unknown as WeekLesson;
+    return {
+        ulid,
+        status: 'preparation',
+        outcome: null,
+        day_events: [],
+        lesson_number: 3,
+        lesson_number_end: null,
+        lesson_number_manual: false,
+    } as unknown as WeekLesson;
 }
 
 const entry = (ulid: string, overrides: Record<string, unknown> = {}) => ({
@@ -37,6 +46,10 @@ function mountEditor(ulid = 'aula-a') {
             saving: false,
             error: null,
             conflict: null,
+            number: numberDraftFromLesson({ lesson_number: 3, lesson_number_end: null }),
+            numberOriginal: numberDraftFromLesson({ lesson_number: 3, lesson_number_end: null }),
+            numberErrors: { number: null, end: null },
+            numberPreview: null,
         },
     });
     wrappers.push(wrapper);

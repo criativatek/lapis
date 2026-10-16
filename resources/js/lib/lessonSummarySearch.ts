@@ -212,6 +212,7 @@ export type SummarySearchResult = {
     outcome: WeekLesson['outcome'];
     outcome_label: string | null;
     lesson_number: number | null;
+    lesson_number_end: number | null;
     identity_tone: string | null;
     occurrences: number;
     /** O sumário COMPLETO, em pedaços; a concatenação é o texto gravado. */

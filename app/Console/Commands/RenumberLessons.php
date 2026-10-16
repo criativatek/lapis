@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Lesson;
 use App\Models\Organization;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
@@ -25,7 +26,9 @@ use Illuminate\Support\Facades\DB;
  *    reporta. Um vínculo errado seria pior do que nenhum; o professor liga os
  *    tempos no horário e o comando corre outra vez.
  *
- * É A ÚNICA VIA QUE RENUMERA AULAS LECIONADAS. Idempotente: vínculos gravados
+ * É A ÚNICA VIA QUE RENUMERA AULAS LECIONADAS — e NUNCA TOCA NOS NÚMEROS
+ * INDICADOS PELO PROFESSOR (0.169.0): as aulas com número manual são fixas, e a
+ * correção faz-se à volta delas. Idempotente: vínculos gravados
  * não mudam, e uma segunda execução não encontra nada. Só escreve
  * `recurring_lesson_slots.split_lesson_key`, `lessons.lesson_unit_key` e
  * `lessons.lesson_number`. Imprime ids, datas e números — nunca nomes.
@@ -107,12 +110,12 @@ class RenumberLessons extends Command
 
                         foreach ($result['numbers'] as $lessonId => $change) {
                             $this->line(sprintf(
-                                '  aula #%d  %s  %s  Lição %s -> Lição %d',
+                                '  aula #%d  %s  %s  Lição %s -> Lição %s',
                                 $lessonId,
                                 $change['lesson']->starts_at->setTimezone('Europe/Lisbon')->format('Y-m-d H:i'),
                                 $change['lesson']->class_group_id === null ? 'turma' : 'grupo #'.$change['lesson']->class_group_id,
-                                $change['from'] === null ? '—' : (string) $change['from'],
-                                $change['to'],
+                                Lesson::formatLessonNumber($change['from'], $change['from_end']) ?? '—',
+                                Lesson::formatLessonNumber($change['to'], $change['to_end']) ?? '—',
                             ));
                         }
                     });

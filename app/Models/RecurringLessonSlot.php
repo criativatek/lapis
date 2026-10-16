@@ -134,16 +134,20 @@ class RecurringLessonSlot extends Model
                     ->where('status', LessonStatus::Taught)
                     ->orWhereNotNull('outcome')
                     ->orWhereHas('summary')
-                    ->orWhereHas('plan');
+                    ->orWhereHas('plan')
+                    // UM NÚMERO INDICADO PELO PROFESSOR É HISTÓRIA (0.169.0),
+                    // ainda que a aula não tenha sumário: editar o tempo no
+                    // lugar apagaria a aula desencontrada e com ela o número.
+                    ->orWhere('lesson_number_manual', true);
             })
             ->exists();
     }
 
     /**
      * Alguma aula deste tempo carrega conteúdo — lecionada, fechada, com
-     * sumário, plano ou assiduidade (nem que seja um rascunho)? O MESMO critério
-     * de `ReconcileLessonsWithSlotValidity`: só uma aula vazia pode ser
-     * retirada. Decide se mudar o tempo de TURMA pode ser feito no lugar (as
+     * sumário, plano, assiduidade (nem que seja um rascunho) ou número indicado
+     * pelo professor? O MESMO critério de `ReconcileLessonsWithSlotValidity`:
+     * só uma aula vazia pode ser retirada. Decide se mudar o tempo de TURMA pode ser feito no lugar (as
      * aulas vazias regeneram-se na turma nova) ou tem de ser versionado (as
      * aulas com conteúdo ficam na turma original).
      */
@@ -168,7 +172,10 @@ class RecurringLessonSlot extends Model
                     ->orWhereNotNull('attendance_recorded_at')
                     ->orWhereHas('summary')
                     ->orWhereHas('plan')
-                    ->orWhereHas('attendances');
+                    ->orWhereHas('attendances')
+                    // Um número indicado pelo professor conta como conteúdo
+                    // (0.169.0): a aula não é «vazia» e não sai do horário.
+                    ->orWhere('lesson_number_manual', true);
             });
     }
 

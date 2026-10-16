@@ -33,6 +33,7 @@ import {
 } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
+import { formatLessonNumber } from '@/lib/lessons';
 import { isOtherCriteria } from '@/lib/selfAssessmentReading';
 import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import { card, INSET } from '@/lib/surfaces';
@@ -145,6 +146,7 @@ type AttendanceRow = {
     date: string;
     lesson_ulid: string;
     lesson_number: number | null;
+    lesson_number_end: number | null;
     subject: string;
     context_label: string;
     status: 'present' | 'absent' | 'not_recorded';
@@ -1570,7 +1572,7 @@ const PURPOSE_LABEL: Record<string, string> = {
                         <span class="text-sm">
                             {{ shortDate(row.date) }}
                             <span class="text-muted-foreground">· {{ row.subject }} · {{ row.context_label }}</span>
-                            <span v-if="row.lesson_number" class="text-muted-foreground">· aula n.º {{ row.lesson_number }}</span>
+                            <span v-if="row.lesson_number" class="text-muted-foreground">· aula n.º {{ formatLessonNumber(row.lesson_number, row.lesson_number_end) }}</span>
                         </span>
                         <span
                             class="text-xs font-medium"

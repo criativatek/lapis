@@ -213,3 +213,57 @@ describe('imports/data/Preview — recusas de linhas filhas', () => {
         expect(mountPreview().find('[data-test="import-error"]').exists()).toBe(false);
     });
 });
+
+describe('imports/data/Preview — numeração das lições em conflito com o destino', () => {
+    const message = 'A aula de 22/10/2026 (8.º F) do ficheiro tem a Lição 12, que no destino já é da aula de 23/10/2026. Corrija o número no destino ou restaure noutra conta.';
+
+    function mountBlocked(blocking: string[]) {
+        const wrapper = mount(Preview, {
+            props: {
+                dataImport: {
+                    ulid: '01J0000000000000000000000C',
+                    status: 'pending',
+                    status_label: 'Por confirmar',
+                    original_filename: 'backup.zip',
+                    source_schema_version: 18,
+                    source_app_version: '0.169.0',
+                    source_generated_at: null,
+                    source_organization: null,
+                    summary: null,
+                    failure_reason: null,
+                },
+                destination: { name: 'Org fictícia', type: 'personal' },
+                plan: {
+                    rows: {},
+                    counts: {
+                        lessons: { new: 3, existing: 0, conflict: 0, invalid: 0, unsupported: 0 },
+                    },
+                    can_confirm: blocking.length === 0,
+                    blocking,
+                },
+            },
+        });
+
+        wrappers.push(wrapper);
+
+        return wrapper;
+    }
+
+    it('mostra os conflitos em destaque e não deixa confirmar', () => {
+        const wrapper = mountBlocked([message]);
+        const alert = wrapper.get('[data-test="restore-blocking"]');
+
+        expect(alert.attributes('role')).toBe('alert');
+        expect(alert.text()).toContain(message);
+        expect(alert.text()).toContain('nada é gravado');
+        expect(wrapper.text()).toContain('Resolva a numeração das lições');
+        expect(wrapper.find('button[disabled]').exists()).toBe(true);
+    });
+
+    it('sem conflitos, não mostra o aviso e deixa importar', () => {
+        const wrapper = mountBlocked([]);
+
+        expect(wrapper.find('[data-test="restore-blocking"]').exists()).toBe(false);
+        expect(wrapper.text()).toContain('Importar dados');
+    });
+});

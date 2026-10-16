@@ -104,6 +104,22 @@ import {
     weekdayAbbr,
     weekRangeLabel,
 } from '@/lib/lessonDates';
+import {
+    canSetLessonNumber,
+    NO_NUMBER_ERRORS,
+    numberDraftDirty,
+    numberDraftFromLesson,
+    numberErrorsFrom,
+    numberSavePayload,
+    previewNeedsConfirmation,
+    requestNumberPreview,
+    validateNumberDraft,
+} from '@/lib/lessonNumber';
+import type {
+    LessonNumberDraft,
+    LessonNumberErrors,
+    LessonNumberPreview,
+} from '@/lib/lessonNumber';
 import { projectionFor } from '@/lib/lessonProjection';
 import {
     isQuickClosable,
@@ -684,6 +700,12 @@ type EditorState = {
     notice: string | null;
     conflict: { stored: string; version: number } | null;
     before: Pick<WeekLesson, 'status' | 'outcome'>;
+    // O número da lição (0.169.0): o rascunho, o ponto de partida, os erros
+    // junto do campo e a pré-visualização que espera confirmação.
+    number: LessonNumberDraft;
+    numberOriginal: LessonNumberDraft;
+    numberErrors: LessonNumberErrors;
+    numberPreview: LessonNumberPreview | null;
 };
 
 const editor = ref<EditorState | null>(null);
@@ -716,9 +738,24 @@ function rawLesson(ulid: string): WeekLesson | null {
     );
 }
 
+// O número conta como alteração por guardar (cartão e guarda de navegação),
+// mas só numa aula que o admite: professor ausente não tem lição.
+function numberIsDirty(): boolean {
+    const current = editor.value;
+    const lesson = current === null ? null : findLesson(current.ulid);
+
+    return (
+        current !== null &&
+        lesson !== null &&
+        canSetLessonNumber(lesson) &&
+        numberDraftDirty(current.number, current.numberOriginal)
+    );
+}
+
 function isDirty(): boolean {
     return (
-        editor.value !== null && editor.value.draft !== editor.value.original
+        editor.value !== null &&
+        (editor.value.draft !== editor.value.original || numberIsDirty())
     );
 }
 
@@ -812,6 +849,10 @@ function startEdit(lesson: WeekLesson): void {
             notice: null,
             conflict: null,
             before: { status: lesson.status, outcome: lesson.outcome },
+            number: numberDraftFromLesson(lesson),
+            numberOriginal: numberDraftFromLesson(lesson),
+            numberErrors: NO_NUMBER_ERRORS,
+            numberPreview: null,
         };
         focusEditor();
     });
@@ -825,11 +866,11 @@ function lisbonNow(): string {
  * Grava SÓ o sumário, com a versão lida. Devolve `true` apenas quando a
  * gravação foi aceite; em qualquer outro caso o texto fica no editor.
  */
-function saveSummary(): Promise<boolean> {
+async function saveSummary(): Promise<boolean> {
     const current = editor.value;
 
     if (current === null || current.saving) {
-        return Promise.resolve(false);
+        return false;
     }
 
     const content = current.draft.trim();
@@ -839,19 +880,146 @@ function saveSummary(): Promise<boolean> {
             'Escreve o sumário antes de guardar. Para apagar o texto de um sumário, usa «Limpar sumário» na página da aula.';
         focusEditor();
 
+        return false;
+    }
+
+    // Número da lição NÃO mudou: grava como sempre, sem chaves `lesson_number*`
+    // (o servidor não toca na numeração).
+    if (!numberIsDirty()) {
+        return persistSummary(current, content, null);
+    }
+
+    // Mudou: primeiro vê-se o que a alteração faria. Valida-se aqui o que é
+    // óbvio para poupar o pedido; o servidor valida de novo.
+    const local = validateNumberDraft(current.number);
+
+    if (local.number !== null || local.end !== null) {
+        current.numberErrors = local;
+        current.numberPreview = null;
+
+        return false;
+    }
+
+    current.numberErrors = NO_NUMBER_ERRORS;
+    current.numberPreview = null;
+    current.error = null;
+    // Enquanto se verifica, o editor está ocupado: um segundo Ctrl+Enter não
+    // lança uma segunda verificação por cima da primeira.
+    current.saving = true;
+
+    const result = await requestNumberPreview(current.ulid, current.number);
+
+    current.saving = false;
+
+    if (editor.value?.ulid !== current.ulid) {
+        return false;
+    }
+
+    if (result.kind === 'invalid') {
+        current.numberErrors = result.errors;
+
+        return false;
+    }
+
+    if (result.kind === 'failed') {
+        current.error = result.message;
+
+        return false;
+    }
+
+    const preview = result.preview;
+
+    // Um conflito (outra aula já tem esse número) bloqueia: nada se grava.
+    if (preview.conflicts.length > 0) {
+        current.numberErrors = {
+            number: preview.conflicts.join(' '),
+            end: null,
+        };
+
+        return false;
+    }
+
+    // O servidor diz que não há nada a mudar na numeração (p. ex. o número
+    // escrito é a própria sugestão): grava só o sumário.
+    if (!preview.changed) {
+        return persistSummary(current, content, null);
+    }
+
+    // Efeitos em aulas já registadas, ou avisos: o professor vê a lista e decide.
+    if (previewNeedsConfirmation(preview)) {
+        current.numberPreview = preview;
+
+        return false;
+    }
+
+    return persistSummary(current, content, preview);
+}
+
+/** «Guardar» no painel de confirmação: envia a confirmação que o servidor deu. */
+function confirmNumber(): Promise<boolean> {
+    const current = editor.value;
+    const preview = current?.numberPreview ?? null;
+
+    if (current === null || preview === null || current.saving) {
         return Promise.resolve(false);
     }
 
+    const content = current.draft.trim();
+
+    if (content === '') {
+        current.error =
+            'Escreve o sumário antes de guardar. Para apagar o texto de um sumário, usa «Limpar sumário» na página da aula.';
+
+        return Promise.resolve(false);
+    }
+
+    return persistSummary(current, content, preview);
+}
+
+function setNumber(value: LessonNumberDraft): void {
+    if (editor.value === null) {
+        return;
+    }
+
+    editor.value.number = value;
+    // Um número diferente invalida o que se viu e o que se recusou.
+    editor.value.numberErrors = NO_NUMBER_ERRORS;
+    editor.value.numberPreview = null;
+}
+
+function cancelNumberConfirmation(): void {
+    if (editor.value !== null) {
+        editor.value.numberPreview = null;
+    }
+}
+
+/**
+ * O pedido de gravação propriamente dito. `preview` só vem quando o número
+ * mudou: então as chaves da numeração (e a confirmação) seguem no mesmo PATCH,
+ * que o servidor aplica numa só transação com o sumário.
+ */
+function persistSummary(
+    current: EditorState,
+    content: string,
+    preview: LessonNumberPreview | null,
+): Promise<boolean> {
     current.saving = true;
     current.error = null;
     current.notice = null;
+    current.numberErrors = NO_NUMBER_ERRORS;
 
     return new Promise((resolve) => {
         let saved = false;
 
         router.patch(
             `/lessons/${current.ulid}/summary/content`,
-            { content, summary_version: current.baseVersion },
+            {
+                content,
+                summary_version: current.baseVersion,
+                ...(preview === null
+                    ? {}
+                    : numberSavePayload(current.number, preview.confirmation)),
+            },
             {
                 preserveScroll: true,
                 preserveState: true,
@@ -895,6 +1063,18 @@ function saveSummary(): Promise<boolean> {
                                 };
                             }
                         });
+
+                        return;
+                    }
+
+                    // O servidor recusou o NÚMERO (conflito, confirmação em
+                    // falta ou desatualizada, aula ausente): fica junto do
+                    // campo, e o «Guardar» seguinte volta a pedir a verificação.
+                    const numberErrors = numberErrorsFrom(errors);
+
+                    if (numberErrors !== null) {
+                        current.numberErrors = numberErrors;
+                        current.numberPreview = null;
 
                         return;
                     }
@@ -2123,6 +2303,13 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     :error="editor.error"
                                     :notice="editor.notice"
                                     :conflict="editor.conflict"
+                                    :number="editor.number"
+                                    :number-original="editor.numberOriginal"
+                                    :number-errors="editor.numberErrors"
+                                    :number-preview="editor.numberPreview"
+                                    @update:number="setNumber"
+                                    @confirm-number="confirmNumber"
+                                    @cancel-number="cancelNumberConfirmation"
                                     @save="saveSummary"
                                     @cancel="cancelEdit"
                                     @project="openProjection(lesson)"
@@ -2269,6 +2456,13 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                             :error="editor.error"
                                             :notice="editor.notice"
                                             :conflict="editor.conflict"
+                                            :number="editor.number"
+                                            :number-original="editor.numberOriginal"
+                                            :number-errors="editor.numberErrors"
+                                            :number-preview="editor.numberPreview"
+                                            @update:number="setNumber"
+                                            @confirm-number="confirmNumber"
+                                            @cancel-number="cancelNumberConfirmation"
                                             @save="saveSummary"
                                             @cancel="cancelEdit"
                                             @project="openProjection(lesson)"

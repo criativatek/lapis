@@ -13,6 +13,7 @@ export type LessonContextEntry = {
     starts_at: string;
     ends_at: string | null;
     lesson_number: number | null;
+    lesson_number_end: number | null;
     context_label: string;
     state: LessonContextState;
     state_label: string;

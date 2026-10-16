@@ -25,6 +25,113 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.169.0] — 2026-10-16
+
+> **O número da lição passa a poder ser indicado pelo professor.** Quem começa a
+> usar o Lapispro a meio do ano, ou precisa de acertar a sequência depois de um
+> intervalo, indica o número da lição no próprio sumário — na página da aula e no
+> cartão da semana — sem inventar sumários anteriores nem configurar nada noutra
+> página. A numeração automática continua a ser a sugestão e passa a continuar a
+> partir do número indicado. Uma aula pode corresponder a várias lições
+> («Lições 11–12»). Há uma migration nova (`lessons.lesson_number_end`,
+> `lessons.lesson_number_manual`) e o backup passa a `schema_version` 18. A
+> regra está em `docs/adr/0016-lesson-numbering-fixed-and-suggested.md`.
+
+### Adicionado
+
+- **Campo «N.º da lição»** nos dois editores do sumário (página da aula e cartão
+  da semana), com o número sugerido já preenchido, a opção «Esta aula
+  corresponde a mais do que uma lição» («até à lição») e «Repor numeração
+  automática» quando o número foi indicado à mão. Texto de apoio: «A numeração é
+  sugerida automaticamente. Pode ajustá-la se começou a utilizar o Lapispro a
+  meio do ano ou precisar de acertar a sequência.» Numa aula com o professor
+  ausente não há campo — não há lição.
+- **Pré-visualização antes de gravar** (`POST lessons/{lesson}/number/preview`):
+  conflitos, efeitos noutras aulas e avisos, calculados pelo mesmo plano que a
+  gravação usa.
+- **Intervalos de lições** em todo o lado onde o número aparece (semana, turma,
+  projeção, pesquisa, contexto da preparação, inserção, lote, sequências,
+  assiduidade do aluno, registos, relatórios e exportações): «Lição 11» ou
+  «Lições 11–12».
+
+### Alterado
+
+- **Números fixos e números sugeridos (`LessonNumbering`).** Uma aula com número
+  indicado pelo professor, ou já lecionada, tem número fixo e nunca é
+  recalculada; as outras recebem uma sugestão derivada das fixas vizinhas: depois
+  da anterior + 1 (saltando números já usados), e, antes da primeira fixa, para
+  trás a partir dela (a semana anterior a uma «Lição 11» sugere 10, 9…). Numa
+  turma sem números indicados à mão o resultado é o de sempre.
+- **Uma semana materializada antes de aulas já lecionadas, sem número livre,
+  fica sem número** em vez de receber «o maior número + 1» fora de ordem. Um
+  número que uma aula já tinha nunca é retirado por esta regra.
+- **A guarda do histórico** (eliminar, inserir, registar resultado, reconciliar o
+  horário) continua a recusar o que mudaria o número de uma aula lecionada, mas
+  compara com o estado antes da operação: uma turma que o professor deixou com
+  números fora de ordem — ou que já os tinha do antigo «maior número + 1» — não
+  fica bloqueada para sempre. Antes, nessas turmas, qualquer eliminação,
+  inserção ou ausência era recusada; agora passa, e nenhuma aula lecionada muda
+  de número.
+- **Uma ausência do professor numa aula com número indicado à mão** passa esse
+  número à aula seguinte, sem saltos (num grupo T1/T2, o número viaja com a
+  lição).
+- `lapis:renumber-lessons` nunca toca números indicados pelo professor.
+- **Backup `schema_version` 18**: `lessons[].lesson_number_end` e
+  `lessons[].lesson_number_manual`, copiados tal como estão; um backup v≤17
+  restaura sem fim e sem número manual.
+
+### Proteção dos registos
+
+- Uma alteração manual nunca renumera em silêncio outras aulas com registo
+  (sumário ou aula fechada): a lista aparece antes de gravar e tem de ser
+  confirmada; as aulas por preparar sem sumário acompanham a sugestão.
+- Um número ou intervalo que se sobreponha ao de outra aula fixa da mesma turma é
+  recusado no servidor com a aula em causa («A Lição 12 já está atribuída à aula
+  de 22/10/2026 (8.º F).»), e nada é gravado — nem o sumário.
+- Uma ordem incoerente com as aulas vizinhas é avisada e deixada como está: os
+  números das outras aulas não são alterados.
+- Validação no servidor: inteiros positivos, fim não anterior ao início, no
+  máximo 10 lições por aula.
+- Auditoria `lesson.number_set` (números e contagens; nunca texto nem dados de
+  alunos).
+- **Restaurar um backup numa turma que já tem aulas não duplica lições.** Uma
+  aula do ficheiro com número indicado, ou lecionada, cujo número (ou intervalo)
+  coincide com o de outra lição fixa que o destino já tem bloqueia o restauro
+  inteiro: a pré-visualização mostra cada colisão (datas, números e turma) e não
+  deixa confirmar, e a confirmação recusa antes de gravar o que quer que seja,
+  sem marcar a importação como falhada. A mesma lição de grupo com o mesmo
+  intervalo passa; as aulas livres não contam. Antes, estas colisões não eram
+  verificadas.
+- **Corrigir o horário nunca perde um número indicado.** Uma aula com número
+  indicado pelo professor, mesmo sem sumário, conta como conteúdo: nenhuma
+  correção do horário (editar horas no lugar, mudar de turma, «deixa de vigorar
+  a partir de», reconciliação da vigência) a apaga, e o tempo passa a pedir
+  versionamento por causa dela. A edição do horário já não é recusada numa turma
+  com uma correção manual fora de ordem. As mensagens passam a aparecer no ecrã
+  (toast) e dizem quando a numeração sugerida de aulas com sumário foi
+  atualizada para acompanhar o horário. O aviso persistente da 0.168.0 lista
+  também as aulas que ficaram por terem número indicado, e passa a nomear esse
+  motivo («sumário, plano, assiduidade ou número da lição indicado pelo
+  professor»).
+
+### Recuperação
+
+- **Um rollback só de código para a 0.168.0 (ou anterior) NÃO é seguro depois de
+  haver números indicados pelo professor:** esse código ignora as colunas novas,
+  volta a derivar as aulas abertas por posição (escreve por cima dos números
+  manuais) e as lecionadas manuais fora da posição fazem a guarda antiga recusar
+  operações. Manter as colunas não chega (e nunca `migrate:rollback`, que as
+  apagaria). O procedimento está em `docs/lesson-numbering-recovery.md`:
+  - `php artisan lapis:lesson-numbering-recovery-check` diz o cenário (sai 0 sem
+    números indicados nem intervalos: o rollback de código é completo; sai 1 caso
+    contrário), com `--export=<ficheiro>` para guardar os números e
+    `--restore=<ficheiro> [--apply]` para os repor.
+  - `LAPIS_LESSON_NUMBERING_FROZEN=true` congela a numeração: nenhum número que
+    já exista muda (nem pelo professor, nem pela renumeração automática, nem pela
+    passagem numa ausência); as aulas novas recebem a sugestão e o sumário grava-se
+    na mesma. O campo «N.º da lição» fica só de leitura. Restauros de backup
+    continuam permitidos.
+
 ## [0.168.0] — 2026-10-15
 
 > **O Horário do Professor passa a ser o sítio onde o horário se corrige.** Uma

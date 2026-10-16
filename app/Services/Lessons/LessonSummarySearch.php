@@ -255,6 +255,7 @@ final class LessonSummarySearch
                 'outcome' => $lesson->outcome?->value,
                 'outcome_label' => $lesson->outcome?->label(),
                 'lesson_number' => $lesson->lesson_number,
+                'lesson_number_end' => $lesson->lesson_number_end,
                 'identity_tone' => $tones[$lesson->class_id] ?? null,
                 'occurrences' => $occurrences,
                 // O sumário COMPLETO, partido em segmentos de texto — nunca HTML.

@@ -2120,6 +2120,10 @@ class GenerateDataExport
             'starts_at' => $lesson->starts_at->toIso8601String(),
             'ends_at' => $lesson->ends_at?->toIso8601String(),
             'lesson_number' => $lesson->lesson_number,
+            // v18 (0.169.0): o fim de uma aula que corresponde a várias lições, e
+            // se o número foi indicado pelo professor (nunca recalculado).
+            'lesson_number_end' => $lesson->lesson_number_end,
+            'lesson_number_manual' => $lesson->lesson_number_manual,
             'lesson_unit_key' => $lesson->lesson_unit_key,
             'status' => $lesson->status->value,
             // v11 (0.146.0): o resultado real da ocorrência.

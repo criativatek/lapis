@@ -34,6 +34,7 @@ import {
 } from '@/lib/lessonDates';
 import {
     lessonDate,
+    lessonNumberLabel,
     lessonQuickCloseState,
     lessonScope,
     lessonTimeRange,
@@ -147,9 +148,10 @@ function context(lesson: WeekLesson): string {
 }
 
 function numberLabel(lesson: WeekLesson): string {
-    return lesson.lesson_number === null
-        ? 'Sem número'
-        : `Lição ${lesson.lesson_number}`;
+    return (
+        lessonNumberLabel(lesson.lesson_number, lesson.lesson_number_end) ??
+        'Sem número'
+    );
 }
 
 function toggle(ulid: string, checked: boolean | 'indeterminate'): void {

@@ -83,6 +83,7 @@ class LessonBatchController extends Controller implements HasMiddleware
                     'ulid' => $lesson->ulid,
                     'context_label' => $lesson->contextLabel(),
                     'lesson_number' => $lesson->lesson_number,
+                    'lesson_number_end' => $lesson->lesson_number_end,
                     'starts_at' => $lesson->starts_at->setTimezone('Europe/Lisbon')->toIso8601String(),
                     'attendance_drafted' => in_array($lesson->id, $drafted, true),
                 ])

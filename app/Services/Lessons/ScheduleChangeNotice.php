@@ -9,8 +9,10 @@ use Illuminate\Support\Collection;
  * A EXPLICAÇÃO, EM PORTUGUÊS, DO QUE O HORÁRIO NÃO MUDOU (0.168.0).
  *
  * Alterar ou terminar um tempo nunca apaga nem muda de turma uma aula que
- * carrega conteúdo (sumário, plano, resultado, assiduidade — rascunho incluído):
- * essas aulas ficam na turma e às horas em que estavam. Isso é a garantia, mas
+ * carrega conteúdo (sumário, plano, resultado, assiduidade — rascunho incluído —
+ * ou, desde a 0.169.0, um número da lição indicado pelo professor): essas aulas
+ * ficam na turma e às horas em que estavam. O motivo dito na mensagem nomeia o
+ * número indicado, porque uma aula pode ter ficado SÓ por isso. Isso é a garantia, mas
  * sem uma palavra o professor vê «Horário guardado» e uma aula ainda à hora
  * antiga, e conclui que a alteração falhou. Esta classe diz o que ficou, quais
  * e porquê.
@@ -54,7 +56,7 @@ final class ScheduleChangeNotice
         $count = $lessons->count();
 
         $message = sprintf(
-            '%s %s com registos (sumário, plano ou assiduidade) %s %s para não se perder o que lá está.',
+            '%s %s com registos (sumário, plano, assiduidade ou número da lição indicado pelo professor) %s %s para não se perder o que lá está.',
             $lead,
             $count === 1 ? '1 aula' : $count.' aulas',
             $count === 1 ? 'ficou' : 'ficaram',

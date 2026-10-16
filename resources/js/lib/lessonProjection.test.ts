@@ -30,6 +30,8 @@ function makeLesson(overrides: Partial<WeekLesson> = {}): WeekLesson {
         identity_tone: 'violet',
         day_events: [],
         lesson_number: 8,
+        lesson_number_end: null,
+        lesson_number_manual: false,
         outcome: null,
         outcome_label: null,
         can_delete: true,
@@ -99,9 +101,15 @@ describe('projectionFor', () => {
             lessonUlid: 'lesson-a',
             classLabel: '8.º B',
             subject: 'Físico-Química',
-            lessonNumber: 8,
+            lessonNumber: 'Lição 8',
             groupLabel: null,
         });
+    });
+
+    it('uma aula de várias lições projeta «Lições 11–12»', () => {
+        expect(
+            projectionFor(makeLesson({ lesson_number: 11, lesson_number_end: 12 })).lessonNumber,
+        ).toBe('Lições 11–12');
     });
 
     it('um número em falta fica em falta — nunca se inventa um', () => {
@@ -128,8 +136,8 @@ describe('projectionFor', () => {
 
         expect(t1.groupLabel).toBe('Grupo T1');
         expect(t2.groupLabel).toBe('Grupo T2');
-        expect(t1.lessonNumber).toBe(5);
-        expect(t2.lessonNumber).toBe(5);
+        expect(t1.lessonNumber).toBe('Lição 5');
+        expect(t2.lessonNumber).toBe('Lição 5');
     });
 
     it('a turma inteira e a turma de apoio não têm etiqueta de grupo', () => {

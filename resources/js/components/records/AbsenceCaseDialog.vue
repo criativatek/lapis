@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ExternalLink } from '@lucide/vue';
 import { computed } from 'vue';
 import { Dialog, DialogDescription, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog';
+import { formatLessonNumber } from '@/lib/lessons';
 import type { AbsenceDetail } from '@/lib/recordFollowup';
 import { absencesLabel, daysLabel, formatDay, studentLabel, weekday } from '@/lib/recordFollowup';
 
@@ -62,7 +63,7 @@ function onOpenChange(open: boolean): void {
                             <span class="font-medium tabular-nums">{{ formatDay(absence.date) }}</span>
                             <span class="text-muted-foreground"> · {{ weekday(absence.date) }} · {{ absence.time }}</span>
                             <span class="text-muted-foreground"> · {{ absence.context_label }}</span>
-                            <span v-if="absence.lesson_number !== null" class="text-muted-foreground"> · lição n.º {{ absence.lesson_number }}</span>
+                            <span v-if="absence.lesson_number !== null" class="text-muted-foreground"> · lição n.º {{ formatLessonNumber(absence.lesson_number, absence.lesson_number_end) }}</span>
                         </p>
                         <Link
                             :href="`/lessons/${absence.lesson_ulid}`"

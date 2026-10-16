@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { lessonNumberLabel } from '@/lib/lessons';
 
 type Mode = 'today' | 'week' | 'selection' | 'range';
 
@@ -41,6 +42,7 @@ type Preview = {
         ulid: string;
         context_label: string;
         lesson_number: number | null;
+        lesson_number_end: number | null;
         starts_at: string;
         attendance_drafted: boolean;
     }[];
@@ -313,7 +315,7 @@ function submit(): void {
                         <li v-for="lesson in preview.lessons" :key="lesson.ulid" class="tabular-nums">
                             {{ dayTimeFormatter.format(new Date(lesson.starts_at)) }} ·
                             {{ lesson.context_label }}
-                            <span v-if="lesson.lesson_number">· Lição {{ lesson.lesson_number }}</span>
+                            <span v-if="lesson.lesson_number">· {{ lessonNumberLabel(lesson.lesson_number, lesson.lesson_number_end) }}</span>
                         </li>
                     </ul>
                     <!-- O que NÃO vai ser tocado, e porquê: sem isto, uma aula

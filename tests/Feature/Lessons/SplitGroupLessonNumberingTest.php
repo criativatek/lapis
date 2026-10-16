@@ -346,11 +346,20 @@ class SplitGroupLessonNumberingTest extends TestCase
     }
 
     /**
-     * Plano B documentado: materializar uma semana ANTERIOR a aulas lecionadas
-     * não renumera o histórico, mantém o par ligado e fica registado.
+     * Materializar uma semana ANTERIOR a aulas lecionadas não renumera o
+     * histórico, mantém o par ligado e fica registado — e (0.169.0) o par fica
+     * SEM NÚMERO.
+     *
+     * Antes da 0.169.0 o «plano B» dava ao par o maior número global + 1 (aqui,
+     * Lição 2, antes de uma Lição 1 lecionada: fora de ordem). Um registo
+     * retroativo nunca pode receber o maior número global, porque o número passou a
+     * poder ser indicado pelo professor e uma sugestão fora de ordem seria
+     * indistinguível de uma indicação. Sem lugar entre o início da turma e a
+     * Lição 1, a derivação não sugere nada e o aviso passa a ser
+     * `lessons.numbering.unnumbered_without_room`.
      */
     #[Test]
-    public function the_out_of_order_materialization_fallback_is_logged_and_keeps_pairs(): void
+    public function the_unnumbered_materialization_before_taught_history_is_logged_and_keeps_pairs(): void
     {
         Log::spy();
 
@@ -361,13 +370,15 @@ class SplitGroupLessonNumberingTest extends TestCase
         $this->inTenant($this->organization, function () use ($taught): void {
             $this->assertSame(1, $taught->refresh()->lesson_number);
             $pair = Lesson::query()->whereNotNull('class_group_id')->orderBy('starts_at')->pluck('lesson_number')->all();
-            $this->assertSame([2, 2], $pair);
+            $this->assertSame([null, null], $pair);
+            // Continua ligado: as duas aulas são a mesma lição.
+            $this->assertCount(1, Lesson::query()->whereNotNull('class_group_id')->pluck('lesson_unit_key')->unique());
         });
 
         Log::shouldHaveReceived('warning')
-            ->withArgs(fn (string $message, array $context): bool => $message === 'lessons.numbering.out_of_order_fallback'
+            ->withArgs(fn (string $message, array $context): bool => $message === 'lessons.numbering.unnumbered_without_room'
                 && $context['class_id'] === $this->schoolClass->id
-                && count($context['assigned']) === 2)
+                && count($context['lessons']) === 2)
             ->once();
     }
 

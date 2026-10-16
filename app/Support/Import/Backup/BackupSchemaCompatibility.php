@@ -7,7 +7,12 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (17) is what GenerateDataExport writes today. Version 17 adds the
+ * CURRENT (18) is what GenerateDataExport writes today. Version 18 adds
+ * `lessons[].lesson_number_end` and `lessons[].lesson_number_manual` — a lesson
+ * that corresponds to several lessons («11–12») and the number the teacher
+ * wrote by hand (never recalculated). Absent in a backup ≤17 → no end and not
+ * manual; nothing else changes. Copied as they are on restore, never
+ * renumbered. Version 17 adds the
  * `timetable_activities` collection — the teacher's own non-teaching activities
  * of the timetable (`TimetableActivity`: direção de turma, apoio, reuniões):
  * `ulid`, `author_email`, `kind`, `title`, optional `class_ulid`, the weekday,
@@ -86,7 +91,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 17;
+    public const int CURRENT = 18;
 
     public const int MINIMUM_SUPPORTED = 2;
 

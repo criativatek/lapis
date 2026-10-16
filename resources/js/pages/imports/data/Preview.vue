@@ -51,6 +51,8 @@ type Plan = {
     rows: Record<string, PlanRow[]>;
     counts: Record<string, Counts>;
     can_confirm: boolean;
+    /** Motivos que impedem o restauro inteiro (nada é gravado a meio). */
+    blocking?: string[];
 };
 
 /**
@@ -273,6 +275,8 @@ const props = defineProps<{
     destination: { name: string; type: string };
     plan: Plan | null;
 }>();
+
+const blocking = computed(() => props.plan?.blocking ?? []);
 
 /**
  * Only groups that actually have something to show for this backup — a
@@ -769,6 +773,28 @@ const needingReassignment = computed(() => {
                 </ul>
             </div>
 
+            <!-- Números de lição que colidem com aulas que o destino já tem:
+                 o restauro inteiro fica por fazer até serem corrigidos. -->
+            <div
+                v-if="blocking.length > 0"
+                role="alert"
+                class="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm"
+                data-test="restore-blocking"
+            >
+                <h2 class="font-medium text-destructive">
+                    Numeração das lições em conflito com o destino
+                </h2>
+                <p class="text-foreground">
+                    Enquanto isto não for resolvido, o restauro não é feito e
+                    nada é gravado.
+                </p>
+                <ul class="list-inside list-disc space-y-1 text-foreground">
+                    <li v-for="message in blocking" :key="message">
+                        {{ message }}
+                    </li>
+                </ul>
+            </div>
+
             <div
                 v-if="restoreWarnings.length > 0"
                 class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950"
@@ -834,7 +860,9 @@ const needingReassignment = computed(() => {
                             {{
                                 plan?.can_confirm
                                     ? 'Importar dados'
-                                    : 'Nada novo para importar'
+                                    : blocking.length > 0
+                                      ? 'Resolva a numeração das lições'
+                                      : 'Nada novo para importar'
                             }}
                         </Button>
                     </DialogTrigger>

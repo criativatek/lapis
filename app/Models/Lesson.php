@@ -23,6 +23,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon $starts_at
  * @property Carbon|null $ends_at
  * @property int|null $lesson_number
+ * @property int|null $lesson_number_end NULL = uma só lição; preenchido = a aula corresponde às lições `lesson_number`..`lesson_number_end` (sempre maior do que o início)
+ * @property bool $lesson_number_manual o professor indicou o número (e o fim): nunca é recalculado
  * @property string|null $lesson_unit_key
  * @property LessonStatus $status
  * @property LessonOutcome|null $outcome NULL = ocorrência ainda não fechada (0.146.0)
@@ -38,7 +40,7 @@ use Illuminate\Support\Carbon;
  * @property-read int|null $plan_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  * @property-read int|null $attendances_count carregado por `withCount()` em WeeklyLessonsQuery — todas as linhas, não só as faltas; não existe fora dessa consulta
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'origin', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'origin', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -62,6 +64,8 @@ class Lesson extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'lesson_number' => 'integer',
+            'lesson_number_end' => 'integer',
+            'lesson_number_manual' => 'boolean',
             'summary_version' => 'integer',
             'status' => LessonStatus::class,
             'outcome' => LessonOutcome::class,
@@ -70,6 +74,25 @@ class Lesson extends Model
             'outcome_recorded_at' => 'datetime',
             'attendance_recorded_at' => 'datetime',
         ];
+    }
+
+    /**
+     * «11» ou «11–12» (travessão U+2013) — o número de uma aula que corresponde
+     * a uma ou a várias lições, composto num só sítio para que o ecrã, os
+     * relatórios e as exportações escrevam o mesmo. Sem início não há número.
+     */
+    public static function formatLessonNumber(?int $start, ?int $end): ?string
+    {
+        if ($start === null) {
+            return null;
+        }
+
+        return $end !== null && $end > $start ? $start.'–'.$end : (string) $start;
+    }
+
+    public function lessonNumberLabel(): ?string
+    {
+        return self::formatLessonNumber($this->lesson_number, $this->lesson_number_end);
     }
 
     /**

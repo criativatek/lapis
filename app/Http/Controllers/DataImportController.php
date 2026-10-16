@@ -13,6 +13,7 @@ use App\Services\Import\Backup\ValidateBackupPayload;
 use App\Support\Assessment\SelfAssessmentReadOnlyException;
 use App\Support\Assessment\SelfAssessmentWrites;
 use App\Support\Import\Backup\BackupValidationException;
+use App\Support\Import\Backup\RestoreBlockedException;
 use App\Support\Import\DataImportTempStorage;
 use App\Support\Retention\RetentionPolicy;
 use App\Support\Tenancy\CurrentOrganization;
@@ -208,6 +209,11 @@ class DataImportController extends Controller
         } catch (SelfAssessmentReadOnlyException $exception) {
             // The mode was switched on between the check above and the write:
             // the same refusal, and still not a failure.
+            return back()->withErrors(['import' => $exception->getMessage()]);
+        } catch (RestoreBlockedException $exception) {
+            // Lesson numbers that collide with lessons the destination already
+            // has: nothing was written (the executor refuses before its first
+            // write), and — like the read-only refusal — this is not a failure.
             return back()->withErrors(['import' => $exception->getMessage()]);
         } catch (Throwable $exception) {
             // Uma falha técnica do restauro, só com o código (nunca a mensagem).

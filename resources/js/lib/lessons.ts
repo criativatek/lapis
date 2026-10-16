@@ -48,6 +48,12 @@ export type WeekLesson = {
     /** Vazio quando o Calendário não está acessível. */
     day_events: LessonDayEvent[];
     lesson_number: number | null;
+    /** Fim de uma aula que corresponde a várias lições («11–12»); NULL = uma só lição. */
+    lesson_number_end: number | null;
+    /** O número foi indicado pelo professor e o sistema não o recalcula (0.169.0). */
+    lesson_number_manual: boolean;
+    /** Contenção da recuperação: o número só se lê (0.169.0). */
+    numbering_frozen?: boolean;
     /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
     outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
     outcome_label: string | null;
@@ -58,6 +64,33 @@ export type WeekLesson = {
     /** Null enquanto não está consolidada (o que existe até lá é só rascunho). */
     absent_count: number | null;
 };
+
+/**
+ * O NÚMERO DA LIÇÃO, dito sempre da mesma maneira (0.169.0).
+ *
+ * Uma aula pode corresponder a várias lições («11–12», com travessão U+2013 —
+ * o mesmo que o servidor escreve nas exportações), e é por isso que nenhum
+ * ecrã compõe `Lição ${n}` à mão: uma composição esquecida mostraria «Lição 11»
+ * numa aula que cobre duas.
+ */
+export function formatLessonNumber(start: number | null | undefined, end?: number | null): string | null {
+    if (start === null || start === undefined) {
+        return null;
+    }
+
+    return end === null || end === undefined || end <= start ? String(start) : `${start}–${end}`;
+}
+
+/** «Lição 11» / «Lições 11–12»; NULL sem número. */
+export function lessonNumberLabel(start: number | null | undefined, end?: number | null): string | null {
+    const number = formatLessonNumber(start, end);
+
+    if (number === null) {
+        return null;
+    }
+
+    return end !== null && end !== undefined && end > (start as number) ? `Lições ${number}` : `Lição ${number}`;
+}
 
 /**
  * O ÚNICO estado que o cartão de uma aula mostra (0.146.1).

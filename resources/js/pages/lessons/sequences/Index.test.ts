@@ -70,6 +70,7 @@ function stepOf(kind: string, ulid: string | null, summary = 'A') {
             starts_at: '2026-10-08T09:30:00+01:00',
             ends_at: null,
             lesson_number: 2,
+            lesson_number_end: null,
             state_label: 'Por preparar',
             current_summary: kind === 'preserve' || kind === 'replace' ? 'Texto do professor' : null,
         },

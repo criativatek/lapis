@@ -41,6 +41,7 @@ import {
     followsPreviousWithoutBreak,
     isQuickClosable,
     lessonDate,
+    lessonNumberLabel,
     lessonQuickCloseState,
     lessonScope,
     lessonTimeRange,
@@ -108,10 +109,12 @@ const simultaneous = computed(() =>
 const attendanceApplies = computed(
     () => props.lesson.outcome === null || props.lesson.outcome === 'taught',
 );
-const numberLabel = computed(() =>
-    props.lesson.lesson_number === null
-        ? 'Sem número'
-        : `Lição ${props.lesson.lesson_number}`,
+const numberLabel = computed(
+    () =>
+        lessonNumberLabel(
+            props.lesson.lesson_number,
+            props.lesson.lesson_number_end,
+        ) ?? 'Sem número',
 );
 const context = computed(
     () =>

@@ -54,6 +54,7 @@ use App\Http\Controllers\LessonAttendanceController;
 use App\Http\Controllers\LessonBatchController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonInsertionController;
+use App\Http\Controllers\LessonNumberController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
 use App\Http\Controllers\LessonWeekController;
@@ -617,6 +618,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('lessons/sequences/{lessonSequence}/apply', [LessonSequenceController::class, 'apply'])->name('lessons.sequences.apply');
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
+        // O número da lição indicado pelo professor (0.169.0): a pré-visualização
+        // só lê e calcula o mesmo plano que a gravação do sumário executa.
+        Route::post('lessons/{lesson}/number/preview', [LessonNumberController::class, 'preview'])->name('lessons.number.preview');
         Route::put('lessons/{lesson}/summary', [LessonController::class, 'updateSummary'])->name('lessons.summary.update');
         // Só o texto do sumário (cartão da semana, vista da turma): o PUT acima
         // grava os quatro campos de uma vez, e usá-lo daqui apagaria as notas.

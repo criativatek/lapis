@@ -11,7 +11,7 @@
  * número, e um rascunho por guardar é mostrado como tal, nunca como gravado.
  */
 import { fullDateLabel } from '@/lib/lessonDates';
-import { lessonDate, lessonScope } from '@/lib/lessons';
+import { lessonDate, lessonNumberLabel, lessonScope } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
 
 export type LessonProjection = {
@@ -22,7 +22,8 @@ export type LessonProjection = {
     groupLabel: string | null;
     /** «Quinta-feira, 1 de outubro de 2026». */
     dateLabel: string;
-    lessonNumber: number | null;
+    /** «Lição 11» / «Lições 11–12», já composto; NULL sem número. */
+    lessonNumber: string | null;
     summary: string | null;
     /** O texto projetado é um rascunho que ainda não foi guardado. */
     unsaved: boolean;
@@ -50,7 +51,10 @@ export function projectionFor(
         subject: lesson.subject,
         groupLabel: scope.kind === 'group' ? scope.label : null,
         dateLabel: fullDateLabel(lessonDate(lesson)),
-        lessonNumber: lesson.lesson_number,
+        lessonNumber: lessonNumberLabel(
+            lesson.lesson_number,
+            lesson.lesson_number_end,
+        ),
         summary: nonBlank(unsaved ? draft.text : lesson.summary),
         unsaved,
     };

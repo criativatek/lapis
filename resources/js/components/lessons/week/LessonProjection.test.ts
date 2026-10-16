@@ -20,7 +20,7 @@ function makeProjection(overrides: Partial<Projection> = {}): Projection {
         subject: 'Físico-Química',
         groupLabel: 'Grupo T1',
         dateLabel: 'Quinta-feira, 1 de outubro de 2026',
-        lessonNumber: 8,
+        lessonNumber: 'Lição 8',
         summary:
             'Primeira linha.\nSegunda linha do mesmo parágrafo.\n\nSegundo parágrafo.\n\nTerceiro.',
         unsaved: false,

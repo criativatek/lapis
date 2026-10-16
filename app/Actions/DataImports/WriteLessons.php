@@ -359,6 +359,7 @@ class WriteLessons
                     'recurring_lesson_slot_id' => $slotResolution['id'],
                     'origin' => $slotResolution['id'] !== null ? LessonOrigin::Schedule : LessonOrigin::Manual,
                     'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'lesson_number' => $row['lesson_number'],
+                    'lesson_number_end' => $row['lesson_number_end'] ?? null, 'lesson_number_manual' => $row['lesson_number_manual'] ?? false,
                     'lesson_unit_key' => $row['lesson_unit_key'],
                     'status' => $row['status'], 'attendance_recorded_at' => $row['attendance_recorded_at'],
                     'outcome' => $row['outcome'] ?? null, 'outcome_reason' => $row['outcome_reason'] ?? null,

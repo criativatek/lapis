@@ -489,4 +489,23 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Numeração das lições — congelada
+    |--------------------------------------------------------------------------
+    |
+    | Uma contenção para a recuperação, não uma funcionalidade: com
+    | `LAPIS_LESSON_NUMBERING_FROZEN=true` nenhum número de lição que já exista
+    | muda — nem pelo professor, nem pela renumeração automática, nem pela
+    | passagem do número numa ausência. As aulas novas (sem número) continuam a
+    | receber a sugestão. Restauros de cópias de segurança continuam permitidos.
+    |
+    | Serve para o cenário em que há números indicados à mão e é preciso corrigir
+    | para a frente (docs/lesson-numbering-recovery.md): nenhum código, novo ou
+    | antigo, reescreve entretanto o que o professor fixou.
+    |
+    */
+
+    'lesson_numbering_frozen' => (bool) env('LAPIS_LESSON_NUMBERING_FROZEN', false),
+
 ];

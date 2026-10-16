@@ -114,6 +114,7 @@ class MaterializeLessonsForRange
             $lessons = collect();
 
             $createdAny = $reconciled['removed'] > 0;
+            $createdIds = [];
 
             // As exceções letivas DESTE ano que cruzam o intervalo — os feriados,
             // as interrupções letivas e os dias não letivos (Fase 5.4). Lidas UMA
@@ -255,13 +256,15 @@ class MaterializeLessonsForRange
                         continue;
                     }
 
-                    $lessons->push(Lesson::query()->create($identity + [
+                    $created = Lesson::query()->create($identity + [
                         'class_group_id' => $slot->class_group_id,
                         'origin' => LessonOrigin::Schedule,
                         'ends_at' => $endsAt,
                         'status' => LessonStatus::Preparation,
                         'created_by' => $actor->id,
-                    ]));
+                    ]);
+                    $lessons->push($created);
+                    $createdIds[] = (int) $created->getKey();
                     $createdAny = true;
                 }
             }
@@ -270,7 +273,7 @@ class MaterializeLessonsForRange
             // LessonNumbering deriva os números da turma inteira (T1 e T2
             // incluídos, que partilham o número da mesma lição).
             if ($createdAny) {
-                $this->numbering->numberMaterializedLessons($lockedClass->id);
+                $this->numbering->numberMaterializedLessons($lockedClass->id, $createdIds);
             }
 
             return $lessons->sortBy('starts_at')->values();

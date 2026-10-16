@@ -242,9 +242,9 @@ class ValidateBackupPayload
             'cancelled_lesson_occurrences' => $this->whitelistRows($decoded, 'cancelled_lesson_occurrences', ['class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'occurs_at', 'cancelled_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validCancelledLessonOccurrenceRow($row, $rowIssues);
             }),
-            'lessons' => $this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by_email', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+            'lessons' => $this->rejectOverlappingManualLessons($this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by_email', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonRow($row, $rowIssues);
-            }),
+            }), $rowIssues),
             'lesson_summaries' => $this->whitelistRows($decoded, 'lesson_summaries', ['ulid', 'lesson_ulid', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonSummaryRow($row, $rowIssues);
             }),
@@ -1624,6 +1624,65 @@ class ValidateBackupPayload
     }
 
     /**
+     * Dois intervalos MANUAIS da mesma turma não se sobrepõem (v18). Agrupa as
+     * aulas por turma e unidade de lição (a chave, nas aulas de grupo; senão a
+     * própria aula): os membros da mesma unidade partilham o intervalo. Se o
+     * intervalo de uma unidade manual toca o de outra já aceite, as linhas da
+     * unidade POSTERIOR (por `starts_at`) ficam inválidas — nunca se escolhe em
+     * silêncio qual das duas lições mantém o número.
+     *
+     * @param  list<array<string, mixed>>  $lessons
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function rejectOverlappingManualLessons(array $lessons, array &$rowIssues): array
+    {
+        $units = [];
+
+        foreach ($lessons as $index => $row) {
+            if ($row['lesson_number_manual'] !== true || $row['lesson_number'] === null) {
+                continue;
+            }
+
+            $key = $row['class_ulid'].'|'.($row['class_group_ulid'] !== null && $row['lesson_unit_key'] !== null ? 'unit:'.$row['lesson_unit_key'] : 'lesson:'.$row['ulid']);
+            $units[$key]['rows'][] = $index;
+            $units[$key]['class'] = $row['class_ulid'];
+        }
+
+        foreach ($units as &$unit) {
+            usort($unit['rows'], fn (int $a, int $b): int => strtotime((string) $lessons[$a]['starts_at']) <=> strtotime((string) $lessons[$b]['starts_at']));
+            $unit['at'] = strtotime((string) $lessons[$unit['rows'][0]]['starts_at']);
+        }
+
+        unset($unit);
+        uasort($units, fn (array $a, array $b): int => $a['at'] <=> $b['at']);
+
+        $accepted = [];
+        $rejected = [];
+
+        foreach ($units as $unit) {
+            $first = $lessons[$unit['rows'][0]];
+            $from = (int) $first['lesson_number'];
+            $to = (int) ($first['lesson_number_end'] ?? $from);
+
+            foreach ($accepted[$unit['class']] ?? [] as [$otherFrom, $otherTo]) {
+                if ($from <= $otherTo && $to >= $otherFrom) {
+                    foreach ($unit['rows'] as $index) {
+                        $rejected[$index] = true;
+                        $rowIssues[] = ['domain' => 'lessons', 'ulid' => is_string($lessons[$index]['ulid']) ? $lessons[$index]['ulid'] : null, 'reason' => $this->t('O número da lição indicado sobrepõe-se ao de outra aula manual da mesma turma.')];
+                    }
+
+                    continue 2;
+                }
+            }
+
+            $accepted[$unit['class']][] = [$from, $to];
+        }
+
+        return array_values(array_diff_key($lessons, $rejected));
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
      * @return array<string, mixed>|null
@@ -1658,10 +1717,24 @@ class ValidateBackupPayload
             && ($outcome === null || $outcome->takesAttendance() || ($row['attendance_recorded_at'] ?? null) === null)
             && ($outcome === null || $outcome === LessonOutcome::Taught || $status !== LessonStatus::Taught);
 
+        // v18 (0.169.0): o número indicado pelo professor. Ausente num backup
+        // anterior ⇒ sem fim e não manual (nada muda). Um fim tem de ser um
+        // inteiro posterior ao início, e só existe com início; a marca é um
+        // booleano. Copiados tal como estão, nunca recalculados.
+        $numberEndRaw = $row['lesson_number_end'] ?? null;
+        $numberManualRaw = $row['lesson_number_manual'] ?? false;
+        $numberStart = $this->nullableInt($row['lesson_number'] ?? null);
+        // Os MESMOS limites do formulário: início de 1 a 9999 (quando manual) e,
+        // no máximo, 10 lições por aula.
+        $numberValid = ($numberEndRaw === null || (is_int($numberEndRaw) && $numberStart !== null && $numberEndRaw > $numberStart && $numberEndRaw <= $numberStart + 9))
+            && is_bool($numberManualRaw)
+            && ($numberManualRaw !== true || $numberStart === null || ($numberStart >= 1 && $numberStart <= 9999));
+
         if (! $this->isUlid($ulid) || ! $this->isUlid($classUlid)
             || $this->nullableDateTime($row['starts_at'] ?? null) === null
             || $status === null
             || ! $outcomeValid
+            || ! $numberValid
             || ! $groupUlid['ok'] || ! $slotUlid['ok'] || ! $lessonUnitKey['ok']
         ) {
             $rowIssues[] = ['domain' => 'lessons', 'ulid' => is_string($ulid) ? $ulid : null, 'reason' => $this->t('Campos obrigatórios em falta ou inválidos.')];
@@ -1678,7 +1751,9 @@ class ValidateBackupPayload
             'ends_at' => $this->nullableDateTime($row['ends_at'] ?? null),
             // Uma ausência do professor não numera nem pertence a uma lição —
             // a mesma invariante que RecordLessonOutcome grava.
-            'lesson_number' => $outcome === LessonOutcome::TeacherAbsent ? null : $this->nullableInt($row['lesson_number'] ?? null),
+            'lesson_number' => $outcome === LessonOutcome::TeacherAbsent ? null : $numberStart,
+            'lesson_number_end' => $outcome === LessonOutcome::TeacherAbsent ? null : $numberEndRaw,
+            'lesson_number_manual' => $outcome !== LessonOutcome::TeacherAbsent && $numberStart !== null && $numberManualRaw === true,
             'lesson_unit_key' => $outcome === LessonOutcome::TeacherAbsent ? null : $lessonUnitKey['value'],
             'status' => $row['status'],
             'outcome' => $outcome?->value,

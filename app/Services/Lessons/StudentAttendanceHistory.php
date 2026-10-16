@@ -30,7 +30,7 @@ class StudentAttendanceHistory
 
     /**
      * @return array{
-     *     rows: list<array{date: string, lesson_ulid: string, lesson_number: int|null, subject: string, context_label: string, status: string}>,
+     *     rows: list<array{date: string, lesson_ulid: string, lesson_number: int|null, lesson_number_end: int|null, subject: string, context_label: string, status: string}>,
      *     totals: array{recorded: int, present: int, absent: int, not_recorded: int},
      * }
      */
@@ -66,6 +66,7 @@ class StudentAttendanceHistory
                 'date' => $this->dateOf($lesson),
                 'lesson_ulid' => $lesson->ulid,
                 'lesson_number' => $lesson->lesson_number,
+                'lesson_number_end' => $lesson->lesson_number_end,
                 'subject' => $lesson->schoolClass->subject->name,
                 'context_label' => $lesson->contextLabel(),
                 'status' => $attendance->status->value,
@@ -110,6 +111,7 @@ class StudentAttendanceHistory
                 'date' => $date,
                 'lesson_ulid' => $lesson->ulid,
                 'lesson_number' => $lesson->lesson_number,
+                'lesson_number_end' => $lesson->lesson_number_end,
                 'subject' => $lesson->schoolClass->subject->name,
                 'context_label' => $lesson->contextLabel(),
                 'status' => 'not_recorded',
