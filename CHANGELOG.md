@@ -109,7 +109,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   versionamento por causa dela. A edição do horário já não é recusada numa turma
   com uma correção manual fora de ordem. As mensagens passam a aparecer no ecrã
   (toast) e dizem quando a numeração sugerida de aulas com sumário foi
-  atualizada para acompanhar o horário.
+  atualizada para acompanhar o horário. O aviso persistente da 0.168.0 lista
+  também as aulas que ficaram por terem número indicado, e passa a nomear esse
+  motivo («sumário, plano, assiduidade ou número da lição indicado pelo
+  professor»).
 
 ### Recuperação
 

@@ -446,7 +446,7 @@ class TimetableCorrectionTest extends TestCase
             ->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertSame(
-            'Horário guardado. 2 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 08:30 — 26/10 e 02/11 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            'Horário guardado. 2 aulas com registos (sumário, plano, assiduidade ou número da lição indicado pelo professor) ficaram na 7.º C às 08:30 — 26/10 e 02/11 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
             $this->scheduleNotice(),
         );
 
@@ -469,7 +469,7 @@ class TimetableCorrectionTest extends TestCase
             ->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertSame(
-            'Horário guardado. 5 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 09:20 — 19/10, 26/10, 02/11 e mais 2 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            'Horário guardado. 5 aulas com registos (sumário, plano, assiduidade ou número da lição indicado pelo professor) ficaram na 7.º C às 09:20 — 19/10, 26/10, 02/11 e mais 2 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
             $this->scheduleNotice(),
         );
     }
@@ -486,7 +486,7 @@ class TimetableCorrectionTest extends TestCase
             ->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertSame(
-            'Horário guardado. 1 aula com registos (sumário, plano ou assiduidade) ficou na 7.º C às 09:20 — 12/10 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            'Horário guardado. 1 aula com registos (sumário, plano, assiduidade ou número da lição indicado pelo professor) ficou na 7.º C às 09:20 — 12/10 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
             $this->scheduleNotice(),
         );
     }
@@ -503,7 +503,7 @@ class TimetableCorrectionTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame(
-            'Horário terminado. 1 aula com registos (sumário, plano ou assiduidade) ficou na 7.º C às 08:30 — 26/10 — para não se perder o que lá está.',
+            'Horário terminado. 1 aula com registos (sumário, plano, assiduidade ou número da lição indicado pelo professor) ficou na 7.º C às 08:30 — 26/10 — para não se perder o que lá está.',
             $this->scheduleNotice(),
         );
     }

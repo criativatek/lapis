@@ -80,6 +80,9 @@ class TimetableCorrectionNumberingTest extends TestCase
             // Nada lecionado mudou.
             $this->assertSame([1, 2], [$taught1->fresh()->lesson_number, $taught2->fresh()->lesson_number]);
         });
+
+        // O aviso persistente do horário (0.168.0) lista-a, e pelo motivo certo.
+        $this->assertScheduleNoticeNames('21/10');
     }
 
     #[Test]
@@ -133,6 +136,8 @@ class TimetableCorrectionNumberingTest extends TestCase
             $this->assertNull(Lesson::query()->find($empty->id));
             $this->assertSame(1, $taught->fresh()->lesson_number);
         });
+
+        $this->assertScheduleNoticeNames('26/10');
     }
 
     // ------------------------------------------------------------ mudar turma
@@ -445,5 +450,19 @@ class TimetableCorrectionNumberingTest extends TestCase
                 'ends_on' => $current->ends_on?->toDateString(),
                 ...$overrides,
             ]);
+    }
+
+    /**
+     * O aviso persistente que a última resposta deixou (`scheduleNotice`, 0.168.0)
+     * nomeia a aula preservada e dá o número indicado como motivo possível —
+     * uma aula pode ter ficado SÓ por ter número indicado pelo professor.
+     */
+    private function assertScheduleNoticeNames(string $date): void
+    {
+        $notice = (session('inertia.flash_data') ?? [])['scheduleNotice']['message'] ?? null;
+
+        $this->assertIsString($notice);
+        $this->assertStringContainsString($date, $notice);
+        $this->assertStringContainsString('número da lição indicado pelo professor', $notice);
     }
 }
