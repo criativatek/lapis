@@ -86,6 +86,52 @@ class LessonPreparationContextTest extends TestCase
     }
 
     #[Test]
+    public function private_notes_never_reach_the_card_not_even_through_the_plan(): void
+    {
+        $planned = $this->lesson(
+            '2026-10-06 09:00:00',
+            content: 'Sumário público.',
+            privateNotes: 'SEGREDO-QA no sumário.',
+            plan: "Conteúdo planeado.\n\nRecursos: ficha 2\n\nTrabalho de casa: ficha 3\n\nNotas privadas: SEGREDO-QA no plano.\nSegunda linha SEGREDO-QA.",
+        );
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($planned->ulid, $response->json('lesson.ulid'));
+        $this->assertSame("Conteúdo planeado.\n\nRecursos: ficha 2\n\nTrabalho de casa: ficha 3", $response->json('lesson.plan'));
+        $this->assertSame('Sumário público.', $response->json('lesson.content'));
+        $this->assertStringNotContainsString('SEGREDO-QA', $response->getContent());
+        $this->assertStringNotContainsString('Notas privadas', $response->getContent());
+    }
+
+    #[Test]
+    public function a_plan_with_only_private_notes_is_not_eligible_and_the_previous_one_is_chosen(): void
+    {
+        $real = $this->lesson('2026-10-02 09:00:00', taught: true, content: 'Com conteúdo real.');
+        $this->lesson('2026-10-06 09:00:00', plan: 'Notas privadas: SEGREDO-QA só nisto.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($real->ulid, $response->json('lesson.ulid'));
+        $this->assertStringNotContainsString('SEGREDO-QA', $response->getContent());
+    }
+
+    #[Test]
+    public function a_taught_lesson_whose_plan_is_only_private_notes_shows_no_plan(): void
+    {
+        $taught = $this->lesson('2026-10-06 09:00:00', taught: true, plan: 'Notas privadas: SEGREDO-QA.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($taught->ulid, $response->json('lesson.ulid'));
+        $this->assertNull($response->json('lesson.plan'));
+        $this->assertStringNotContainsString('SEGREDO-QA', $response->getContent());
+    }
+
+    #[Test]
     public function a_taught_lesson_is_the_previous_one(): void
     {
         $taught = $this->lesson('2026-10-06 09:00:00', taught: true, content: 'Dada.', plan: 'Planeada.');

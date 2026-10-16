@@ -52,6 +52,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   turma noutras atividades).
 - **`GET lessons/{lesson}/preparation-context`** devolve `{ "lesson": {…} | null }`;
   deixam de existir `limit` e `has_more`. O «Basear no sumário anterior» não mudou.
+- **Sem notas privadas, nem através do plano.** O plano pendente guarda as
+  notas privadas como último parágrafo; o cartão corta-o, e uma aula cujo plano
+  só tenha notas privadas não conta como preparada.
 - **Esconde-se quando não há aula anterior elegível**, sem título nem «sem
   aulas».
 

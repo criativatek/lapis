@@ -47,7 +47,10 @@ use Illuminate\Database\Eloquent\Builder;
  * elegíveis, seja lecionada ou preparada.
  *
  * Sem notas privadas: não são «conteúdo da aula» e podem ser de outro
- * coprofessor. SÓ LEITURA: não cria nem altera aulas.
+ * coprofessor. Nem as que chegam através do plano: `ShiftLessonPlanning::keepAsPending`
+ * escreve-as lá como último parágrafo («Notas privadas: …»), e `publicPlan()`
+ * corta-o. Um plano que só tenha notas privadas fica vazio, e a aula não é
+ * elegível. SÓ LEITURA: não cria nem altera aulas.
  */
 final class LessonPreparationContext
 {
@@ -142,7 +145,7 @@ final class LessonPreparationContext
         $content = (string) $lesson->summary?->content;
         $resources = $lesson->summary?->resources;
         $homework = $lesson->summary?->homework;
-        $plan = trim((string) $lesson->plan?->planned_summary);
+        $plan = $this->publicPlan($lesson->plan?->planned_summary);
 
         if ($lesson->isTaught()) {
             $state = self::STATE_TAUGHT;
@@ -168,5 +171,27 @@ final class LessonPreparationContext
             'resources' => $resources,
             'homework' => $homework,
         ];
+    }
+
+    /**
+     * O plano sem as notas privadas que `ShiftLessonPlanning::keepAsPending`
+     * lá deixa: as partes vão por ordem (conteúdo, recursos, TPC, notas
+     * privadas) separadas por linha em branco, com as notas SEMPRE em último.
+     * Corta-se desde o parágrafo que começa pelo rótulo até ao fim.
+     */
+    private function publicPlan(?string $plan): string
+    {
+        $paragraphs = preg_split('/\R{2,}/u', trim((string) $plan)) ?: [];
+        $kept = [];
+
+        foreach ($paragraphs as $paragraph) {
+            if (str_starts_with(ltrim($paragraph), ShiftLessonPlanning::PRIVATE_NOTES_LABEL.': ')) {
+                break;
+            }
+
+            $kept[] = $paragraph;
+        }
+
+        return trim(implode("\n\n", $kept));
     }
 }
