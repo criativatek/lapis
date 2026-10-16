@@ -12,6 +12,7 @@ import {
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import ScheduleChangeNotice from '@/components/timetable/ScheduleChangeNotice.vue';
 import TimetableActivityDialog from '@/components/timetable/TimetableActivityDialog.vue';
 import TimetableBlock from '@/components/timetable/TimetableBlock.vue';
 import TimetableSlotDialog from '@/components/timetable/TimetableSlotDialog.vue';
@@ -327,6 +328,8 @@ function badgeOf(ulid: string): string {
     <Head title="Horário do Professor" />
 
     <main class="mx-auto w-full max-w-6xl space-y-8 p-4 pb-24 sm:p-6">
+        <ScheduleChangeNotice />
+
         <div class="space-y-4">
             <Heading
                 title="Horário do Professor"

@@ -15,6 +15,7 @@ import {
 
 const routerGet = vi.hoisted(() => vi.fn());
 const routerDelete = vi.hoisted(() => vi.fn());
+const pageState = vi.hoisted(() => ({ flash: {} as Record<string, unknown> }));
 const formSubmits = vi.hoisted(
     () =>
         [] as Array<{
@@ -29,6 +30,7 @@ vi.mock('@inertiajs/vue3', async () => {
 
     return {
         router: { get: routerGet, delete: routerDelete },
+        usePage: () => pageState,
         // Um useForm mínimo: dados reativos, sem erros, e os pedidos ficam
         // registados em vez de irem para a rede.
         useForm: (initial: Record<string, unknown>) => {
@@ -1063,5 +1065,53 @@ describe('timetable — corrigir o horário e atividades não letivas', () => {
 
         expect(document.body.textContent).toContain('Aplicar alteração a partir de');
         wrapper.unmount();
+    });
+});
+
+
+/**
+ * 0.168.0 — o aviso persistente do que o horário NÃO mudou: aulas com registos
+ * que ficaram na turma ou nas horas anteriores. Vem na flash `scheduleNotice` e
+ * só desaparece quando o professor o fecha.
+ */
+describe('timetable — aviso do que ficou preservado', () => {
+    const message =
+        'Horário guardado. 2 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 09:20 — 12/10 e 14/10 — para não se perder o que lá está. As restantes passam a seguir o horário novo.';
+
+    function mountPageWithFlash(flash: Record<string, unknown>) {
+        pageState.flash = flash;
+
+        return mount(Index, { props: { slots: [], classes: [] } });
+    }
+
+    it('shows the explanation at the top of the page', () => {
+        const wrapper = mountPageWithFlash({ scheduleNotice: { message } });
+        const notice = wrapper.find('[data-schedule-notice]');
+
+        expect(notice.exists()).toBe(true);
+        expect(notice.text()).toContain('Alteração ao horário');
+        expect(notice.text()).toContain('2 aulas com registos');
+        expect(notice.text()).toContain('na 7.º C às 09:20 — 12/10 e 14/10 —');
+        // O primeiro elemento da página, antes de tudo o resto.
+        expect(wrapper.find('main').element.firstElementChild).toBe(notice.element);
+        pageState.flash = {};
+    });
+
+    it('stays until the teacher closes it', async () => {
+        const wrapper = mountPageWithFlash({ scheduleNotice: { message } });
+
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(true);
+
+        await wrapper.find('[data-dismiss-schedule-notice]').trigger('click');
+
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(false);
+        pageState.flash = {};
+    });
+
+    it('draws nothing when no lesson was preserved', () => {
+        const wrapper = mountPageWithFlash({});
+
+        expect(wrapper.find('[data-schedule-notice]').exists()).toBe(false);
     });
 });

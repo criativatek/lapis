@@ -14,8 +14,10 @@ use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Lessons\LessonNumbering;
+use App\Services\Lessons\ScheduleChangeNotice;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ValidatedInput;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 
 class LessonScheduleController extends Controller implements HasMiddleware
 {
@@ -110,7 +113,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 ->lockForUpdate()
                 ->get();
 
-            $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
+            $preserved = $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
 
             if ($targetClassId !== $originClassId) {
                 // As aulas vazias da turma de destino que ficaram fora da
@@ -119,16 +122,37 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 $this->reconcileLessons->execute($targetClassId);
             }
 
-            return $this->reconciled(back(), $originClassId);
+            return $this->withNotice(
+                $this->reconciled(back(), $originClassId),
+                ScheduleChangeNotice::describe($preserved, __('Horário guardado.'), restFollowNewSchedule: true),
+            );
         });
     }
 
+    /**
+     * A explicação PERSISTENTE do que ficou como estava (0.168.0): vai na flash
+     * do Inertia, ao lado da mensagem habitual, e o ecrã mostra-a num aviso que
+     * só desaparece quando o professor o fecha. Sem nada preservado, não há
+     * aviso e a mensagem habitual segue sozinha.
+     */
+    private function withNotice(RedirectResponse $response, ?string $message): RedirectResponse
+    {
+        if ($message !== null) {
+            Inertia::flash('scheduleNotice', ['message' => $message]);
+        }
+
+        return $response;
+    }
+
+    /**
+     * @return Collection<int, Lesson> as aulas com conteúdo que ficaram nas horas ou na turma anteriores
+     */
     private function applyUpdate(
         RecurringLessonSlotRequest $request,
         RecurringLessonSlot $recurringLessonSlot,
         string $timezone,
         ValidatedInput $validated,
-    ): void {
+    ): Collection {
         /** @var RecurringLessonSlot $locked */
         $locked = RecurringLessonSlot::query()
             ->whereKey($recurringLessonSlot->getKey())
@@ -137,6 +161,9 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
         $targetClassId = (int) $validated['class_id'];
         $changesClass = $targetClassId !== (int) $locked->class_id;
+        $retimes = (int) $validated['day_of_week'] !== (int) $locked->day_of_week
+            || (string) $validated['starts_at'] !== substr((string) $locked->starts_at, 0, 5)
+            || (string) $validated['ends_at'] !== substr((string) $locked->ends_at, 0, 5);
 
         // A REVERIFICAÇÃO SOB BLOQUEIO. `effective_from` é exigido por
         // `rules()`, que corre antes; entre esse instante e este, o tempo pode
@@ -176,7 +203,14 @@ class LessonScheduleController extends Controller implements HasMiddleware
             ]);
             $this->linkIfRequested($request, $revised);
 
-            return;
+            // As aulas com conteúdo de DEPOIS da data de aplicação ficam no
+            // tempo antigo — na turma e nas horas anteriores. Diz-se.
+            return $changesClass || $retimes
+                ? $locked->lessonsCarryingContent()
+                    ->where('starts_at', '>=', $effectiveFrom.' 00:00:00')
+                    ->with('schoolClass')
+                    ->get()
+                : new Collection;
         }
 
         $attributes = $validated->except('effective_from', 'same_lesson_as');
@@ -202,6 +236,14 @@ class LessonScheduleController extends Controller implements HasMiddleware
             $this->numbering->resequence($originClassId);
         }
 
+        // O que sobrou desencontrado do tempo novo carrega conteúdo (só
+        // assiduidade, por exemplo) e ficou às horas anteriores. Diz-se.
+        $preserved = $retimes
+            ? $locked->lessons()->with('schoolClass')->get()
+                ->reject(fn (Lesson $lesson): bool => $this->matchesPattern($lesson, $locked))
+                ->values()
+            : new Collection;
+
         if (! $changesClass) {
             $locked->lessons()
                 ->where('status', LessonStatus::Preparation)
@@ -209,6 +251,19 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 ->whereDoesntHave('plan')
                 ->update(['class_group_id' => $locked->class_group_id]);
         }
+
+        return $preserved;
+    }
+
+    /**
+     * A aula está no dia e às horas atuais do tempo? (`starts_at` e `ends_at`
+     * das aulas são hora local.)
+     */
+    private function matchesPattern(Lesson $lesson, RecurringLessonSlot $slot): bool
+    {
+        return $lesson->starts_at->dayOfWeekIso === (int) $slot->day_of_week
+            && $lesson->starts_at->format('H:i') === substr((string) $slot->starts_at, 0, 5)
+            && $lesson->ends_at->format('H:i') === substr((string) $slot->ends_at, 0, 5);
     }
 
     /**
@@ -221,8 +276,6 @@ class LessonScheduleController extends Controller implements HasMiddleware
     private function removeEmptyLessons(RecurringLessonSlot $slot, bool $onlyMismatched = false): int
     {
         $removed = 0;
-        $startsAt = substr((string) $slot->starts_at, 0, 5);
-        $endsAt = substr((string) $slot->ends_at, 0, 5);
 
         $slot->lessons()
             ->where('status', LessonStatus::Preparation)
@@ -233,11 +286,8 @@ class LessonScheduleController extends Controller implements HasMiddleware
             ->whereDoesntHave('attendances')
             ->lockForUpdate()
             ->get()
-            ->each(function (Lesson $lesson) use (&$removed, $onlyMismatched, $slot, $startsAt, $endsAt): void {
-                if ($onlyMismatched
-                    && $lesson->starts_at->dayOfWeekIso === (int) $slot->day_of_week
-                    && $lesson->starts_at->format('H:i') === $startsAt
-                    && $lesson->ends_at->format('H:i') === $endsAt) {
+            ->each(function (Lesson $lesson) use (&$removed, $onlyMismatched, $slot): void {
+                if ($onlyMismatched && $this->matchesPattern($lesson, $slot)) {
                     return;
                 }
 
@@ -316,7 +366,10 @@ class LessonScheduleController extends Controller implements HasMiddleware
                     $locked->update(['ends_on' => $closesOn]);
                 }
 
-                return $this->reconciled(back(), $locked->class_id);
+                return $this->withNotice(
+                    $this->reconciled(back(), $locked->class_id),
+                    $this->stopNotice($locked, $effectiveFrom),
+                );
             });
         }
 
@@ -357,7 +410,10 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 // materialized data. Close it instead.
                 $locked->update(['ends_on' => $this->closesOnForHardStop($locked, $timezone)]);
 
-                return $this->reconciled(back(), $locked->class_id);
+                return $this->withNotice(
+                    $this->reconciled(back(), $locked->class_id),
+                    $this->stopNotice($locked),
+                );
             });
         }
 
@@ -377,8 +433,33 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
             $locked->update(['ends_on' => $this->closesOnForHardStop($locked, $timezone)]);
 
-            return $this->reconciled(back(), $locked->class_id);
+            return $this->withNotice(
+                $this->reconciled(back(), $locked->class_id),
+                $this->stopNotice($locked),
+            );
         });
+    }
+
+    /**
+     * As aulas com conteúdo que ficam depois de o tempo deixar de vigorar —
+     * `$from` (a data pedida) ou o dia a seguir ao `ends_on` — explicadas.
+     */
+    private function stopNotice(RecurringLessonSlot $slot, ?string $from = null): ?string
+    {
+        $from ??= $slot->ends_on?->copy()->addDay()->toDateString();
+
+        if ($from === null) {
+            return null;
+        }
+
+        return ScheduleChangeNotice::describe(
+            $slot->lessonsCarryingContent()
+                ->where('starts_at', '>=', $from.' 00:00:00')
+                ->with('schoolClass')
+                ->get(),
+            __('Horário terminado.'),
+            restFollowNewSchedule: false,
+        );
     }
 
     /**

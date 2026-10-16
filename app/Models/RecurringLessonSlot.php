@@ -149,6 +149,17 @@ class RecurringLessonSlot extends Model
      */
     public function hasLessonsCarryingContent(): bool
     {
+        return $this->lessonsCarryingContent()->exists();
+    }
+
+    /**
+     * As aulas deste tempo que carregam conteúdo — o critério de
+     * `hasLessonsCarryingContent()`, para quem precisa de saber QUAIS são.
+     *
+     * @return HasMany<Lesson, $this>
+     */
+    public function lessonsCarryingContent(): HasMany
+    {
         return $this->lessons()
             ->where(function (Builder $query): void {
                 $query
@@ -158,8 +169,7 @@ class RecurringLessonSlot extends Model
                     ->orWhereHas('summary')
                     ->orWhereHas('plan')
                     ->orWhereHas('attendances');
-            })
-            ->exists();
+            });
     }
 
     /**

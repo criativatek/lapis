@@ -430,6 +430,100 @@ class TimetableCorrectionTest extends TestCase
         });
     }
 
+    // ----------------------------- a explicação do que ficou preservado (0.168.0)
+
+    #[Test]
+    public function a_versioned_class_change_explains_which_lessons_stayed_in_the_original_turma(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '08:30', '09:20', ['starts_on' => '2026-09-14']);
+        $this->summary($this->lesson($slot, '2026-10-12 08:30:00', LessonStatus::Taught));
+        // Depois da data de aplicação, com conteúdo: ficam na 7.º C às 08:30.
+        $this->plan($this->lesson($slot, '2026-10-26 08:30:00', LessonStatus::Preparation));
+        $attended = $this->lesson($slot, '2026-11-02 08:30:00', LessonStatus::Preparation);
+        $this->inTenant(fn () => $attended->forceFill(['attendance_recorded_at' => CarbonImmutable::now()])->save());
+
+        $this->putSlot($slot, $this->eighthA, ['starts_on' => '2026-09-14', 'effective_from' => '2026-10-19'], originalClass: $this->seventhC)
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'Horário guardado. 2 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 08:30 — 26/10 e 02/11 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            $this->scheduleNotice(),
+        );
+
+        // O canal chega ao ecrã: a flash do Inertia (`page.flash`), lida pela
+        // página — e não `back()->with(...)`, que nenhum ecrã partilha.
+        $this->assertTrue(session()->has('inertia.flash_data.scheduleNotice.message'));
+    }
+
+    #[Test]
+    public function a_versioned_change_of_hours_explains_and_limits_the_list_of_dates(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '09:20', '10:10', ['starts_on' => '2026-09-14']);
+        $this->summary($this->lesson($slot, '2026-10-12 09:20:00', LessonStatus::Taught));
+
+        foreach (['2026-10-19', '2026-10-26', '2026-11-02', '2026-11-09', '2026-11-16'] as $date) {
+            $this->plan($this->lesson($slot, $date.' 09:20:00', LessonStatus::Preparation));
+        }
+
+        $this->putSlot($slot, $this->seventhC, ['starts_at' => '09:30', 'ends_at' => '10:20', 'starts_on' => '2026-09-14', 'effective_from' => '2026-10-19'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'Horário guardado. 5 aulas com registos (sumário, plano ou assiduidade) ficaram na 7.º C às 09:20 — 19/10, 26/10, 02/11 e mais 2 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            $this->scheduleNotice(),
+        );
+    }
+
+    #[Test]
+    public function an_in_place_edit_explains_a_lesson_that_carries_content_and_kept_the_old_hours(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '09:20', '10:10');
+        $kept = $this->lesson($slot, '2026-10-12 09:20:00', LessonStatus::Preparation);
+        $this->inTenant(fn () => $kept->forceFill(['attendance_recorded_at' => CarbonImmutable::now()])->save());
+        $this->lesson($slot, '2026-10-19 09:20:00', LessonStatus::Preparation);
+
+        $this->putSlot($slot, $this->seventhC, ['starts_at' => '09:30', 'ends_at' => '10:20'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'Horário guardado. 1 aula com registos (sumário, plano ou assiduidade) ficou na 7.º C às 09:20 — 12/10 — para não se perder o que lá está. As restantes passam a seguir o horário novo.',
+            $this->scheduleNotice(),
+        );
+    }
+
+    #[Test]
+    public function stopping_a_slot_explains_the_lessons_with_content_that_remain(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '08:30', '09:20', ['starts_on' => '2026-09-14']);
+        $this->summary($this->lesson($slot, '2026-10-12 08:30:00', LessonStatus::Taught));
+        $this->plan($this->lesson($slot, '2026-10-26 08:30:00', LessonStatus::Preparation));
+
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->delete("/lesson-slots/{$slot->ulid}", ['effective_from' => '2026-10-19'])
+            ->assertRedirect();
+
+        $this->assertSame(
+            'Horário terminado. 1 aula com registos (sumário, plano ou assiduidade) ficou na 7.º C às 08:30 — 26/10 — para não se perder o que lá está.',
+            $this->scheduleNotice(),
+        );
+    }
+
+    #[Test]
+    public function nothing_is_explained_when_nothing_was_preserved(): void
+    {
+        $slot = $this->slot($this->seventhC, 1, '09:20', '10:10');
+        $this->lesson($slot, '2026-10-19 09:20:00', LessonStatus::Preparation);
+
+        $this->putSlot($slot, $this->seventhC, ['starts_at' => '09:30', 'ends_at' => '10:20'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($this->scheduleNotice());
+
+        $other = $this->slot($this->eighthA, 2, '08:30', '09:20');
+        $this->actingAs($this->teacher)->withSession($this->tenantSession())
+            ->delete("/lesson-slots/{$other->ulid}")->assertRedirect();
+        $this->assertNull($this->scheduleNotice());
+    }
+
     // ------------------------------------------------------ o percurso inteiro
 
     #[Test]
@@ -579,6 +673,16 @@ class TimetableCorrectionTest extends TestCase
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * O aviso persistente que a última resposta deixou na flash do Inertia.
+     */
+    private function scheduleNotice(): ?string
+    {
+        $flash = session('inertia.flash_data') ?? [];
+
+        return $flash['scheduleNotice']['message'] ?? null;
+    }
 
     private function assertTaughtLessonIntact(Lesson $taught, RecurringLessonSlot $slot): void
     {

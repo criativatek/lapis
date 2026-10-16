@@ -66,6 +66,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Alterado
 
+- **Explicação do que ficou preservado.** Quando uma alteração ao horário deixa
+  aulas com registos (sumário, plano, resultado ou assiduidade) na turma ou nas
+  horas anteriores — mudança de turma ou de horas com histórico, edição no lugar
+  em que alguma aula tem conteúdo, ou terminar um tempo —, o professor recebe, ao
+  guardar, um aviso a dizer quantas aulas ficaram, em que turma, a que horas e em
+  que dias (até 3, «e mais N») e porquê. O aviso fica no topo do Horário do
+  Professor e da página da turma até ser fechado; sem nada preservado, a mensagem
+  habitual segue sozinha.
 - **Editar um tempo no lugar corrige também as aulas vazias já geradas.** Sem
   histórico relevante a edição é retroativa; por isso, ao mudar o dia ou as
   horas, as preparações vazias que ficaram desencontradas do tempo novo saem e a
@@ -85,6 +93,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - Sumários lecionados e aulas preparadas com plano nunca se perdem nem mudam de
   turma, antes ou depois da data de aplicação; só preparações vazias geradas
   pelo horário podem ser retiradas.
+
+### Limites conhecidos
+
+- Numa edição no lugar, uma aula só com assiduidade (ou outro conteúdo) fica nas
+  horas anteriores: prevalece a preservação dos dados, e o professor é avisado
+  (ver «Explicação do que ficou preservado»).
+- A importação automática das linhas «Não é uma aula de turma» do PDF como
+  atividades não letivas fica para um pedido posterior.
+- As escritas no horário (aulas e atividades) são recusadas durante o acesso
+  técnico.
+- Sem auditoria, como os tempos de aula.
+
 ## [0.167.1] — 2026-10-15
 
 > **Correção.** Duas pessoas ficaram presas em ecrãs sem saída, e ambas
