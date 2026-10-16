@@ -25,6 +25,44 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.167.1] — 2026-10-15
+
+> **Correção.** Duas pessoas ficaram presas em ecrãs sem saída, e ambas
+> escreveram à Central de Suporte. Uma conta nova, sem ano letivo nem
+> disciplinas, era levada a «Nova turma» com dois seletores obrigatórios vazios.
+> E a página de uma avaliação não tinha forma de ir à grelha nem de alterar a
+> designação do elemento de avaliação, sobretudo quando não havia alunos
+> aplicáveis. Sem migrações.
+
+### Corrigido
+
+- **«Primeiros passos» e «Nova turma» dizem o que falta antes de criar a
+  primeira turma.** O passo «Turma criada» do dashboard passa a apontar para o
+  pré-requisito em falta, pela mesma ordem da lista «Prepare o ano letivo»: sem
+  ano letivo, «Criar ano letivo»; sem disciplinas, «Adicionar disciplina»; com
+  ambos, «Criar turma». O formulário «Nova turma» mostra um aviso quando falta o
+  ano letivo ou a disciplina, com a ligação para os criar, e o botão «Criar
+  turma» fica desativado enquanto faltar um deles. Só o responsável da
+  organização cria anos letivos e disciplinas: quem é apenas membro vê a
+  indicação de que deve pedir-lhe, em vez de um botão que acabaria numa recusa.
+  O campo «Ano de escolaridade» diz que é opcional e limita-se a 16 carateres,
+  como o servidor.
+- **O perfil de avaliação guarda o ano de escolaridade que ficou escrito.** Em
+  «Ano(s) de escolaridade», o que estava escrito mas ainda não tinha sido
+  «Adicionado» perdia-se ao guardar; passa a juntar-se à lista. Os erros de cada
+  valor (mais de 16 carateres, valor repetido) deixam de ficar escondidos.
+- **A página de uma avaliação tem as ações do elemento no cabeçalho.**
+  «Abrir grelha de correção» e «Editar elemento de avaliação» (esta escondida
+  quando o elemento está anulado) existem mesmo quando não há alunos aplicáveis.
+  Antes, a única saída para a grelha era a ligação de cada aluno.
+- **Guardar um elemento de avaliação já em uso volta à sua grelha.** Um
+  elemento em correção ou concluído regressava ao editor com «Pode continuar a
+  preparação mais tarde», que não se aplica; passa a voltar à grelha com
+  «Alterações guardadas.». O rascunho continua a voltar ao editor.
+- **O artigo de ajuda «Criar uma turma» diz onde se criam o ano letivo e as
+  disciplinas** («Organização do Ano Letivo → Estrutura do Ano Letivo») e quem
+  o pode fazer.
+
 ## [0.167.0] — 2026-10-15
 
 > **A autoavaliação herda os critérios da turma.** Os domínios, as ponderações e

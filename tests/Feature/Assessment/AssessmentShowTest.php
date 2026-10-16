@@ -282,4 +282,29 @@ class AssessmentShowTest extends TestCase
                     ->where('students.0.state_label', 'Por corrigir'));
         });
     }
+
+    #[Test]
+    public function the_header_carries_the_status_so_the_screen_knows_which_actions_exist(): void
+    {
+        $this->inTenant(function (): void {
+            ['class' => $class, 'period' => $period] = $this->classScenario();
+            $instrument = Instrument::factory()->recycle($this->organization)->create([
+                'class_id' => $class->id,
+                'academic_period_id' => $period->id,
+                'status' => 'in_correction',
+            ]);
+
+            $this->actingAs($this->user)
+                ->get("/assessments/{$instrument->ulid}")
+                ->assertInertia(fn ($page) => $page
+                    ->where('instrument.status', 'in_correction')
+                    ->where('summary.applicable', 0));
+
+            $instrument->update(['status' => 'cancelled']);
+
+            $this->actingAs($this->user)
+                ->get("/assessments/{$instrument->ulid}")
+                ->assertInertia(fn ($page) => $page->where('instrument.status', 'cancelled'));
+        });
+    }
 }

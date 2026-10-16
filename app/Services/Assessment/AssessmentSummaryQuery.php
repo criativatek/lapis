@@ -161,6 +161,9 @@ class AssessmentSummaryQuery
                 'purpose_label' => self::purposeLabel($instrument->purpose),
                 'counts_toward_classification' => $this->eligibility->isConfiguredToCount($instrument),
                 'state_label' => self::stateLabel($instrument),
+                // The machine value, next to the label: the screen decides from
+                // it which actions still exist (an annulled element is not editable).
+                'status' => $instrument->status->value,
             ],
             'summary' => [
                 'applicable' => count($applicableStudents),

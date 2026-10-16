@@ -730,6 +730,11 @@ class ClassController extends Controller
                 ->map(fn (AcademicYear $year) => ['id' => $year->id, 'label' => $year->label]),
             'subjects' => Subject::orderBy('name')->get(['id', 'name'])
                 ->map(fn (Subject $subject) => ['id' => $subject->id, 'label' => $subject->name]),
+            // Any member can create a class, but only the owner can create the
+            // year and the subject it needs — the form says which of the two
+            // it is when one of the lists comes back empty.
+            'canCreateAcademicYear' => $this->user()->can('create', AcademicYear::class),
+            'canCreateSubject' => $this->user()->can('create', Subject::class),
             // Only activated profiles can be assigned — a class is assessed by an
             // active (frozen) version, never a draft.
             'profiles' => AssessmentProfile::whereNotNull('current_version_id')

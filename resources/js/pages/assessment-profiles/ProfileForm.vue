@@ -140,7 +140,24 @@ function domainError(index: number, field: string): string | undefined {
     return (form.errors as Record<string, string>)[`domains.${index}.${field}`];
 }
 
+// The server validates the list (`grade_levels`) and each element
+// (`grade_levels.0`, …: max 16 characters, no duplicates). Both belong to this
+// one field, so the messages are shown together, never silently dropped.
+const gradeLevelsError = computed(() => {
+    const messages = Object.entries(form.errors as Record<string, string>)
+        .filter(([key]) => key === 'grade_levels' || /^grade_levels\.\d+$/.test(key))
+        .map(([, message]) => message);
+
+    return messages.length === 0 ? undefined : [...new Set(messages)].join(' ');
+});
+
 function submit(): void {
+    // What was typed but not yet «Adicionado» is still part of the field: sending
+    // the form without it would silently save a profile with no grade level.
+    if (gradeLevelInput.value.trim() !== '') {
+        addGradeLevel();
+    }
+
     form.submit(props.method, props.submitUrl, { preserveScroll: true });
 }
 </script>
@@ -235,7 +252,7 @@ function submit(): void {
                         </button>
                     </Badge>
                 </div>
-                <InputError :message="form.errors.grade_levels" />
+                <InputError :message="gradeLevelsError" />
             </div>
             <div class="grid gap-2">
                 <div class="flex items-center justify-between gap-3">

@@ -11,7 +11,8 @@ return [
     'category' => 'Turmas e alunos',
     'order' => 10,
     'content' => [
-        'Uma turma pertence sempre a um ano letivo e a uma disciplina — configure-os primeiro, se ainda não o fez.',
+        'Uma turma pertence sempre a um ano letivo e a uma disciplina — configure-os primeiro, se ainda não o fez. Criam-se em «Organização do Ano Letivo → Estrutura do Ano Letivo», nos separadores dos anos letivos e das Disciplinas. Enquanto faltar um deles, o formulário de nova turma avisa-o e não deixa criar a turma.',
+        'Só o responsável da organização (quem a criou) pode criar anos letivos e disciplinas. Se faz parte da organização de outra pessoa e falta um deles, peça-lhe que o crie.',
         'Ao criar a turma indica um nome (por exemplo, «7.º A»), o ano letivo, a disciplina e, opcionalmente, o ano de escolaridade.',
         'Pode associar logo um perfil de avaliação ATIVO — só um perfil já ativado pode ser associado, nunca um rascunho. Se ainda não tiver um perfil pronto, pode criar a turma sem ele e associá-lo mais tarde, a partir da própria página da turma.',
         'Sem um perfil associado, a turma existe e pode inscrever alunos, mas o Lapispro ainda não sabe como calcular classificações para ela — associe o perfil assim que o tiver pronto.',
@@ -20,6 +21,6 @@ return [
         'Depois de criada, a turma abre na sua própria página, onde inscreve alunos, um a um ou por importação de pauta, e a partir de onde acede aos elementos de avaliação, resultados e relatórios dessa turma.',
     ],
     'keywords' => ['turma', 'criar turma', 'nova turma', 'ano de escolaridade', 'turma de apoio', 'apoio'],
-    'related' => ['assessment.profiles', 'students.enroll', 'students.import'],
+    'related' => ['getting-started', 'assessment.profiles', 'students.enroll', 'students.import'],
     'contexts' => ['classes.create'],
 ];

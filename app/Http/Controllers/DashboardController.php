@@ -35,6 +35,7 @@ class DashboardController extends Controller
 
         $academicYears = AcademicYear::query()->get();
         $currentAcademicYear = $retentionClassifier->currentYearFor($academicYears);
+        $hasSubjects = Subject::query()->exists();
 
         $classes = SchoolClass::query()
             ->whereHas('teachers', fn ($query) => $query->whereKey($teacher->getKey()))
@@ -82,8 +83,9 @@ class DashboardController extends Controller
                 $academicYears,
                 $currentAcademicYear,
                 $currentAcademicYearClasses,
+                $hasSubjects,
             ),
-            'firstSteps' => $this->firstSteps($teacher, $currentAcademicYearClasses),
+            'firstSteps' => $this->firstSteps($teacher, $currentAcademicYearClasses, $academicYears->isNotEmpty(), $hasSubjects),
             'recordAlerts' => $this->recordAlerts($followupCases, $entitlements, $currentAcademicYear, $currentAcademicYearClasses),
             'totals' => [
                 'classes' => $classCards->count(),
@@ -126,11 +128,11 @@ class DashboardController extends Controller
         Collection $academicYears,
         ?AcademicYear $currentAcademicYear,
         Collection $currentAcademicYearClasses,
+        bool $hasSubjects,
     ): array {
         $hasActiveAcademicYear = $academicYears->contains(
             fn (AcademicYear $academicYear): bool => $academicYear->status === AcademicYearStatus::Active
         );
-        $hasSubjects = Subject::query()->exists();
         $hasAssessmentProfile = $currentAcademicYear !== null
             && AssessmentProfile::query()->where('academic_year_id', $currentAcademicYear->id)->exists();
         $hasClass = $currentAcademicYearClasses->isNotEmpty();
@@ -222,7 +224,7 @@ class DashboardController extends Controller
      * @param  Collection<int, SchoolClass>  $currentAcademicYearClasses
      * @return array{dismissed: bool, all_done: bool, items: list<array{id: string, name: string, description: string, completed: bool, cta: array{label: string, href: string}|null}>}
      */
-    private function firstSteps(User $teacher, Collection $currentAcademicYearClasses): array
+    private function firstSteps(User $teacher, Collection $currentAcademicYearClasses, bool $hasAcademicYear, bool $hasSubjects): array
     {
         $hasClass = $currentAcademicYearClasses->isNotEmpty();
         $hasStudent = Enrollment::query()->active()->exists();
@@ -234,13 +236,17 @@ class DashboardController extends Controller
         $classForEnrollment = $hasClass && ! $hasStudent ? $currentAcademicYearClasses->first() : null;
         $instrumentForResult = $hasInstrument && ! $hasResult ? Instrument::query()->latest('id')->first() : null;
 
+        [$classDescription, $classCta] = $hasClass
+            ? ['Já criou a sua primeira turma.', null]
+            : $this->firstClassStep($teacher, $hasAcademicYear, $hasSubjects);
+
         $items = [
             [
                 'id' => 'class',
                 'name' => 'Turma criada',
-                'description' => $hasClass ? 'Já criou a sua primeira turma.' : 'O primeiro passo: crie a sua primeira turma.',
+                'description' => $classDescription,
                 'completed' => $hasClass,
-                'cta' => $hasClass ? null : ['label' => 'Criar turma', 'href' => route('classes.create')],
+                'cta' => $classCta,
             ],
             [
                 'id' => 'student',
@@ -274,6 +280,33 @@ class DashboardController extends Controller
             'all_done' => collect($items)->every(fn (array $item): bool => $item['completed']),
             'items' => $items,
         ];
+    }
+
+    /**
+     * A class belongs to an academic year and a subject, so «Criar turma» is
+     * only the right next step once both exist — otherwise the form opens with
+     * two empty required selects. Same order as readiness(): year, then
+     * subjects. Only the organization's owner can create either (the policies),
+     * so for anyone else the step says whom to ask instead of offering a
+     * button that ends in a 403.
+     *
+     * @return array{0: string, 1: array{label: string, href: string}|null}
+     */
+    private function firstClassStep(User $teacher, bool $hasAcademicYear, bool $hasSubjects): array
+    {
+        if (! $hasAcademicYear) {
+            return $teacher->can('create', AcademicYear::class)
+                ? ['Antes da primeira turma, crie o ano letivo.', ['label' => 'Criar ano letivo', 'href' => route('academic-years.create')]]
+                : ['Ainda não existe um ano letivo. Peça ao responsável da organização que o crie.', null];
+        }
+
+        if (! $hasSubjects) {
+            return $teacher->can('create', Subject::class)
+                ? ['Antes da primeira turma, adicione as disciplinas que leciona.', ['label' => 'Adicionar disciplina', 'href' => route('subjects.index')]]
+                : ['Ainda não existem disciplinas. Peça ao responsável da organização que as adicione.', null];
+        }
+
+        return ['O primeiro passo: crie a sua primeira turma.', ['label' => 'Criar turma', 'href' => route('classes.create')]];
     }
 
     protected function user(): User
