@@ -34,14 +34,22 @@ números e contagens — nunca nomes). O ficheiro leva, por aula, `lesson_ulid`,
 
 ## 2. Cenário a) — logo a seguir ao deploy, antes de qualquer número indicado
 
-O rollback só de código para a 0.168.0 é, aqui, uma **recuperação funcional completa**:
+O rollback só de código para a versão que estava instalada antes é, aqui, uma **recuperação funcional completa**
+quanto à numeração:
 
-1. Com a aplicação ainda em manutenção, repor o pacote anterior (`update-0.168.0.tgz`) com o bloco de deploy de
-   `docs/deployment.md`, **sem** `migrate` e **sem** `migrate:rollback`.
+1. Com a aplicação ainda em manutenção, repor o pacote ANTERIOR AO DEPLOY com o bloco de deploy de
+   `docs/deployment.md`, **sem** `migrate` e **sem** `migrate:rollback`. Atenção ao que «anterior» quer dizer:
+   o plano de 2026-10-16 é instalar a 0.169.0 num só deploy a partir da 0.167.1 (a 0.168.0 nunca fica sozinha em
+   produção). Nesse caso o pacote guardado é o `update-0.167.1.tgz`, e voltar a ele retira também a correção do
+   horário e as atividades não letivas da 0.168.0 (a tabela `timetable_activities` fica, intacta e ignorada). Se
+   houver um pacote 0.168.0 instalado antes e validado, é preferível; senão, decide-se com o responsável da 0.168.0
+   se essa perda é aceitável.
 2. `php artisan config:cache && php artisan route:cache && php artisan view:cache`, `php artisan up`, reiniciar o SSR.
-3. `php artisan lapis:release-check --expect-version=0.168.0 --expect-commit=<commit da 0.168.0>`.
+3. `php artisan lapis:release-check --expect-version=<versão reposta> --expect-commit=<commit dessa versão>`.
 
-As duas colunas ficam na base, vazias e inertes: a 0.168.0 ignora-as.
+As duas colunas da numeração ficam na base, vazias e inertes: o código anterior ignora-as. Um backup feito pela
+0.169.0 (`schema_version` 18) não se restaura no código anterior (é recusado como mais recente) — os dumps diários
+da base continuam válidos.
 
 ## 3. Cenário b) — depois de haver números indicados
 
