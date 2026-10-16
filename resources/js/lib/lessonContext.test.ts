@@ -1,43 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-    baseOnLabel,
-    contextDayMonth,
-    contextStateLabel,
-    firstLine,
-    isLongContextText,
-    nextContextLimit,
-    sortContextChronologically,
-} from '@/lib/lessonContext';
-import type { LessonContextEntry } from '@/lib/lessonContext';
-
-function entry(ulid: string, startsAt: string): LessonContextEntry {
-    return {
-        ulid,
-        starts_at: startsAt,
-        ends_at: null,
-        lesson_number: null,
-        lesson_number_end: null,
-        context_label: '8.º F',
-        state: 'taught',
-        state_label: 'Lecionada',
-        content: '',
-        resources: null,
-        homework: null,
-    };
-}
+import { baseOnLabel, contextDayMonth, contextHistoryUrl, contextStateLabel } from '@/lib/lessonContext';
 
 describe('lessonContext', () => {
-    it('orders entries chronologically without mutating the input', () => {
-        const input = [
-            entry('b', '2026-10-06T09:00:00+01:00'),
-            entry('c', '2026-10-06T14:00:00+01:00'),
-            entry('a', '2026-10-05T09:00:00+01:00'),
-        ];
-
-        expect(sortContextChronologically(input).map((item) => item.ulid)).toEqual(['a', 'b', 'c']);
-        expect(input.map((item) => item.ulid)).toEqual(['b', 'c', 'a']);
-    });
-
     it('reads the local calendar day from the ISO string', () => {
         expect(contextDayMonth('2026-10-07T00:30:00+01:00')).toBe('07/10');
     });
@@ -62,16 +26,9 @@ describe('lessonContext', () => {
         expect(contextStateLabel('prepared')).toBe('Preparada — por lecionar');
     });
 
-    it('takes the first non-empty line', () => {
-        expect(firstLine('\n  \n  Funções afins.\nSegunda linha')).toBe('Funções afins.');
-        expect(firstLine('   ')).toBe('');
-    });
-
-    it('detects long texts and caps the page size at 20', () => {
-        expect(isLongContextText('curto')).toBe(false);
-        expect(isLongContextText('x'.repeat(400))).toBe(true);
-        expect(isLongContextText('1\n2\n3\n4\n5\n6')).toBe(true);
-        expect(nextContextLimit(5)).toBe(10);
-        expect(nextContextLimit(20)).toBe(20);
+    it('builds the history link on the class view, in the week of the previous lesson', () => {
+        expect(contextHistoryUrl({ class_ulid: '01CLASS', starts_at: '2026-10-05T09:00:00+01:00' })).toBe(
+            '/lessons?view=turma&class=01CLASS&week=2026-10-05',
+        );
     });
 });

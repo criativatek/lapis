@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\ClassGroup;
 use App\Models\Lesson;
 use App\Models\LessonOutcome;
+use App\Models\LessonPlan;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
 use App\Models\Organization;
@@ -18,14 +19,16 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
- * «Antes desta aula» — o contexto de quem prepara uma aula: as anteriores
- * lecionadas E as preparadas por lecionar, do mesmo público, com o estado
- * explícito. As datas são absolutas e o endpoint não lê o relógio.
+ * «Aula anterior» — o contexto de quem prepara uma aula: UMA só aula, a mais
+ * próxima antes dela que esteja lecionada ou preparada por lecionar, do mesmo
+ * público, com o estado explícito. As datas são absolutas e o relógio é
+ * congelado no setUp, ANTES de criar dados.
  */
 class LessonPreparationContextTest extends TestCase
 {
@@ -41,6 +44,8 @@ class LessonPreparationContextTest extends TestCase
     {
         parent::setUp();
 
+        $this->travelTo(Carbon::parse('2026-10-16 12:00:00', 'Europe/Lisbon'));
+
         $this->teacher = User::factory()->create();
         $this->organization = $this->teacher->personalOrganization();
         $this->subscribeToPro($this->organization);
@@ -48,43 +53,115 @@ class LessonPreparationContextTest extends TestCase
     }
 
     #[Test]
-    public function the_context_of_thursday_has_monday_taught_and_tuesday_prepared_in_that_order(): void
+    public function a_prepared_lesson_with_a_summary_is_the_previous_one(): void
     {
-        $monday = $this->lesson('2026-10-05 09:00:00', taught: true, content: 'Segunda dada.');
-        $tuesday = $this->lesson('2026-10-06 09:00:00', content: 'Terça planeada.', homework: 'Ficha 3.');
-        $thursday = $this->lesson('2026-10-08 09:00:00');
+        $prepared = $this->lesson('2026-10-06 09:00:00', content: "Terça planeada.\nSegunda linha.", homework: 'Ficha 3.', resources: 'https://exemplo.pt/ficha');
+        $target = $this->lesson('2026-10-08 09:00:00');
 
-        $response = $this->context($thursday)->assertOk();
+        $response = $this->context($target)->assertOk();
 
-        $this->assertSame(
-            [$monday->ulid, $tuesday->ulid],
-            array_column($response->json('lessons'), 'ulid'),
-        );
-        $this->assertSame(['taught', 'prepared'], array_column($response->json('lessons'), 'state'));
-        $this->assertSame(['Lecionada', 'Preparada — por lecionar'], array_column($response->json('lessons'), 'state_label'));
-        $this->assertSame('Terça planeada.', $response->json('lessons.1.content'));
-        $this->assertSame('Ficha 3.', $response->json('lessons.1.homework'));
-        $this->assertFalse($response->json('has_more'));
-        $this->assertArrayNotHasKey('private_notes', $response->json('lessons.0'));
+        $this->assertSame($prepared->ulid, $response->json('lesson.ulid'));
+        $this->assertSame('prepared', $response->json('lesson.state'));
+        $this->assertSame('Preparada — por lecionar', $response->json('lesson.state_label'));
+        $this->assertSame("Terça planeada.\nSegunda linha.", $response->json('lesson.content'));
+        $this->assertSame('Ficha 3.', $response->json('lesson.homework'));
+        $this->assertSame('https://exemplo.pt/ficha', $response->json('lesson.resources'));
+        $this->assertSame($this->schoolClass->ulid, $response->json('lesson.class_ulid'));
+        $this->assertArrayNotHasKey('private_notes', $response->json('lesson'));
+        $this->assertArrayNotHasKey('has_more', $response->json());
     }
 
     #[Test]
-    public function two_lessons_on_the_same_day_enter_by_time_and_a_later_one_does_not(): void
+    public function a_prepared_lesson_with_only_a_plan_counts_and_shows_the_plan(): void
+    {
+        $planned = $this->lesson('2026-10-06 09:00:00', plan: 'Plano vindo da sequência.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($planned->ulid, $response->json('lesson.ulid'));
+        $this->assertSame('prepared', $response->json('lesson.state'));
+        $this->assertSame('', $response->json('lesson.content'));
+        $this->assertSame('Plano vindo da sequência.', $response->json('lesson.plan'));
+    }
+
+    #[Test]
+    public function a_taught_lesson_is_the_previous_one(): void
+    {
+        $taught = $this->lesson('2026-10-06 09:00:00', taught: true, content: 'Dada.', plan: 'Planeada.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($taught->ulid, $response->json('lesson.ulid'));
+        $this->assertSame('taught', $response->json('lesson.state'));
+        $this->assertSame('Lecionada', $response->json('lesson.state_label'));
+        $this->assertSame('Dada.', $response->json('lesson.content'));
+        $this->assertSame('Planeada.', $response->json('lesson.plan'));
+    }
+
+    #[Test]
+    public function a_taught_lesson_without_any_text_still_counts(): void
+    {
+        $taught = $this->lesson('2026-10-06 09:00:00', taught: true);
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $response = $this->context($target)->assertOk();
+
+        $this->assertSame($taught->ulid, $response->json('lesson.ulid'));
+        $this->assertSame('taught', $response->json('lesson.state'));
+        $this->assertSame('', $response->json('lesson.content'));
+        $this->assertNull($response->json('lesson.plan'));
+        $this->assertNull($response->json('lesson.resources'));
+        $this->assertNull($response->json('lesson.homework'));
+    }
+
+    #[Test]
+    public function an_empty_previous_lesson_is_skipped_for_the_one_before_it(): void
+    {
+        // Terça (a editar) → segunda vazia → sexta lecionada.
+        $friday = $this->lesson('2026-10-02 09:00:00', taught: true, content: 'Sexta dada.');
+        $this->lesson('2026-10-05 09:00:00'); // segunda, aberta e vazia
+        $this->lesson('2026-10-05 11:00:00', content: "  \n "); // só espaços
+        $this->lesson('2026-10-05 12:00:00', privateNotes: 'Só notas minhas.'); // só notas privadas
+        $tuesday = $this->lesson('2026-10-06 09:00:00');
+
+        $this->assertSame($friday->ulid, $this->context($tuesday)->json('lesson.ulid'));
+    }
+
+    #[Test]
+    public function a_lesson_marked_as_no_lesson_took_place_is_ignored(): void
+    {
+        $taught = $this->lesson('2026-10-01 09:00:00', taught: true, content: 'Dada.');
+        $this->lesson('2026-10-02 09:00:00', outcome: LessonOutcome::TeacherAbsent, content: 'Plano que já desceu.');
+        $this->lesson('2026-10-05 09:00:00', outcome: LessonOutcome::ClassExternalActivity, content: 'Visita.', plan: 'Plano da visita.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $this->assertSame($taught->ulid, $this->context($target)->json('lesson.ulid'));
+    }
+
+    #[Test]
+    public function a_deleted_lesson_is_ignored(): void
+    {
+        $taught = $this->lesson('2026-10-01 09:00:00', taught: true, content: 'Dada.');
+        $cancelled = $this->lesson('2026-10-05 09:00:00', content: 'Cancelada.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+        $this->removeLesson($cancelled);
+
+        $this->assertSame($taught->ulid, $this->context($target)->json('lesson.ulid'));
+    }
+
+    #[Test]
+    public function two_lessons_on_the_same_day_pick_the_latest_one_before_the_target(): void
     {
         $morning = $this->lesson('2026-10-07 09:00:00', taught: true, content: 'Manhã.');
         $afternoon = $this->lesson('2026-10-07 14:00:00', content: 'Tarde planeada.');
         $target = $this->lesson('2026-10-07 15:00:00');
         $this->lesson('2026-10-07 16:00:00', content: 'Depois do destino.');
 
-        $this->assertSame(
-            [$morning->ulid, $afternoon->ulid],
-            array_column($this->context($target)->json('lessons'), 'ulid'),
-        );
-        // A aula da tarde não vê a da manhã seguinte nem a si própria.
-        $this->assertSame(
-            [$morning->ulid],
-            array_column($this->context($afternoon)->json('lessons'), 'ulid'),
-        );
+        $this->assertSame($afternoon->ulid, $this->context($target)->json('lesson.ulid'));
+        // A aula em edição pode ser a segunda do dia: a da manhã é a anterior.
+        $this->assertSame($morning->ulid, $this->context($afternoon)->json('lesson.ulid'));
     }
 
     #[Test]
@@ -93,71 +170,82 @@ class LessonPreparationContextTest extends TestCase
         $first = $this->lesson('2026-10-07 09:00:00', content: 'Primeira.');
         $second = $this->lesson('2026-10-07 09:00:00', content: 'Segunda.');
 
-        $this->assertSame([$first->ulid], array_column($this->context($second)->json('lessons'), 'ulid'));
-        $this->assertSame([], $this->context($first)->json('lessons'));
+        $this->assertSame($first->ulid, $this->context($second)->json('lesson.ulid'));
+        $this->assertNull($this->context($first)->json('lesson'));
     }
 
     #[Test]
-    public function it_excludes_the_lesson_itself_and_every_later_one(): void
+    public function it_never_picks_the_lesson_itself_or_a_later_one(): void
     {
-        $this->lesson('2026-10-05 09:00:00', content: 'Anterior.');
+        $before = $this->lesson('2026-10-05 09:00:00', content: 'Anterior.');
         $target = $this->lesson('2026-10-08 09:00:00', content: 'Em preparação.');
         $this->lesson('2026-10-12 09:00:00', content: 'Posterior preparada.');
         $this->lesson('2026-10-13 09:00:00', taught: true, content: 'Posterior lecionada.');
 
-        $contents = array_column($this->context($target)->json('lessons'), 'content');
-
-        $this->assertSame(['Anterior.'], $contents);
+        $this->assertSame($before->ulid, $this->context($target)->json('lesson.ulid'));
     }
 
     #[Test]
-    public function it_excludes_closed_not_taught_and_empty_open_lessons_but_keeps_a_taught_one_without_text(): void
+    public function the_choice_follows_date_and_time_never_the_lesson_number(): void
     {
-        $this->lesson('2026-10-01 09:00:00', outcome: LessonOutcome::TeacherAbsent, content: 'Plano que já desceu.');
-        $this->lesson('2026-10-02 09:00:00', outcome: LessonOutcome::ClassExternalActivity, content: 'Visita.');
-        $this->lesson('2026-10-05 09:00:00'); // aberta e vazia
-        $this->lesson('2026-10-06 09:00:00', content: "  \n "); // só espaços
-        $taughtWithoutText = $this->lesson('2026-10-07 09:00:00', taught: true);
-        $target = $this->lesson('2026-10-08 09:00:00');
+        // Números alterados à mão, fora de ordem: a de 05/10 tem o 40, a de 06/10 o 3.
+        $this->lesson('2026-10-05 09:00:00', taught: true, content: 'Cinco.', number: 40, numberManual: true);
+        $sixth = $this->lesson('2026-10-06 09:00:00', taught: true, content: 'Seis.', number: 3, numberManual: true);
+        $seventh = $this->lesson('2026-10-07 09:00:00', taught: true, content: 'Sete.', number: 1, numberManual: true);
+        $target = $this->lesson('2026-10-08 09:00:00', number: 99, numberManual: true);
 
-        $lessons = $this->context($target)->json('lessons');
+        $response = $this->context($target)->assertOk();
 
-        $this->assertSame([$taughtWithoutText->ulid], array_column($lessons, 'ulid'));
-        $this->assertSame('taught', $lessons[0]['state']);
-        $this->assertSame('', $lessons[0]['content']);
+        // O número da anterior (1) é o mais baixo, e a escolhida é a mais recente.
+        $this->assertSame($seventh->ulid, $response->json('lesson.ulid'));
+        $this->assertSame(1, $response->json('lesson.lesson_number'));
+
+        $this->removeLesson($seventh);
+        $this->assertSame($sixth->ulid, $this->context($target)->json('lesson.ulid'));
     }
 
     #[Test]
-    public function a_prepared_lesson_with_only_resources_counts(): void
+    public function the_lesson_number_range_is_returned(): void
     {
-        $prepared = $this->lesson('2026-10-05 09:00:00', resources: 'https://exemplo.pt/ficha');
+        $this->lesson('2026-10-05 09:00:00', taught: true, content: 'Duas lições.', number: 11, numberEnd: 12);
         $target = $this->lesson('2026-10-08 09:00:00');
 
-        $this->assertSame([$prepared->ulid], array_column($this->context($target)->json('lessons'), 'ulid'));
+        $response = $this->context($target);
+
+        $this->assertSame(11, $response->json('lesson.lesson_number'));
+        $this->assertSame(12, $response->json('lesson.lesson_number_end'));
     }
 
     #[Test]
-    public function the_limit_keeps_the_most_recent_and_reports_has_more(): void
+    public function a_prepared_lesson_more_recent_than_the_taught_one_wins(): void
     {
-        for ($day = 1; $day <= 8; $day++) {
-            $this->lesson(sprintf('2026-09-%02d 09:00:00', $day), taught: true, content: "Antiga {$day}.");
-        }
-        $preparedA = $this->lesson('2026-10-05 09:00:00', content: 'Preparada A.');
-        $preparedB = $this->lesson('2026-10-06 09:00:00', content: 'Preparada B.');
+        $this->lesson('2026-10-05 09:00:00', taught: true, content: 'Dada, mais antiga.');
+        $prepared = $this->lesson('2026-10-06 09:00:00', content: 'Preparada, mais recente.');
         $target = $this->lesson('2026-10-08 09:00:00');
 
-        $response = $this->context($target, ['limit' => 5])->assertOk();
-        $ulids = array_column($response->json('lessons'), 'ulid');
+        $response = $this->context($target);
 
-        $this->assertCount(5, $ulids);
-        $this->assertSame([$preparedA->ulid, $preparedB->ulid], array_slice($ulids, -2));
-        $this->assertTrue($response->json('has_more'));
-        // Cronológica: a antiga mais recente vem antes das preparadas.
-        $this->assertSame('Antiga 6.', $response->json('lessons.0.content'));
+        $this->assertSame($prepared->ulid, $response->json('lesson.ulid'));
+        $this->assertSame('prepared', $response->json('lesson.state'));
+    }
 
-        $this->assertCount(5, $this->context($target)->json('lessons'), 'o limite por omissão é 5');
-        $this->assertCount(10, $this->context($target, ['limit' => 99])->json('lessons'), 'acima do máximo corta em 20 e devolve tudo o que há');
-        $this->assertFalse($this->context($target, ['limit' => 99])->json('has_more'));
+    #[Test]
+    public function a_taught_lesson_more_recent_than_the_prepared_one_wins(): void
+    {
+        $this->lesson('2026-10-05 09:00:00', content: 'Preparada, mais antiga.');
+        $taught = $this->lesson('2026-10-06 09:00:00', taught: true, content: 'Dada, mais recente.');
+        $target = $this->lesson('2026-10-08 09:00:00');
+
+        $this->assertSame($taught->ulid, $this->context($target)->json('lesson.ulid'));
+    }
+
+    #[Test]
+    public function without_any_history_the_lesson_is_null(): void
+    {
+        $target = $this->lesson('2026-10-08 09:00:00');
+        $this->lesson('2026-10-12 09:00:00', taught: true, content: 'Só depois.');
+
+        $this->context($target)->assertOk()->assertExactJson(['lesson' => null]);
     }
 
     #[Test]
@@ -172,10 +260,12 @@ class LessonPreparationContextTest extends TestCase
         $targetT2 = $this->lesson('2026-10-08 10:00:00', group: $t2);
         $targetWhole = $this->lesson('2026-10-08 11:00:00');
 
-        $this->assertSame([$onT1->ulid], array_column($this->context($targetT1)->json('lessons'), 'ulid'));
-        $this->assertSame([$onT2->ulid], array_column($this->context($targetT2)->json('lessons'), 'ulid'));
-        $this->assertSame([$whole->ulid], array_column($this->context($targetWhole)->json('lessons'), 'ulid'));
-        $this->assertSame('8.º F · T1', $this->context($targetT1)->json('lessons.0.context_label'));
+        $this->assertSame($onT1->ulid, $this->context($targetT1)->json('lesson.ulid'));
+        $this->assertSame($onT2->ulid, $this->context($targetT2)->json('lesson.ulid'));
+        $this->assertSame($whole->ulid, $this->context($targetWhole)->json('lesson.ulid'));
+        $this->assertSame('8.º F · T1', $this->context($targetT1)->json('lesson.context_label'));
+        // T1 não vê a turma inteira nem T2, mesmo havendo aulas delas antes da sua primeira.
+        $this->assertNull($this->context($this->lesson('2026-10-01 08:00:00', group: $t1))->json('lesson'));
     }
 
     #[Test]
@@ -184,6 +274,7 @@ class LessonPreparationContextTest extends TestCase
         $this->lesson('2026-10-05 09:00:00', taught: true, content: 'Lecionada com texto.');
         $this->lesson('2026-10-06 09:00:00', content: 'Preparada mais recente.', privateNotes: 'Nota minha.');
         $this->lesson('2026-10-07 09:00:00', resources: 'Só recurso, sem sumário.');
+        $this->lesson('2026-10-07 10:00:00', plan: 'Só plano, sem sumário.');
         $target = $this->lesson('2026-10-08 09:00:00');
 
         $this->asTeacher()->get("/lessons/{$target->ulid}/previous-summary")
@@ -233,23 +324,38 @@ class LessonPreparationContextTest extends TestCase
     }
 
     #[Test]
-    public function the_endpoint_writes_nothing(): void
+    public function the_endpoint_is_a_get_and_changes_nothing_in_the_database(): void
     {
-        $this->lesson('2026-10-05 09:00:00', content: 'Plano.');
+        $this->lesson('2026-10-05 09:00:00', content: 'Plano.', plan: 'Plano pendente.', number: 7);
+        $this->lesson('2026-10-06 09:00:00', taught: true);
         $target = $this->lesson('2026-10-08 09:00:00');
-        $before = [Lesson::withoutGlobalScopes()->count(), LessonSummary::withoutGlobalScopes()->count()];
+        $snapshot = fn (): array => [
+            'lessons' => DB::table('lessons')->orderBy('id')->get()->toArray(),
+            'summaries' => DB::table('lesson_summaries')->orderBy('id')->get()->toArray(),
+            'plans' => DB::table('lesson_plans')->orderBy('id')->get()->toArray(),
+            'audit' => DB::table('audit_events')->count(),
+        ];
+        $before = $snapshot();
 
         $this->context($target)->assertOk();
+        $this->asTeacher()->postJson("/lessons/{$target->ulid}/preparation-context")->assertStatus(405);
 
-        $this->assertSame($before, [Lesson::withoutGlobalScopes()->count(), LessonSummary::withoutGlobalScopes()->count()]);
+        $this->assertEquals($before, $snapshot());
     }
 
     /**
-     * @param  array<string, mixed>  $query
+     * Uma aula cancelada deixa de ter linha (e leva consigo o sumário e o plano).
      */
-    private function context(Lesson $lesson, array $query = []): TestResponse
+    private function removeLesson(Lesson $lesson): void
     {
-        return $this->asTeacher()->getJson("/lessons/{$lesson->ulid}/preparation-context".($query === [] ? '' : '?'.http_build_query($query)));
+        DB::table('lesson_summaries')->where('lesson_id', $lesson->id)->delete();
+        DB::table('lesson_plans')->where('lesson_id', $lesson->id)->delete();
+        DB::table('lessons')->where('id', $lesson->id)->delete();
+    }
+
+    private function context(Lesson $lesson): TestResponse
+    {
+        return $this->asTeacher()->getJson("/lessons/{$lesson->ulid}/preparation-context");
     }
 
     private function asTeacher(): self
@@ -291,13 +397,20 @@ class LessonPreparationContextTest extends TestCase
         ?string $homework = null,
         ?string $privateNotes = null,
         ?ClassGroup $group = null,
+        ?string $plan = null,
+        ?int $number = null,
+        ?int $numberEnd = null,
+        bool $numberManual = false,
     ): Lesson {
-        return $this->inTenant(function () use ($startsAt, $taught, $outcome, $content, $resources, $homework, $privateNotes, $group): Lesson {
+        return $this->inTenant(function () use ($startsAt, $taught, $outcome, $content, $resources, $homework, $privateNotes, $group, $plan, $number, $numberEnd, $numberManual): Lesson {
             $lesson = Lesson::create([
                 'class_id' => $this->schoolClass->id,
                 'class_group_id' => $group?->id,
                 'starts_at' => $startsAt,
                 'ends_at' => null,
+                'lesson_number' => $number,
+                'lesson_number_end' => $numberEnd,
+                'lesson_number_manual' => $numberManual,
                 'status' => $taught ? LessonStatus::Taught : LessonStatus::Preparation,
                 'outcome' => $outcome ?? ($taught ? LessonOutcome::Taught : null),
                 'created_by' => $this->teacher->id,
@@ -310,6 +423,14 @@ class LessonPreparationContextTest extends TestCase
                     'resources' => $resources,
                     'homework' => $homework,
                     'private_notes' => $privateNotes,
+                ]);
+            }
+
+            if ($plan !== null) {
+                LessonPlan::create([
+                    'lesson_id' => $lesson->id,
+                    'planned_summary' => $plan,
+                    'created_by' => $this->teacher->id,
                 ]);
             }
 

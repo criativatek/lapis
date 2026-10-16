@@ -840,16 +840,19 @@ describe('lessons/Show — regressar ao sítio de onde se veio (0.158.0)', () =>
     });
 });
 
-describe('lessons/Show — «Antes desta aula»', () => {
-    const entry = (overrides: Record<string, unknown>) => ({
+describe('lessons/Show — «Aula anterior»', () => {
+    const entry = (overrides: Record<string, unknown> = {}) => ({
         ulid: 'e',
+        class_ulid: 'turma-1',
         starts_at: '2026-09-07T09:00:00+01:00',
         ends_at: '2026-09-07T09:50:00+01:00',
         lesson_number: 1,
+        lesson_number_end: null,
         context_label: '7.º A',
         state: 'taught',
         state_label: 'Lecionada',
         content: 'Texto.',
+        plan: null,
         resources: null,
         homework: null,
         ...overrides,
@@ -860,7 +863,7 @@ describe('lessons/Show — «Antes desta aula»', () => {
             'fetch',
             vi.fn((url: string) => {
                 if (url.includes('/preparation-context')) {
-                    return (routes.context ?? (() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ lessons: [], has_more: false }) } as Response)))();
+                    return (routes.context ?? (() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ lesson: null }) } as Response)))();
                 }
 
                 return (routes.previous ?? (() => Promise.resolve({ status: 204 } as Response)))();
@@ -870,36 +873,85 @@ describe('lessons/Show — «Antes desta aula»', () => {
 
     const json = (body: unknown) => () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
 
-    it('mostra as aulas anteriores por ordem, com o estado de cada uma', async () => {
+    it('mostra UMA só aula anterior, com data, hora, número, estado e o conteúdo completo', async () => {
+        const longSummary = `${'Funções afins e lineares. '.repeat(30)}\nSegunda linha.`;
         stubFetch({
             context: json({
-                lessons: [
-                    entry({ ulid: 'mon', content: 'Funções afins.' }),
-                    entry({ ulid: 'tue', starts_at: '2026-09-08T09:00:00+01:00', state: 'prepared', state_label: 'Preparada — por lecionar', content: 'Sistemas.', homework: 'Ficha 3' }),
-                ],
-                has_more: true,
+                lesson: entry({
+                    lesson_number: 11,
+                    lesson_number_end: 12,
+                    state: 'prepared',
+                    state_label: 'Preparada — por lecionar',
+                    content: longSummary,
+                    plan: 'Plano da aula.',
+                    homework: 'Ficha 3',
+                    resources: 'https://exemplo.pt/um/caminho/muito/longo/que/nao/deve/passar/a/largura',
+                }),
             }),
         });
 
         const wrapper = mountPage();
         await flushPromises();
 
-        const entries = wrapper.findAll('[data-testid="lesson-context-entry"]');
-        expect(entries).toHaveLength(2);
-        expect(entries[0].text()).toContain('Segunda-feira');
-        expect(entries[0].get('[data-testid="lesson-context-state"]').text()).toBe('Lecionada');
-        expect(entries[1].get('[data-testid="lesson-context-state"]').text()).toBe('Preparada — por lecionar');
-        expect(entries[1].text()).toContain('TPC: Ficha 3');
-        expect(wrapper.find('[data-testid="lesson-context-more"]').exists()).toBe(true);
+        expect(wrapper.get('[data-testid="lesson-context-toggle"]').text()).toBe('Aula anterior');
+        expect(wrapper.findAll('[data-testid="lesson-context-entry"]')).toHaveLength(1);
+        const card = wrapper.get('[data-testid="lesson-context-entry"]');
+        expect(card.get('[data-testid="lesson-context-when"]').text()).toContain('Segunda-feira, 7 de setembro, 09:00');
+        expect(card.get('[data-testid="lesson-context-number"]').text()).toBe('Lições 11–12');
+        expect(card.get('[data-testid="lesson-context-state"]').text()).toBe('Preparada — por lecionar');
+        expect(card.get('[data-testid="lesson-context-content"] p:last-child').text()).toBe(longSummary);
+        expect(card.get('[data-testid="lesson-context-plan"]').text()).toContain('Plano da aula.');
+        expect(card.get('[data-testid="lesson-context-homework"]').text()).toContain('Ficha 3');
+        expect(card.get('[data-testid="lesson-context-resources"]').text()).toContain('https://exemplo.pt/um/caminho');
+        // Sem contador, sem «Mostrar mais» e sem «Ver mais».
+        expect(wrapper.find('[data-testid="lesson-context-more"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="lesson-context"]').text()).not.toMatch(/\(\d+\+?\)|Mostrar mais|Ver mais/);
+        expect(wrapper.get('[data-testid="lesson-context-history"]').attributes('href')).toBe('/lessons?view=turma&class=turma-1&week=2026-09-07');
     });
 
-    it('sem aulas anteriores diz-o, sem erro', async () => {
+    it('guarda as quebras de linha e quebra qualquer URL longo dentro do cartão', async () => {
+        stubFetch({ context: json({ lesson: entry({ content: 'a\nb', resources: 'https://exemplo.pt/x' }) }) });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        const card = wrapper.get('[data-testid="lesson-context-entry"]');
+        expect(card.classes()).toContain('min-w-0');
+
+        for (const selector of ['content', 'resources']) {
+            const text = card.get(`[data-testid="lesson-context-${selector}"] p:last-child`);
+            expect(text.classes()).toEqual(expect.arrayContaining(['min-w-0', 'whitespace-pre-line', 'wrap-anywhere']));
+        }
+
+        expect(wrapper.get('[data-testid="lesson-context"]').classes()).toContain('min-w-0');
+    });
+
+    it('uma lecionada sem texto diz «Sem sumário registado»', async () => {
+        stubFetch({ context: json({ lesson: entry({ content: '' }) }) });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-state"]').text()).toBe('Lecionada');
+        expect(wrapper.get('[data-testid="lesson-context-no-summary"]').text()).toBe('Sem sumário registado.');
+        expect(wrapper.find('[data-testid="lesson-context-content"]').exists()).toBe(false);
+    });
+
+    it('uma preparada só com plano mostra o plano e não diz «sem sumário»', async () => {
+        stubFetch({ context: json({ lesson: entry({ state: 'prepared', state_label: 'Preparada — por lecionar', content: '', plan: 'Só o plano.' }) }) });
+        const wrapper = mountPage();
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="lesson-context-plan"]').text()).toContain('Só o plano.');
+        expect(wrapper.find('[data-testid="lesson-context-no-summary"]').exists()).toBe(false);
+    });
+
+    it('sem aula anterior elegível o bloco não aparece, nem título nem «sem aulas»', async () => {
         stubFetch({});
         const wrapper = mountPage();
         await flushPromises();
 
-        expect(wrapper.get('[data-testid="lesson-context-empty"]').text()).toContain('Sem aulas anteriores com conteúdo');
-        expect(wrapper.find('[data-testid="lesson-context-error"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="lesson-context"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Aula anterior');
+        expect(wrapper.text()).not.toContain('Sem aulas anteriores');
     });
 
     it('um erro de carregamento mostra a mensagem e não parte o formulário', async () => {
@@ -907,7 +959,7 @@ describe('lessons/Show — «Antes desta aula»', () => {
         const wrapper = mountPage();
         await flushPromises();
 
-        expect(wrapper.get('[data-testid="lesson-context-error"]').text()).toContain('Não foi possível carregar as aulas anteriores.');
+        expect(wrapper.get('[data-testid="lesson-context-error"]').text()).toContain('Não foi possível carregar a aula anterior.');
         expect(wrapper.find('#lesson-summary').exists()).toBe(true);
         expect(wrapper.text()).toContain('Guardar');
     });
@@ -1008,7 +1060,7 @@ describe('lessons/Show — o número da lição (0.169.0)', () => {
             Promise.resolve({
                 ok: true,
                 status: String(url).includes('/number/preview') ? 200 : 204,
-                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lessons: [], has_more: false }),
+                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lesson: null }),
             } as Response),
         );
         vi.stubGlobal('fetch', fetchMock);

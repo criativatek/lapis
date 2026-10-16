@@ -21,13 +21,16 @@ function lessonWith(ulid: string): WeekLesson {
 
 const entry = (ulid: string, overrides: Record<string, unknown> = {}) => ({
     ulid,
+    class_ulid: 'turma-1',
     starts_at: '2026-10-05T09:00:00+01:00',
     ends_at: null,
     lesson_number: null,
+    lesson_number_end: null,
     context_label: '8.º F',
     state: 'taught',
     state_label: 'Lecionada',
     content: 'Primeira linha.\nSegunda linha.',
+    plan: null,
     resources: null,
     homework: null,
     ...overrides,
@@ -66,13 +69,12 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe('LessonSummaryEditor — «Antes desta aula»', () => {
-    it('carrega ao abrir, recolhida, e mostra data, estado e primeira linha', async () => {
+describe('LessonSummaryEditor — «Aula anterior»', () => {
+    it('carrega ao abrir, recolhida, e mostra UM cartão com o conteúdo completo', async () => {
         const fetchMock = vi.mocked(fetch);
         fetchMock.mockImplementation(() =>
             respond({
-                lessons: [entry('seg'), entry('ter', { starts_at: '2026-10-06T09:00:00+01:00', state: 'prepared', state_label: 'Preparada — por lecionar', content: 'Plano de terça.' })],
-                has_more: false,
+                lesson: entry('seg', { state: 'prepared', state_label: 'Preparada — por lecionar', content: 'Plano de terça.\nSegunda linha.' }),
             }),
         );
 
@@ -83,14 +85,26 @@ describe('LessonSummaryEditor — «Antes desta aula»', () => {
         expect(String(fetchMock.mock.calls[0][0])).toContain('/lessons/aula-a/preparation-context');
         const toggle = wrapper.get('[data-testid="lesson-context-toggle"]');
         expect(toggle.attributes('aria-expanded')).toBe('false');
-        expect(toggle.text()).toContain('(2)');
+        expect(toggle.text()).toBe('Aula anterior');
 
-        const states = wrapper.findAll('[data-testid="lesson-context-state"]').map((badge) => badge.text());
-        expect(states).toEqual(['Lecionada', 'Preparada — por lecionar']);
-        expect(wrapper.findAll('[data-testid="lesson-context-line"]')[0].text()).toBe('Primeira linha.');
+        expect(wrapper.findAll('[data-testid="lesson-context-entry"]')).toHaveLength(1);
+        expect(wrapper.get('[data-testid="lesson-context-state"]').text()).toBe('Preparada — por lecionar');
+        // Já não há versão de uma linha: o conteúdo vem inteiro.
+        expect(wrapper.get('[data-testid="lesson-context-content"] p:last-child').text()).toBe('Plano de terça.\nSegunda linha.');
+        expect(wrapper.find('[data-testid="lesson-context-more"]').exists()).toBe(false);
 
         await toggle.trigger('click');
         expect(toggle.attributes('aria-expanded')).toBe('true');
+    });
+
+    it('sem aula anterior elegível o bloco não aparece no cartão', async () => {
+        vi.mocked(fetch).mockImplementation(() => respond({ lesson: null }));
+
+        const wrapper = mountEditor();
+        await flushPromises();
+
+        expect(wrapper.find('[data-testid="lesson-context-compact"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Aula anterior');
     });
 
     it('não bloqueia a escrita quando o carregamento falha', async () => {
@@ -112,12 +126,12 @@ describe('LessonSummaryEditor — «Antes desta aula»', () => {
         expect(pending).toHaveLength(2);
 
         // Responde primeiro à aula B (a atual) e só depois, atrasada, à aula A.
-        pending[1]({ ok: true, status: 200, json: () => Promise.resolve({ lessons: [entry('da-b', { content: 'Contexto de B.' })], has_more: false }) } as Response);
+        pending[1]({ ok: true, status: 200, json: () => Promise.resolve({ lesson: entry('da-b', { content: 'Contexto de B.' }) }) } as Response);
         await flushPromises();
-        pending[0]({ ok: true, status: 200, json: () => Promise.resolve({ lessons: [entry('da-a', { content: 'Contexto de A.' })], has_more: false }) } as Response);
+        pending[0]({ ok: true, status: 200, json: () => Promise.resolve({ lesson: entry('da-a', { content: 'Contexto de A.' }) }) } as Response);
         await flushPromises();
 
-        const lines = wrapper.findAll('[data-testid="lesson-context-line"]').map((line) => line.text());
-        expect(lines).toEqual(['Contexto de B.']);
+        const contents = wrapper.findAll('[data-testid="lesson-context-content"] p:last-child').map((line) => line.text());
+        expect(contents).toEqual(['Contexto de B.']);
     });
 });
