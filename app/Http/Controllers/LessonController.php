@@ -25,6 +25,7 @@ use App\Services\Lessons\LessonDayEvents;
 use App\Services\Lessons\LessonPreparationContext;
 use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Lessons\LessonNumberingFreeze;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Illuminate\Http\JsonResponse;
@@ -95,6 +96,8 @@ class LessonController extends Controller implements HasMiddleware
                 'lesson_number_end' => $lesson->lesson_number_end,
                 'lesson_number_manual' => $lesson->lesson_number_manual,
                 'can_set_number' => $lesson->outcome !== LessonOutcome::TeacherAbsent,
+                // Contenção da recuperação: o campo aparece só de leitura, com a frase.
+                'numbering_frozen' => LessonNumberingFreeze::frozen(),
                 // A versão do sumário que este ecrã viu — volta no PUT e no
                 // DELETE para o servidor recusar uma gravação sobre texto mais novo.
                 'summary_version' => $lesson->summary_version,

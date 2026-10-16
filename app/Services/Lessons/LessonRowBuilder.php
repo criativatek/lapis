@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Classes\ClassArchivalWindow;
 use App\Services\Classes\ClassIdentityTones;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Lessons\LessonNumberingFreeze;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -161,6 +162,8 @@ final class LessonRowBuilder
                 'lesson_number_end' => $lesson->lesson_number_end,
                 // Indicado pelo professor (0.169.0): o editor mostra «Número indicado manualmente».
                 'lesson_number_manual' => $lesson->lesson_number_manual,
+                // Contenção da recuperação: o campo do número aparece só de leitura.
+                'numbering_frozen' => LessonNumberingFreeze::frozen(),
                 // Decidido no servidor e enviado já decidido — esconder o
                 // botão é apresentação, e DeleteLesson repete a recusa por
                 // sua conta quando o pedido lá chega na mesma.

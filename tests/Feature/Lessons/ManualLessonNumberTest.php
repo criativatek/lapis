@@ -290,8 +290,10 @@ class ManualLessonNumberTest extends TestCase
             $otherSubject = Subject::factory()->recycle($this->organization)->create();
 
             return [
-                // Outra turma, mesma disciplina e ano.
-                SchoolClass::factory()->recycle($this->organization)->create(['academic_year_id' => $this->schoolClass->academic_year_id, 'subject_id' => $this->schoolClass->subject_id]),
+                // Outra turma, mesma disciplina e ano. O rótulo é fixo e diferente:
+                // um rótulo aleatório da factory pode coincidir com o da turma de
+                // base e violar a chave única (organização, ano, disciplina, rótulo).
+                SchoolClass::factory()->recycle($this->organization)->create(['academic_year_id' => $this->schoolClass->academic_year_id, 'subject_id' => $this->schoolClass->subject_id, 'label' => $this->schoolClass->label.' (outra)']),
                 // A mesma etiqueta de turma, outra disciplina.
                 SchoolClass::factory()->recycle($this->organization)->create(['academic_year_id' => $this->schoolClass->academic_year_id, 'subject_id' => $otherSubject->id, 'label' => $this->schoolClass->label]),
                 // A mesma etiqueta e disciplina, outro ano letivo.

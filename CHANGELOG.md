@@ -94,14 +94,40 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   máximo 10 lições por aula.
 - Auditoria `lesson.number_set` (números e contagens; nunca texto nem dados de
   alunos).
+- **Restaurar um backup numa turma que já tem aulas não duplica lições.** Uma
+  aula do ficheiro com número indicado, ou lecionada, cujo número (ou intervalo)
+  coincide com o de outra lição fixa que o destino já tem bloqueia o restauro
+  inteiro: a pré-visualização mostra cada colisão (datas, números e turma) e não
+  deixa confirmar, e a confirmação recusa antes de gravar o que quer que seja,
+  sem marcar a importação como falhada. A mesma lição de grupo com o mesmo
+  intervalo passa; as aulas livres não contam. Antes, estas colisões não eram
+  verificadas.
+- **Corrigir o horário nunca perde um número indicado.** Uma aula com número
+  indicado pelo professor, mesmo sem sumário, conta como conteúdo: nenhuma
+  correção do horário (editar horas no lugar, mudar de turma, «deixa de vigorar
+  a partir de», reconciliação da vigência) a apaga, e o tempo passa a pedir
+  versionamento por causa dela. A edição do horário já não é recusada numa turma
+  com uma correção manual fora de ordem. As mensagens passam a aparecer no ecrã
+  (toast) e dizem quando a numeração sugerida de aulas com sumário foi
+  atualizada para acompanhar o horário.
 
 ### Recuperação
 
-- **Rollback só de código para a 0.167.0 depois de professores indicarem
-  números perde-os em parte:** a 0.167.0 ignora as colunas novas e volta a
-  derivar as aulas abertas por posição. As colunas ficam (nunca
-  `migrate:rollback`, que as apagaria); voltar à 0.168.x repõe a regra, mas os
-  números das aulas abertas recalculados entretanto não regressam sozinhos.
+- **Um rollback só de código para a 0.168.0 (ou anterior) NÃO é seguro depois de
+  haver números indicados pelo professor:** esse código ignora as colunas novas,
+  volta a derivar as aulas abertas por posição (escreve por cima dos números
+  manuais) e as lecionadas manuais fora da posição fazem a guarda antiga recusar
+  operações. Manter as colunas não chega (e nunca `migrate:rollback`, que as
+  apagaria). O procedimento está em `docs/lesson-numbering-recovery.md`:
+  - `php artisan lapis:lesson-numbering-recovery-check` diz o cenário (sai 0 sem
+    números indicados nem intervalos: o rollback de código é completo; sai 1 caso
+    contrário), com `--export=<ficheiro>` para guardar os números e
+    `--restore=<ficheiro> [--apply]` para os repor.
+  - `LAPIS_LESSON_NUMBERING_FROZEN=true` congela a numeração: nenhum número que
+    já exista muda (nem pelo professor, nem pela renumeração automática, nem pela
+    passagem numa ausência); as aulas novas recebem a sugestão e o sumário grava-se
+    na mesma. O campo «N.º da lição» fica só de leitura. Restauros de backup
+    continuam permitidos.
 
 ## [0.168.0] — 2026-10-15
 

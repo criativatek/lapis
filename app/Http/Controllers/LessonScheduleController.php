@@ -10,6 +10,7 @@ use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\RecurringLessonSlotRequest;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
+use App\Models\LessonSummary;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -113,17 +114,17 @@ class LessonScheduleController extends Controller implements HasMiddleware
                 ->lockForUpdate()
                 ->get();
 
-            $preserved = $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
+            ['preserved' => $preserved, 'renumbered' => $renumbered] = $this->applyUpdate($request, $recurringLessonSlot, $timezone, $validated);
 
             if ($targetClassId !== $originClassId) {
                 // As aulas vazias da turma de destino que ficaram fora da
                 // vigência acertam-se aqui; a regeneração faz-se ao abrir a
                 // semana.
-                $this->reconcileLessons->execute($targetClassId);
+                $renumbered = array_replace($renumbered, $this->reconcileLessons->execute($targetClassId)['renumbered']);
             }
 
             return $this->withNotice(
-                $this->reconciled(back(), $originClassId),
+                $this->reconciled(back(), $originClassId, $renumbered),
                 ScheduleChangeNotice::describe($preserved, __('Horário guardado.'), restFollowNewSchedule: true),
             );
         });
@@ -145,14 +146,19 @@ class LessonScheduleController extends Controller implements HasMiddleware
     }
 
     /**
-     * @return Collection<int, Lesson> as aulas com conteúdo que ficaram nas horas ou na turma anteriores
+     * Aplica a edição e diz o que dela resultou: `preserved` são as aulas com
+     * conteúdo que ficaram nas horas ou na turma anteriores; `renumbered` é o
+     * lesson_id => número novo das aulas que a renumeração da edição no lugar
+     * mudou.
+     *
+     * @return array{preserved: Collection<int, Lesson>, renumbered: array<int, int|null>}
      */
     private function applyUpdate(
         RecurringLessonSlotRequest $request,
         RecurringLessonSlot $recurringLessonSlot,
         string $timezone,
         ValidatedInput $validated,
-    ): Collection {
+    ): array {
         /** @var RecurringLessonSlot $locked */
         $locked = RecurringLessonSlot::query()
             ->whereKey($recurringLessonSlot->getKey())
@@ -205,12 +211,14 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
             // As aulas com conteúdo de DEPOIS da data de aplicação ficam no
             // tempo antigo — na turma e nas horas anteriores. Diz-se.
-            return $changesClass || $retimes
+            $preservedAfterDate = $changesClass || $retimes
                 ? $locked->lessonsCarryingContent()
                     ->where('starts_at', '>=', $effectiveFrom.' 00:00:00')
                     ->with('schoolClass')
                     ->get()
                 : new Collection;
+
+            return ['preserved' => $preservedAfterDate, 'renumbered' => []];
         }
 
         $attributes = $validated->except('effective_from', 'same_lesson_as');
@@ -231,9 +239,15 @@ class LessonScheduleController extends Controller implements HasMiddleware
         // ao mudar de turma, todas; ao mudar só o dia ou as horas, as que ficaram
         // desencontradas — e a materialização volta a gerá-las à hora certa ao
         // abrir a semana. Uma aula com qualquer conteúdo nunca é tocada.
-        // A numeração da turma de origem fecha.
+        // A numeração da turma de origem fecha. A FOTOGRAFIA DA GUARDA é tirada
+        // ANTES de apagar: sem ela a guarda literal compararia com a turma
+        // inteira e uma correção manual fora de ordem (uma Lição 11 seguida de
+        // lecionadas 2..5) recusaria qualquer edição do horário para sempre.
+        $snapshot = $this->numbering->guardSnapshot($originClassId);
+        $renumbered = [];
+
         if ($this->removeEmptyLessons($locked, onlyMismatched: ! $changesClass) > 0) {
-            $this->numbering->resequence($originClassId);
+            $renumbered = $this->numbering->resequence($originClassId, $snapshot);
         }
 
         // O que sobrou desencontrado do tempo novo carrega conteúdo (só
@@ -245,14 +259,17 @@ class LessonScheduleController extends Controller implements HasMiddleware
             : new Collection;
 
         if (! $changesClass) {
+            // Uma aula com número indicado pelo professor não é «vazia»: fica
+            // no grupo em que estava.
             $locked->lessons()
                 ->where('status', LessonStatus::Preparation)
+                ->where('lesson_number_manual', false)
                 ->whereDoesntHave('summary')
                 ->whereDoesntHave('plan')
                 ->update(['class_group_id' => $locked->class_group_id]);
         }
 
-        return $preserved;
+        return ['preserved' => $preserved, 'renumbered' => $renumbered];
     }
 
     /**
@@ -268,8 +285,9 @@ class LessonScheduleController extends Controller implements HasMiddleware
 
     /**
      * Apaga as aulas do tempo que NÃO carregam nada: preparação, sem resultado,
-     * sem assiduidade (nem rascunho), sem sumário e sem plano — o mesmo critério
-     * de `ReconcileLessonsWithSlotValidity`. Com `$onlyMismatched`, só as que já
+     * sem assiduidade (nem rascunho), sem sumário, sem plano e SEM NÚMERO INDICADO
+     * PELO PROFESSOR (0.169.0) — o mesmo critério de
+     * `ReconcileLessonsWithSlotValidity`. Com `$onlyMismatched`, só as que já
      * não correspondem ao dia e às horas atuais do tempo (as `starts_at` e
      * `ends_at` das aulas são hora local). Devolve quantas saíram.
      */
@@ -281,6 +299,7 @@ class LessonScheduleController extends Controller implements HasMiddleware
             ->where('status', LessonStatus::Preparation)
             ->whereNull('outcome')
             ->whereNull('attendance_recorded_at')
+            ->where('lesson_number_manual', false)
             ->whereDoesntHave('summary')
             ->whereDoesntHave('plan')
             ->whereDoesntHave('attendances')
@@ -303,26 +322,64 @@ class LessonScheduleController extends Controller implements HasMiddleware
      * professor, sem detalhes técnicos. Corre dentro da transação de quem
      * edita, com a turma bloqueada antes — a mesma disciplina da materialização
      * e da eliminação.
+     *
+     * NADA SILENCIOSO (0.169.0): a mensagem vai no toast (a flash de sessão
+     * `success` não aparece em ecrã nenhum e fica só ao lado, para os testes
+     * antigos) e, quando a edição do horário mudou o número SUGERIDO de aulas
+     * que já têm sumário, diz-o. Os números indicados pelo professor e os das
+     * aulas lecionadas são fixos e nunca entram aqui.
+     *
+     * @param  array<int, int|null>  $renumbered  o que a própria edição já renumerou (edição no lugar)
      */
-    private function reconciled(RedirectResponse $response, int $classId): RedirectResponse
+    private function reconciled(RedirectResponse $response, int $classId, array $renumbered = []): RedirectResponse
     {
         SchoolClass::query()->whereKey($classId)->lockForUpdate()->firstOrFail();
 
         $result = $this->reconcileLessons->execute($classId);
+        $renumbered = array_replace($renumbered, $result['renumbered']);
 
-        if ($result['removed'] > 0 && $result['preserved'] > 0) {
-            return $response->with('success', 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas; as que já têm registos foram mantidas.');
+        $message = match (true) {
+            $result['removed'] > 0 && $result['preserved'] > 0 => 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas; as que já têm registos foram mantidas.',
+            $result['removed'] > 0 => 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas.',
+            $result['preserved'] > 0 => 'Horário atualizado. As aulas fora da nova vigência que já têm registos foram mantidas.',
+            default => null,
+        };
+
+        $withSummary = $this->renumberedWithSummary($renumbered);
+
+        if ($withSummary > 0) {
+            $message = ($message ?? 'Horário atualizado.').' '.($withSummary === 1
+                ? 'A numeração sugerida de 1 aula com sumário foi atualizada para acompanhar o horário.'
+                : "A numeração sugerida de {$withSummary} aulas com sumário foi atualizada para acompanhar o horário.");
         }
 
-        if ($result['removed'] > 0) {
-            return $response->with('success', 'Horário atualizado. As aulas futuras fora da nova vigência foram ajustadas.');
+        if ($message === null) {
+            return $response;
         }
 
-        if ($result['preserved'] > 0) {
-            return $response->with('success', 'Horário atualizado. As aulas fora da nova vigência que já têm registos foram mantidas.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+
+        return $response->with('success', $message);
+    }
+
+    /**
+     * Quantas das aulas renumeradas já têm sumário com texto. As fechadas e as
+     * de número indicado nunca mudam, por isso não entram.
+     *
+     * @param  array<int, int|null>  $renumbered
+     */
+    private function renumberedWithSummary(array $renumbered): int
+    {
+        if ($renumbered === []) {
+            return 0;
         }
 
-        return $response;
+        return LessonSummary::query()
+            ->whereIn('lesson_id', array_keys($renumbered))
+            ->get()
+            ->filter(fn (LessonSummary $summary): bool => collect([$summary->content, $summary->private_notes, $summary->resources, $summary->homework])
+                ->contains(fn (?string $value): bool => $value !== null && trim($value) !== ''))
+            ->count();
     }
 
     /**

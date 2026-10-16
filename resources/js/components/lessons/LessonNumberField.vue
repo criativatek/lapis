@@ -10,6 +10,10 @@
  * está mal. O que é «mudou» está em `lib/lessonNumber` e é o mesmo nos dois.
  *
  * Aula com professor ausente não tem lição: não há campo, só a frase.
+ *
+ * NUMERAÇÃO CONGELADA (contenção da recuperação, `LAPIS_LESSON_NUMBERING_FROZEN`):
+ * o número aparece só de leitura, com a frase que explica que o sumário se
+ * guarda na mesma. O servidor recusa qualquer alteração de qualquer maneira.
  */
 import { CircleAlert, RotateCcw } from '@lucide/vue';
 import { computed } from 'vue';
@@ -26,12 +30,14 @@ const props = withDefaults(
         manual: boolean;
         /** Falso numa aula de professor ausente. */
         canSet?: boolean;
+        /** A numeração está congelada: o número só se lê. */
+        frozen?: boolean;
         errors?: LessonNumberErrors;
         /** Prefixo dos ids: dois editores abertos na mesma página não partilham ids. */
         idPrefix: string;
         disabled?: boolean;
     }>(),
-    { canSet: true, errors: () => ({ number: null, end: null }), disabled: false },
+    { canSet: true, frozen: false, errors: () => ({ number: null, end: null }), disabled: false },
 );
 
 const emit = defineEmits<{
@@ -44,6 +50,15 @@ const helpId = computed(() => `${props.idPrefix}-help`);
 const errorId = computed(() => `${props.idPrefix}-error`);
 const endErrorId = computed(() => `${props.idPrefix}-end-error`);
 const multipleId = computed(() => `${props.idPrefix}-multiple`);
+
+/** O número que a aula tem, dito como no resto da aplicação («11» ou «11–12»). */
+const currentLabel = computed(() => {
+    if (props.original.start === '') {
+        return 'sem número';
+    }
+
+    return props.original.end === '' ? props.original.start : `${props.original.start}–${props.original.end}`;
+});
 
 const dirty = computed(() => numberDraftDirty(props.modelValue, props.original));
 const hadNoNumber = computed(() => props.original.start === '' && !props.manual);
@@ -94,6 +109,20 @@ defineExpose({
         >
             Professor ausente: esta aula não tem número de lição.
         </p>
+
+        <div
+            v-else-if="frozen"
+            class="grid gap-1"
+            data-testid="lesson-number-frozen"
+        >
+            <span class="text-sm font-semibold">N.º da lição</span>
+            <p class="text-base tabular-nums" data-testid="lesson-number-frozen-value">
+                {{ currentLabel }}
+            </p>
+            <p class="text-sm text-muted-foreground">
+                A numeração das lições está temporariamente bloqueada. Pode guardar o sumário sem alterar o número.
+            </p>
+        </div>
 
         <template v-else>
             <label :for="modelValue.automatic ? undefined : startId" class="text-sm font-semibold">N.º da lição</label>

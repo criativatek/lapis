@@ -129,4 +129,29 @@ describe('LessonNumberField', () => {
         expect(input.attributes('aria-invalid')).toBe('true');
         expect(input.attributes('aria-describedby')).toContain('n-error');
     });
+
+    it('com a numeração congelada mostra o número só de leitura, com a frase da contenção', () => {
+        const wrapper = mountField({ lesson_number: 11, lesson_number_end: 12 }, { frozen: true, manual: true });
+
+        expect(wrapper.get('[data-testid="lesson-number-frozen-value"]').text()).toBe('11–12');
+        expect(wrapper.get('[data-testid="lesson-number-frozen"]').text()).toContain(
+            'A numeração das lições está temporariamente bloqueada. Pode guardar o sumário sem alterar o número.',
+        );
+        expect(wrapper.find('input').exists()).toBe(false);
+        expect(wrapper.find('button').exists()).toBe(false);
+    });
+
+    it('congelada, uma aula sem número diz-o em vez de mostrar um campo vazio', () => {
+        const wrapper = mountField({ lesson_number: null, lesson_number_end: null }, { frozen: true });
+
+        expect(wrapper.get('[data-testid="lesson-number-frozen-value"]').text()).toBe('sem número');
+        expect(wrapper.find('input').exists()).toBe(false);
+    });
+
+    it('uma aula de professor ausente continua a mostrar só a sua frase, mesmo congelada', () => {
+        const wrapper = mountField(undefined, { canSet: false, frozen: true });
+
+        expect(wrapper.find('[data-testid="lesson-number-absent"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="lesson-number-frozen"]').exists()).toBe(false);
+    });
 });

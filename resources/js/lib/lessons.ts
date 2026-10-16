@@ -52,6 +52,8 @@ export type WeekLesson = {
     lesson_number_end: number | null;
     /** O número foi indicado pelo professor e o sistema não o recalcula (0.169.0). */
     lesson_number_manual: boolean;
+    /** Contenção da recuperação: o número só se lê (0.169.0). */
+    numbering_frozen?: boolean;
     /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
     outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
     outcome_label: string | null;

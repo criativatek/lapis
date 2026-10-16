@@ -9,6 +9,7 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Lessons\LessonNumbering;
+use App\Support\Lessons\LessonNumberingFreeze;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -130,6 +131,13 @@ class SetLessonNumber
      */
     private function build(Lesson $lesson, NumberChange $change): array
     {
+        // A CONTENÇÃO DA RECUPERAÇÃO (docs/lesson-numbering-recovery.md): com a
+        // numeração congelada nada se indica nem se repõe — nem na
+        // pré-visualização, que devolve o mesmo 422. O sumário grava-se na mesma.
+        if (LessonNumberingFreeze::frozen()) {
+            throw ValidationException::withMessages(['lesson_number' => LessonNumberingFreeze::refusal()]);
+        }
+
         if ($lesson->outcome === LessonOutcome::TeacherAbsent) {
             throw ValidationException::withMessages([
                 'lesson_number' => __('Numa aula em que o professor esteve ausente não há lição: esta aula não tem número.'),

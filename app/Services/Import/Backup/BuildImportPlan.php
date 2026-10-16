@@ -99,7 +99,7 @@ class BuildImportPlan
     /**
      * @param  array<string, mixed>  $canonical
      * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
-     * @return array{rows: array<string, array<int, array<string, mixed>>>, counts: array<string, array<string, int>>, can_confirm: bool}
+     * @return array{rows: array<string, array<int, array<string, mixed>>>, counts: array<string, array<string, int>>, can_confirm: bool, blocking: list<string>}
      */
     public function build(array $canonical, Organization $destination, User $actor, array $rowIssues): array
     {
@@ -284,7 +284,10 @@ class BuildImportPlan
         return [
             'rows' => $rows,
             'counts' => $counts,
-            'can_confirm' => $hasNew,
+            // `blocking`: motivos que impedem o restauro INTEIRO (nada é gravado a
+            // meio). Hoje, números de lição que colidem com aulas do destino.
+            'blocking' => $lessons['blocking'],
+            'can_confirm' => $hasNew && $lessons['blocking'] === [],
         ];
     }
 

@@ -59,6 +59,7 @@ type Lesson = {
     lesson_number_end: number | null;
     /** O número foi indicado pelo professor e não é recalculado (0.169.0). */
     lesson_number_manual: boolean;
+    numbering_frozen?: boolean;
     /** Falso numa aula de professor ausente: não há lição a numerar. */
     can_set_number: boolean;
     /**
@@ -684,6 +685,7 @@ function goBack(event: MouseEvent): void {
                     :original="numberOriginal"
                     :manual="lesson.lesson_number_manual"
                     :can-set="lesson.can_set_number"
+                    :frozen="lesson.numbering_frozen === true"
                     :errors="numberErrors"
                     id-prefix="lesson-number"
                     :disabled="summaryForm.processing || numberChecking"

@@ -26,6 +26,8 @@ export type LessonNumberSource = {
     lesson_number: number | null;
     lesson_number_end: number | null;
     lesson_number_manual: boolean;
+    /** Contenção da recuperação: o número só se lê (0.169.0). */
+    numbering_frozen?: boolean;
     outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
 };
 

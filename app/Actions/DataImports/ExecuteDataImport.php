@@ -14,6 +14,7 @@ use App\Services\Audit\AuditLog;
 use App\Services\Import\Backup\BuildImportPlan;
 use App\Support\Assessment\SelfAssessmentReadOnlyException;
 use App\Support\Assessment\SelfAssessmentWrites;
+use App\Support\Import\Backup\RestoreBlockedException;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -83,6 +84,15 @@ class ExecuteDataImport
             $canonical = $lockedImport->canonical_snapshot ?? [];
             $plan = $this->planner->build($canonical, $organization, $actor, []);
             $rows = $plan['rows'];
+
+            // O PLANO TRAZ MOTIVOS BLOQUEANTES (números de lição que colidem com
+            // aulas do destino): recusa-se ANTES de escrever. Tratar a colisão
+            // como `conflict` deixaria a aula (e o sumário, o plano e as faltas)
+            // de fora — um restauro parcial. A importação não é marcada como
+            // falhada: continua confirmável quando o professor resolver.
+            if ($plan['blocking'] !== []) {
+                throw new RestoreBlockedException($plan['blocking']);
+            }
 
             $structure = $this->structureWriter->write(
                 $rows['academic_years'], $rows['subjects'],

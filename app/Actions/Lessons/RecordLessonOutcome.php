@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Lessons\LessonNumbering;
 use App\Services\Lessons\ShiftLessonPlanning;
+use App\Support\Lessons\LessonNumberingFreeze;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -230,6 +231,10 @@ class RecordLessonOutcome
 
         // A chave leva consigo o que dela depende: o número manual (início, fim e
         // marca) fica na chave, e não na aula onde por acaso estava escrito.
+        //
+        // COM A NUMERAÇÃO CONGELADA (`LAPIS_LESSON_NUMBERING_FROZEN`) viaja só a
+        // chave: os números das aulas que já têm número não mudam.
+        $frozen = LessonNumberingFreeze::frozen();
         $carry = [
             'lesson_unit_key' => $absent->lesson_unit_key,
             'lesson_number' => $absent->lesson_number,
@@ -252,7 +257,7 @@ class RecordLessonOutcome
                 'lesson_number_end' => $next->lesson_number_end,
                 'lesson_number_manual' => (bool) $next->lesson_number_manual,
             ];
-            DB::table('lessons')->where('id', $next->getKey())->update($carry);
+            DB::table('lessons')->where('id', $next->getKey())->update($frozen ? ['lesson_unit_key' => $carry['lesson_unit_key']] : $carry);
             $carry = $displaced;
             $after = $next;
             $relinked++;
@@ -262,7 +267,7 @@ class RecordLessonOutcome
         // parceiro T2), o número manual que levava perderia-se em silêncio.
         $leftover = null;
 
-        if ($carry['lesson_number_manual'] && $carry['lesson_number'] !== null && ! Lesson::query()
+        if (! $frozen && $carry['lesson_number_manual'] && $carry['lesson_number'] !== null && ! Lesson::query()
             ->where('class_id', $absent->class_id)
             ->where('lesson_unit_key', $carry['lesson_unit_key'])
             ->whereKeyNot($absent->getKey())

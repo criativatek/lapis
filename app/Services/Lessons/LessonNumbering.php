@@ -5,6 +5,7 @@ namespace App\Services\Lessons;
 use App\Models\Lesson;
 use App\Models\LessonOutcome;
 use App\Models\RecurringLessonSlot;
+use App\Support\Lessons\LessonNumberingFreeze;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -108,7 +109,7 @@ final class LessonNumbering
         // A recusa acontece antes de qualquer escrita, ligações incluídas.
         $this->guardTaughtHistory($lessons, $guardSnapshot);
 
-        $changes = $this->changesFor($this->project($lessons));
+        $changes = $this->writable($this->changesFor($this->project($lessons)));
         $this->writeLinks($links);
         $this->writeNumbers($changes);
 
@@ -226,7 +227,7 @@ final class LessonNumbering
         }
 
         $links = $this->link($lessons, $slotKeys);
-        $numbers = $this->changesFor($this->project($lessons, historyFixed: false));
+        $numbers = $this->writable($this->changesFor($this->project($lessons, historyFixed: false)));
 
         if ($write) {
             $this->writeLinks($links);
@@ -253,7 +254,7 @@ final class LessonNumbering
     {
         $lessons = $this->sequence($classId);
         $links = $this->link($lessons, $this->slotKeys($classId));
-        $changes = $this->changesFor($this->project($lessons));
+        $changes = $this->writable($this->changesFor($this->project($lessons)));
 
         $this->writeLinks($links);
         $this->writeNumbers($changes);
@@ -297,7 +298,7 @@ final class LessonNumbering
         $lessons = $this->sequence($classId);
         $this->link($lessons, $this->slotKeys($classId));
 
-        return $this->changesFor($this->project($lessons));
+        return $this->writable($this->changesFor($this->project($lessons)));
     }
 
     /**
@@ -365,6 +366,12 @@ final class LessonNumbering
      */
     public function handOverManualNumber(Lesson $absent, int $start, ?int $end): bool
     {
+        // Congelada, nenhum número que já exista muda: o manual da ausente não
+        // passa a outra aula (a ausente fica sem número, como sempre).
+        if (LessonNumberingFreeze::frozen()) {
+            return false;
+        }
+
         $lessons = $this->sequence((int) $absent->class_id);
         $this->link($lessons, $this->slotKeys((int) $absent->class_id));
 
@@ -905,11 +912,32 @@ final class LessonNumbering
     }
 
     /**
-     * @param  array<int, array{to: int|null, to_end: int|null, manual: bool}>  $changes
+     * COM A NUMERAÇÃO CONGELADA (`LAPIS_LESSON_NUMBERING_FROZEN`), o triplo
+     * (`lesson_number`, `lesson_number_end`, `lesson_number_manual`) de uma aula
+     * que JÁ TEM número nunca é alterado: só se escrevem as aulas cujo número
+     * gravado é NULL, que recebem a sugestão. É a contenção da recuperação
+     * (docs/lesson-numbering-recovery.md).
+     *
+     * @template T of array{from?: int|null, to: int|null, to_end: int|null, manual: bool}
+     *
+     * @param  array<int, T>  $changes
+     * @return array<int, T>
+     */
+    private function writable(array $changes): array
+    {
+        if (! LessonNumberingFreeze::frozen()) {
+            return $changes;
+        }
+
+        return array_filter($changes, fn (array $change): bool => ($change['from'] ?? null) === null);
+    }
+
+    /**
+     * @param  array<int, array{from?: int|null, to: int|null, to_end: int|null, manual: bool}>  $changes
      */
     private function writeNumbers(array $changes): void
     {
-        foreach ($changes as $lessonId => $change) {
+        foreach ($this->writable($changes) as $lessonId => $change) {
             DB::table('lessons')->where('id', $lessonId)->update([
                 'lesson_number' => $change['to'],
                 'lesson_number_end' => $change['to_end'],
