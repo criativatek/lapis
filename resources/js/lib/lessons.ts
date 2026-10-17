@@ -19,6 +19,9 @@ export type LessonDayEvent = {
     all_day: boolean;
     notes: string | null;
     type_label?: string;
+    /** Cruzamento das horas com as da aula (0.171.0), calculado no servidor. */
+    coincides?: boolean;
+    coverage?: 'all_day' | 'whole_lesson' | 'partial' | null;
 };
 
 export type WeekLesson = {

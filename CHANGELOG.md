@@ -25,6 +25,101 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.171.0] — 2026-10-17
+
+> **As atividades do calendário passam a falar com as aulas.** Quando uma aula
+> coincide com uma visita de estudo, um teste de outra disciplina ou uma reunião
+> de turma do Calendário do professor, a página da aula, o editor da semana e a
+> pré-visualização das sequências dizem-no — e o professor escolhe entre duas
+> ações que nunca se confundem: «Incluir no sumário» (acrescenta a linha e mantém
+> o plano) ou «Registar e adiar a preparação» (a aula fica registada como
+> atividade e a preparação avança uma aula, depois de uma pré-visualização). Sem
+> migrations; o backup não muda.
+
+### Adicionado
+
+- **Coincidência por horas.** Os «acontecimentos do dia» de uma aula
+  (`LessonDayEvents`) passam a trazer `coincides` e `coverage`: «todo o dia»
+  coincide sempre; com horas, cruza-se a janela diária do acontecimento (repetida
+  em cada dia de um acontecimento de vários dias) com a da aula, por sobreposição
+  estrita — a aula toda (`whole_lesson`), parte dela (`partial`) ou nenhuma (o
+  acontecimento continua na lista, como antes). A regra de visibilidade não muda:
+  só os acontecimentos do próprio professor, ligados à turma da aula.
+- **Duas ações distintas, com estas palavras.** «Incluir no sumário» (o antigo
+  «Adicionar ao sumário») acrescenta a linha ao texto que está a ser preparado,
+  não grava sozinho e não muda o estado nem a posição da aula; repetir dá «Já no
+  sumário». «Registar e adiar a preparação» abre uma pré-visualização, e nada
+  muda até confirmar. Na página da aula as que coincidem aparecem primeiro, num
+  bloco `sky` («Esta aula coincide com uma atividade do calendário»), e as outras
+  em «Outros acontecimentos do dia»; o editor da semana tem a mesma separação, e
+  o cartão marca discretamente «coincide com a aula».
+- **«Registar e adiar a preparação».** `PostponeLessonForCalendarActivity`
+  regista a aula como «Turma em outras atividades letivas» (a nota é o título do
+  acontecimento) pelo mesmo `RecordLessonOutcome` do fecho rápido, e a
+  preparação avança uma aula pela cadeia de sempre (`ShiftLessonPlanning`):
+  nunca por cima de uma aula já preparada — cada preparação avança uma aula, pela
+  mesma ordem —, com a próxima ocorrência do horário criada se for preciso e, sem
+  nenhuma até ao fim do ano, como «Planeamento pendente». A pré-visualização
+  (`POST lessons/{lesson}/activity-postponement/preview`) corre o mesmo plano
+  numa transação sempre revertida e devolve o destino de cada preparação (data,
+  «Lição N», excerto — nunca as notas privadas), a linha da atividade retirada, as
+  faltas em rascunho descartadas, os números que mudam e o `plan_token` (que conta
+  QUAIS rascunhos vão ser descartados, pelas inscrições, e não só quantos). A
+  execução repete o plano e recusa com 422 se o token já não bater (o sumário de
+  qualquer aula da cadeia mudou) ou se faltar a confirmação quando mais de uma
+  preparação muda de lugar — as que avançam e a que fica pendente contam ambas:
+  «A → B, e a de B fica pendente» são duas. Auditoria própria
+  (`lesson.postponed_for_calendar_activity`, só ids e contagens).
+- **O que fica na aula é o título, no resultado que já existia.** A aula
+  original fica «Turma em outras atividades letivas — <título>» (`outcome_note`),
+  que se vê ao reabri-la e no registo da turma; o acontecimento continua
+  listado nela. As notas do acontecimento NÃO são copiadas para ali — podem ter
+  dados pessoais — e continuam completas no calendário; a confirmação diz as três
+  coisas (o título que fica, a preparação adiada, as notas no calendário).
+- **A linha da atividade não viaja.** Se o sumário da aula já tinha, em linha
+  inteira, exatamente o que «Incluir no sumário» gera para este acontecimento
+  (`LessonDayEvents::summaryLine`, igual a `summaryLineFor` do cliente), só essa
+  linha é retirada do que avança, e a confirmação mostra-a. Qualquer linha
+  escrita ou alterada pelo professor — basta um carácter — não é igual e segue
+  com o plano, para a aula seguinte ou para a pendência.
+- **Sequências.** A pré-visualização de «Aplicar ao calendário» mostra, em cada
+  passo, «Coincide com: <título> · Todo o dia / 10:30–11:30» e, no topo, quantas
+  aulas coincidem. É só informação: não entra no `plan_token` e não muda o plano.
+- **O toast de «Não houve aula» diz o destino real** («A preparação passou para
+  a aula de ter., 27/10.», «… ficou como planeamento pendente nesta aula.» ou
+  «Esta aula não tinha preparação.»), em vez da flash de sessão `success`, que
+  nunca chega a nenhum ecrã.
+
+### Corrigido
+
+- **Perda de conteúdo ao registar «Não houve aula» com texto por guardar.** O
+  diálogo emitia `submitting`, o que desligava a guarda de alterações por guardar
+  da página; o servidor deslocava o sumário GRAVADO e o texto por guardar (a
+  atividade incluída, um acrescento ao plano) não acompanhava o plano. Como os
+  `post` do Inertia preservam o estado, o formulário continuava a mostrar o
+  texto antigo numa aula já fechada, e gravar — com «Ficar com o meu» no conflito
+  de versão — escrevia o plano também aí: o mesmo plano ficava na aula da
+  atividade e na seguinte, e o acrescento só sobrevivia na cópia errada. Agora o
+  diálogo com alterações por guardar pede «Guardar alterações» primeiro e não
+  deixa registar; quando o resultado passa de nulo a um valor, o formulário e o
+  rascunho do número refazem-se a partir das props frescas. Na semana, o editor
+  aberto numa aula cujo resultado acaba de ser registado fecha-se, em vez de
+  ficar com o texto que já saiu. Se a gravação pedida pelo diálogo não for aceite
+  (conflito de versão, número por confirmar, texto vazio), o diálogo fecha-se para
+  a razão — que está na página, por trás dele — ficar à vista.
+
+### Testes
+
+- PHPUnit: `LessonCalendarActivitiesTest` (âmbito dos acontecimentos, horas e
+  cobertura, janela diária, paridade da linha com o cliente, pré-visualização da
+  sequência, «Incluir no sumário») e `PostponeLessonForCalendarActivityTest`
+  (cascata de uma sequência aplicada e reaplicação sem duplicados, destino com
+  conteúdo do professor, pendente, ocorrência materializada, lecionadas e números
+  manuais, recusas sem escrita, token desatualizado, cancelar byte a byte, toast).
+- Vitest: `lessonDayEvents`, `ActivityPostponeDialog`, `LessonOutcomePanel`,
+  `Show`, `LessonSummaryEditor` e `sequences/Index`.
+- Sem migrations. Backup sem alteração (`schema_version` continua 19).
+
 ## [0.170.0] — 2026-10-17
 
 > **As «Outras atividades» passam a ter um sumário por sessão.** Um professor

@@ -295,4 +295,42 @@ describe('lessons/sequences/Index — aplicar ao calendário', () => {
         await wrapper.find('form').trigger('submit');
         expect(mocks.post.mock.calls[1][1].plan_token).toBe('novo');
     });
+
+    it('mostra, quando houver, a atividade do calendário que coincide com cada aula e o aviso no topo', async () => {
+        vi.mocked(fetch).mockResolvedValue(
+            jsonResponse(
+                previewBody({
+                    coinciding_lessons: 1,
+                    steps: [
+                        {
+                            ...stepOf('fill', null),
+                            calendar_events: [
+                                { ulid: 'ev-1', title: 'Visita de estudo', type_label: 'Visita', all_day: true, starts_at: null, ends_at: null, coverage: 'all_day' },
+                                { ulid: 'ev-2', title: 'Teste de Física', type_label: 'Teste', all_day: false, starts_at: '10:30', ends_at: '11:30', coverage: 'partial' },
+                            ],
+                        },
+                    ],
+                }),
+            ),
+        );
+
+        const wrapper = await openDialog();
+        const lines = wrapper.findAll('[data-testid="step-coincides"]');
+
+        expect(lines).toHaveLength(2);
+        expect(lines[0].text()).toBe('Coincide com: Visita de estudo · Todo o dia');
+        expect(lines[1].text()).toBe('Coincide com: Teste de Física · 10:30–11:30');
+        expect(wrapper.get('[data-testid="apply-coinciding"]').text()).toContain(
+            '1 aula desta aplicação coincide com atividades do teu calendário. Nada muda por isso: depois de aplicar, abre a aula para incluir a atividade no sumário ou adiar a preparação.',
+        );
+    });
+
+    it('sem coincidências não mostra nenhuma linha nem o aviso', async () => {
+        vi.mocked(fetch).mockResolvedValue(jsonResponse(previewBody({ coinciding_lessons: 0 })));
+
+        const wrapper = await openDialog();
+
+        expect(wrapper.find('[data-testid="step-coincides"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="apply-coinciding"]').exists()).toBe(false);
+    });
 });

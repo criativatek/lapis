@@ -5,6 +5,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import AlertError from '@/components/AlertError.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import ActivityPostponeDialog from '@/components/lessons/ActivityPostponeDialog.vue';
 import LessonAttendanceList from '@/components/lessons/LessonAttendanceList.vue';
 import type { LessonAttendance } from '@/components/lessons/LessonAttendanceList.vue';
 import LessonDayEvents from '@/components/lessons/LessonDayEvents.vue';
@@ -152,6 +153,9 @@ function setNumberDraft(value: LessonNumberDraft): void {
     clearNumberErrors();
 }
 const taughtForm = useForm({ absent: initialAbsent });
+
+/** Texto (ou número) por guardar nesta aula — o que o servidor ainda não viu. */
+const hasUnsavedChanges = computed(() => summaryForm.isDirty || numberDirty.value);
 summaryForm.transform((data) => ({ ...data, ...(pendingNumberKeys.value ?? {}) }));
 const recordForm = useForm({ absent: initialAbsent });
 const clearForm = useForm({ summary_version: props.lesson.summary_version ?? 0 });
@@ -197,6 +201,46 @@ function clearSummary(): void {
         onFinish: releaseSubmission,
     });
 }
+
+// QUANDO A AULA FECHA, O FORMULÁRIO REFAZ-SE A PARTIR DO SERVIDOR (0.171.0).
+//
+// Registar um resultado (pelo diálogo de «Não houve aula» ou por «Registar e
+// adiar a preparação») desloca o sumário GRAVADO para a aula seguinte. Como o
+// Inertia preserva o estado do componente nos `post`, o formulário continuava a
+// mostrar o texto que acabou de sair — numa aula já fechada, a parecer que o
+// plano ficou ali — e gravá-lo de novo escrevia o mesmo plano duas vezes. As
+// props frescas têm o que realmente ficou nesta aula (nada, se o sumário
+// seguiu); é daí que o formulário e o rascunho do número recomeçam.
+watch(
+    () => props.lesson.outcome,
+    (outcome, previous) => {
+        if (previous !== null || outcome === null) {
+            return;
+        }
+
+        const fresh = {
+            content: props.lesson.summary?.content ?? '',
+            private_notes: props.lesson.summary?.private_notes ?? '',
+            resources: props.lesson.summary?.resources ?? '',
+            homework: props.lesson.summary?.homework ?? '',
+            absent: [] as string[],
+            summary_version: props.lesson.summary_version ?? 0,
+        };
+
+        summaryForm.defaults(fresh);
+        summaryForm.reset();
+        summaryForm.clearErrors();
+        taughtForm.absent = [];
+        recordForm.absent = [];
+        clearForm.summary_version = fresh.summary_version;
+        conflictNotice.value = null;
+        saveFailure.value = null;
+        numberOriginal.value = numberDraftFromLesson(props.lesson);
+        numberDraft.value = numberDraftFromLesson(props.lesson);
+        numberLocalErrors.value = NO_NUMBER_ERRORS;
+        numberPreview.value = null;
+    },
+);
 
 // O resultado da aula é registado pelo diálogo de «Não houve aula», que não
 // passa por aqui: quando o resultado ou o estado mudam nas props, as aulas da
@@ -259,6 +303,16 @@ function applyDayEventToSummary(content: string, focusSummary: boolean): void {
     if (focusSummary) {
         summaryTextarea.value?.focus();
     }
+}
+
+// ------------------------------------- «Registar e adiar a preparação» (0.171.0)
+
+const postponeOpen = ref(false);
+const postponeEvent = ref<DayEvent | null>(null);
+
+function openPostpone(event: DayEvent): void {
+    postponeEvent.value = event;
+    postponeOpen.value = true;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('pt-PT', {
@@ -506,7 +560,7 @@ function markTaught(): void {
 // «Guardar e continuar», which only continues once the save is accepted);
 // closing the tab or reloading gets the browser's own native protection.
 const guard = useUnsavedChangesGuard({
-    isDirty: () => summaryForm.isDirty || numberDirty.value,
+    isDirty: () => hasUnsavedChanges.value,
     isSubmitting: () => submittingFromThisPage.value,
     save: submitSummary,
     discard: () => {},
@@ -633,7 +687,9 @@ function goBack(event: MouseEvent): void {
             :can-record="lesson.can_record_outcome"
             :reasons="lesson.absence_reasons"
             :pending-plan="lesson.pending_plan"
+            :unsaved-changes="hasUnsavedChanges"
             @submitting="(value) => (submittingFromThisPage = value)"
+            :save-first="submitSummary"
         />
 
         <!-- O contexto de quem prepara: aberto numa aula por dar, recolhido numa já
@@ -654,7 +710,13 @@ function goBack(event: MouseEvent): void {
                 Sumário guardado.
             </div>
 
-            <LessonDayEvents :events="day_events" :summary-content="summaryForm.content" @append="applyDayEventToSummary" />
+            <LessonDayEvents
+                :events="day_events"
+                :summary-content="summaryForm.content"
+                :can-postpone="lesson.can_record_outcome"
+                @append="applyDayEventToSummary"
+                @postpone="openPostpone"
+            />
 
             <div class="grid gap-2">
                 <div class="flex flex-wrap items-center justify-between gap-2">
@@ -853,6 +915,17 @@ function goBack(event: MouseEvent): void {
                 {{ returnLabel }}
             </a>
         </Button>
+
+        <!-- «Registar e adiar a preparação»: o diálogo vive FORA do formulário do
+             sumário — é uma pré-visualização, e só a confirmação escreve. -->
+        <ActivityPostponeDialog
+            v-model:open="postponeOpen"
+            :lesson-ulid="lesson.ulid"
+            :event="postponeEvent"
+            :has-unsaved-changes="hasUnsavedChanges"
+            :save-first="submitSummary"
+            @submitting="(value) => (submittingFromThisPage = value)"
+        />
 
         <UnsavedChangesDialog
             :open="guard.pending.value !== null"

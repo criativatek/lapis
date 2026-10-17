@@ -1,6 +1,6 @@
 /**
- * «Adicionar ao sumário» — a lógica pura por trás do botão de cada
- * acontecimento do dia em `lessons/Show.vue`. Nunca escreve nada: só decide
+ * «Incluir no sumário» (antes «Adicionar ao sumário») — a lógica pura por trás
+ * do botão de cada acontecimento do dia em `lessons/Show.vue`. Nunca escreve nada: só decide
  * QUE TEXTO acrescentar ao sumário já escrito, e SE o botão faz sentido.
  *
  * O limite de 16000 caracteres é o mesmo do campo `content` do sumário
@@ -73,4 +73,58 @@ export function summaryAppendBlockedReason(content: string, event: DayEventForSu
     }
 
     return null;
+}
+
+// --------------------------------------------------------------------------
+// A coincidência com a aula (0.171.0). Só apresentação: quem calcula
+// `coincides` e `coverage` é o servidor (LessonDayEvents), a partir das horas.
+// --------------------------------------------------------------------------
+
+export type DayEventCoverage = 'all_day' | 'whole_lesson' | 'partial' | null;
+
+export type DayEventTiming = {
+    starts_at: string | null;
+    ends_at: string | null;
+    all_day: boolean;
+    coincides?: boolean;
+    coverage?: DayEventCoverage;
+};
+
+/**
+ * Separa os acontecimentos que COINCIDEM com a aula dos outros do mesmo dia,
+ * mantendo a ordem que o servidor deu a cada grupo. Um acontecimento sem
+ * `coincides` (resposta antiga) conta como «outro».
+ */
+export function splitCoinciding<T extends { coincides?: boolean }>(events: T[]): { coinciding: T[]; others: T[] } {
+    return {
+        coinciding: events.filter((event) => event.coincides === true),
+        others: events.filter((event) => event.coincides !== true),
+    };
+}
+
+/** «Todo o dia», «10:30–11:30» ou só «10:30» quando não há hora de fim. */
+export function eventTimeLabel(event: DayEventTiming): string {
+    if (event.all_day) {
+        return 'Todo o dia';
+    }
+
+    if (event.starts_at === null) {
+        return '';
+    }
+
+    return event.ends_at ? `${event.starts_at}–${event.ends_at}` : event.starts_at;
+}
+
+/**
+ * Quanto da HORA da aula o acontecimento cobre — NULL quando não coincide e
+ * também num acontecimento de dia inteiro: «Todo o dia» já o diz, e uma data
+ * de dia inteiro (um dia comemorativo, por exemplo) não ocupa forçosamente a
+ * aula. Quem decide se a atividade ocupa a aula é o professor.
+ */
+export function coverageLabel(coverage: DayEventCoverage | undefined): string | null {
+    if (coverage === 'whole_lesson') {
+        return 'cobre toda a hora da aula';
+    }
+
+    return coverage === 'partial' ? 'cobre parte da aula' : null;
 }

@@ -17,7 +17,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { eventTimeLabel } from '@/lib/lessonDayEvents';
+import type { DayEventCoverage } from '@/lib/lessonDayEvents';
 import { lessonNumberLabel } from '@/lib/lessons';
+import { SURFACE } from '@/lib/surfaces';
 
 type Option = { id: number; label: string };
 
@@ -190,6 +193,8 @@ type PlanStep = {
         current_summary: string | null;
     };
     item: { ulid: string; position: number; summary: string } | null;
+    /** Atividades do calendário que coincidem com esta aula (0.171.0) — só informação. */
+    calendar_events?: { ulid: string; title: string; type_label: string; all_day: boolean; starts_at: string | null; ends_at: string | null; coverage: DayEventCoverage }[];
 };
 
 type StepKind =
@@ -213,6 +218,8 @@ type Preview = {
     unplaced: { ulid: string; position: number; summary: string }[];
     counts: Record<string, number>;
     requires_replace_confirmation: boolean;
+    /** Quantas aulas do plano coincidem com atividades do calendário (0.171.0). */
+    coinciding_lessons?: number;
 };
 
 const kindLabels: Record<StepKind, string> = {
@@ -756,6 +763,16 @@ function applyAfterSave(): void {
                             </p>
                             <p class="text-xs text-muted-foreground">{{ preview.audience.label }} — a partir de {{ shortDate(`${preview.from}T12:00:00Z`) }}</p>
 
+                            <p
+                                v-if="(preview.coinciding_lessons ?? 0) > 0"
+                                :class="['mt-2 rounded-md border p-2 text-xs', SURFACE.sky]"
+                                data-testid="apply-coinciding"
+                            >
+                                {{ preview.coinciding_lessons === 1 ? '1 aula desta aplicação coincide' : `${preview.coinciding_lessons} aulas desta aplicação coincidem` }}
+                                com atividades do teu calendário. Nada muda por isso: depois de aplicar, abre a aula
+                                para incluir a atividade no sumário ou adiar a preparação.
+                            </p>
+
                             <div v-if="preview.already_applied.length > 0" class="mt-2 text-xs text-muted-foreground">
                                 <p class="font-medium">Já aplicadas antes desta data — não voltam a ser colocadas</p>
                                 <ul class="mt-1 space-y-0.5">
@@ -775,6 +792,14 @@ function applyAfterSave(): void {
                                         <Badge :variant="step.kind === 'replace' ? 'destructive' : 'outline'">{{ step.kind === 'closed' ? `${step.lesson.state_label} — não é alterada` : kindLabels[step.kind] }}</Badge>
                                     </div>
                                     <p v-if="step.item" class="mt-1 text-muted-foreground">{{ step.item.position }}. {{ step.item.summary }}</p>
+                                    <p
+                                        v-for="calendarEvent in step.calendar_events ?? []"
+                                        :key="calendarEvent.ulid"
+                                        :class="['mt-1 rounded border px-2 py-1 text-xs', SURFACE.sky]"
+                                        data-testid="step-coincides"
+                                    >
+                                        Coincide com: {{ calendarEvent.title }} · {{ eventTimeLabel(calendarEvent) }}
+                                    </p>
                                     <p v-if="step.lesson.current_summary && step.kind !== 'fill'" class="mt-1 text-xs text-muted-foreground">Agora na aula: {{ step.lesson.current_summary }}</p>
 
                                     <fieldset v-if="(step.kind === 'preserve' || step.kind === 'replace') && step.lesson.ulid" class="mt-2 flex flex-wrap gap-2">

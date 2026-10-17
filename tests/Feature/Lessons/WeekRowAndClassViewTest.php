@@ -92,7 +92,7 @@ class WeekRowAndClassViewTest extends TestCase
         $this->assertSame('taught', $row['status']);
         $this->assertSame(3, $row['lesson_number']);
         $this->assertCount(1, $row['day_events']);
-        $this->assertSame(['ulid', 'title', 'starts_at', 'ends_at', 'all_day', 'notes', 'type_label'], array_keys($row['day_events'][0]));
+        $this->assertSame(['ulid', 'title', 'starts_at', 'ends_at', 'all_day', 'notes', 'type_label', 'coincides', 'coverage'], array_keys($row['day_events'][0]));
         $this->assertSame('10:00', $row['day_events'][0]['starts_at']);
     }
 

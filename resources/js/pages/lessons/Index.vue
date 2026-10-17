@@ -51,6 +51,7 @@ import ActivitySessionCard from '@/components/activity-sessions/ActivitySessionC
 import ActivitySessionDialog from '@/components/activity-sessions/ActivitySessionDialog.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
+import ActivityPostponeDialog from '@/components/lessons/ActivityPostponeDialog.vue';
 import BatchTaughtDialog from '@/components/lessons/BatchTaughtDialog.vue';
 import InsertLessonDialog from '@/components/lessons/InsertLessonDialog.vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
@@ -1377,6 +1378,34 @@ const outcomeDialogOpen = ref(false);
 const outcomeLesson = ref<WeekLesson | null>(null);
 const outcomeKind = ref<SpecialLessonOutcome>('teacher_absent');
 
+/** O texto do editor desta aula tem alterações por guardar (0.171.0). */
+function editorHasUnsavedChanges(ulid: string | null | undefined): boolean {
+    return ulid != null && editor.value?.ulid === ulid && isDirty();
+}
+
+/**
+ * Depois de um resultado registado, o texto que o editor mostra já saiu desta
+ * aula (o servidor deslocou o sumário GRAVADO). O editor fecha-se — sem
+ * alterações por guardar, porque o diálogo as pede primeiro — para não deixar
+ * à vista nem gravar de novo um plano que já seguiu (0.171.0).
+ */
+function closeEditorOnLesson(ulid: string | null | undefined): void {
+    if (ulid != null && editor.value?.ulid === ulid && !isDirty()) {
+        editor.value = null;
+    }
+}
+
+// «Registar e adiar a preparação» (0.171.0): um só diálogo para a página.
+const postponeOpen = ref(false);
+const postponeLesson = ref<WeekLesson | null>(null);
+const postponeEvent = ref<WeekLesson['day_events'][number] | null>(null);
+
+function openPostpone(lesson: WeekLesson, event: WeekLesson['day_events'][number]): void {
+    postponeLesson.value = lesson;
+    postponeEvent.value = event;
+    postponeOpen.value = true;
+}
+
 function openOutcome(lesson: WeekLesson, outcome: SpecialLessonOutcome): void {
     outcomeLesson.value = lesson;
     outcomeKind.value = outcome;
@@ -2438,6 +2467,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     @save="saveSummary"
                                     @cancel="cancelEdit"
                                     @project="openProjection(lesson)"
+                                    @postpone="(event) => openPostpone(lesson, event)"
                                     @combine="combineTexts"
                                     @keep-mine="keepMine"
                                     @use-stored="useStored"
@@ -2639,6 +2669,13 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                                 @project="
                                                     openProjection(entry.lesson)
                                                 "
+                                                @postpone="
+                                                    (event) =>
+                                                        openPostpone(
+                                                            entry.lesson,
+                                                            event,
+                                                        )
+                                                "
                                                 @combine="combineTexts"
                                                 @keep-mine="keepMine"
                                                 @use-stored="useStored"
@@ -2714,11 +2751,23 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             :session="openedSession"
         />
 
+        <ActivityPostponeDialog
+            v-model:open="postponeOpen"
+            :lesson-ulid="postponeLesson?.ulid ?? ''"
+            :event="postponeEvent"
+            :has-unsaved-changes="editorHasUnsavedChanges(postponeLesson?.ulid)"
+            :save-first="saveSummary"
+            @done="closeEditorOnLesson(postponeLesson?.ulid)"
+        />
+
         <LessonOutcomeDialog
             v-model:open="outcomeDialogOpen"
             :lesson-ulid="outcomeLesson?.ulid ?? null"
             :reasons="absenceReasons"
             :initial-outcome="outcomeKind"
+            :unsaved-changes="editorHasUnsavedChanges(outcomeLesson?.ulid)"
+            :save-first="saveSummary"
+            @recorded="closeEditorOnLesson(outcomeLesson?.ulid)"
             :lesson-context="
                 outcomeLesson
                     ? `${outcomeLesson.context_label} · ${lessonTimeRange(outcomeLesson)}`

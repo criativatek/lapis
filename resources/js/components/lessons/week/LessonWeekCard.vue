@@ -409,6 +409,13 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                                 · {{ event.notes }}</template
                             ></span
                         >
+                        <!-- Discreto, e só informação (0.171.0): as ações vivem no editor. -->
+                        <span
+                            v-if="event.coincides"
+                            class="text-xs font-semibold text-sky-700 dark:text-sky-300"
+                            data-testid="lesson-day-event-coincides"
+                            >coincide com a aula</span
+                        >
                     </li>
                 </ul>
 

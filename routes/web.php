@@ -51,6 +51,7 @@ use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\IssueReportController;
 use App\Http\Controllers\LegalController;
+use App\Http\Controllers\LessonActivityPostponementController;
 use App\Http\Controllers\LessonAttendanceController;
 use App\Http\Controllers\LessonBatchController;
 use App\Http\Controllers\LessonController;
@@ -644,6 +645,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
         Route::post('lessons/{lesson}/outcome', [LessonController::class, 'recordOutcome'])->name('lessons.outcome');
+        // «Registar e adiar a preparação» (0.171.0): uma atividade do calendário
+        // ocupa a aula. A pré-visualização só lê (transação revertida) e calcula o
+        // mesmo plano que a execução; esta exige o `plan_token` dela.
+        Route::post('lessons/{lesson}/activity-postponement/preview', [LessonActivityPostponementController::class, 'preview'])->name('lessons.activity-postponement.preview');
+        Route::post('lessons/{lesson}/activity-postponement', [LessonActivityPostponementController::class, 'store'])->name('lessons.activity-postponement');
         // Assiduidade: rascunho de faltas antes de lecionada, registo de uma
         // aula já lecionada sem assiduidade, e correção de uma linha já
         // consolidada — três ações distintas, ver LessonAttendanceController.

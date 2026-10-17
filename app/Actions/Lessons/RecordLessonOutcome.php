@@ -52,11 +52,34 @@ class RecordLessonOutcome
         ?TeacherAbsenceReason $reason = null,
         ?string $note = null,
     ): Lesson {
+        return $this->perform($lesson, $outcome, $actor, $reason, $note)['lesson'];
+    }
+
+    /**
+     * O mesmo que `execute()`, com o TRAÇO do que aconteceu (0.171.0): para onde
+     * foi o planeamento e que aulas mudaram de número. É o que deixa «Registar e
+     * adiar a preparação» pré-visualizar e dizer o destino REAL — sem uma segunda
+     * implementação do deslocamento. Corre na transação de quem chama, se houver.
+     *
+     * @return array{
+     *     lesson: Lesson,
+     *     planning: array<string, mixed>,
+     *     renumbered: array<int, int|null>,
+     *     dropped_attendance_drafts: int,
+     * }
+     */
+    public function perform(
+        Lesson $lesson,
+        LessonOutcome $outcome,
+        User $actor,
+        ?TeacherAbsenceReason $reason = null,
+        ?string $note = null,
+    ): array {
         if ($outcome === LessonOutcome::Taught) {
             throw new \InvalidArgumentException('Lecionada regista-se em MarkLessonAsTaught.');
         }
 
-        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason): Lesson {
+        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason): array {
             SchoolClass::query()->whereKey($lesson->class_id)->lockForUpdate()->first();
 
             /** @var Lesson $locked */
@@ -152,7 +175,12 @@ class RecordLessonOutcome
                 ],
             );
 
-            return $locked->refresh();
+            return [
+                'lesson' => $locked->refresh(),
+                'planning' => $planning,
+                'renumbered' => $renumbered,
+                'dropped_attendance_drafts' => $droppedDrafts,
+            ];
         });
     }
 
