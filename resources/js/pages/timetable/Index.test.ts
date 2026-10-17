@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type {
     TimetableClassOption,
@@ -15,7 +15,10 @@ import {
 
 const routerGet = vi.hoisted(() => vi.fn());
 const routerDelete = vi.hoisted(() => vi.fn());
-const pageState = vi.hoisted(() => ({ flash: {} as Record<string, unknown> }));
+const pageState = vi.hoisted(() => ({
+    flash: {} as Record<string, unknown>,
+    props: {} as Record<string, unknown>,
+}));
 const formSubmits = vi.hoisted(
     () =>
         [] as Array<{
@@ -897,7 +900,7 @@ describe('timetable — tom guardado por professor e turma', () => {
  * 0.168.0 — o Horário do Professor é o sítio onde se corrige o horário depois
  * de uma importação, e onde vivem as atividades que não são aulas.
  */
-describe('timetable — corrigir o horário e atividades não letivas', () => {
+describe('timetable — corrigir o horário e outras atividades', () => {
     const kinds = [
         { value: 'class_direction', label: 'Direção de turma' },
         { value: 'meeting', label: 'Reunião' },
@@ -964,7 +967,7 @@ describe('timetable — corrigir o horário e atividades não letivas', () => {
         });
 
         expect(wrapper.text()).toContain('1 aula por semana · 1 turma');
-        expect(wrapper.text()).toContain('2 atividades não letivas');
+        expect(wrapper.text()).toContain('2 outras atividades');
         wrapper.unmount();
     });
 
@@ -974,8 +977,8 @@ describe('timetable — corrigir o horário e atividades não letivas', () => {
 
         await wrapper.find('[data-add-activity]').trigger('click');
 
-        expect(document.body.textContent).toContain('Adicionar atividade não letiva');
-        expect(document.body.textContent).toContain('não geram aulas nem sumários');
+        expect(document.body.textContent).toContain('Adicionar outra atividade');
+        expect(document.body.textContent).toContain('não geram aulas e cada sessão tem o seu sumário');
 
         const form = document.body.querySelector('form') as HTMLFormElement;
         await form.dispatchEvent(new Event('submit'));
@@ -998,7 +1001,7 @@ describe('timetable — corrigir o horário e atividades não letivas', () => {
 
         await wrapper.find('[data-activity-block]').trigger('click');
 
-        expect(document.body.textContent).toContain('Editar atividade não letiva');
+        expect(document.body.textContent).toContain('Editar outra atividade');
 
         (document.body.querySelector('[data-remove-activity]') as HTMLElement).click();
         await wrapper.vm.$nextTick();
@@ -1064,6 +1067,306 @@ describe('timetable — corrigir o horário e atividades não letivas', () => {
         await wrapper.find('section[aria-label="Segunda-feira"] li button').trigger('click');
 
         expect(document.body.textContent).toContain('Aplicar alteração a partir de');
+        wrapper.unmount();
+    });
+});
+
+
+/**
+ * 0.170.0 — as outras atividades têm um sumário por sessão. Clicar numa
+ * atividade abre o REGISTO DA SESSÃO dessa data (não o editor do bloco); dentro
+ * dele, «Editar horário» abre o bloco. O bloco mostra o estado da sessão.
+ */
+describe('timetable — registo por sessão das outras atividades', () => {
+    // Os diálogos montam-se no <body> e sobrevivem ao `unmount`: sem isto, um
+    // teste leria o diálogo (e o estado) do anterior.
+    beforeEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    const kinds = [
+        { value: 'class_direction', label: 'Direção de turma' },
+        { value: 'club', label: 'Clube' },
+    ];
+
+    function occurrence(overrides: Record<string, unknown> = {}) {
+        return {
+            key: 'activity-act-1-2026-10-13',
+            session_ulid: null,
+            activity_ulid: 'act-1',
+            title: 'DT 6.º D',
+            kind: 'class_direction',
+            kind_label: 'Direção de turma',
+            occurs_on: '2026-10-13',
+            starts_at: '2026-10-13T10:30:00+01:00',
+            ends_at: '2026-10-13T11:20:00+01:00',
+            start_time: '10:30',
+            end_time: '11:20',
+            school_class: null,
+            status: 'planned',
+            presentation: 'planned',
+            presentation_label: 'Por realizar',
+            summary: null,
+            has_summary: false,
+            session_number: null,
+            numbering_enabled: false,
+            registrable: true,
+            follows_schedule: true,
+            ...overrides,
+        };
+    }
+
+    function activityWith(occurrenceOverrides: Record<string, unknown> | null) {
+        return {
+            ulid: 'act-1',
+            kind: 'class_direction',
+            kind_label: 'Direção de turma',
+            title: 'DT 6.º D',
+            day_of_week: 2,
+            starts_at: '10:30',
+            ends_at: '11:20',
+            starts_on: null,
+            ends_on: null,
+            school_class: null,
+            numbering_enabled: false,
+            numbering_start: 1,
+            records_count: 0,
+            occurrence: occurrenceOverrides === null ? null : occurrence(occurrenceOverrides),
+        };
+    }
+
+    function mountWith(props: Record<string, unknown>) {
+        formSubmits.length = 0;
+        pageState.props = {};
+
+        return mount(Index, {
+            props: { slots: [], classes: [], activityKinds: kinds, ...props },
+            attachTo: document.body,
+        });
+    }
+
+    it('shows the state and the number of the session on the block', () => {
+        const wrapper = mountWith({
+            activities: [
+                activityWith({
+                    session_ulid: 'ses-1',
+                    status: 'done',
+                    presentation: 'done',
+                    presentation_label: 'Realizada',
+                    session_number: 3,
+                    has_summary: true,
+                    summary: 'Texto.',
+                }),
+            ],
+        });
+
+        const block = wrapper.find('[data-activity-block]');
+
+        expect(block.text()).toContain('Realizada');
+        expect(block.text()).toContain('Sessão 3');
+        wrapper.unmount();
+    });
+
+    it('shows no state on an occurrence nobody registered', () => {
+        const wrapper = mountWith({ activities: [activityWith({})] });
+
+        const block = wrapper.find('[data-activity-block]');
+
+        expect(block.text()).not.toContain('Por realizar');
+        expect(block.find('[data-testid="activity-session-state"]').exists()).toBe(false);
+        wrapper.unmount();
+    });
+
+    it('opens the session record, not the block editor, when the activity is clicked', async () => {
+        const wrapper = mountWith({
+            activities: [activityWith({})],
+            week: { start: '2026-10-12', end: '2026-10-18', is_current: true },
+        });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(document.body.querySelector('[data-testid="activity-session-dialog"]')).not.toBeNull();
+        expect(document.body.textContent).toContain('Sumário');
+        expect(document.body.textContent).not.toContain('Editar outra atividade');
+        expect(document.body.textContent).toContain('Ver histórico desta atividade');
+        wrapper.unmount();
+    });
+
+    it('opens the block editor from «Editar horário» inside the record', async () => {
+        const wrapper = mountWith({ activities: [activityWith({})] });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+        (document.body.querySelector('[data-testid="activity-session-edit-schedule"]') as HTMLElement).click();
+        await wrapper.vm.$nextTick();
+
+        expect(document.body.textContent).toContain('Editar outra atividade');
+        wrapper.unmount();
+    });
+
+    it('creates the session for the date with the typed summary and the chosen action', async () => {
+        const wrapper = mountWith({ activities: [activityWith({})] });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        const textarea = document.body.querySelector('[data-testid="activity-session-summary"]') as HTMLTextAreaElement;
+        textarea.value = 'Visita de estudo.';
+        textarea.dispatchEvent(new Event('input'));
+        await wrapper.vm.$nextTick();
+
+        (document.body.querySelector('[data-testid="activity-session-done"]') as HTMLElement).click();
+
+        expect(formSubmits).toHaveLength(1);
+        expect(formSubmits[0].method).toBe('post');
+        expect(formSubmits[0].url).toBe('/activity-sessions');
+        expect(formSubmits[0].data).toEqual(
+            expect.objectContaining({
+                summary: 'Visita de estudo.',
+                action: 'done',
+                activity_ulid: 'act-1',
+                occurs_on: '2026-10-13',
+            }),
+        );
+        wrapper.unmount();
+    });
+
+    it('edits an existing session by its ulid and offers to reopen it', async () => {
+        const wrapper = mountWith({
+            activities: [
+                activityWith({
+                    session_ulid: 'ses-1',
+                    status: 'done',
+                    presentation: 'done',
+                    presentation_label: 'Realizada',
+                    has_summary: true,
+                    summary: 'Texto.',
+                }),
+            ],
+        });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(document.body.querySelector('[data-testid="activity-session-done"]')).toBeNull();
+
+        (document.body.querySelector('[data-testid="activity-session-reopen"]') as HTMLElement).click();
+
+        expect(formSubmits).toHaveLength(1);
+        expect(formSubmits[0].method).toBe('put');
+        expect(formSubmits[0].url).toBe('/activity-sessions/ses-1');
+        expect(formSubmits[0].data).toEqual({ summary: 'Texto.', action: 'reopen' });
+        wrapper.unmount();
+    });
+
+    it('does not offer to save an empty text for a session that does not exist yet', async () => {
+        const wrapper = mountWith({ activities: [activityWith({})] });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(
+            (document.body.querySelector('[data-testid="activity-session-save"]') as HTMLButtonElement).disabled,
+        ).toBe(true);
+        wrapper.unmount();
+    });
+
+    it('disables the writes under technical access, keeping the record readable', async () => {
+        const wrapper = mountWith({ activities: [activityWith({ summary: 'Texto.', has_summary: true })] });
+        pageState.props = { impersonating: { name: 'Professor' } };
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(document.body.textContent).toContain('Em acesso técnico só se pode consultar');
+
+        for (const id of ['save', 'done', 'not-held']) {
+            expect(
+                (document.body.querySelector(`[data-testid="activity-session-${id}"]`) as HTMLButtonElement).disabled,
+            ).toBe(true);
+        }
+
+        wrapper.unmount();
+    });
+
+    it('says the day is non-teaching and blocks creating the session there', async () => {
+        const wrapper = mountWith({ activities: [activityWith({ registrable: false })] });
+
+        await wrapper.find('[data-activity-block]').trigger('click');
+
+        expect(document.body.querySelector('[data-testid="activity-session-non-teaching"]')).not.toBeNull();
+        expect(
+            (document.body.querySelector('[data-testid="activity-session-done"]') as HTMLButtonElement).disabled,
+        ).toBe(true);
+        wrapper.unmount();
+    });
+
+    it('draws a session that left the schedule on its own day and opens it without «Editar horário»', async () => {
+        const detached = occurrence({
+            key: 'session-ses-9',
+            session_ulid: 'ses-9',
+            activity_ulid: null,
+            title: 'Apoio antigo',
+            occurs_on: '2026-10-15',
+            start_time: '14:00',
+            end_time: '14:50',
+            status: 'not_held',
+            presentation: 'not_held',
+            presentation_label: 'Não realizada',
+            follows_schedule: false,
+        });
+        const wrapper = mountWith({ detachedSessions: [detached] });
+
+        const thursday = wrapper.find('section[aria-label="Quinta-feira"]');
+
+        expect(thursday.text()).toContain('Apoio antigo');
+        expect(thursday.text()).toContain('Não realizada');
+
+        await thursday.find('li button').trigger('click');
+
+        expect(document.body.querySelector('[data-testid="activity-session-dialog"]')).not.toBeNull();
+        expect(document.body.querySelector('[data-testid="activity-session-edit-schedule"]')).toBeNull();
+        expect(document.body.textContent).toContain('ficou na data e hora');
+        wrapper.unmount();
+    });
+
+    it('offers the Clube kind, the numbering and the history link', async () => {
+        const wrapper = mountWith({});
+
+        expect(wrapper.find('[data-activity-history]').attributes('href')).toBe('/activity-sessions');
+
+        await wrapper.find('[data-add-activity]').trigger('click');
+
+        expect(document.body.textContent).toContain('Clube');
+        expect(document.body.textContent).toContain('Numerar as sessões');
+        expect(document.body.textContent).not.toContain('Número inicial');
+
+        (document.body.querySelector('[data-numbering-enabled]') as HTMLElement).click();
+        await wrapper.vm.$nextTick();
+
+        expect(document.body.textContent).toContain('Número inicial');
+        wrapper.unmount();
+    });
+
+    it('says the block is closed, not deleted, when it has sessions with records', async () => {
+        routerDelete.mockClear();
+        const wrapper = mountWith({
+            today: '2026-10-14',
+            activities: [{ ...activityWith({}), records_count: 3 }],
+        });
+
+        // O editor do bloco abre-se por «Editar horário».
+        await wrapper.find('[data-activity-block]').trigger('click');
+        (document.body.querySelector('[data-testid="activity-session-edit-schedule"]') as HTMLElement).click();
+        await wrapper.vm.$nextTick();
+
+        (document.body.querySelector('[data-remove-activity]') as HTMLElement).click();
+        await wrapper.vm.$nextTick();
+
+        expect(document.body.textContent).toContain('3 sessões com registos: não é apagada');
+        expect(document.body.textContent).toContain('Deixa de vigorar a partir de');
+
+        (document.body.querySelector('[data-confirm-remove]') as HTMLElement).click();
+
+        expect(routerDelete).toHaveBeenCalledWith(
+            '/timetable-activities/act-1',
+            expect.objectContaining({ data: { effective_from: '2026-10-14' } }),
+        );
         wrapper.unmount();
     });
 });

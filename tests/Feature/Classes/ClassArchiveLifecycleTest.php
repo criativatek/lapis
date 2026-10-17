@@ -389,6 +389,9 @@ class ClassArchiveLifecycleTest extends TestCase
             // `nullOnDelete`: a turma é só uma referência informativa de uma
             // atividade não letiva do horário (0.168.0), que sobrevive sem ela.
             'timetable_activities',
+            // Idem para o registo por sessão (0.170.0): `class_id` é uma cópia
+            // informativa, `nullOnDelete`, e o texto da sessão sobrevive.
+            'timetable_activity_sessions',
         ];
 
         $pointingAtClasses = [];

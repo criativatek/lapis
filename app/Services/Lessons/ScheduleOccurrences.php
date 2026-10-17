@@ -3,6 +3,7 @@
 namespace App\Services\Lessons;
 
 use App\Models\AcademicCalendarException;
+use App\Models\AcademicYear;
 use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use Carbon\CarbonImmutable;
@@ -108,6 +109,21 @@ final class ScheduleOccurrences
         );
 
         return $occurrences;
+    }
+
+    /**
+     * O dia (`Y-m-d`) é não letivo no calendário DESTE ano letivo? A mesma
+     * regra de `between()`, para quem não tem uma turma à mão — as sessões das
+     * «outras atividades» (0.170.0) perguntam-no ao ano da data.
+     */
+    public function isNonTeachingDateIn(AcademicYear $academicYear, string $date): bool
+    {
+        $exceptions = $academicYear->exceptions()
+            ->whereDate('starts_on', '<=', $date)
+            ->whereDate('ends_on', '>=', $date)
+            ->get();
+
+        return $this->isNonTeachingDay(CarbonImmutable::parse($date, self::TIMEZONE), $exceptions);
     }
 
     /**

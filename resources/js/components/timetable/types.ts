@@ -1,3 +1,5 @@
+import type { ActivitySessionItem } from '@/lib/activitySessions';
+
 /**
  * Os tipos que o Horário do Professor e os seus diálogos partilham. Vêm do
  * servidor tal e qual (TeacherTimetableController::index).
@@ -43,6 +45,13 @@ export type TimetableActivity = {
     starts_on: string | null;
     ends_on: string | null;
     school_class: { ulid: string; label: string } | null;
+    /** Numeração opcional das sessões (0.170.0). */
+    numbering_enabled?: boolean;
+    numbering_start?: number;
+    /** Sessões com registos: se houver, eliminar o bloco fecha-o em vez de o apagar. */
+    records_count?: number;
+    /** A ocorrência do bloco na semana mostrada, com o estado da sessão dessa data. */
+    occurrence?: ActivitySessionItem | null;
 };
 
 export type TimetableActivityKindOption = { value: string; label: string };

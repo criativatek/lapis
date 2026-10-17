@@ -15,6 +15,14 @@ describe('statusTone', () => {
         expect(statusTone('prepared')).toBe('blue');
     });
 
+    it('sessões das outras atividades: preparada azul, realizada verde, não realizada âmbar e nunca vermelha', () => {
+        expect(statusTone('session_planned')).toBe('neutral');
+        expect(statusTone('session_prepared')).toBe('blue');
+        expect(statusTone('session_done')).toBe('green');
+        expect(statusTone('session_not_held')).toBe('amber');
+        expect(statusTone('session_not_held')).not.toBe('red');
+    });
+
     it('cancelado é vermelho; rascunho e arquivado ficam neutros', () => {
         expect(statusTone('cancelled')).toBe('red');
         expect(statusTone('draft')).toBe('neutral');

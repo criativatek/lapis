@@ -58,6 +58,22 @@ class AcademicYear extends Model
     }
 
     /**
+     * O ano letivo da organização cujo intervalo contém a data (`Y-m-d`).
+     * Se mais de um a contiver (anos que se tocam), o de `starts_on` mais
+     * recente; `null` se nenhum. `whereDate` dos dois lados: são colunas
+     * `date` e comparadas como texto perderiam o dia-limite.
+     */
+    public static function containing(string $date): ?self
+    {
+        return static::query()
+            ->whereDate('starts_on', '<=', $date)
+            ->whereDate('ends_on', '>=', $date)
+            ->orderByDesc('starts_on')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
      * @return HasMany<AcademicPeriod, $this>
      */
     public function periods(): HasMany

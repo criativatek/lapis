@@ -7,9 +7,11 @@ import {
     ChevronLeft,
     ChevronRight,
     FileUp,
+    History,
     Plus,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import ActivitySessionDialog from '@/components/activity-sessions/ActivitySessionDialog.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import ScheduleChangeNotice from '@/components/timetable/ScheduleChangeNotice.vue';
@@ -23,6 +25,8 @@ import type {
     TimetableSlot,
 } from '@/components/timetable/types';
 import { Button } from '@/components/ui/button';
+import { compareActivitySessions } from '@/lib/activitySessions';
+import type { ActivitySessionItem } from '@/lib/activitySessions';
 import { capitalizeFirst } from '@/lib/text';
 import type { TurmaTone } from './timetable';
 import {
@@ -38,13 +42,19 @@ const props = withDefaults(
     defineProps<{
         slots: TimetableSlot[];
         classes: TimetableClassOption[];
-        /** As atividades não letivas do professor em vigor nesta semana (0.168.0). */
+        /** As «outras atividades» do professor em vigor nesta semana (0.168.0), com a sessão de cada data (0.170.0). */
         activities?: TimetableActivity[];
+        /** Sessões com registos que já não batem com nenhum bloco desta semana (0.170.0). */
+        detachedSessions?: ActivitySessionItem[];
         activityKinds?: TimetableActivityKindOption[];
         week?: ConsultedWeek;
         today?: string;
     }>(),
-    { activities: () => [], activityKinds: () => [] },
+    {
+        activities: () => [],
+        detachedSessions: () => [],
+        activityKinds: () => [],
+    },
 );
 
 // ------------------------------------------------------ a semana consultada
@@ -132,13 +142,22 @@ const weekdayColumns = [1, 2, 3, 4, 5];
 const weekendDaysOfWeek = [6, 7];
 
 /**
- * O QUE SE DESENHA NA GRELHA: os tempos de aula e as atividades não letivas do
- * professor, juntos e por hora de início. Duas coisas diferentes na mesma
- * coluna — a aula leva o tom da turma, a atividade é neutra e tracejada.
+ * O QUE SE DESENHA NA GRELHA: os tempos de aula, as «outras atividades» do
+ * professor e as sessões que ficaram fora do horário atual, juntos e por hora
+ * de início. Coisas diferentes na mesma coluna — a aula leva o tom da turma, a
+ * atividade e a sessão são neutras e tracejadas.
  */
 type DayItem =
     | { key: string; startsAt: string; slot: TimetableSlot }
-    | { key: string; startsAt: string; activity: TimetableActivity };
+    | { key: string; startsAt: string; activity: TimetableActivity }
+    | { key: string; startsAt: string; session: ActivitySessionItem };
+
+/** O dia da semana ISO (1 = segunda) de uma data `Y-m-d`. */
+function isoWeekday(date: string): number {
+    const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+
+    return day === 0 ? 7 : day;
+}
 
 const itemsByDay = computed(() => {
     const grouped = new Map<number, DayItem[]>();
@@ -156,6 +175,17 @@ const itemsByDay = computed(() => {
                 activity,
             },
         ]),
+        ...props.detachedSessions
+            .slice()
+            .sort(compareActivitySessions)
+            .map((session): [number, DayItem] => [
+                isoWeekday(session.occurs_on),
+                {
+                    key: `session-${session.key}`,
+                    startsAt: session.start_time,
+                    session,
+                },
+            ]),
     ];
 
     for (const [dayOfWeek, item] of items) {
@@ -220,7 +250,10 @@ const days = computed(() =>
 );
 
 const noItems = computed(
-    () => props.slots.length === 0 && props.activities.length === 0,
+    () =>
+        props.slots.length === 0 &&
+        props.activities.length === 0 &&
+        props.detachedSessions.length === 0,
 );
 
 const summary = computed(() => {
@@ -232,9 +265,9 @@ const summary = computed(() => {
     const base = `${blocks} ${blocks === 1 ? 'aula' : 'aulas'} por semana · ${classCount} ${classCount === 1 ? 'turma' : 'turmas'}`;
     const extra = props.activities.length;
 
-    // As atividades não letivas não são aulas: dizem-se à parte.
+    // As outras atividades não são aulas: dizem-se à parte.
     return extra > 0
-        ? `${base} · ${extra} ${extra === 1 ? 'atividade não letiva' : 'atividades não letivas'}`
+        ? `${base} · ${extra} ${extra === 1 ? 'outra atividade' : 'outras atividades'}`
         : base;
 });
 
@@ -244,6 +277,8 @@ const slotDialogOpen = ref(false);
 const editingSlot = ref<TimetableSlot | null>(null);
 const activityDialogOpen = ref(false);
 const editingActivity = ref<TimetableActivity | null>(null);
+const sessionDialogOpen = ref(false);
+const openedSession = ref<ActivitySessionItem | null>(null);
 
 function addLesson(): void {
     editingSlot.value = null;
@@ -265,6 +300,11 @@ function editActivity(activity: TimetableActivity): void {
     activityDialogOpen.value = true;
 }
 
+/**
+ * Clicar numa aula abre a correção do horário. Clicar numa atividade abre o
+ * REGISTO DA SESSÃO dessa data (0.170.0); dentro dele, «Editar horário» abre o
+ * bloco. Abrir não escreve nada: a sessão só nasce quando o professor guarda.
+ */
 function selectItem(item: DayItem): void {
     if ('slot' in item) {
         editSlot(item.slot);
@@ -272,7 +312,43 @@ function selectItem(item: DayItem): void {
         return;
     }
 
+    if ('session' in item) {
+        openSession(item.session);
+
+        return;
+    }
+
+    if (item.activity.occurrence) {
+        openSession(item.activity.occurrence);
+
+        return;
+    }
+
     editActivity(item.activity);
+}
+
+function openSession(session: ActivitySessionItem): void {
+    openedSession.value = session;
+    sessionDialogOpen.value = true;
+}
+
+/** O bloco da sessão aberta, se ainda estiver neste horário. */
+const openedSessionActivity = computed(
+    () =>
+        props.activities.find(
+            (activity) => activity.ulid === openedSession.value?.activity_ulid,
+        ) ?? null,
+);
+
+function editScheduleOfOpenedSession(): void {
+    const activity = openedSessionActivity.value;
+
+    if (activity === null) {
+        return;
+    }
+
+    sessionDialogOpen.value = false;
+    editActivity(activity);
 }
 
 function slotOf(item: DayItem): TimetableSlot | undefined {
@@ -281,6 +357,10 @@ function slotOf(item: DayItem): TimetableSlot | undefined {
 
 function activityOf(item: DayItem): TimetableActivity | undefined {
     return 'activity' in item ? item.activity : undefined;
+}
+
+function sessionOf(item: DayItem): ActivitySessionItem | undefined {
+    return 'session' in item ? item.session : undefined;
 }
 
 // ------------------------------------------------------ o tom de cada turma
@@ -400,14 +480,20 @@ function badgeOf(ulid: string): string {
                     class="min-h-10"
                     data-add-activity
                     @click="addActivity"
-                    ><Plus class="size-4" /> Adicionar atividade não
-                    letiva</Button
+                    ><Plus class="size-4" /> Adicionar outra atividade</Button
                 >
+                <Button as-child variant="outline" class="min-h-10">
+                    <Link href="/activity-sessions" data-activity-history
+                        ><History class="size-4" /> Histórico das outras
+                        atividades</Link
+                    >
+                </Button>
             </div>
             <p class="text-sm text-muted-foreground">
-                Clica num bloco para o corrigir. As atividades não letivas
-                (direção de turma, apoios, reuniões) ficam no horário mas não
-                geram aulas nem sumários.
+                Clica numa aula para a corrigir e numa atividade para registar o
+                sumário da sessão. As outras atividades (direção de turma,
+                apoios, clubes, reuniões) ficam no horário, não geram aulas e
+                têm um sumário por sessão.
             </p>
         </section>
 
@@ -473,6 +559,7 @@ function badgeOf(ulid: string): string {
                                 <TimetableBlock
                                     :lesson-slot="slotOf(item)"
                                     :activity="activityOf(item)"
+                                    :session="sessionOf(item)"
                                     :bar-class="
                                         'slot' in item
                                             ? barOf(item.slot.school_class.ulid)
@@ -515,6 +602,7 @@ function badgeOf(ulid: string): string {
                                 <TimetableBlock
                                     :lesson-slot="slotOf(item)"
                                     :activity="activityOf(item)"
+                                    :session="sessionOf(item)"
                                     :bar-class="
                                         'slot' in item
                                             ? barOf(item.slot.school_class.ulid)
@@ -549,6 +637,7 @@ function badgeOf(ulid: string): string {
                             <TimetableBlock
                                 :lesson-slot="slotOf(item)"
                                 :activity="activityOf(item)"
+                                :session="sessionOf(item)"
                                 :bar-class="
                                     'slot' in item
                                         ? barOf(item.slot.school_class.ulid)
@@ -671,6 +760,13 @@ function badgeOf(ulid: string): string {
             :activity="editingActivity"
             :kinds="activityKinds"
             :classes="classes"
+            :today="today"
+        />
+        <ActivitySessionDialog
+            v-model:open="sessionDialogOpen"
+            :session="openedSession"
+            :can-edit-schedule="openedSessionActivity !== null"
+            @edit-schedule="editScheduleOfOpenedSession"
         />
     </main>
 </template>

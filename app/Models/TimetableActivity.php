@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToOrganization;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -27,11 +29,25 @@ use Illuminate\Support\Carbon;
  * @property string $ends_at
  * @property Carbon|null $starts_on
  * @property Carbon|null $ends_on
+ * @property bool $numbering_enabled
+ * @property int $numbering_start
  */
-#[Fillable(['user_id', 'kind', 'title', 'class_id', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'])]
+#[Fillable(['user_id', 'kind', 'title', 'class_id', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on', 'numbering_enabled', 'numbering_start'])]
 class TimetableActivity extends Model
 {
     use BelongsToOrganization, HasUlids;
+
+    /**
+     * A numeração das sessões só existe se o professor a pedir (0.170.0); sem
+     * isto, uma atividade acabada de criar não teria os valores por omissão da
+     * coluna até ser relida.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'numbering_enabled' => false,
+        'numbering_start' => 1,
+    ];
 
     /**
      * @return list<string>
@@ -53,6 +69,8 @@ class TimetableActivity extends Model
             'day_of_week' => 'integer',
             'starts_on' => 'date',
             'ends_on' => 'date',
+            'numbering_enabled' => 'boolean',
+            'numbering_start' => 'integer',
         ];
     }
 
@@ -70,6 +88,27 @@ class TimetableActivity extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    /**
+     * Os registos por sessão desta atividade (0.170.0). `nullOnDelete`: apagar
+     * o bloco nunca apaga um sumário.
+     *
+     * @return HasMany<TimetableActivitySession, $this>
+     */
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(TimetableActivitySession::class);
+    }
+
+    /**
+     * Esta atividade tem uma ocorrência no dia dado (`Y-m-d`)? Dia da semana
+     * certo e vigência a cobri-lo. Não olha para o calendário letivo.
+     */
+    public function occursOn(string $date): bool
+    {
+        return (int) CarbonImmutable::parse($date)->dayOfWeekIso === (int) $this->day_of_week
+            && $this->isInForceOn($date);
     }
 
     /**

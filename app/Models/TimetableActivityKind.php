@@ -12,6 +12,7 @@ enum TimetableActivityKind: string
     case StudentSupport = 'student_support';
     case Meeting = 'meeting';
     case Coordination = 'coordination';
+    case Club = 'club';
     case Other = 'other';
 
     public function label(): string
@@ -21,6 +22,7 @@ enum TimetableActivityKind: string
             self::StudentSupport => 'Apoio a alunos',
             self::Meeting => 'Reunião',
             self::Coordination => 'Coordenação / cargo',
+            self::Club => 'Clube',
             self::Other => 'Outra',
         };
     }
