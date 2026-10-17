@@ -25,6 +25,117 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.170.0] — 2026-10-17
+
+> **As «Outras atividades» passam a ter um sumário por sessão.** Um professor
+> escreve sumário nas sessões de apoio, na direção de turma, na coordenação, nos
+> clubes, nas reuniões e noutras atividades — e algumas nem têm turma. As
+> «Atividades não letivas» do Horário do Professor (0.168.0) ganham registos por
+> sessão e mudam de nome para «Outras atividades». Duas migrations novas, o
+> backup passa a `schema_version` 19 e há um comando de verificação para a
+> recuperação.
+
+### Adicionado
+
+- **Registo por sessão.** Clicar numa atividade no Horário do Professor abre o
+  registo dessa data: a atividade, o tipo, a data, as horas, a turma (se houver),
+  o estado, o número (se a atividade numerar) e o sumário (até 16000 caracteres).
+  Quatro ações: «Guardar» (mantém o estado), «Guardar e marcar como realizada»,
+  «Não se realizou» (o texto fica) e «Voltar a por realizar». Dentro do registo,
+  «Editar horário» abre o bloco. O bloco mostra o estado — Preparada, Realizada,
+  Não realizada — e o número.
+- **Uma sessão só existe quando o professor guarda.** Ver o horário ou a semana
+  nunca cria nada, e nenhuma atividade existente é convertida em sessões. Gravar
+  é idempotente por (atividade, data): um pedido repetido ou um duplo clique
+  nunca duplicam. Para criar, a data tem de ser uma ocorrência do bloco e não
+  pode ser um dia não letivo do calendário; uma sessão que já existe edita-se
+  sempre, mesmo fora do horário atual.
+- **Em «Aulas e Sumários»** as sessões da semana aparecem ao lado das aulas, no
+  mesmo dia e por ordem de início, num cartão próprio (tracejado, com o nome da
+  atividade, o tipo, a turma, o estado e «Registar sumário» / «Editar sumário»).
+  Vêm numa prop própria, `activitySessions`; `lessons` continua só com aulas.
+- **Histórico das outras atividades** (`/activity-sessions`): as sessões com
+  registos, da mais recente para a mais antiga, com o sumário completo, filtradas
+  por atividade — blocos fechados e sessões sem horário incluídos — e por período
+  (por omissão o ano letivo atual). Abrir uma sessão consulta-a e edita-a.
+- **Exportação.** Uma folha «Outras atividades» no Excel de «Exportar os meus
+  dados» e um botão «Exportar» no histórico, que descarrega o Excel do filtro
+  atual. O texto escreve-se sempre como texto, nunca como fórmula.
+- **Numeração opcional das sessões.** «Numerar as sessões» e «Número inicial», por
+  atividade. Ao passar a realizada, a sessão recebe o maior número das sessões da
+  mesma atividade, do mesmo professor e do mesmo ano letivo, mais um (nunca abaixo
+  do número inicial); ao sair de realizada o número é limpo, sem renumerar as
+  outras. Independente da numeração das lições: nunca entra em `LessonNumbering`.
+- **Tipo «Clube».**
+- **Backup `schema_version` 19:** coleção `timetable_activity_occurrences` (as
+  sessões do exportador com registos; o nome evita a palavra `session`, que o
+  `SecretScanner` recusa em qualquer chave) e `numbering_enabled` /
+  `numbering_start` nas atividades. Um backup v17 ou v18 continua a restaurar.
+- **`lapis:activity-sessions-recovery-check`** (só leitura): conta sessões,
+  atividades «Clube» e atividades numeradas; sai 0 se não houver nenhuma «Clube»
+  (rollback só de código para a 0.169.1 seguro) e 1 se houver. Procedimento em
+  `docs/activity-sessions-recovery.md`.
+- **Migrations:** `2026_11_24_000100_create_timetable_activity_sessions_table` e
+  `2026_11_24_000200_add_session_numbering_and_club_to_timetable_activities`
+  (colunas de numeração e `club` na CHECK do tipo). Sem backfill.
+
+### Alterado
+
+- **«Atividades não letivas» passam a «Outras atividades»** em todo o texto: o
+  Horário, os diálogos, a pré-visualização do restauro, as mensagens do backup e
+  a ajuda («Corrigir o horário e registar as outras atividades», que explica a
+  diferença para o desfecho de aula «Turma em outras atividades letivas»).
+- **Editar o bloco** continua no lugar e nunca altera uma sessão com registos
+  (texto não vazio ou estado diferente de «por realizar»): mantém a data, as
+  horas, o título, o tipo e a turma copiados. As sem registos que deixam de bater
+  com o padrão saem; as que ainda batem acompanham o bloco. Se ficarem sessões
+  com registos fora do novo padrão, um aviso persistente diz quais («2 sessões
+  com registos de «DT 6D» ficaram na data e hora anteriores — 13/10 e 20/10 —»).
+- **Eliminar o bloco** com sessões com registos já não o apaga: fecha a vigência
+  na véspera da data de aplicação («Deixa de vigorar a partir de», por omissão
+  hoje, nunca no passado) e apaga só as sessões vazias dessa data em diante; o
+  histórico fica. Sem registos, apaga o bloco e as sessões vazias.
+- **Os avisos de sucesso do Horário** (adicionar, atualizar, eliminar) passam a
+  toast do Inertia: a flash de sessão não aparecia em nenhum ecrã.
+
+### Garantias
+
+- Uma sessão é só do professor que a escreveu: os coprofessores da turma
+  associada recebem 404 e não a veem na semana, no histórico nem na exportação —
+  a turma é uma referência, nunca uma permissão. Em acesso técnico (ADR-0014) a
+  leitura é permitida e toda a escrita é recusada.
+- Nunca toca nas aulas: guardar sessões, com ou sem turma, deixa as aulas e os
+  números das lições da turma exatamente como estavam. As sessões ficam fora dos
+  contadores, do fecho em lote, dos filtros de estado, da pesquisa, da
+  numeração, de «Aulas de hoje» e das vistas «Horário» e «Por turma».
+- A sessão leva uma cópia do que a identifica (tipo, título, turma, horas). Se o
+  bloco mudar, fechar ou desaparecer, continua legível e identificável. A FK para
+  a atividade é `NULL ON DELETE`, nunca `CASCADE` nem `RESTRICT`.
+- Eliminar a turma referida ou um ano letivo em rascunho não apaga sessões. A
+  anonimização apaga as sessões do utilizador antes das atividades.
+- A tabela chama-se `timetable_activity_sessions` e nunca `sessions`: a
+  anonimização apaga a tabela de sessões de login do Laravel.
+
+### Compatibilidade e recuperação
+
+- **Backup:** v19 é recusado por código anterior (mais recente que o suportado);
+  v17 e v18 restauram-se aqui (atividades sem numeração, sem sessões).
+- **Rollback só de código para a 0.169.1** é seguro enquanto não houver atividades
+  «Clube» (`lapis:activity-sessions-recovery-check` sai 0): a tabela e as colunas
+  novas ficam inertes e as sessões guardadas ficam intactas. Com atividades
+  «Clube» (sai 1) a 0.169.1 falharia ao ler o tipo: nunca repor código abaixo da
+  0.170.0; corrigir para a frente. **Nunca `migrate:rollback`** (apagaria as
+  sessões).
+
+### Limites conhecidos
+
+- O histórico mostra por omissão só o ano letivo atual;
+  mudar de período é no filtro.
+- O ano letivo de uma sessão não viaja no backup: deriva-se no restauro como ao
+  criar (o da turma, ou o que contém a data).
+- Um bloco com sessões com registos eliminado antes de começar fecha na própria
+  data de início (a vigência de um dia), e não desaparece.
+
 ## [0.169.1] — 2026-10-17
 
 > **A preparação de uma aula mostra só a aula anterior.** O bloco «Antes desta

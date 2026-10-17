@@ -23,14 +23,28 @@ class WriteTimetableActivities
     use ResolvesWrittenReferences;
 
     /**
+     * Source ulid → destination id of every activity this restore can point a
+     * session at: those just created and those already there. Read by
+     * `WriteTimetableActivitySessions` (schema v19), which runs after this.
+     *
+     * @var array<string, int>
+     */
+    public array $idsByUlid = [];
+
+    /**
      * @param  array<int, array<string, mixed>>  $rows
      * @param  array<string, int>  $classesByUlid  new ∪ existing classes
      */
     public function write(array $rows, array $classesByUlid): int
     {
         $created = 0;
+        $this->idsByUlid = [];
 
         foreach ($rows as $row) {
+            if ($row['classification'] === 'existing' && isset($row['existing_id'])) {
+                $this->idsByUlid[(string) $row['ulid']] = (int) $row['existing_id'];
+            }
+
             if ($row['classification'] !== 'new') {
                 continue;
             }
@@ -49,8 +63,11 @@ class WriteTimetableActivities
                 'ends_at' => $row['ends_at'],
                 'starts_on' => $row['starts_on'],
                 'ends_on' => $row['ends_on'],
+                'numbering_enabled' => $row['numbering_enabled'] ?? false,
+                'numbering_start' => $row['numbering_start'] ?? 1,
             ]);
             $activity->save();
+            $this->idsByUlid[(string) $row['ulid']] = (int) $activity->getKey();
             $created++;
         }
 

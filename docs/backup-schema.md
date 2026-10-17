@@ -24,8 +24,9 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 18 (atual) | `Supported` | Como a v17, acrescentando `lessons[].lesson_number_end` e `lessons[].lesson_number_manual` (0.169.0): o professor pode indicar o número de uma aula (e um intervalo, «11–12», quando a aula corresponde a várias lições). `lesson_number_manual = true` marca o número como indicado à mão — nunca é recalculado, e o `lesson_number_end` (inteiro posterior ao início, só com início) é o fim do intervalo, `null` quando a aula é uma só lição. Ausentes num backup v≤17 ⇒ `null` e `false` (nada muda). Copiados tal como estão no restauro, nunca renumerados; um fim que não seja um inteiro posterior ao início, ou uma marca que não seja um booleano, deixa a linha como `invalid`. Os limites são os do formulário: início de 1 a 9999 quando manual e no máximo 10 lições por aula (`lesson_number_end ≤ lesson_number + 9`), senão a linha é `invalid`. Dois intervalos manuais da mesma turma que se sobrepõem (as aulas da mesma lição de grupo partilham o intervalo) deixam as linhas da unidade **posterior** (por `starts_at`) `invalid` — dentro do ficheiro; Contra as aulas que o destino JÁ TEM na mesma turma a regra é outra e **bloqueia o restauro inteiro**: uma aula `new` do ficheiro cujo intervalo FIXO (número indicado à mão, ou aula fechada com número — lecionada ou atividade da turma) coincide ou se sobrepõe ao intervalo fixo de outra lição do destino impede o restauro — a pré-visualização mostra as colisões (só datas, números e rótulo da turma) e não deixa confirmar, e a confirmação recusa antes de gravar o que quer que seja, sem marcar a importação como falhada (continua confirmável depois de o professor corrigir o destino). A mesma `lesson_unit_key` com o mesmo intervalo é a mesma lição e passa; as aulas livres (abertas e não manuais) não contam, o número delas é uma sugestão. Não é uma linha `conflict`: essa seria saltada e deixaria a aula, o sumário, o plano e as faltas de fora — um restauro parcial. Numa ausência do professor ambos são forçados a `null`/`false`, como `lesson_number` |
-| 17 | `LegacyCompatible` | Como a v16, acrescentando `timetable_activities` (0.168.0): as **atividades não letivas** do horário do professor (direção de turma, apoio a alunos, reuniões, coordenação). Só saem as de quem exporta, e só se restauram na conta do próprio autor. Ausente num backup v≤16 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Atividades não letivas (schema v17)](#atividades-não-letivas-schema-v17) |
+| 19 (atual) | `Supported` | Como a v18, acrescentando `timetable_activity_occurrences` (0.170.0): o **registo por sessão** das outras atividades (o sumário de cada apoio, reunião, clube…), mais `numbering_enabled` e `numbering_start` em `timetable_activities` (ausentes ⇒ `false` e `1`) e o tipo `club`. Só saem as do exportador e só se restauram na conta do próprio autor; uma sessão cuja atividade não se restaura volta como órfã, identificada pela cópia que leva. Ausente num backup v≤18 ⇒ zero linhas, nunca um erro. Um backup v19 é recusado por código anterior (`UnsupportedNewer`). Ver [Outras atividades e as suas sessões (schema v19)](#outras-atividades-e-as-suas-sessões-schema-v19) |
+| 18 | `LegacyCompatible` | Como a v17, acrescentando `lessons[].lesson_number_end` e `lessons[].lesson_number_manual` (0.169.0): o professor pode indicar o número de uma aula (e um intervalo, «11–12», quando a aula corresponde a várias lições). `lesson_number_manual = true` marca o número como indicado à mão — nunca é recalculado, e o `lesson_number_end` (inteiro posterior ao início, só com início) é o fim do intervalo, `null` quando a aula é uma só lição. Ausentes num backup v≤17 ⇒ `null` e `false` (nada muda). Copiados tal como estão no restauro, nunca renumerados; um fim que não seja um inteiro posterior ao início, ou uma marca que não seja um booleano, deixa a linha como `invalid`. Os limites são os do formulário: início de 1 a 9999 quando manual e no máximo 10 lições por aula (`lesson_number_end ≤ lesson_number + 9`), senão a linha é `invalid`. Dois intervalos manuais da mesma turma que se sobrepõem (as aulas da mesma lição de grupo partilham o intervalo) deixam as linhas da unidade **posterior** (por `starts_at`) `invalid` — dentro do ficheiro; Contra as aulas que o destino JÁ TEM na mesma turma a regra é outra e **bloqueia o restauro inteiro**: uma aula `new` do ficheiro cujo intervalo FIXO (número indicado à mão, ou aula fechada com número — lecionada ou atividade da turma) coincide ou se sobrepõe ao intervalo fixo de outra lição do destino impede o restauro — a pré-visualização mostra as colisões (só datas, números e rótulo da turma) e não deixa confirmar, e a confirmação recusa antes de gravar o que quer que seja, sem marcar a importação como falhada (continua confirmável depois de o professor corrigir o destino). A mesma `lesson_unit_key` com o mesmo intervalo é a mesma lição e passa; as aulas livres (abertas e não manuais) não contam, o número delas é uma sugestão. Não é uma linha `conflict`: essa seria saltada e deixaria a aula, o sumário, o plano e as faltas de fora — um restauro parcial. Numa ausência do professor ambos são forçados a `null`/`false`, como `lesson_number` |
+| 17 | `LegacyCompatible` | Como a v16, acrescentando `timetable_activities` (0.168.0): as **outras atividades** do horário do professor (então ditas «atividades não letivas»: direção de turma, apoio a alunos, reuniões, coordenação). Só saem as de quem exporta, e só se restauram na conta do próprio autor. Ausente num backup v≤16 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Outras atividades (schema v17)](#outras-atividades-schema-v17) |
 | 16 | `LegacyCompatible` | Como a v15, acrescentando `self_assessment_responses[].numeric_value` (0.167.0): o número que o aluno escreveu numa escala **sem níveis** (0 a 20, percentagem, escala própria da organização), como cadeia decimal (`DECIMAL(6,3)` na base) — `null` quando a resposta é um nível ou um texto. É um valor de uma resposta, nunca uma média nem um cálculo. Ausente num backup v≤15 ⇒ `null` (todas as respostas anteriores são por nível ou por texto); nada mais muda. No restauro, um valor que não seja uma cadeia decimal com até 3 inteiros e 3 casas deixa a linha como inválida, em vez de a gravar como outra coisa; e um número que a pergunta não aceita (escala de níveis, fora dos limites da escala, ou ao lado de um nível) não é escrito — o formulário nunca o teria gravado |
 | 15 | `LegacyCompatible` | Como a v14, acrescentando o **acompanhamento dos registos** (0.164.0): `record_followup_cases` (o caso aluno × turma × período × tipo e o alerta que teve) e `record_followup_confirmations` (as declarações «Registado no Inovar», as desfeitas incluídas, com as ocorrências abrangidas como `{ulid, date}`). Referências sempre por ULID, autoria por email. Ausentes num backup v≤14 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Acompanhamento dos registos (schema v15)](#acompanhamento-dos-registos-schema-v15) |
 | 14 | `LegacyCompatible` | Como a v13, acrescentando `class_notebook_entries` — o **Caderno da turma**: registos privados do professor sobre a turma (título opcional, texto, fixação e as três datas). Só sai o caderno de quem exporta, nas turmas que ensina, sem os registos eliminados; só se restaura na conta do próprio autor. Ausente num backup v≤13 ⇒ zero registos restaurados, nunca um erro, e nada é apagado no destino. Ver [Caderno da turma (schema v14)](#caderno-da-turma-schema-v14) |
@@ -42,10 +43,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 18 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 19 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 18`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 19`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -574,26 +575,28 @@ a quem importa.
 copia a base inteira sem lista de tabelas: as duas tabelas lá estão sem
 alteração ao script.
 
-## Atividades não letivas (schema v17)
+## Outras atividades (schema v17)
 
-As atividades não letivas (0.168.0) são parte do **horário pessoal** de um
-professor — direção de turma, apoio a alunos, reuniões, coordenação ou cargos.
+As outras atividades (0.168.0, então «atividades não letivas») são parte do **horário pessoal** de um
+professor — direção de turma, apoio a alunos, clubes, reuniões, coordenação ou cargos.
 **Não são aulas**: vivem na tabela própria `timetable_activities`, nunca em
 `recurring_lesson_slots`, e restaurá-las nunca cria uma `lessons`, um sumário
 nem uma linha de assiduidade.
 
-`timetable_activities` (dez chaves, nem mais nem menos):
+`timetable_activities` (dez chaves na v17; **doze desde a v19**, com `numbering_enabled` e `numbering_start`):
 
 | Campo | Forma | Notas |
 |---|---|---|
 | `ulid` | ULID | identidade da atividade |
 | `author_email` | email | o dono (o professor que exporta). Só se restaura quando é o da conta que confirma a importação; qualquer outro ⇒ `invalid` |
-| `kind` | `class_direction`, `student_support`, `meeting`, `coordination`, `other` | outro valor ⇒ a linha é `invalid` |
+| `kind` | `class_direction`, `student_support`, `meeting`, `coordination`, `club` (**v19**), `other` | outro valor ⇒ a linha é `invalid` |
 | `title` | texto até 60 caracteres | o que o professor escreveu («DT 6.º D»). Nunca aparece nas razões do preview |
 | `class_ulid` | ULID ou `null` | referência **informativa** à turma. Se a turma não puder ser restaurada neste restauro, a atividade é restaurada sem turma — nunca perdida |
 | `day_of_week` | 1 a 7 | fora disto ⇒ `invalid` |
 | `starts_at`, `ends_at` | `HH:MM` | `ends_at` tem de ser posterior a `starts_at` |
 | `starts_on`, `ends_on` | `YYYY-MM-DD` ou `null` | vigência (`null` = aberta); uma data presente mas malformada invalida a linha em vez de a abrir |
+| `numbering_enabled` | booleano | **v19**. Ausente ⇒ `false`; presente e não booleano ⇒ `invalid` |
+| `numbering_start` | inteiro 1–9999 | **v19**. Ausente ⇒ `1`; fora do intervalo ⇒ `invalid` |
 
 **Quem exporta o quê.** `author_email` é sempre o do exportador: um colega
 da mesma organização nunca leva as atividades de outro, qualquer que seja o
@@ -607,6 +610,55 @@ horas e vigência — e é `existing`. Reimportar o mesmo backup não duplica na
 
 **Eliminação.** `user_id` e `organization_id` são `CASCADE`: uma configuração
 pessoal não bloqueia a eliminação da conta nem da organização.
+
+## Outras atividades e as suas sessões (schema v19)
+
+Cada sessão de uma outra atividade (0.170.0) pode ter o seu registo — o
+sumário, o estado e, se a atividade numerar, o número. Vive em
+`timetable_activity_sessions` e **não é uma aula**: nunca cria uma `lessons`,
+nunca entra em `LessonNumbering`.
+
+**O nome no ficheiro é `timetable_activity_occurrences`, e não `…_sessions`.**
+O `SecretScanner` recusa o ficheiro inteiro se alguma chave contiver `session`
+(tokens de sessão), e com razão. Por isso a coleção chama-se *occurrences*, e o
+número `sequence_number`. Na base de dados e no código a entidade continua a
+chamar-se sessão.
+
+`timetable_activity_occurrences` (doze chaves, nem mais nem menos):
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade da sessão |
+| `author_email` | email | o dono. Só se restaura quando é o da conta que confirma a importação; qualquer outro ⇒ `invalid` |
+| `activity_ulid` | ULID ou `null` | o bloco. `null` quando já não existe: a sessão fica identificada pela cópia |
+| `activity_kind`, `activity_title` | tipo; texto até 60 caracteres | a **cópia** que identifica a sessão se o bloco mudar ou desaparecer. O título nunca aparece nas razões do preview |
+| `class_ulid` | ULID ou `null` | referência informativa à turma; sem turma restaurável, `null` |
+| `occurs_on` | `YYYY-MM-DD` | uma data que não existe no calendário ⇒ `invalid` |
+| `starts_at`, `ends_at` | `HH:MM` | `ends_at` posterior a `starts_at` |
+| `summary` | texto até 16000 caracteres, ou `null` | o sumário. **Nunca** aparece nas razões do preview |
+| `status` | `planned`, `done`, `not_held` | outro valor ⇒ `invalid` |
+| `sequence_number` | inteiro ≥ 1 ou `null` | o número da sessão; só conta numa `done` (noutro estado é descartado, como ao sair de «realizada»). Copiado tal como estava, nunca renumerado |
+
+`id`, `organization_id`, `user_id`, `timetable_activity_id`, `class_id` e
+`academic_year_id` nunca saem. **O ano letivo não viaja**: no restauro deriva-se
+como ao criar a sessão (o da turma, se houver; senão o da organização que
+contém a data).
+
+**Quem exporta o quê.** Só as sessões do exportador **com registos** (texto ou
+um estado que não seja «por realizar»): uma ocorrência por registar não é um
+facto a levar. Nunca as de um colega, qualquer que seja o papel, e não são
+filtradas pelas turmas exportadas.
+
+**Idempotência.** A mesma `ulid` na organização ⇒ `existing` (ou `conflict` se
+a data, a hora, o estado ou o texto divergem). A mesma sessão restaurada antes
+com outra `ulid` reconhece-se pela chave natural — (atividade, data) quando
+tem atividade, (designação, data, início) quando é órfã — e é `existing`.
+Reimportar o mesmo backup não duplica nada. A atividade resolve-se pelo mapa das
+restauradas deste mesmo ficheiro (ou já existentes); se não for restaurável, a
+sessão volta como órfã com a cópia que leva.
+
+**Ordem.** As sessões escrevem-se depois das atividades. Um backup v≤18, com
+atividades e sem esta coleção, continua a restaurar sem tocar em nada.
 
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 

@@ -55,14 +55,14 @@ class TimetableActivityPortabilityTest extends TestCase
 
         $backup = $this->backupJson($this->backupUpload($this->teacher));
 
-        $this->assertSame(18, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(18, $backup['schema_version']);
+        $this->assertSame(19, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(19, $backup['schema_version']);
         $this->assertContains('timetable_activities', $backup['capabilities']);
         $this->assertCount(1, $backup['timetable_activities']);
 
         $row = $backup['timetable_activities'][0];
         $this->assertSame(
-            ['ulid', 'author_email', 'kind', 'title', 'class_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'],
+            ['ulid', 'author_email', 'kind', 'title', 'class_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on', 'numbering_enabled', 'numbering_start'],
             array_keys($row),
         );
         $this->assertSame($mine->ulid, $row['ulid']);

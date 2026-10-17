@@ -7,7 +7,22 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (18) is what GenerateDataExport writes today. Version 18 adds
+ * CURRENT (19) is what GenerateDataExport writes today. Version 19 adds the
+ * `timetable_activity_occurrences` collection — the teacher's own per-session
+ * records of their «outras atividades» (`TimetableActivitySession` in the
+ * database; named «occurrences» in the file because `SecretScanner` refuses any
+ * key that contains `session`): `ulid`,
+ * `author_email`, the optional `activity_ulid`, the copy that identifies the
+ * session (`activity_kind`, `activity_title`, optional `class_ulid`, the date
+ * and the two times), the `summary`, the `status` (planned, done, not_held) and
+ * the optional `sequence_number` — and two keys on `timetable_activities`,
+ * `numbering_enabled` and `numbering_start` (absent → off, from 1). The
+ * `club` kind arrives with it. Exported only for the exporting account and
+ * restored only by that same account; a session whose activity is not
+ * restorable is kept as an orphan, identified by its copy. Absent in a backup
+ * ≤18 (read as an empty list): nothing is restored and nothing at the
+ * destination is deleted because of it. A backup v19 is refused by earlier
+ * code (unsupported newer). Version 18 adds
  * `lessons[].lesson_number_end` and `lessons[].lesson_number_manual` — a lesson
  * that corresponds to several lessons («11–12») and the number the teacher
  * wrote by hand (never recalculated). Absent in a backup ≤17 → no end and not
@@ -91,7 +106,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 18;
+    public const int CURRENT = 19;
 
     public const int MINIMUM_SUPPORTED = 2;
 
