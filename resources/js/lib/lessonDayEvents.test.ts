@@ -83,7 +83,8 @@ describe('summaryAppendBlockedReason', () => {
 
 describe('A mesma linha no servidor e no cliente (0.171.0)', () => {
     // Os mesmos casos de LessonCalendarActivitiesTest::summaryLineCases — o
-    // servidor retira do sumário a linha que este código acrescentou.
+    // servidor reconhece pela mesma regra a linha cuja origem não se distingue,
+    // e que por isso recusa «Registar e adiar a preparação».
     it.each([
         [{ title: 'Reunião de departamento', notes: null }, 'Reunião de departamento'],
         [{ title: 'Reunião de departamento', notes: '' }, 'Reunião de departamento'],
