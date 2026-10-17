@@ -3,6 +3,7 @@ import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, reactive } from 'vue';
 import type { DayEvent } from '@/components/lessons/LessonDayEvents.vue';
+import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { consumeLessonsStale, resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import Show from './Show.vue';
 
@@ -45,6 +46,7 @@ vi.mock('@inertiajs/vue3', () => ({
             clearErrors: vi.fn(),
             transform: vi.fn(),
             defaults: vi.fn(),
+            reset: vi.fn(),
             data: () => ({ ...data }),
         }) as MockForm;
 
@@ -701,7 +703,7 @@ describe('lessons/Show — acontecimentos do dia', () => {
 
     it('appends to the existing sumário without saving, then shows «Já no sumário»', async () => {
         const wrapper = mountPage({ summary: existingSummary }, {}, [meeting]);
-        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Adicionar ao sumário'))!;
+        const button = wrapper.findAll('button').find((candidate) => candidate.text().includes('Incluir no sumário'))!;
 
         expect(button.attributes('type')).toBe('button');
         // Alvo táctil ≥44px no telemóvel (DESIGN.md), sem mudar o tamanho no ecrã largo.
@@ -1164,5 +1166,170 @@ describe('lessons/Show — o número da lição (0.169.0)', () => {
 
         expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toContain('Professor ausente: esta aula não tem número de lição.');
         expect(wrapper.find('[data-testid="lesson-number-start"]').exists()).toBe(false);
+    });
+});
+
+
+describe('lessons/Show — atividade do calendário que coincide (0.171.0)', () => {
+    const partial: DayEvent = {
+        ulid: 'event-partial',
+        title: 'Teste de Física',
+        starts_at: '09:30',
+        ends_at: '10:30',
+        all_day: false,
+        notes: null,
+        type_label: 'Teste',
+        coincides: true,
+        coverage: 'partial',
+    };
+    const whole: DayEvent = {
+        ulid: 'event-whole',
+        title: 'Visita de estudo',
+        starts_at: null,
+        ends_at: null,
+        all_day: true,
+        notes: 'Autocarro às 9h.',
+        type_label: 'Visita de estudo',
+        coincides: true,
+        coverage: 'all_day',
+    };
+    const later: DayEvent = {
+        ulid: 'event-later',
+        title: 'Reunião',
+        starts_at: '14:00',
+        ends_at: '15:00',
+        all_day: false,
+        notes: null,
+        coincides: false,
+        coverage: null,
+    };
+
+    it('mostra os que coincidem primeiro, com as duas ações distintas', () => {
+        const wrapper = mountPage({}, {}, [later, partial]);
+        const block = wrapper.get('[data-testid="coinciding-events"]');
+
+        expect(block.text()).toContain('Esta aula coincide com uma atividade do calendário');
+        expect(block.text()).toContain('Teste de Física');
+        expect(block.text()).toContain('parte da aula');
+        expect(block.text()).toContain('Incluir no sumário');
+        expect(block.text()).toContain('Registar e adiar a preparação');
+        // A diferença entre as duas ações vem explicada numa frase.
+        expect(block.text()).toContain('mantém o plano inteiro');
+
+        const others = wrapper.get('[data-testid="other-events"]');
+
+        expect(others.text()).toContain('Outros acontecimentos do dia');
+        expect(others.text()).toContain('Reunião');
+        expect(others.text()).toContain('Incluir no sumário');
+        expect(others.text()).not.toContain('Registar e adiar a preparação');
+    });
+
+    it('usa o plural quando coincidem várias; um acontecimento de dia inteiro diz «Todo o dia» e não afirma que ocupa a aula', () => {
+        const wrapper = mountPage({}, {}, [whole, partial]);
+
+        expect(wrapper.get('[data-testid="coinciding-events"]').text()).toContain('Esta aula coincide com atividades do calendário');
+        expect(wrapper.text()).toContain('Todo o dia');
+        expect(wrapper.text()).toContain('cobre parte da aula');
+        expect(wrapper.text()).not.toContain('ocupa a aula toda');
+    });
+
+    it('não oferece «Registar e adiar» quando a aula já não pode registar um resultado', () => {
+        const wrapper = mountPage({ can_record_outcome: false }, {}, [partial]);
+
+        expect(wrapper.text()).toContain('Incluir no sumário');
+        expect(wrapper.find('[data-testid="postpone-preparation"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Registar e adiar a preparação');
+    });
+
+    it('«Incluir no sumário» acrescenta uma só vez, sem gravar, e depois diz «Já no sumário»', async () => {
+        const wrapper = mountPage({ summary: { content: 'Plano.', private_notes: null, resources: null, homework: null, reviewed_at: null } }, {}, [partial]);
+
+        await wrapper.get('[data-testid="include-in-summary"]').trigger('click');
+        await wrapper.get('[data-testid="include-in-summary"]').trigger('click');
+
+        expect(summaryForm().content).toBe('Plano.\nTeste de Física');
+        expect(summaryForm().put).not.toHaveBeenCalled();
+        expect(wrapper.get('[data-testid="include-in-summary"]').text()).toContain('Já no sumário');
+    });
+
+    it('«Registar e adiar a preparação» abre o diálogo e, com texto por guardar, pede para guardar primeiro', async () => {
+        const wrapper = mountPage({}, {}, [partial]);
+        summaryForm().isDirty = true;
+
+        await wrapper.get('[data-testid="postpone-preparation"]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.get('[data-testid="postpone-unsaved"]').text()).toContain('Tens alterações por guardar no sumário desta aula');
+        // Com alterações por guardar nenhuma pré-visualização é pedida.
+        expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('activity-postponement'))).toBe(false);
+        expect(wrapper.get('[data-testid="postpone-confirm"]').attributes('disabled')).toBeDefined();
+    });
+});
+
+describe('lessons/Show — «Não houve aula» com texto por guardar e formulário refeito (0.171.0)', () => {
+    async function openOutcomeDialog(wrapper: VueWrapper): Promise<void> {
+        // O diálogo simulado só desenha o conteúdo aberto — e o botão que o abre
+        // vive dentro dele —, por isso abre-se pelo v-model do próprio diálogo.
+        wrapper.findComponent(LessonOutcomeDialog).vm.$emit('update:open', true);
+        await nextTick();
+    }
+
+    it('com alterações por guardar o diálogo pede para guardar e não deixa registar', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        await openOutcomeDialog(wrapper);
+
+        expect(wrapper.get('[data-testid="outcome-unsaved"]').text()).toContain(
+            'Guarda-as primeiro: a preparação que passa para a aula seguinte é a que está guardada.',
+        );
+
+        const register = wrapper.findAll('button').find((button) => button.text() === 'Registar')!;
+
+        expect(register.attributes('disabled')).toBeDefined();
+    });
+
+    it('sem alterações por guardar o diálogo não mostra a frase', async () => {
+        const wrapper = mountPage();
+        await openOutcomeDialog(wrapper);
+
+        expect(wrapper.find('[data-testid="outcome-unsaved"]').exists()).toBe(false);
+    });
+
+    it('«Guardar alterações» no diálogo grava o sumário da página', async () => {
+        const wrapper = mountPage();
+        summaryForm().isDirty = true;
+        await openOutcomeDialog(wrapper);
+
+        await wrapper.get('[data-testid="outcome-save-first"]').trigger('click');
+
+        expect(summaryForm().put).toHaveBeenCalled();
+    });
+
+    it('quando o resultado passa de nulo a um valor o formulário refaz-se a partir das props frescas', async () => {
+        const wrapper = mountPage({
+            summary: { content: 'Plano 2', private_notes: 'Nota', resources: null, homework: null, reviewed_at: null },
+            summary_version: 4,
+        });
+        const lesson = wrapper.props('lesson');
+
+        await wrapper.setProps({
+            lesson: { ...lesson, outcome: 'class_external_activity', outcome_label: 'Turma em outras atividades letivas', can_record_outcome: false, summary: null, summary_version: 9 },
+        });
+
+        const form = summaryForm();
+
+        expect(form.defaults).toHaveBeenCalledWith(
+            expect.objectContaining({ content: '', private_notes: '', resources: '', homework: '', summary_version: 9 }),
+        );
+        expect(form.reset).toHaveBeenCalled();
+    });
+
+    it('não refaz o formulário enquanto o resultado não muda', async () => {
+        const wrapper = mountPage();
+        const lesson = wrapper.props('lesson');
+
+        await wrapper.setProps({ lesson: { ...lesson, summary_version: 5 } });
+
+        expect(summaryForm().reset).not.toHaveBeenCalled();
     });
 });

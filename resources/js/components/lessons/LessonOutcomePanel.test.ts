@@ -27,9 +27,10 @@ vi.mock('@/components/ui/dialog', () => {
     };
 });
 
-function mountOpen() {
+function mountOpen(extra: Record<string, unknown> = {}) {
     return mount(LessonOutcomePanel, {
         props: {
+            ...extra,
             lessonUlid: 'lesson-a',
             outcome: null,
             outcomeLabel: null,
@@ -49,6 +50,34 @@ function mountOpen() {
 }
 
 describe('LessonOutcomePanel', () => {
+    it('com texto por guardar pede para guardar primeiro, grava pela página e desativa «Registar»', async () => {
+        const saveFirst = vi.fn().mockResolvedValue(true);
+        const wrapper = mountOpen({ unsavedChanges: true, saveFirst });
+        await wrapper.get('[data-testid="open-outcome-dialog"]').trigger('click');
+
+        expect(document.body.textContent).toContain('Tens alterações por guardar no sumário desta aula.');
+        expect(document.body.textContent).toContain('a preparação que passa para a aula seguinte é a que está guardada');
+
+        const register = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'Registar');
+        expect(register?.disabled).toBe(true);
+
+        (document.querySelector('[data-testid="outcome-save-first"]') as HTMLButtonElement).click();
+        await wrapper.vm.$nextTick();
+
+        expect(saveFirst).toHaveBeenCalledTimes(1);
+        wrapper.unmount();
+    });
+
+    it('sem texto por guardar não mostra a frase e «Registar» está disponível', async () => {
+        const wrapper = mountOpen();
+        await wrapper.get('[data-testid="open-outcome-dialog"]').trigger('click');
+
+        expect(document.querySelector('[data-testid="outcome-unsaved"]')).toBeNull();
+        const register = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'Registar');
+        expect(register?.disabled).toBe(false);
+        wrapper.unmount();
+    });
+
     it('offers only categories for a teacher absence, and «Outro» opens no free text', async () => {
         const wrapper = mountOpen();
         await wrapper.get('[data-testid="open-outcome-dialog"]').trigger('click');

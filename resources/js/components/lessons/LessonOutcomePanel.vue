@@ -29,6 +29,10 @@ defineProps<{
     canRecord: boolean;
     reasons: { value: string; label: string }[];
     pendingPlan: string | null;
+    /** Há texto por guardar no sumário desta aula (0.171.0): o diálogo pede para guardar primeiro. */
+    unsavedChanges?: boolean;
+    /** A gravação da página, para o «Guardar alterações» do diálogo — ver LessonOutcomeDialog. */
+    saveFirst?: () => Promise<boolean>;
 }>();
 
 const emit = defineEmits<{ submitting: [boolean] }>();
@@ -74,6 +78,8 @@ const dialogOpen = ref(false);
         v-model:open="dialogOpen"
         :lesson-ulid="lessonUlid"
         :reasons="reasons"
+        :unsaved-changes="unsavedChanges === true"
+        :save-first="saveFirst"
         @submitting="(value) => emit('submitting', value)"
     >
         <Button type="button" variant="outline" class="min-h-11" data-testid="open-outcome-dialog" @click="dialogOpen = true">

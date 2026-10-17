@@ -18,6 +18,7 @@
  */
 import {
     CalendarClock,
+    CalendarX2,
     Check,
     CircleAlert,
     History,
@@ -35,7 +36,10 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import {
     appendEventToSummary,
+    coverageLabel,
+    eventTimeLabel,
     LESSON_SUMMARY_MAX_LENGTH,
+    splitCoinciding,
     summaryAppendBlockedReason,
 } from '@/lib/lessonDayEvents';
 import { canSetLessonNumber, numberDraftDirty } from '@/lib/lessonNumber';
@@ -46,6 +50,7 @@ import type {
 } from '@/lib/lessonNumber';
 import { isTaughtLesson } from '@/lib/lessons';
 import type { WeekLesson } from '@/lib/lessons';
+import { SURFACE } from '@/lib/surfaces';
 
 const props = defineProps<{
     lesson: WeekLesson;
@@ -69,6 +74,8 @@ const emit = defineEmits<{
     save: [];
     cancel: [];
     project: [];
+    /** «Registar e adiar a preparação» para este acontecimento (0.171.0). */
+    postpone: [event: WeekLesson['day_events'][number]];
     combine: [];
     'keep-mine': [];
     'use-stored': [];
@@ -169,19 +176,12 @@ function addEvent(event: WeekLesson['day_events'][number]): void {
     nextTick(() => textarea.value?.focus());
 }
 
-function scheduleLabel(event: WeekLesson['day_events'][number]): string {
-    if (event.all_day) {
-        return 'Todo o dia';
-    }
+const eventGroups = computed(() => splitCoinciding(props.lesson.day_events));
 
-    if (event.starts_at === null) {
-        return '';
-    }
-
-    return event.ends_at
-        ? `${event.starts_at}–${event.ends_at}`
-        : event.starts_at;
-}
+/** Só uma aula aberta pode registar um resultado (as recusas finas são do servidor). */
+const canPostpone = computed(
+    () => props.lesson.outcome === null && !isTaughtLesson(props.lesson),
+);
 
 defineExpose({
     focus: () => {
@@ -276,53 +276,119 @@ defineExpose({
             @use-stored="emit('use-stored')"
         />
 
-        <ul
-            v-if="lesson.day_events.length > 0"
-            class="grid gap-2"
-            aria-label="Acontecimentos do dia"
-        >
-            <li
-                v-for="event in lesson.day_events"
-                :key="event.ulid"
-                class="flex flex-col gap-2 rounded-lg border border-dashed p-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+        <!-- Os acontecimentos do dia (0.171.0): os que COINCIDEM com a aula primeiro,
+             marcados, com as duas ações distintas — «Incluir no sumário» só escreve
+             texto no editor; «Registar e adiar a preparação» abre a pré-visualização. -->
+        <div v-if="lesson.day_events.length > 0" class="grid gap-2">
+            <ul
+                v-if="eventGroups.coinciding.length > 0"
+                :class="['grid gap-2 rounded-xl border p-2.5', SURFACE.sky]"
+                aria-label="Atividades do calendário que coincidem com a aula"
+                data-testid="editor-coinciding-events"
             >
-                <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <CalendarClock
-                        class="size-4 text-muted-foreground"
-                        aria-hidden="true"
-                    />
-                    <span
-                        v-if="event.type_label"
-                        class="text-xs font-semibold text-muted-foreground"
-                        >{{ event.type_label }}</span
-                    >
-                    <span class="font-medium">{{ event.title }}</span>
-                    <span class="text-[13px] text-muted-foreground">{{
-                        scheduleLabel(event)
-                    }}</span>
-                </span>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="min-h-11 sm:min-h-8"
-                    :disabled="eventBlocked(event) !== null || saving"
-                    @click="addEvent(event)"
+                <li
+                    v-for="event in eventGroups.coinciding"
+                    :key="event.ulid"
+                    class="grid gap-2 text-sm"
+                    data-testid="editor-day-event"
                 >
-                    <Check
-                        v-if="eventBlocked(event) === 'already_present'"
-                        class="size-4"
-                        aria-hidden="true"
-                    />
-                    <Plus v-else class="size-4" aria-hidden="true" />
-                    {{
-                        eventBlocked(event) === 'already_present'
-                            ? 'Já no sumário'
-                            : 'Adicionar ao sumário'
-                    }}
-                </Button>
-            </li>
-        </ul>
+                    <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <CalendarClock class="size-4" aria-hidden="true" />
+                        <span class="text-xs font-semibold">Coincide com a aula</span>
+                        <span class="font-medium">{{ event.title }}</span>
+                        <span class="text-[13px] text-muted-foreground">{{
+                            eventTimeLabel(event)
+                        }}<template v-if="coverageLabel(event.coverage)">
+                            · {{ coverageLabel(event.coverage) }}</template></span>
+                    </span>
+                    <span class="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            class="min-h-11 sm:min-h-8"
+                            data-testid="editor-include"
+                            :disabled="eventBlocked(event) !== null || saving"
+                            @click="addEvent(event)"
+                        >
+                            <Check
+                                v-if="eventBlocked(event) === 'already_present'"
+                                class="size-4"
+                                aria-hidden="true"
+                            />
+                            <Plus v-else class="size-4" aria-hidden="true" />
+                            {{
+                                eventBlocked(event) === 'already_present'
+                                    ? 'Já no sumário'
+                                    : 'Incluir no sumário'
+                            }}
+                        </Button>
+                        <Button
+                            v-if="canPostpone"
+                            type="button"
+                            size="sm"
+                            class="min-h-11 sm:min-h-8"
+                            data-testid="editor-postpone"
+                            :disabled="saving"
+                            @click="emit('postpone', event)"
+                        >
+                            <CalendarX2 class="size-4" aria-hidden="true" />
+                            Registar e adiar a preparação
+                        </Button>
+                    </span>
+                </li>
+            </ul>
+
+            <ul
+                v-if="eventGroups.others.length > 0"
+                class="grid gap-2"
+                :aria-label="eventGroups.coinciding.length > 0 ? 'Outros acontecimentos do dia' : 'Acontecimentos do dia'"
+            >
+                <li
+                    v-for="event in eventGroups.others"
+                    :key="event.ulid"
+                    class="flex flex-col gap-2 rounded-lg border border-dashed p-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+                    data-testid="editor-day-event"
+                >
+                    <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <CalendarClock
+                            class="size-4 text-muted-foreground"
+                            aria-hidden="true"
+                        />
+                        <span
+                            v-if="event.type_label"
+                            class="text-xs font-semibold text-muted-foreground"
+                            >{{ event.type_label }}</span
+                        >
+                        <span class="font-medium">{{ event.title }}</span>
+                        <span class="text-[13px] text-muted-foreground">{{
+                            eventTimeLabel(event)
+                        }}</span>
+                    </span>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="min-h-11 sm:min-h-8"
+                        data-testid="editor-include"
+                        :disabled="eventBlocked(event) !== null || saving"
+                        @click="addEvent(event)"
+                    >
+                        <Check
+                            v-if="eventBlocked(event) === 'already_present'"
+                            class="size-4"
+                            aria-hidden="true"
+                        />
+                        <Plus v-else class="size-4" aria-hidden="true" />
+                        {{
+                            eventBlocked(event) === 'already_present'
+                                ? 'Já no sumário'
+                                : 'Incluir no sumário'
+                        }}
+                    </Button>
+                </li>
+            </ul>
+        </div>
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Button

@@ -70,27 +70,41 @@ final class ShiftLessonPlanning
     ) {}
 
     /**
-     * @return array{shifted: int, materialized: bool, pending: bool}
+     * `moves` e `pending_on`/`pending_values` são o TRAÇO do que foi escrito
+     * onde (0.171.0) — para a pré-visualização de «Registar e adiar a
+     * preparação» dizer o destino de cada planeamento. Não mudam o que se
+     * escreve: as chaves `shifted`, `materialized` e `pending` são as de sempre.
+     *
+     * @return array{
+     *     shifted: int,
+     *     materialized: bool,
+     *     pending: bool,
+     *     moves: list<array{from: Lesson, to: Lesson, materialized: bool, values: array<string, string|int|null>}>,
+     *     pending_on: Lesson|null,
+     *     pending_values: array<string, string|int|null>|null,
+     * }
      */
     public function from(Lesson $closed, User $actor): array
     {
         $carry = $this->takeFrom($closed);
 
         if ($carry === null) {
-            return ['shifted' => 0, 'materialized' => false, 'pending' => false];
+            return ['shifted' => 0, 'materialized' => false, 'pending' => false, 'moves' => [], 'pending_on' => null, 'pending_values' => null];
         }
 
         $shifted = 0;
         $last = $closed;
+        $moves = [];
 
         foreach ($this->openLessonsAfter($closed) as $lesson) {
             $displaced = $this->takeFrom($lesson);
             $this->writeInto($lesson, $carry);
+            $moves[] = ['from' => $last, 'to' => $lesson, 'materialized' => false, 'values' => $carry];
             $shifted++;
             $last = $lesson;
 
             if ($displaced === null) {
-                return ['shifted' => $shifted, 'materialized' => false, 'pending' => false];
+                return ['shifted' => $shifted, 'materialized' => false, 'pending' => false, 'moves' => $moves, 'pending_on' => null, 'pending_values' => null];
             }
 
             $carry = $displaced;
@@ -100,13 +114,51 @@ final class ShiftLessonPlanning
 
         if ($next !== null) {
             $this->writeInto($next, $carry);
+            $moves[] = ['from' => $last, 'to' => $next, 'materialized' => true, 'values' => $carry];
 
-            return ['shifted' => $shifted + 1, 'materialized' => true, 'pending' => false];
+            return ['shifted' => $shifted + 1, 'materialized' => true, 'pending' => false, 'moves' => $moves, 'pending_on' => null, 'pending_values' => null];
         }
 
         $this->keepAsPending($last, $carry, $actor);
 
-        return ['shifted' => $shifted, 'materialized' => false, 'pending' => true];
+        return ['shifted' => $shifted, 'materialized' => false, 'pending' => true, 'moves' => $moves, 'pending_on' => $last, 'pending_values' => $carry];
+    }
+
+    /**
+     * Para onde foi o planeamento, numa frase para o toast — a frase que o
+     * professor lê depois de registar o resultado (0.171.0): o destino REAL, e
+     * não «passou para a aula seguinte» às cegas.
+     *
+     * @param  array<string, mixed>  $trace  o retorno de `from()`
+     */
+    public static function destinationSentence(array $trace, Lesson $closed): string
+    {
+        /** @var list<array{to: Lesson}> $moves */
+        $moves = $trace['moves'] ?? [];
+
+        if ($moves !== []) {
+            return __('A preparação passou para a aula de :date.', ['date' => self::dayLabel($moves[0]['to'])]);
+        }
+
+        /** @var Lesson|null $pendingOn */
+        $pendingOn = $trace['pending_on'] ?? null;
+
+        if ($pendingOn !== null) {
+            return $pendingOn->getKey() === $closed->getKey()
+                ? __('A preparação ficou como planeamento pendente nesta aula.')
+                : __('A preparação ficou como planeamento pendente na aula de :date.', ['date' => self::dayLabel($pendingOn)]);
+        }
+
+        return __('Esta aula não tinha preparação.');
+    }
+
+    /** «ter., 27/10» — o dia local da aula, com o dia da semana abreviado. */
+    private static function dayLabel(Lesson $lesson): string
+    {
+        $local = $lesson->starts_at->clone()->setTimezone(self::TIMEZONE);
+        $weekdays = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.'];
+
+        return $weekdays[$local->dayOfWeek].', '.$local->format('d/m');
     }
 
     /**

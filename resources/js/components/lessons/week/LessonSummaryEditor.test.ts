@@ -40,11 +40,11 @@ function respond(body: unknown): Promise<Response> {
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
 }
 
-function mountEditor(ulid = 'aula-a') {
+function mountEditor(ulid = 'aula-a', lesson: WeekLesson = lessonWith(ulid), modelValue = '') {
     const wrapper = mount(LessonSummaryEditor, {
         props: {
-            lesson: lessonWith(ulid),
-            modelValue: '',
+            lesson,
+            modelValue,
             original: '',
             saving: false,
             error: null,
@@ -133,5 +133,67 @@ describe('LessonSummaryEditor — «Aula anterior»', () => {
 
         const contents = wrapper.findAll('[data-testid="lesson-context-content"] p:last-child').map((line) => line.text());
         expect(contents).toEqual(['Contexto de B.']);
+    });
+});
+
+describe('LessonSummaryEditor — atividades do calendário (0.171.0)', () => {
+    const coinciding = { ulid: 'ev-1', title: 'Teste de Física', starts_at: '09:30', ends_at: '10:30', all_day: false, notes: null, type_label: 'Teste', coincides: true, coverage: 'partial' };
+    const other = { ulid: 'ev-2', title: 'Reunião', starts_at: '14:00', ends_at: '15:00', all_day: false, notes: null, coincides: false, coverage: null };
+
+    function withEvents(overrides: Record<string, unknown> = {}): WeekLesson {
+        return { ...lessonWith('aula-a'), day_events: [other, coinciding], ...overrides } as unknown as WeekLesson;
+    }
+
+    beforeEach(() => {
+        vi.mocked(fetch).mockImplementation(() => respond({ lesson: null }));
+    });
+
+    it('mostra os que coincidem primeiro, com «Incluir no sumário» e «Registar e adiar a preparação»', () => {
+        const wrapper = mountEditor('aula-a', withEvents());
+        const block = wrapper.get('[data-testid="editor-coinciding-events"]');
+
+        expect(block.text()).toContain('Coincide com a aula');
+        expect(block.text()).toContain('Teste de Física');
+        expect(block.text()).toContain('parte da aula');
+        expect(block.get('[data-testid="editor-include"]').text()).toContain('Incluir no sumário');
+        expect(block.get('[data-testid="editor-postpone"]').text()).toContain('Registar e adiar a preparação');
+
+        const items = wrapper.findAll('[data-testid="editor-day-event"]');
+
+        expect(items[0].text()).toContain('Teste de Física');
+        expect(items[1].text()).toContain('Reunião');
+        // Os outros acontecimentos só têm «Incluir no sumário».
+        expect(items[1].text()).not.toContain('Registar e adiar a preparação');
+    });
+
+    it('«Registar e adiar a preparação» emite postpone com o acontecimento', async () => {
+        const wrapper = mountEditor('aula-a', withEvents());
+
+        await wrapper.get('[data-testid="editor-postpone"]').trigger('click');
+
+        expect(wrapper.emitted('postpone')?.[0]).toEqual([coinciding]);
+        // Não escreve no texto.
+        expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    });
+
+    it('«Incluir no sumário» acrescenta a linha ao texto do editor e depois diz «Já no sumário»', async () => {
+        const wrapper = mountEditor('aula-a', withEvents(), 'Plano.');
+
+        await wrapper.get('[data-testid="editor-coinciding-events"] [data-testid="editor-include"]').trigger('click');
+
+        expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['Plano.\nTeste de Física']);
+
+        await wrapper.setProps({ modelValue: 'Plano.\nTeste de Física' });
+
+        const button = wrapper.get('[data-testid="editor-coinciding-events"] [data-testid="editor-include"]');
+        expect(button.text()).toContain('Já no sumário');
+        expect(button.attributes('disabled')).toBeDefined();
+    });
+
+    it('numa aula já fechada não oferece «Registar e adiar a preparação»', () => {
+        const wrapper = mountEditor('aula-a', withEvents({ outcome: 'class_external_activity' }));
+
+        expect(wrapper.find('[data-testid="editor-postpone"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="editor-include"]').exists()).toBe(true);
     });
 });

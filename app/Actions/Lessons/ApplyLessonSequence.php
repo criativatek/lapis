@@ -13,9 +13,11 @@ use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Classes\ClassArchivalWindow;
+use App\Services\Lessons\LessonDayEvents;
 use App\Services\Lessons\LessonSequencePlan;
 use App\Services\Lessons\LessonSequencePlanStep;
 use App\Services\Lessons\LessonSequenceStepKind;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Lessons\LessonSequenceApplicationException;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -64,6 +66,8 @@ class ApplyLessonSequence
         protected MaterializeLessonsForRange $materialize,
         protected ClassArchivalWindow $archivalWindow,
         protected AuditLog $audit,
+        protected LessonDayEvents $dayEvents,
+        protected Entitlements $entitlements,
     ) {}
 
     /**
@@ -90,7 +94,7 @@ class ApplyLessonSequence
 
             // Montado ANTES da reversão: depois dela, as aulas que o plano
             // acabou de materializar já não existem.
-            return $this->present($plan, $classGroupId);
+            return $this->present($plan, $classGroupId, $actor);
         } finally {
             DB::rollBack();
         }
@@ -711,13 +715,15 @@ class ApplyLessonSequence
      *
      * @return array<string, mixed>
      */
-    private function present(LessonSequencePlan $plan, ?int $classGroupId): array
+    private function present(LessonSequencePlan $plan, ?int $classGroupId, User $actor): array
     {
         $label = __('Turma inteira');
 
         if ($classGroupId !== null) {
             $label = (string) ClassGroup::query()->whereKey($classGroupId)->value('label');
         }
+
+        $coinciding = $this->coincidingEvents($plan, $actor);
 
         return [
             'from' => $plan->from->format('Y-m-d'),
@@ -728,7 +734,10 @@ class ApplyLessonSequence
                 'kind' => $step->kind->value,
                 'lesson' => $this->presentLesson($step->lesson, $step->lessonIsNew),
                 'item' => $step->item === null ? null : $this->presentItem($step->item),
+                'calendar_events' => $coinciding[$step->lesson->getKey()] ?? [],
             ], $plan->steps),
+            // Só informação (0.171.0): nada disto entra no `plan_token` nem muda o plano.
+            'coinciding_lessons' => count(array_filter($coinciding)),
             'already_applied' => array_map(fn (array $entry): array => [
                 'item' => $this->presentItem($entry['item']),
                 'lesson' => [
@@ -740,6 +749,40 @@ class ApplyLessonSequence
             'counts' => $plan->counts(),
             'requires_replace_confirmation' => $plan->replaceCount() > 0,
         ];
+    }
+
+    /**
+     * Os acontecimentos do calendário do PROFESSOR que COINCIDEM com cada aula
+     * do plano (0.171.0) — uma só consulta para o plano inteiro, e só com o
+     * Calendário acessível: sem ele a lista é vazia, como na página da aula.
+     *
+     * @return array<int, list<array<string, mixed>>> indexado pelo id da aula
+     */
+    private function coincidingEvents(LessonSequencePlan $plan, User $actor): array
+    {
+        if (! $this->entitlements->canRead('calendar')) {
+            return [];
+        }
+
+        $byLesson = $this->dayEvents->forLessons(array_map(fn (LessonSequencePlanStep $step): Lesson => $step->lesson, $plan->steps), $actor);
+        $coinciding = [];
+
+        foreach ($byLesson as $lessonId => $events) {
+            $coinciding[$lessonId] = array_values(array_map(
+                fn (array $event): array => [
+                    'ulid' => $event['ulid'],
+                    'title' => $event['title'],
+                    'type_label' => $event['type_label'],
+                    'all_day' => $event['all_day'],
+                    'starts_at' => $event['starts_at'],
+                    'ends_at' => $event['ends_at'],
+                    'coverage' => $event['coverage'],
+                ],
+                array_filter($events, fn (array $event): bool => $event['coincides'] === true),
+            ));
+        }
+
+        return $coinciding;
     }
 
     /**

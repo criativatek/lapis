@@ -404,7 +404,7 @@ class LessonController extends Controller implements HasMiddleware
         // `value()` devolve a string, e `enum !== string` diria sempre «mudou».
         $outcomeBefore = $lesson->getRawOriginal('outcome');
 
-        $this->recordLessonOutcome->execute(
+        $result = $this->recordLessonOutcome->perform(
             $lesson,
             $request->outcome(),
             $this->user($request),
@@ -421,9 +421,20 @@ class LessonController extends Controller implements HasMiddleware
             $this->usage->action(UsageEventType::LessonOutcomeRecorded, $lesson);
         }
 
-        return back()->with('success', $request->outcome() === LessonOutcome::TeacherAbsent
+        $message = $request->outcome() === LessonOutcome::TeacherAbsent
             ? 'Ausência registada. O planeamento passou para a aula seguinte.'
-            : 'Atividade registada. O planeamento passou para a aula seguinte.');
+            : 'Atividade registada. O planeamento passou para a aula seguinte.';
+
+        // O toast diz o destino REAL do planeamento (0.171.0): a flash de
+        // sessão `success` não chega a nenhum ecrã, e «passou para a aula
+        // seguinte» às cegas deixava o professor sem saber para onde foi o plano.
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => ($request->outcome() === LessonOutcome::TeacherAbsent ? __('Ausência registada.') : __('Atividade registada.'))
+                .' '.ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson']),
+        ]);
+
+        return back()->with('success', $message);
     }
 
     /**
