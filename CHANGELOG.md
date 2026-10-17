@@ -62,8 +62,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   nenhuma até ao fim do ano, como «Planeamento pendente». A pré-visualização
   (`POST lessons/{lesson}/activity-postponement/preview`) corre o mesmo plano
   numa transação sempre revertida e devolve o destino de cada preparação (data,
-  «Lição N», excerto — nunca as notas privadas), a linha da atividade retirada, as
-  faltas em rascunho descartadas, os números que mudam e o `plan_token` (que conta
+  «Lição N», excerto — nunca as notas privadas), as faltas em rascunho
+  descartadas, os números que mudam e o `plan_token` (que conta
   QUAIS rascunhos vão ser descartados, pelas inscrições, e não só quantos). A
   execução repete o plano e recusa com 422 se o token já não bater (o sumário de
   qualquer aula da cadeia mudou) ou se faltar a confirmação quando mais de uma
@@ -76,12 +76,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   listado nela. As notas do acontecimento NÃO são copiadas para ali — podem ter
   dados pessoais — e continuam completas no calendário; a confirmação diz as três
   coisas (o título que fica, a preparação adiada, as notas no calendário).
-- **A linha da atividade não viaja.** Se o sumário da aula já tinha, em linha
-  inteira, exatamente o que «Incluir no sumário» gera para este acontecimento
-  (`LessonDayEvents::summaryLine`, igual a `summaryLineFor` do cliente), só essa
-  linha é retirada do que avança, e a confirmação mostra-a. Qualquer linha
-  escrita ou alterada pelo professor — basta um carácter — não é igual e segue
-  com o plano, para a aula seguinte ou para a pendência.
+- **Nenhuma linha do sumário é retirada; uma linha ambígua bloqueia.** Todo o
+  texto da preparação viaja inteiro. «Incluir no sumário» só acrescenta texto ao
+  editor e nada guarda de onde veio cada linha, por isso a origem de uma linha
+  não se prova pelo texto. Regra: se o `content` da aula tem uma linha que,
+  aparados os espaços nas pontas (também o espaço inseparável e outros
+  separadores Unicode), é igual à que o botão gera para este acontecimento
+  (`LessonDayEvents::summaryLine`, igual a `summaryLineFor` do cliente), a
+  pré-visualização E a execução recusam com 422 no campo `activity_line`, ANTES
+  de qualquer escrita — nada é alterado. A mensagem nomeia a linha, diz que não
+  é possível saber se foi escrita pelo professor ou acrescentada
+  automaticamente, e diz como seguir: apagar ou alterar essa linha, guardar e
+  tentar de novo. Uma linha que difira em qualquer carácter no meio é texto do
+  professor e não bloqueia: viaja com o resto.
 - **Sequências.** A pré-visualização de «Aplicar ao calendário» mostra, em cada
   passo, «Coincide com: <título> · Todo o dia / 10:30–11:30» e, no topo, quantas
   aulas coincidem. É só informação: não entra no `plan_token` e não muda o plano.
@@ -115,7 +122,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   sequência, «Incluir no sumário») e `PostponeLessonForCalendarActivityTest`
   (cascata de uma sequência aplicada e reaplicação sem duplicados, destino com
   conteúdo do professor, pendente, ocorrência materializada, lecionadas e números
-  manuais, recusas sem escrita, token desatualizado, cancelar byte a byte, toast).
+  manuais, recusas sem escrita, token desatualizado — também pela troca da aluna
+  de um rascunho —, cancelar byte a byte, toast; linha escrita à mão igual à
+  gerada e a mesma com espaços nas pontas recusadas na pré-visualização e na
+  execução sem escrita; percurso permitido com texto do professor diferente da
+  linha gerada, reabrindo a aula original e a de destino).
 - Vitest: `lessonDayEvents`, `ActivityPostponeDialog`, `LessonOutcomePanel`,
   `Show`, `LessonSummaryEditor` e `sequences/Index`.
 - Sem migrations. Backup sem alteração (`schema_version` continua 19).

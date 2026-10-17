@@ -160,12 +160,13 @@ class PostponeLessonForCalendarActivityTest extends TestCase
     }
 
     /**
+     * O PERCURSO PERMITIDO: o sumário tem texto do professor diferente da linha
+     * que o botão gera — incluindo uma linha que começa como ela e foi alterada.
      * Depois da operação, REABRIR as duas aulas. A original identifica a
      * atividade pelo resultado que já existia (o título na nota curta — nunca as
      * notas do calendário, que podem ter dados pessoais) e continua a mostrar o
-     * acontecimento; a de destino tem a preparação inteira: o texto do
-     * professor, mesmo a linha que ele alterou, e os outros campos — sem a linha
-     * que «Incluir no sumário» gerou.
+     * acontecimento; a de destino tem a preparação INTEGRAL, byte a byte, com os
+     * outros campos.
      */
     #[Test]
     public function reopening_both_lessons_shows_the_activity_on_the_original_and_the_whole_preparation_on_the_destination(): void
@@ -173,14 +174,16 @@ class PostponeLessonForCalendarActivityTest extends TestCase
         [$original, $destination] = $this->manualLessons(['08', '15']);
         $event = $this->event(['title' => 'Visita de estudo ao museu', 'description' => 'Autorizações do João por entregar']);
         $line = LessonDayEvents::summaryLine($event);
-        $this->summary(
-            $original,
-            "Plano A: poesia\n{$line}\n{$line} (com almoço)\nLer o poema 3 depois da visita",
-            ['resources' => 'Manual p. 12', 'homework' => 'Ficha 2', 'private_notes' => 'Só minha'],
-        );
+        // Só texto do professor: a linha gerada alterada no fim, o título com um
+        // espaço a mais no meio, e o título sozinho (o botão, com notas no
+        // acontecimento, nunca gera só o título). Nenhuma bloqueia; todas viajam.
+        $content = "Plano A: poesia\n{$line} (com almoço)\nVisita de estudo  ao museu\nVisita de estudo ao museu\nLer o poema 3 depois da visita";
+        $this->summary($original, $content, ['resources' => 'Manual p. 12', 'homework' => 'Ficha 2', 'private_notes' => 'Só minha']);
 
         $preview = $this->preview($original, $event)->assertOk();
         $this->assertSame('Visita de estudo ao museu', $preview->json('note'));
+        $this->assertStringNotContainsString('Só minha', $preview->getContent());
+        $this->assertStringNotContainsString('João', $preview->getContent());
         $this->postpone($original, $event, $preview->json('plan_token'))->assertSessionHasNoErrors();
 
         $this->asTeacher()->get("/lessons/{$original->ulid}")->assertOk()
@@ -197,7 +200,7 @@ class PostponeLessonForCalendarActivityTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('lesson.status', 'prepared')
                 ->where('lesson.outcome', null)
-                ->where('lesson.summary.content', "Plano A: poesia\n{$line} (com almoço)\nLer o poema 3 depois da visita")
+                ->where('lesson.summary.content', $content)
                 ->where('lesson.summary.resources', 'Manual p. 12')
                 ->where('lesson.summary.homework', 'Ficha 2')
                 ->where('lesson.summary.private_notes', 'Só minha'));
@@ -357,39 +360,57 @@ class PostponeLessonForCalendarActivityTest extends TestCase
         $this->inTenant($this->organization, fn () => $this->assertSame(0, LessonAttendance::query()->count()));
     }
 
+    /**
+     * Uma linha ESCRITA À MÃO pelo professor, igual letra a letra à que «Incluir
+     * no sumário» geraria: nada no sistema a distingue da do botão. A operação
+     * não a pode retirar (seria apagar texto do professor) nem levá-la — recusa,
+     * na pré-visualização e na execução, sem escrever nada.
+     */
     #[Test]
-    public function the_included_activity_line_does_not_travel_but_a_similar_line_does(): void
+    public function a_line_written_exactly_like_the_generated_one_blocks_preview_and_execution_without_any_write(): void
     {
-        [$first, $second] = $this->manualLessons(['08', '15']);
+        [$first] = $this->manualLessons(['08', '15']);
         $event = $this->event(['title' => 'Visita de estudo', 'description' => 'Autocarro às 9h']);
-        $this->summary($first, "Plano A\nVisita de estudo — Autocarro às 9h\nVisita de estudo — Autocarro às 9h30\nFim");
+        $this->asTeacher()->patch("/lessons/{$first->ulid}/summary/content", [
+            'content' => "Plano A\nVisita de estudo — Autocarro às 9h\nFim",
+            'summary_version' => $this->summaryVersion($first),
+        ])->assertSessionHasNoErrors();
+        $before = $this->snapshot();
 
-        $preview = $this->preview($first, $event)->assertOk();
-        $this->assertTrue($preview->json('stripped_activity_line'));
+        $this->assertAmbiguousLineIsRefused($first, $event, 'Visita de estudo — Autocarro às 9h');
 
-        $this->postpone($first, $event, $preview->json('plan_token'))->assertSessionHasNoErrors();
-
-        $this->inTenant($this->organization, function () use ($second): void {
-            $this->assertSame("Plano A\nVisita de estudo — Autocarro às 9h30\nFim", $second->summary()->sole()->content);
+        $this->assertSame($before, $this->snapshot());
+        $this->inTenant($this->organization, function () use ($first): void {
+            $first->refresh();
+            $this->assertNull($first->outcome);
+            $this->assertSame("Plano A\nVisita de estudo — Autocarro às 9h\nFim", $first->summary()->sole()->content);
         });
     }
 
+    /**
+     * A mesma linha com espaços a mais no início ou no fim — também os não
+     * ASCII, como o espaço inseparável — continua a ser indistinguível: recusa.
+     */
     #[Test]
-    public function an_activity_line_alone_leaves_nothing_to_move(): void
+    public function the_same_line_with_extra_spaces_at_the_start_or_the_end_also_blocks_without_any_write(): void
     {
-        [$first, $second] = $this->manualLessons(['08', '15']);
-        $event = $this->event(['title' => 'Visita']);
-        $this->summary($first, 'Visita');
+        [$first] = $this->manualLessons(['08', '15']);
+        $event = $this->event(['title' => 'Visita de estudo', 'description' => 'Autocarro às 9h']);
+        $this->summary($first, 'Plano A');
 
-        $preview = $this->preview($first, $event)->assertOk();
-        $this->assertTrue($preview->json('nothing_to_move'));
+        foreach ([
+            "Plano A\n   Visita de estudo — Autocarro às 9h",
+            "Plano A\nVisita de estudo — Autocarro às 9h \t\nFim",
+            "\u{00A0}Visita de estudo — Autocarro às 9h\u{00A0}\r\nPlano A",
+        ] as $content) {
+            $this->inTenant($this->organization, fn () => $first->summary()->sole()->update(['content' => $content]));
+            $before = $this->snapshot();
 
-        $this->postpone($first, $event, $preview->json('plan_token'))->assertSessionHasNoErrors();
+            $this->assertAmbiguousLineIsRefused($first, $event, 'Visita de estudo — Autocarro às 9h');
 
-        $this->inTenant($this->organization, function () use ($first, $second): void {
-            $this->assertNull($first->summary()->first());
-            $this->assertNull($second->summary()->first());
-        });
+            $this->assertSame($before, $this->snapshot(), 'Nada mudou com: '.json_encode($content));
+            $this->inTenant($this->organization, fn () => $this->assertSame($content, $first->summary()->sole()->content));
+        }
     }
 
     #[Test]
@@ -578,6 +599,20 @@ class PostponeLessonForCalendarActivityTest extends TestCase
             'plan_token' => $token,
             'confirm_cascade' => $confirmCascade,
         ]);
+    }
+
+    /**
+     * A pré-visualização (JSON) e a execução recusam no campo `activity_line`,
+     * com a mensagem que nomeia a linha e diz que nada foi alterado.
+     */
+    private function assertAmbiguousLineIsRefused(Lesson $lesson, CalendarEvent $event, string $line): void
+    {
+        $message = "O sumário desta aula tem a linha «{$line}», igual à que «Incluir no sumário» acrescenta. "
+            .'Não é possível saber se foi escrita por ti ou acrescentada automaticamente, por isso a preparação não foi adiada e nada foi alterado. '
+            .'Para adiar, apaga ou altera essa linha no sumário, guarda e tenta de novo.';
+
+        $this->preview($lesson, $event)->assertStatus(422)->assertJsonValidationErrors(['activity_line' => $message]);
+        $this->postpone($lesson, $event, str_repeat('a', 64), true)->assertSessionHasErrors(['activity_line' => $message]);
     }
 
     private function resequence(): void

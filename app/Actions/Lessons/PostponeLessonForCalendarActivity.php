@@ -31,8 +31,8 @@ use Illuminate\Validation\ValidationException;
  * acabou de escrever.
  *
  * O `plan_token` é a impressão digital do EFEITO, e não do pedido: aula e versão
- * do seu sumário, acontecimento (ULID e `updated_at`), nota, linha retirada e,
- * para cada deslocamento, a origem, o destino (o ULID, ou `new:`+início quando
+ * do seu sumário, acontecimento (ULID e `updated_at`), nota e, para cada
+ * deslocamento, a origem, o destino (o ULID, ou `new:`+início quando
  * a aula só nasce com a operação), a versão do sumário de cada lado ANTES de
  * escrever e o hash do que viaja; mais a pendência, as renumerações e os
  * rascunhos descartados (QUAIS, pelas inscrições, e não só quantos). Tem de dar
@@ -46,14 +46,19 @@ use Illuminate\Validation\ValidationException;
  * dados pessoais («autorizações do João») e o registo da turma sai para fora da
  * sala; continuam completas no calendário do professor.
  *
- * A LINHA DA ATIVIDADE NÃO VIAJA. Se o professor já tinha incluído no sumário
- * da aula a linha deste acontecimento («Incluir no sumário»), deslocá-la com o
- * plano deixaria a aula seguinte a dizer que tem a atividade. Retiram-se SÓ as
- * linhas inteiras iguais à que o botão gera — o texto é o do calendário, que lá
- * continua, e o título fica no resultado desta aula. Qualquer linha escrita ou
- * alterada pelo professor (basta um carácter) não é igual e segue com o plano:
- * o deslocamento leva-a para a aula seguinte ou para a pendência, e nunca a
- * apaga.
+ * NENHUMA LINHA DO SUMÁRIO É RETIRADA. Todo o texto da preparação viaja inteiro
+ * com ela: para a aula seguinte ou para a pendência.
+ *
+ * UMA LINHA AMBÍGUA BLOQUEIA A OPERAÇÃO, ANTES DE QUALQUER ESCRITA. «Incluir no
+ * sumário» só acrescenta texto ao editor, e nada guarda de onde veio cada
+ * linha: uma linha igual à que o botão gera para este acontecimento (aparados
+ * os espaços nas pontas) tanto pode ter sido acrescentada pelo botão como
+ * escrita pelo professor. Retirá-la poderia apagar texto do professor;
+ * deixá-la avançar levaria a atividade para a preparação da aula seguinte.
+ * Não se adivinha: a pré-visualização e a execução recusam com a mesma
+ * mensagem, sem tocar em nada, e o professor decide — apaga ou altera essa
+ * linha, guarda e tenta de novo. Uma linha que difira da gerada (basta um
+ * carácter no meio) é texto do professor e não bloqueia: viaja com o resto.
  */
 class PostponeLessonForCalendarActivity
 {
@@ -116,7 +121,6 @@ class PostponeLessonForCalendarActivity
                     'calendar_event_id' => $event->getKey(),
                     'moves' => count($effect['moves']),
                     'pending' => $effect['pending'] !== null,
-                    'stripped_activity_line' => $effect['stripped_activity_line'],
                     'renumbered_lessons' => count($effect['renumbered']),
                     'discarded_attendance_drafts' => $effect['discarded_attendance_drafts'],
                 ],
@@ -144,6 +148,10 @@ class PostponeLessonForCalendarActivity
         /** @var CalendarEvent $event */
         $event = CalendarEvent::query()->lockForUpdate()->findOrFail($event->getKey());
 
+        // Antes de QUALQUER escrita: uma linha cuja origem não se distingue
+        // recusa tudo, na pré-visualização e na execução.
+        $this->refuseAmbiguousActivityLine($locked, LessonDayEvents::summaryLine($event));
+
         // O «ANTES»: a versão do sumário da aula e de cada aula aberta seguinte
         // (`openLessonsAfter` bloqueia-as) e os números da turma.
         /** @var array<int, int> $versionsBefore */
@@ -161,9 +169,6 @@ class PostponeLessonForCalendarActivity
         /** @var list<int> $draftEnrollments */
         $draftEnrollments = $locked->attendances()->orderBy('enrollment_id')->pluck('enrollment_id')
             ->map(fn ($id): int => (int) $id)->values()->all();
-
-        $activityLine = LessonDayEvents::summaryLine($event);
-        $stripped = $this->stripActivityLine($locked, $activityLine);
 
         // A nota da atividade é o título, numa linha: `cleanNote` corta a 160.
         $note = LessonDayEvents::summaryLine(['title' => $event->title]);
@@ -232,7 +237,6 @@ class PostponeLessonForCalendarActivity
             'event' => ['ulid' => $event->ulid, 'title' => $event->title],
             'outcome_label' => LessonOutcome::ClassExternalActivity->label(),
             'note' => $result['lesson']->outcome_note,
-            'stripped_activity_line' => $stripped,
             'moves' => $moves,
             'pending' => $pending,
             'nothing_to_move' => $moves === [] && $pending === null,
@@ -247,7 +251,6 @@ class PostponeLessonForCalendarActivity
             'lesson' => [$locked->ulid, $versionsBefore[(int) $locked->getKey()]],
             'event' => [$event->ulid, $event->updated_at?->toJSON()],
             'note' => $effect['note'],
-            'stripped' => $stripped ? $activityLine : null,
             'moves' => $tokenMoves,
             'pending' => $pendingOn === null ? null : [$pendingOn->ulid, $versionsBefore[(int) $pendingOn->getKey()] ?? null, $this->valuesHash($trace['pending_values'] ?? [])],
             'renumbered' => array_map(fn (array $row): array => [$row['ulid'], $row['from'], $row['to']], $renumbered),
@@ -258,51 +261,34 @@ class PostponeLessonForCalendarActivity
     }
 
     /**
-     * Retira do sumário da aula as linhas INTEIRAS iguais à que «Incluir no
-     * sumário» acrescenta para este acontecimento — e só essas. Grava pelo
-     * MODELO (sobe `summary_version`). Devolve se retirou alguma.
+     * A REGRA DO BLOQUEIO: o sumário (`content`) da aula tem uma linha que,
+     * aparados os espaços nas pontas (também os não ASCII, como o espaço
+     * inseparável), é igual à que «Incluir no sumário» gera para este
+     * acontecimento. Nada no sistema diz se essa linha veio do botão ou foi
+     * escrita pelo professor, e a operação não pode retirá-la (apagaria texto do
+     * professor) nem levá-la (a aula seguinte ficaria com a atividade). Recusa,
+     * só a ler — quem chama ainda não escreveu nada.
      */
-    private function stripActivityLine(Lesson $lesson, string $activityLine): bool
+    private function refuseAmbiguousActivityLine(Lesson $lesson, string $activityLine): void
     {
-        $summary = $lesson->summary()->first();
-
-        if ($summary === null || $activityLine === '') {
-            return false;
+        if ($activityLine === '') {
+            return;
         }
 
-        $lines = explode("\n", (string) $summary->content);
-        $kept = [];
-        $removed = false;
-        $justRemoved = false;
+        $content = (string) $lesson->summary()->value('content');
 
-        foreach ($lines as $line) {
-            if (trim($line) === $activityLine) {
-                $removed = true;
-                $justRemoved = true;
-
+        foreach (preg_split('/\R/u', $content) ?: [] as $line) {
+            if ((string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $line) !== $activityLine) {
                 continue;
             }
 
-            // Retirar uma linha entre dois parágrafos não deixa duas linhas em
-            // branco seguidas no sítio onde ela estava.
-            if ($justRemoved && trim($line) === '' && ($kept === [] || trim((string) end($kept)) === '')) {
-                $justRemoved = false;
-
-                continue;
-            }
-
-            $justRemoved = false;
-            $kept[] = $line;
+            throw ValidationException::withMessages([
+                'activity_line' => __(
+                    'O sumário desta aula tem a linha «:line», igual à que «Incluir no sumário» acrescenta. Não é possível saber se foi escrita por ti ou acrescentada automaticamente, por isso a preparação não foi adiada e nada foi alterado. Para adiar, apaga ou altera essa linha no sumário, guarda e tenta de novo.',
+                    ['line' => $activityLine],
+                ),
+            ]);
         }
-
-        if (! $removed) {
-            return false;
-        }
-
-        $summary->content = trim(implode("\n", $kept), "\n");
-        $summary->save();
-
-        return true;
     }
 
     /**

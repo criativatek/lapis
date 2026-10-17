@@ -54,7 +54,6 @@ function previewBody(overrides: Record<string, unknown> = {}) {
         event: { ulid: 'event-1', title: 'Visita de estudo' },
         outcome_label: 'Turma em outras atividades letivas',
         note: 'Visita de estudo',
-        stripped_activity_line: false,
         moves: [move('15', '4', 'Plano 2')],
         pending: null,
         nothing_to_move: false,
@@ -151,11 +150,10 @@ describe('ActivityPostponeDialog', () => {
         expect(wrapper.get('[data-testid="postpone-nothing"]').text()).toContain('nada passa para outra aula');
     });
 
-    it('mostra a linha da atividade retirada, as faltas descartadas e os números que mudam', async () => {
+    it('mostra que as notas ficam no calendário, as faltas descartadas e os números que mudam', async () => {
         vi.mocked(fetch).mockResolvedValue(
             jsonResponse(
                 previewBody({
-                    stripped_activity_line: true,
                     discarded_attendance_drafts: 2,
                     renumbered: [{ ulid: 'x', starts_at: '2026-10-22T09:30:00+01:00', from: 6, to: 5 }],
                 }),
@@ -164,12 +162,8 @@ describe('ActivityPostponeDialog', () => {
 
         const wrapper = await mountDialog({ event: { ...event, notes: 'Autorizações\nassinadas' } });
 
-        // A linha EXATA que sai — a que «Incluir no sumário» gerou —, e o que
-        // fica: o título no registo da aula, as notas no calendário.
-        const stripped = wrapper.get('[data-testid="postpone-stripped"]').text();
-        expect(stripped).toContain('A linha «Visita de estudo — Autorizações assinadas», acrescentada por «Incluir no sumário», não segue com a preparação');
-        expect(stripped).toContain('O resto do texto, incluindo o que escreveste ou alteraste, segue com a preparação.');
         expect(wrapper.get('[data-testid="postpone-notes-stay"]').text()).toContain('continuam completas no teu calendário');
+        expect(wrapper.text()).toContain('O texto da preparação segue inteiro, sem cortes.');
         expect(wrapper.get('[data-testid="postpone-drafts"]').text()).toContain('2 faltas em rascunho são descartadas');
         expect(wrapper.get('[data-testid="postpone-renumbered"]').text()).toContain('Lição 6 → 5');
     });
@@ -182,7 +176,18 @@ describe('ActivityPostponeDialog', () => {
         expect(wrapper.text()).toContain('Fica registado nesta aula');
         expect(wrapper.text()).toContain('É o que vês ao reabrir esta aula e o que aparece no registo da turma. A preparação é adiada');
         expect(wrapper.find('[data-testid="postpone-notes-stay"]').exists()).toBe(false);
-        expect(wrapper.find('[data-testid="postpone-stripped"]').exists()).toBe(false);
+    });
+
+    it('uma linha ambígua no sumário: mostra a recusa do servidor e não deixa confirmar', async () => {
+        const message =
+            'O sumário desta aula tem a linha «Visita de estudo», igual à que «Incluir no sumário» acrescenta. Não é possível saber se foi escrita por ti ou acrescentada automaticamente, por isso a preparação não foi adiada e nada foi alterado.';
+        vi.mocked(fetch).mockResolvedValue(jsonResponse({ errors: { activity_line: [message] } }, 422));
+
+        const wrapper = await mountDialog();
+
+        expect(wrapper.get('[data-testid="postpone-error"]').text()).toContain(message);
+        expect(wrapper.find('[data-testid="postpone-preview"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="postpone-confirm"]').attributes('disabled')).toBeDefined();
     });
 
     it('com mais de uma preparação a caixa de confirmação é obrigatória', async () => {

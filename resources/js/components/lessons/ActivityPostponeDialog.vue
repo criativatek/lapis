@@ -13,7 +13,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { eventTimeLabel, summaryLineFor } from '@/lib/lessonDayEvents';
+import { eventTimeLabel } from '@/lib/lessonDayEvents';
 import type { DayEventTiming } from '@/lib/lessonDayEvents';
 import { SURFACE } from '@/lib/surfaces';
 
@@ -39,7 +39,6 @@ export type PostponePreview = {
     event: { ulid: string; title: string };
     outcome_label: string;
     note: string | null;
-    stripped_activity_line: boolean;
     moves: PostponeMove[];
     pending: {
         on: { ulid: string; starts_at: string };
@@ -105,12 +104,6 @@ async function saveBeforePreview(): Promise<void> {
     }
 }
 
-/**
- * A linha que «Incluir no sumário» gera para este acontecimento — a mesma regra
- * do servidor (`LessonDayEvents::summaryLine`), que só retira linhas inteiras
- * iguais a esta.
- */
-const activityLine = computed(() => (props.event === null ? '' : summaryLineFor({ title: props.event.title, notes: props.event.notes ?? null })));
 const hasEventNotes = computed(() => (props.event?.notes ?? '').trim() !== '');
 
 function fromLabel(move: PostponeMove, index: number): string {
@@ -366,11 +359,7 @@ function confirm(): void {
                         As notas da atividade não são copiadas para o registo da aula: continuam completas no teu
                         calendário.
                     </p>
-                    <p v-if="preview.stripped_activity_line" class="text-muted-foreground" data-testid="postpone-stripped">
-                        A linha «{{ activityLine }}», acrescentada por «Incluir no sumário», não segue com a
-                        preparação: a atividade fica identificada nesta aula pelo título acima. O resto do texto,
-                        incluindo o que escreveste ou alteraste, segue com a preparação.
-                    </p>
+                    <p class="text-muted-foreground">O texto da preparação segue inteiro, sem cortes.</p>
                 </section>
 
                 <section class="space-y-2">
