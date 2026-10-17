@@ -1437,9 +1437,9 @@ describe('pesquisa nos sumários — em todo o ano letivo, no servidor', () => {
         return Object.fromEntries(new URLSearchParams(url.slice(url.indexOf('?') + 1)));
     }
 
-    /** Os outros pedidos da página (p. ex. «Antes desta aula», no editor) não são da pesquisa. */
+    /** Os outros pedidos da página (p. ex. «Aula anterior», no editor) não são da pesquisa. */
     const otherRequests = vi.fn((url: string) =>
-        Promise.resolve(reply(url.includes('preparation-context') ? { lessons: [], has_more: false } : {})),
+        Promise.resolve(reply(url.includes('preparation-context') ? { lesson: null } : {})),
     );
 
     beforeEach(() => {
@@ -1981,14 +1981,14 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
         ...overrides,
     });
 
-    // O painel «Antes desta aula» também usa o fetch: só a pré-visualização do
+    // O painel «Aula anterior» também usa o fetch: só a pré-visualização do
     // número responde com `body`, e é só ela que `previewCalls` conta.
     function respondWith(body: unknown, status = 200) {
         const fetchMock = vi.fn((url: string) =>
             Promise.resolve({
                 ok: status < 400,
                 status,
-                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lessons: [], has_more: false }),
+                json: () => Promise.resolve(String(url).includes('/number/preview') ? body : { lesson: null }),
             }),
         );
         vi.stubGlobal('fetch', fetchMock);

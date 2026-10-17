@@ -205,7 +205,7 @@ defineExpose({
                 aria-hidden="true"
             />{{ note.text }}
         </p>
-        <!-- «Antes desta aula»: recolhido, em versão curta, carregado em paralelo
+        <!-- «Aula anterior»: recolhida, carregada em paralelo
              e sem nunca bloquear a escrita; um erro fica dentro da própria secção. -->
         <LessonPreparationContextPanel :lesson-ulid="lesson.ulid" compact :default-open="false" />
         <textarea

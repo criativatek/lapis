@@ -25,6 +25,45 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.169.1] — 2026-10-17
+
+> **A preparação de uma aula mostra só a aula anterior.** O bloco «Antes desta
+> aula (5+)», com várias aulas e «Mostrar mais», obrigava a percorrer demasiado
+> antes de chegar ao sumário. Passa a chamar-se «Aula anterior» e mostra uma só
+> aula, a mais próxima antes daquela que se está a preparar, com o conteúdo
+> completo. Sem migrations; só leitura e apresentação.
+
+### Alterado
+
+- **«Aula anterior» no lugar de «Antes desta aula».** Um só cartão com a data, a
+  hora, o número da lição («Lição 11» ou «Lições 11–12»), o estado («Lecionada»
+  ou «Preparada — por lecionar») e o conteúdo completo — sumário e/ou plano, TPC
+  e recursos —, sem encurtar nem «Ver mais», com as quebras de linha. Desaparecem
+  a lista de aulas mais antigas, o contador e o «Mostrar mais». Na página da aula
+  e no editor do cartão da semana. Uma ligação discreta, «Ver histórico em Aulas
+  e Sumários», abre a vista da turma na semana dessa aula.
+- **Que aula é a anterior.** Procura-se na mesma turma e no mesmo público (T1 e
+  T2 não se misturam; a turma inteira é outro público) e escolhe-se pela data e
+  hora, depois pelo identificador — nunca pelo número da lição, que o professor
+  pode ter indicado à mão. Ganha a mais recente das elegíveis, seja lecionada ou
+  preparada. Uma lecionada conta mesmo sem texto («Sem sumário registado»); uma
+  preparada conta com sumário, recursos, TPC ou plano. Ficam de fora as vazias,
+  as eliminadas e as assinaladas como «Não houve aula» (professor ausente,
+  turma noutras atividades).
+- **`GET lessons/{lesson}/preparation-context`** devolve `{ "lesson": {…} | null }`;
+  deixam de existir `limit` e `has_more`. O «Basear no sumário anterior» não mudou.
+- **Sem notas privadas, nem através do plano.** O plano pendente guarda as
+  notas privadas como último parágrafo; o cartão corta-o, e uma aula cujo plano
+  só tenha notas privadas não conta como preparada.
+- **Esconde-se quando não há aula anterior elegível**, sem título nem «sem
+  aulas».
+
+### Corrigido
+
+- **Texto e ligações compridos já não passam a largura do cartão**, em computador
+  e em telemóvel: o cartão e o texto quebram em qualquer ponto (URLs de recursos
+  e sumários incluídos).
+
 ## [0.169.0] — 2026-10-16
 
 > **O número da lição passa a poder ser indicado pelo professor.** Quem começa a

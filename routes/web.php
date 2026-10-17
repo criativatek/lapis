@@ -645,7 +645,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::patch('lessons/{lesson}/attendance/{student:ulid}', [LessonAttendanceController::class, 'correct'])
             ->name('lessons.attendance.correct')
             ->withoutScopedBindings();
-        // Read-only: «Antes desta aula» (preparation-context) e "Basear no sumário anterior" — never
+        // Read-only: «Aula anterior» (preparation-context) e "Basear no sumário anterior" — never
         // writes; copies into the CURRENT lesson's still-open, unsaved form.
         Route::get('lessons/{lesson}/previous-summary', [LessonController::class, 'previousSummary'])->name('lessons.previous-summary');
         Route::get('lessons/{lesson}/preparation-context', [LessonController::class, 'preparationContext'])->name('lessons.preparation-context');

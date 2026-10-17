@@ -344,7 +344,7 @@ class LessonController extends Controller implements HasMiddleware
     {
         Gate::authorize('view', $lesson);
 
-        // O mesmo contexto do painel «Antes desta aula»: a entrada MAIS
+        // O mesmo contexto do painel «Aula anterior»: a entrada MAIS
         // RECENTE com texto de sumário, lecionada ou apenas preparada — o
         // estado vai na resposta para o ecrã dizer de onde vem o texto.
         $found = $this->lessonContext->latestWithSummary($lesson);
@@ -367,18 +367,15 @@ class LessonController extends Controller implements HasMiddleware
     }
 
     /**
-     * «Antes desta aula» — as aulas anteriores (lecionadas e preparadas por
-     * lecionar) do mesmo público, para quem está a preparar esta. Só leitura;
-     * as regras vivem em LessonPreparationContext.
+     * «Aula anterior» — a aula anterior mais próxima (lecionada ou preparada
+     * por lecionar) do mesmo público, para quem está a preparar esta; `null`
+     * quando não há. Só leitura; as regras vivem em LessonPreparationContext.
      */
-    public function preparationContext(Request $request, Lesson $lesson): JsonResponse
+    public function preparationContext(Lesson $lesson): JsonResponse
     {
         Gate::authorize('view', $lesson);
 
-        return response()->json($this->lessonContext->for(
-            $lesson,
-            $request->integer('limit', LessonPreparationContext::DEFAULT_LIMIT),
-        ));
+        return response()->json(['lesson' => $this->lessonContext->previous($lesson)]);
     }
 
     public function markTaught(MarkLessonAsTaughtRequest $request, Lesson $lesson): RedirectResponse

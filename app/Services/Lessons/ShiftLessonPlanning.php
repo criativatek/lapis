@@ -46,6 +46,14 @@ final class ShiftLessonPlanning
 {
     private const TIMEZONE = 'Europe/Lisbon';
 
+    /**
+     * O rótulo com que `keepAsPending` escreve as notas privadas no plano
+     * pendente. Partilhado com `LessonPreparationContext`, que corta o plano a
+     * partir daí para nunca mostrar notas privadas a quem prepara a aula
+     * seguinte: se o rótulo mudar aqui, muda lá.
+     */
+    public const PRIVATE_NOTES_LABEL = 'Notas privadas';
+
     private const FIELDS = ['content', 'resources', 'homework', 'private_notes'];
 
     /**
@@ -273,7 +281,7 @@ final class ShiftLessonPlanning
             'content' => null,
             'resources' => 'Recursos',
             'homework' => 'Trabalho de casa',
-            'private_notes' => 'Notas privadas',
+            'private_notes' => self::PRIVATE_NOTES_LABEL,
         ];
 
         $parts = [];

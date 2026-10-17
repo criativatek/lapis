@@ -8,43 +8,52 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * «O que veio antes desta aula» — o contexto de quem a está a preparar.
+ * «Aula anterior» — o contexto de quem prepara uma aula: UMA só aula, a mais
+ * próxima antes da aula em edição que esteja preparada ou já lecionada.
  *
- * FONTE ÚNICA. É daqui que leem o painel «Antes desta aula» da página da
- * aula, a secção compacta do editor no cartão, o «Basear no sumário anterior»
+ * FONTE ÚNICA. É daqui que leem o bloco «Aula anterior» da página da aula, a
+ * secção do editor no cartão, o «Basear no sumário anterior»
  * (`LessonController::previousSummary`) e qualquer preparação assistida que
  * venha a existir (hoje não existe nenhuma; escolher um provedor ou enviar
- * dados fora da aplicação é uma decisão à parte). Quem consumir isto recebe,
- * em cada entrada, um ESTADO EXPLÍCITO — não basta o texto: uma aula
- * lecionada é o que se deu; uma aula só preparada é o que se planeou dar, e
- * confundir as duas faz um professor (ou um assistente) tratar um plano como
- * matéria dada.
+ * dados fora da aplicação é uma decisão à parte). A entrada leva um ESTADO
+ * EXPLÍCITO — uma aula lecionada é o que se deu; uma aula só preparada é o que
+ * se planeou dar, e confundir as duas faz um professor (ou um assistente)
+ * tratar um plano como matéria dada.
  *
- * QUE AULAS ENTRAM. As ANTERIORES à aula de destino, da mesma turma e do
- * MESMO público (o mesmo `class_group_id`; `NULL` é a turma inteira) — T1 e
- * T2 avançam a ritmos diferentes e o contexto de um grupo nunca é o de outro:
- *  - lecionadas (`Lesson::isTaught()`), com ou sem texto → «Lecionada»;
- *  - preparadas e ainda abertas (sem resultado e não lecionadas) com algum
- *    conteúdo — sumário, recursos ou TPC → «Preparada — por lecionar».
- * Ficam de fora a própria aula, as posteriores, as fechadas sem serem
- * lecionadas (professor ausente, atividade da turma: o planeamento delas já
- * desceu para a seguinte) e as abertas vazias.
+ * ONDE PROCURA. Na mesma turma (que fixa a disciplina e o ano letivo) e no
+ * MESMO público (o mesmo `class_group_id`; `NULL` é a turma inteira) — T1 e T2
+ * avançam a ritmos diferentes e o contexto de um grupo nunca é o de outro.
  *
- * ORDEM. «Anterior» é estrito por `(starts_at, id)`: duas aulas no mesmo dia
- * separam-se pela hora, e à mesma hora pelo id. Selecionam-se as N MAIS
- * RECENTES e apresentam-se por ordem cronológica — assim um limite nunca
- * esconde as preparações mais recentes, que são, por definição, as últimas
- * antes do destino.
+ * O QUE CONTA COMO ELEGÍVEL (decisão documentada):
+ *  - «Lecionada» (`Lesson::isTaught()`): conta MESMO sem texto — é o que se
+ *    deu, e o cartão diz «Sem sumário registado».
+ *  - «Preparada — por lecionar»: aula ainda aberta (sem resultado e não
+ *    lecionada) com CONTEÚDO que se possa mostrar: sumário, recursos ou TPC
+ *    (`lesson_summaries`) ou um plano (`lesson_plans.planned_summary`, por
+ *    exemplo vindo das sequências ou da planificação que desceu). Uma aula com
+ *    plano e sem sumário conta como preparada e mostra o plano. O estado
+ *    `LessonStatus::Prepared` NÃO chega por si: é uma consequência de guardar
+ *    um sumário (SaveLessonSummary) e pode existir só com notas privadas, que
+ *    não são contexto; sem nada para mostrar, a aula é «vazia».
+ *  - Ficam de fora a própria aula, as posteriores, as vazias, as fechadas sem
+ *    serem lecionadas («Não houve aula»: professor ausente, atividade da
+ *    turma — o planeamento delas já desceu para a seguinte) e as eliminadas
+ *    (não têm linha).
+ *
+ * ORDEM. Estrita por `(starts_at, id)` — data e hora, depois o id —, NUNCA pelo
+ * número da lição, que o professor pode ter alterado à mão
+ * (`lesson_number_manual`). Duas aulas no mesmo dia separam-se pela hora, e à
+ * mesma hora pelo id. Sem prioridade das lecionadas: ganha a mais recente das
+ * elegíveis, seja lecionada ou preparada.
  *
  * Sem notas privadas: não são «conteúdo da aula» e podem ser de outro
- * coprofessor. SÓ LEITURA: não cria nem altera aulas.
+ * coprofessor. Nem as que chegam através do plano: `ShiftLessonPlanning::keepAsPending`
+ * escreve-as lá como último parágrafo («Notas privadas: …»), e `publicPlan()`
+ * corta-o. Um plano que só tenha notas privadas fica vazio, e a aula não é
+ * elegível. SÓ LEITURA: não cria nem altera aulas.
  */
 final class LessonPreparationContext
 {
-    public const DEFAULT_LIMIT = 5;
-
-    public const MAX_LIMIT = 20;
-
     public const STATE_TAUGHT = 'taught';
 
     public const STATE_PREPARED = 'prepared';
@@ -58,36 +67,21 @@ final class LessonPreparationContext
     private const CHUNK = 50;
 
     /**
-     * @return array{lessons: list<array<string, mixed>>, has_more: bool}
+     * A aula anterior elegível, ou `null` se não houver.
+     *
+     * @return array<string, mixed>|null
      */
-    public function for(Lesson $target, int $limit = self::DEFAULT_LIMIT): array
+    public function previous(Lesson $target): ?array
     {
-        $limit = max(1, min($limit, self::MAX_LIMIT));
-
-        /** @var list<array<string, mixed>> $entries mais recentes primeiro */
-        $entries = [];
-
         foreach ($this->candidates($target)->lazy(self::CHUNK) as $lesson) {
             $entry = $this->entry($lesson);
 
-            if ($entry === null) {
-                continue;
-            }
-
-            $entries[] = $entry;
-
-            // Uma a mais que o limite, só para saber se há mais.
-            if (count($entries) > $limit) {
-                break;
+            if ($entry !== null) {
+                return $entry;
             }
         }
 
-        $hasMore = count($entries) > $limit;
-
-        return [
-            'lessons' => array_reverse(array_slice($entries, 0, $limit)),
-            'has_more' => $hasMore,
-        ];
+        return null;
     }
 
     /**
@@ -132,11 +126,13 @@ final class LessonPreparationContext
                     ->whereNull('outcome')
                     ->where('status', '<>', LessonStatus::Taught->value)
                     // O TRIM só poupa candidatas; a regra final é a de `entry()`.
-                    ->whereHas('summary', fn ($summary) => $summary->where(fn ($any) => $any
-                        ->whereRaw("TRIM(content) <> ''")
-                        ->orWhereRaw("TRIM(COALESCE(resources, '')) <> ''")
-                        ->orWhereRaw("TRIM(COALESCE(homework, '')) <> ''")))))
-            ->with(['schoolClass', 'classGroup', 'summary'])
+                    ->where(fn ($content) => $content
+                        ->whereHas('summary', fn ($summary) => $summary->where(fn ($any) => $any
+                            ->whereRaw("TRIM(content) <> ''")
+                            ->orWhereRaw("TRIM(COALESCE(resources, '')) <> ''")
+                            ->orWhereRaw("TRIM(COALESCE(homework, '')) <> ''")))
+                        ->orWhereHas('plan', fn ($plan) => $plan->whereRaw("TRIM(planned_summary) <> ''")))))
+            ->with(['schoolClass', 'classGroup', 'summary', 'plan'])
             ->orderByDesc('starts_at')
             ->orderByDesc('id');
     }
@@ -149,11 +145,12 @@ final class LessonPreparationContext
         $content = (string) $lesson->summary?->content;
         $resources = $lesson->summary?->resources;
         $homework = $lesson->summary?->homework;
+        $plan = $this->publicPlan($lesson->plan?->planned_summary);
 
         if ($lesson->isTaught()) {
             $state = self::STATE_TAUGHT;
         } elseif ($lesson->outcome === null
-            && (trim($content) !== '' || trim((string) $resources) !== '' || trim((string) $homework) !== '')) {
+            && (trim($content) !== '' || trim((string) $resources) !== '' || trim((string) $homework) !== '' || $plan !== '')) {
             $state = self::STATE_PREPARED;
         } else {
             return null;
@@ -161,6 +158,7 @@ final class LessonPreparationContext
 
         return [
             'ulid' => $lesson->ulid,
+            'class_ulid' => $lesson->schoolClass->ulid,
             'starts_at' => $lesson->starts_at->toIso8601String(),
             'ends_at' => $lesson->ends_at?->toIso8601String(),
             'lesson_number' => $lesson->lesson_number,
@@ -169,8 +167,31 @@ final class LessonPreparationContext
             'state' => $state,
             'state_label' => self::LABELS[$state],
             'content' => $content,
+            'plan' => $plan === '' ? null : $plan,
             'resources' => $resources,
             'homework' => $homework,
         ];
+    }
+
+    /**
+     * O plano sem as notas privadas que `ShiftLessonPlanning::keepAsPending`
+     * lá deixa: as partes vão por ordem (conteúdo, recursos, TPC, notas
+     * privadas) separadas por linha em branco, com as notas SEMPRE em último.
+     * Corta-se desde o parágrafo que começa pelo rótulo até ao fim.
+     */
+    private function publicPlan(?string $plan): string
+    {
+        $paragraphs = preg_split('/\R{2,}/u', trim((string) $plan)) ?: [];
+        $kept = [];
+
+        foreach ($paragraphs as $paragraph) {
+            if (str_starts_with(ltrim($paragraph), ShiftLessonPlanning::PRIVATE_NOTES_LABEL.': ')) {
+                break;
+            }
+
+            $kept[] = $paragraph;
+        }
+
+        return trim(implode("\n\n", $kept));
     }
 }
