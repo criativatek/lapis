@@ -48,6 +48,7 @@ use App\Models\Student;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\TimetableActivity;
+use App\Models\TimetableActivitySession;
 use App\Models\User;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ScaleProposalResolver;
@@ -55,6 +56,7 @@ use App\Services\Audit\AuditLog;
 use App\Services\Evidence\Followup\RecordFollowupExport;
 use App\Services\Reporting\Export\PdfRenderer;
 use App\Services\Reporting\Export\ReportDocumentBuilder;
+use App\Services\Timetable\ActivitySessionsXlsxWriter;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Retention\RetentionPolicy;
@@ -219,6 +221,21 @@ class GenerateDataExport
             ->orderBy('id')
             ->get();
 
+        // Schema v19 — the per-session records of THOSE activities (the
+        // sumário of each apoio, reunião, clube…), again only the exporter's
+        // own and never scoped by class: a session whose class this export does
+        // not carry, or whose activity no longer exists, is still the
+        // teacher's own text. Only sessions with records (text or a state): an
+        // untouched occurrence is not a fact worth carrying away.
+        $timetableActivitySessions = TimetableActivitySession::query()
+            ->where('user_id', $user->getKey())
+            ->withRecords()
+            ->with(['schoolClass', 'activity'])
+            ->orderBy('occurs_on')
+            ->orderBy('starts_at')
+            ->orderBy('id')
+            ->get();
+
         $evidenceRecords = EvidenceRecord::query()->whereIn('class_id', $classIds)->with('enrollment.student')->get();
 
         // Schema v15 — the follow-up cases of these same classes and every
@@ -344,7 +361,7 @@ class GenerateDataExport
         try {
             $spreadsheet->removeSheetByIndex(0);
 
-            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries, count($followupSheetRows));
+            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries, count($followupSheetRows), $timetableActivitySessions->count());
 
             if ($classes->isNotEmpty()) {
                 $this->addTurmasSheet($spreadsheet, $classes);
@@ -368,6 +385,10 @@ class GenerateDataExport
 
             if ($classNotebookEntries->isNotEmpty()) {
                 $this->addCadernoDaTurmaSheet($spreadsheet, $classNotebookEntries, $classes);
+            }
+
+            if ($timetableActivitySessions->isNotEmpty()) {
+                $this->addOutrasAtividadesSheet($spreadsheet, $timetableActivitySessions);
             }
 
             if ($classifications->isNotEmpty()) {
@@ -446,6 +467,7 @@ class GenerateDataExport
             $resultsAnalysisNotes,
             $classNotebookEntries,
             $timetableActivities,
+            $timetableActivitySessions,
             $followupBackupRows,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
@@ -484,6 +506,7 @@ class GenerateDataExport
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
         int $followupCaseCount = 0,
+        int $activitySessionCount = 0,
     ): void {
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle('Resumo');
@@ -505,6 +528,7 @@ class GenerateDataExport
             ['Nº de classificações', $classifications->count()],
             ['Nº de registos', $evidenceRecords->count()],
             ['Nº de casos de acompanhamento (TPC, atrasos, material)', $followupCaseCount],
+            ['Nº de sessões de outras atividades com registos', $activitySessionCount],
             ['Nº de relatórios', $reports->count()],
         ];
 
@@ -718,6 +742,27 @@ class GenerateDataExport
         }
 
         $this->finishSheet($sheet, count($headers), $row - 1);
+    }
+
+    /**
+     * The exporter's own per-session records of their «outras atividades»
+     * (schema v19): date, hours, activity, kind, class, number, state and the
+     * whole summary. The rows come from `ActivitySessionsXlsxWriter`, the same
+     * place the history's own Excel file takes them from, so the two never
+     * disagree; every text cell is an explicit string, so a summary that starts
+     * with `=` is text and never a formula.
+     *
+     * @param  Collection<int, TimetableActivitySession>  $sessions
+     */
+    protected function addOutrasAtividadesSheet(Spreadsheet $spreadsheet, Collection $sessions): void
+    {
+        $headers = ActivitySessionsXlsxWriter::headers();
+        $sheet = $this->newSheet($spreadsheet, ActivitySessionsXlsxWriter::SHEET_TITLE, $headers);
+
+        $lastRow = ActivitySessionsXlsxWriter::fillRows($sheet, $sessions);
+
+        $this->finishSheet($sheet, count($headers), $lastRow);
+        $sheet->getColumnDimension(Coordinate::stringFromColumnIndex(count($headers)))->setAutoSize(false)->setWidth(80);
     }
 
     /**
@@ -1758,6 +1803,36 @@ class GenerateDataExport
             'ends_at' => substr($activity->ends_at, 0, 5),
             'starts_on' => $activity->starts_on?->toDateString(),
             'ends_on' => $activity->ends_on?->toDateString(),
+            'numbering_enabled' => $activity->numbering_enabled,
+            'numbering_start' => $activity->numbering_start,
+        ];
+    }
+
+    /**
+     * Schema v19 — never carries `id`, `organization_id`, `user_id`,
+     * `timetable_activity_id`, `class_id` or `academic_year_id`. The owner
+     * travels as the exporter's email, the activity as its ulid (`null` when
+     * the block no longer exists: the session keeps the copy it carries, which
+     * is what identifies it) and the optional class as its ulid.
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function timetableActivitySessionRow(TimetableActivitySession $session, User $owner, array $refs): array
+    {
+        return [
+            'ulid' => $session->ulid,
+            'author_email' => $owner->email,
+            'activity_ulid' => $session->activity?->ulid,
+            'activity_kind' => $session->activity_kind,
+            'activity_title' => $session->activity_title,
+            'class_ulid' => $this->classUlidRef($session->class_id, $refs),
+            'occurs_on' => $session->occurs_on->toDateString(),
+            'starts_at' => substr($session->starts_at, 0, 5),
+            'ends_at' => substr($session->ends_at, 0, 5),
+            'summary' => $session->summary,
+            'status' => $session->status->value,
+            'sequence_number' => $session->session_number,
         ];
     }
 
@@ -2241,6 +2316,7 @@ class GenerateDataExport
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
      * @param  Collection<int, TimetableActivity>  $timetableActivities
+     * @param  Collection<int, TimetableActivitySession>  $timetableActivitySessions
      * @param  array{record_followup_cases: list<array<string, mixed>>, record_followup_confirmations: list<array<string, mixed>>}  $followupRows
      */
     protected function technicalBackup(
@@ -2283,6 +2359,7 @@ class GenerateDataExport
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
         Collection $timetableActivities,
+        Collection $timetableActivitySessions,
         array $followupRows = ['record_followup_cases' => [], 'record_followup_confirmations' => []],
     ): string {
         $refs = $this->buildBackupRefs(
@@ -2311,6 +2388,7 @@ class GenerateDataExport
                 'class_notebook_entries',
                 'record_followup_cases', 'record_followup_confirmations',
                 'timetable_activities',
+                'timetable_activity_occurrences',
             ],
 
             'academic_years' => $academicYears->map(fn (AcademicYear $year): array => $this->academicYearRow($year))->values(),
@@ -2392,6 +2470,9 @@ class GenerateDataExport
 
             // Schema v17 — the exporter's own non-teaching activities.
             'timetable_activities' => $timetableActivities->map(fn (TimetableActivity $activity): array => $this->timetableActivityRow($activity, $user, $refs))->values(),
+
+            // Schema v19 — the exporter's own per-session records of them.
+            'timetable_activity_occurrences' => $timetableActivitySessions->map(fn (TimetableActivitySession $session): array => $this->timetableActivitySessionRow($session, $user, $refs))->values(),
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import InsertLessonDialog from '@/components/lessons/InsertLessonDialog.vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
+import type { ActivitySessionItem } from '@/lib/activitySessions';
 import { resetConfirmedSummaries } from '@/lib/confirmedSummaries';
 import type { WeekLesson } from '@/lib/lessons';
 import type { SummarySearchResponse, SummarySearchResult } from '@/lib/lessonSummarySearch';
@@ -26,7 +27,7 @@ type VisitOptions = {
 };
 
 const inertia = vi.hoisted(() => ({
-    page: { url: '/lessons?week=2026-10-05' },
+    page: { url: '/lessons?week=2026-10-05', props: {} as Record<string, unknown> },
     router: {
         get: vi.fn(),
         post: vi.fn(),
@@ -63,7 +64,9 @@ vi.mock('@inertiajs/vue3', async () => {
             errors: {},
             processing: false,
             post: vi.fn(),
+            put: vi.fn(),
             delete: vi.fn(),
+            clearErrors: vi.fn(),
             data: () => ({}),
             defaults: vi.fn(),
             transform: vi.fn(),
@@ -165,13 +168,20 @@ const teacherClasses: TeacherClass[] = [
 
 function mountPage(
     lessons: WeekLesson[] = [makeLesson()],
-    options: { url?: string; classView?: ClassViewData | null; classes?: TeacherClass[]; attach?: boolean } = {},
+    options: {
+        url?: string;
+        classView?: ClassViewData | null;
+        classes?: TeacherClass[];
+        attach?: boolean;
+        activitySessions?: ActivitySessionItem[];
+    } = {},
 ) {
     inertia.page.url = options.url ?? '/lessons?week=2026-10-05';
 
     return mount(Index, {
         props: {
             lessons,
+            activitySessions: options.activitySessions ?? [],
             week: { start: '2026-10-05', end: '2026-10-11' },
             academicYear: '2026/2027',
             configuredClassesCount: 1,
@@ -215,7 +225,7 @@ function expectRevalidation(): void {
         inertia.page.url,
         {},
         // `preserveUrl`: uma pesquisa iniciada entretanto não pode ser desfeita pela resposta.
-        expect.objectContaining({ only: ['lessons', 'classView'], preserveState: true, preserveScroll: true, preserveUrl: true, replace: true }),
+        expect.objectContaining({ only: ['lessons', 'activitySessions', 'classView'], preserveState: true, preserveScroll: true, preserveUrl: true, replace: true }),
     );
 }
 
@@ -582,7 +592,7 @@ describe('editar o sumário no cartão — grava só o sumário', () => {
         const [url, payload, options] = inertia.router.patch.mock.calls[0] as unknown as [string, Record<string, unknown>, VisitOptions];
         expect(url).toBe('/lessons/lesson-a/summary/content');
         expect(payload).toEqual({ content: 'Novo sumário.', summary_version: 3 });
-        expect(options.only).toEqual(['lessons', 'classView']);
+        expect(options.only).toEqual(['lessons', 'activitySessions', 'classView']);
     });
 
     it('recusa guardar vazio, com a explicação de «Limpar sumário»', async () => {
@@ -2164,5 +2174,171 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
 
         expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toContain('Professor ausente');
         expect(wrapper.find('[data-testid="lesson-number-start"]').exists()).toBe(false);
+    });
+});
+
+
+/**
+ * 0.170.0 — as sessões das «outras atividades» vivem ao lado das aulas na vista
+ * Semana, e SÓ nela: nunca entram nos contadores, nos filtros de estado, na
+ * seleção em lote nem nas vistas Horário e Por turma.
+ */
+describe('vista Semana — sessões das outras atividades', () => {
+    function makeSession(overrides: Partial<ActivitySessionItem> = {}): ActivitySessionItem {
+        return {
+            key: 'activity-act-1-2026-10-08',
+            session_ulid: null,
+            activity_ulid: 'act-1',
+            title: 'Apoio ao estudo',
+            kind: 'student_support',
+            kind_label: 'Apoio a alunos',
+            occurs_on: '2026-10-08',
+            starts_at: '2026-10-08T12:00:00+01:00',
+            ends_at: '2026-10-08T12:50:00+01:00',
+            start_time: '12:00',
+            end_time: '12:50',
+            school_class: null,
+            status: 'planned',
+            presentation: 'planned',
+            presentation_label: 'Por realizar',
+            summary: null,
+            has_summary: false,
+            session_number: null,
+            numbering_enabled: false,
+            registrable: true,
+            follows_schedule: true,
+            ...overrides,
+        };
+    }
+
+    const cardsOfDay = (wrapper: ReturnType<typeof mountPage>, date: string) =>
+        wrapper
+            .get(`section[aria-labelledby="dia-${date}"]`)
+            .findAll('ol > li > *')
+            .map((element) => element.attributes('data-testid'));
+
+    it('junta as sessões às aulas do dia, por ordem de início, com um cartão próprio', () => {
+        const wrapper = mountPage([makeLesson()], {
+            activitySessions: [
+                makeSession({ key: 'late', title: 'Reunião', starts_at: '2026-10-08T17:00:00+01:00', start_time: '17:00' }),
+                makeSession({ key: 'early', starts_at: '2026-10-08T08:00:00+01:00', start_time: '08:00' }),
+            ],
+        });
+
+        // Aula às 09:30: a sessão das 08:00 antes, a das 17:00 depois — e não pela ordem recebida.
+        expect(cardsOfDay(wrapper, '2026-10-08')).toEqual(['activity-session-card', 'lesson-card', 'activity-session-card']);
+        expect(wrapper.findAll('[data-testid="activity-session-card"]').map((card) => card.text())[0]).toContain('Apoio ao estudo');
+    });
+
+    it('ordena pelo instante real, não pelo texto, na semana em que muda a hora', () => {
+        const wrapper = mountPage([makeLesson({ ulid: 'l', starts_at: '2026-10-08T09:30:00+01:00' })], {
+            activitySessions: [makeSession({ key: 'before', starts_at: '2026-10-08T09:00:00+01:00', start_time: '09:00' })],
+        });
+
+        expect(cardsOfDay(wrapper, '2026-10-08')[0]).toBe('activity-session-card');
+    });
+
+    it('conta-se à parte: os contadores e o cabeçalho do dia continuam a ser só de aulas', () => {
+        const without = mountPage([makeLesson()]);
+        const factsWithout = without.get('[data-testid="week-facts"]').text();
+
+        const wrapper = mountPage([makeLesson()], { activitySessions: [makeSession()] });
+        const heading = wrapper.get('#dia-2026-10-08').text();
+
+        expect(wrapper.get('[data-testid="week-facts"]').text()).toBe(factsWithout);
+        expect(heading).toContain('1 aula · 1 com sumário');
+        expect(heading).toContain('1 outra atividade');
+        expect(wrapper.findAll('[data-testid="lesson-card"]')).toHaveLength(1);
+    });
+
+    it('mostra o estado, o número e o sumário completo da sessão', () => {
+        const wrapper = mountPage([makeLesson()], {
+            activitySessions: [
+                makeSession({
+                    session_ulid: 'ses-1',
+                    status: 'done',
+                    presentation: 'done',
+                    presentation_label: 'Realizada',
+                    has_summary: true,
+                    summary: 'Primeira linha.\nSegunda linha.',
+                    session_number: 4,
+                }),
+            ],
+        });
+        const card = wrapper.get('[data-testid="activity-session-card"]');
+
+        expect(card.get('[data-testid="activity-session-state"]').text()).toBe('Realizada');
+        expect(card.text()).toContain('Sessão 4');
+        expect(card.get('[data-testid="activity-session-summary-text"]').text()).toContain('Segunda linha.');
+        expect(card.get('[data-testid="activity-session-open"]').text()).toBe('Editar sumário');
+    });
+
+    it('«Registar sumário» abre o registo da sessão, e nada é pedido ao servidor', async () => {
+        const wrapper = mountPage([makeLesson()], { activitySessions: [makeSession()] });
+
+        expect(wrapper.get('[data-testid="activity-session-open"]').text()).toBe('Registar sumário');
+        inertia.router.get.mockClear();
+
+        await wrapper.get('[data-testid="activity-session-open"]').trigger('click');
+
+        expect(wrapper.find('[data-testid="activity-session-dialog"]').exists()).toBe(true);
+        expect(inertia.router.get).not.toHaveBeenCalled();
+        expect(inertia.router.post).not.toHaveBeenCalled();
+    });
+
+    it('os filtros de estado das aulas não escondem as sessões, e a seleção em lote não as vê', async () => {
+        const wrapper = mountPage([makeLesson({ ulid: 'started', starts_at: '2026-10-08T10:40:00+01:00', ends_at: '2026-10-08T11:30:00+01:00' })], {
+            url: '/lessons?week=2026-10-05&states=taught',
+            activitySessions: [makeSession()],
+            attach: true,
+        });
+
+        // O filtro «Lecionada» esconde a aula preparada, mas a sessão continua lá.
+        expect(wrapper.findAll('[data-testid="lesson-card"]')).toHaveLength(0);
+        expect(wrapper.findAll('[data-testid="activity-session-card"]')).toHaveLength(1);
+
+        await wrapper.setProps({});
+        const toggle = wrapper.find('[data-testid="selection-toggle"]');
+
+        if (toggle.exists()) {
+            await toggle.trigger('click');
+            expect(wrapper.get('[data-testid="activity-session-card"]').find('input[type="checkbox"], [role="checkbox"]').exists()).toBe(false);
+        }
+    });
+
+    it('com um filtro de turma, só as sessões dessa turma', () => {
+        const wrapper = mountPage([makeLesson()], {
+            url: '/lessons?week=2026-10-05&classes=class-a',
+            activitySessions: [
+                makeSession({ key: 'of-a', title: 'DT 7.º A', school_class: { ulid: 'class-a', label: '7.º A' } }),
+                makeSession({ key: 'of-b', title: 'DT 8.º B', school_class: { ulid: 'class-b', label: '8.º B' } }),
+                makeSession({ key: 'none', title: 'Sem turma' }),
+            ],
+        });
+
+        expect(wrapper.findAll('[data-testid="activity-session-card"]').map((card) => card.text())).toEqual([expect.stringContaining('DT 7.º A')]);
+    });
+
+    it('uma semana só com sessões mostra-as, e não «Sem aulas nesta semana»', () => {
+        const wrapper = mountPage([], { activitySessions: [makeSession({ occurs_on: '2026-10-06', starts_at: '2026-10-06T12:00:00+01:00', key: 'tue' })] });
+
+        expect(wrapper.find('empty-state-stub').exists()).toBe(false);
+        expect(wrapper.findAll('[data-testid="activity-session-card"]')).toHaveLength(1);
+        expect(wrapper.find('#dia-2026-10-06').exists()).toBe(true);
+        expect(wrapper.get('#dia-2026-10-06').text()).not.toContain('0 aulas');
+    });
+
+    it('não aparecem na vista Horário, que fica sem aulas nesta semana', async () => {
+        const wrapper = mountPage([makeLesson()], { activitySessions: [makeSession()] });
+
+        await button(wrapper, 'Horário')!.trigger('click');
+
+        expect(wrapper.find('[data-testid="activity-session-card"]').exists()).toBe(false);
+    });
+
+    it('uma semana sem aulas nem sessões continua a dizer que não há aulas', () => {
+        const wrapper = mountPage([]);
+
+        expect(wrapper.find('empty-state-stub').exists()).toBe(true);
     });
 });

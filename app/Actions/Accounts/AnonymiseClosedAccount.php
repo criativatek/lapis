@@ -102,6 +102,7 @@ class AnonymiseClosedAccount
             'passkeys' => 0,
             'sessions' => 0,
             'usage_events' => 0,
+            'timetable_activity_sessions' => 0,
             'timetable_activities' => 0,
         ];
 
@@ -143,6 +144,15 @@ class AnonymiseClosedAccount
             // Métricas de utilização (docs/usage-insights.md): eventos, agregados
             // e datas de primeira observação saem com a identidade.
             $removed['usage_events'] = $this->forgetUsage->forUser($user);
+
+            // Os registos por sessão das «outras atividades» (0.170.0) são
+            // texto que o professor escreveu: saem com a identidade, ANTES das
+            // atividades (a FK é `nullOnDelete`, e apagar a atividade primeiro
+            // deixava as sessões órfãs, com o texto, numa conta anonimizada).
+            // Nunca a tabela `sessions` do Laravel: esta tem outro nome.
+            $removed['timetable_activity_sessions'] = DB::table('timetable_activity_sessions')
+                ->where('user_id', $user->getKey())
+                ->delete();
 
             // As atividades não letivas são configuração pessoal do horário
             // (0.168.0), sem história a proteger: saem com a identidade, em vez

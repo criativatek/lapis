@@ -32,6 +32,8 @@ use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
 use App\Models\TeacherAbsenceReason;
 use App\Models\TimetableActivityKind;
+use App\Models\TimetableActivitySession;
+use App\Models\TimetableActivitySessionStatus;
 use App\Support\Assessment\SupportedCalculationRules;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
@@ -269,6 +271,10 @@ class ValidateBackupPayload
         // Schema v17 — the exporter's own non-teaching timetable activities.
         // Absent in a backup ≤16: `?? []`, zero rows, never an error.
         $canonical['timetable_activities'] = $this->validTimetableActivityRows($decoded, $rowIssues);
+
+        // Schema v19 — the exporter's own per-session records of those
+        // activities. Absent in a backup ≤18: `?? []`, zero rows, never an error.
+        $canonical['timetable_activity_occurrences'] = $this->validTimetableActivitySessionRows($decoded, $rowIssues);
 
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
     }
@@ -2102,8 +2108,9 @@ class ValidateBackupPayload
 
     /**
      * Schema v17 — the exporter's own non-teaching activities
-     * (`TimetableActivity`). The whitelist is exactly the ten keys the export
-     * writes; `id`, `organization_id`, `user_id` and `class_id` are dropped
+     * (`TimetableActivity`). The whitelist is exactly the twelve keys the export
+     * writes (the two numbering keys arrived in schema v19 and read as off / 1
+     * when absent); `id`, `organization_id`, `user_id` and `class_id` are dropped
      * even if a hand-edited file carries them. A second row with the same
      * `ulid` in the SAME file is reported and the first one kept.
      *
@@ -2119,7 +2126,7 @@ class ValidateBackupPayload
             return [];
         }
 
-        $allowedKeys = ['ulid', 'author_email', 'kind', 'title', 'class_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on'];
+        $allowedKeys = ['ulid', 'author_email', 'kind', 'title', 'class_ulid', 'day_of_week', 'starts_at', 'ends_at', 'starts_on', 'ends_on', 'numbering_enabled', 'numbering_start'];
         $seenUlids = [];
         $validated = [];
 
@@ -2137,7 +2144,7 @@ class ValidateBackupPayload
             $resultUlid = is_string($result['ulid']) ? $result['ulid'] : null;
 
             if ($resultUlid !== null && isset($seenUlids[$resultUlid])) {
-                $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => $resultUlid, 'reason' => $this->t('Atividade não letiva duplicada neste ficheiro.')];
+                $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => $resultUlid, 'reason' => $this->t('Outra atividade duplicada neste ficheiro.')];
 
                 continue;
             }
@@ -2168,12 +2175,19 @@ class ValidateBackupPayload
         $startsOn = $this->nullableDate($row['starts_on'] ?? null);
         $endsOn = $this->nullableDate($row['ends_on'] ?? null);
 
+        // Schema v19: absent → numbering off, starting at 1. Present but
+        // malformed is not «absent»: the row is refused rather than guessed.
+        $numberingEnabled = $row['numbering_enabled'] ?? false;
+        $numberingStart = $row['numbering_start'] ?? 1;
+        $numberingOk = is_bool($numberingEnabled)
+            && is_int($numberingStart) && $numberingStart >= 1 && $numberingStart <= 9999;
+
         // A date that is present but malformed is not «open»: it would widen
         // the validity window in silence.
         $datesOk = (($row['starts_on'] ?? null) === null || $startsOn !== null)
             && (($row['ends_on'] ?? null) === null || $endsOn !== null);
 
-        $valid = $datesOk && $this->isUlid($ulid)
+        $valid = $datesOk && $numberingOk && $this->isUlid($ulid)
             && $kind !== null
             && $title !== null && $title !== '' && mb_strlen($title, 'UTF-8') <= 60
             && $classUlidResult['ok']
@@ -2183,7 +2197,7 @@ class ValidateBackupPayload
 
         if (! $valid) {
             // A fixed sentence — never the title.
-            $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => is_string($ulid) && $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t('Atividade não letiva com campos em falta ou inválidos.')];
+            $rowIssues[] = ['domain' => 'timetable_activities', 'ulid' => is_string($ulid) && $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t('Outra atividade com campos em falta ou inválidos.')];
 
             return null;
         }
@@ -2199,6 +2213,129 @@ class ValidateBackupPayload
             'ends_at' => $endsAt,
             'starts_on' => $startsOn,
             'ends_on' => $endsOn,
+            'numbering_enabled' => $numberingEnabled,
+            'numbering_start' => $numberingStart,
+        ];
+    }
+
+    /**
+     * Schema v19 — the exporter's own per-session records of their «outras
+     * atividades» (`TimetableActivitySession`). The whitelist is exactly the
+     * twelve keys the export writes; `id`, `organization_id`, `user_id`,
+     * `timetable_activity_id`, `class_id` and `academic_year_id` are dropped
+     * even if a hand-edited file carries them. A second row with the same
+     * `ulid`, or for the same (`activity_ulid`, `occurs_on`), in the SAME file
+     * is reported and the first one kept. A reason is a fixed sentence: it
+     * never carries the text of a summary.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validTimetableActivitySessionRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['timetable_activity_occurrences'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'author_email', 'activity_ulid', 'activity_kind', 'activity_title', 'class_ulid', 'occurs_on', 'starts_at', 'ends_at', 'summary', 'status', 'sequence_number'];
+        $seenUlids = [];
+        $seenNaturalKeys = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $result = $this->validTimetableActivitySessionRow(array_intersect_key($row, array_flip($allowedKeys)), $rowIssues);
+
+            if ($result === null) {
+                continue;
+            }
+
+            $resultUlid = is_string($result['ulid']) ? $result['ulid'] : '';
+            $naturalKey = is_string($result['activity_ulid']) ? $result['activity_ulid'].'|'.$result['occurs_on'] : null;
+
+            if (isset($seenUlids[$resultUlid]) || ($naturalKey !== null && isset($seenNaturalKeys[$naturalKey]))) {
+                $rowIssues[] = ['domain' => 'timetable_activity_occurrences', 'ulid' => $resultUlid, 'reason' => $this->t('Sessão duplicada neste ficheiro.')];
+
+                continue;
+            }
+
+            $seenUlids[$resultUlid] = true;
+
+            if ($naturalKey !== null) {
+                $seenNaturalKeys[$naturalKey] = true;
+            }
+
+            $validated[] = $result;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validTimetableActivitySessionRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $kind = is_string($row['activity_kind'] ?? null) ? TimetableActivityKind::tryFrom($row['activity_kind']) : null;
+        $title = is_string($row['activity_title'] ?? null) ? trim($row['activity_title']) : null;
+        $status = is_string($row['status'] ?? null) ? TimetableActivitySessionStatus::tryFrom($row['status']) : null;
+        $activityUlidResult = $this->optionalUlidOrInvalidate($row['activity_ulid'] ?? null);
+        $activityUlid = $activityUlidResult['ok'] ? $activityUlidResult['value'] : null;
+        $classUlidResult = $this->optionalUlidOrInvalidate($row['class_ulid'] ?? null);
+        $classUlid = $classUlidResult['ok'] ? $classUlidResult['value'] : null;
+        $occursOn = $this->nullableDate($row['occurs_on'] ?? null);
+        $startsAt = $this->nullableTime($row['starts_at'] ?? null);
+        $endsAt = $this->nullableTime($row['ends_at'] ?? null);
+        $startsAt = $startsAt === null ? null : substr($startsAt, 0, 5);
+        $endsAt = $endsAt === null ? null : substr($endsAt, 0, 5);
+        $summary = $row['summary'] ?? null;
+        $number = $row['sequence_number'] ?? null;
+
+        $realDate = $occursOn !== null
+            && checkdate((int) substr($occursOn, 5, 2), (int) substr($occursOn, 8, 2), (int) substr($occursOn, 0, 4));
+
+        $valid = $this->isUlid($ulid)
+            && $kind !== null && $status !== null
+            && $title !== null && $title !== '' && mb_strlen($title, 'UTF-8') <= 60
+            && $activityUlidResult['ok'] && $classUlidResult['ok']
+            && $realDate
+            && $startsAt !== null && $endsAt !== null && $endsAt > $startsAt
+            && ($summary === null || (is_string($summary) && mb_strlen($summary, 'UTF-8') <= TimetableActivitySession::SUMMARY_MAX))
+            && ($number === null || (is_int($number) && $number >= 1));
+
+        if (! $valid) {
+            // A fixed sentence — never the title, never the summary.
+            $rowIssues[] = ['domain' => 'timetable_activity_occurrences', 'ulid' => is_string($ulid) && $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t('Sessão de outra atividade com campos em falta ou inválidos.')];
+
+            return null;
+        }
+
+        $summary = is_string($summary) && trim($summary) !== '' ? $summary : null;
+
+        return [
+            'ulid' => $ulid,
+            'author_email' => $this->nullableString($row['author_email'] ?? null),
+            'activity_ulid' => $activityUlid,
+            'activity_kind' => $kind->value,
+            'activity_title' => $title,
+            'class_ulid' => $classUlid,
+            'occurs_on' => $occursOn,
+            'starts_at' => $startsAt,
+            'ends_at' => $endsAt,
+            'summary' => $summary,
+            'status' => $status->value,
+            // A number only means something on a session done: anywhere else it
+            // is dropped, exactly as leaving «realizada» clears it.
+            'sequence_number' => $status === TimetableActivitySessionStatus::Done ? $number : null,
         ];
     }
 

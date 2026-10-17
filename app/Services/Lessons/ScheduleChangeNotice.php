@@ -3,6 +3,7 @@
 namespace App\Services\Lessons;
 
 use App\Models\Lesson;
+use App\Models\TimetableActivitySession;
 use Illuminate\Support\Collection;
 
 /**
@@ -66,6 +67,39 @@ final class ScheduleChangeNotice
         return $restFollowNewSchedule
             ? $message.' As restantes passam a seguir o horário novo.'
             : $message;
+    }
+
+    /**
+     * O mesmo aviso para as SESSÕES das «outras atividades» (0.170.0): ao editar
+     * ou fechar o bloco, as sessões com registos ficam na data e hora em que
+     * estavam, e o professor lê quais e porquê. Sem nenhuma, `null`.
+     *
+     * Ex.: «Horário guardado. 2 sessões com registos de «DT 6D» ficaram na data e
+     * hora anteriores — 13/10 e 20/10 — para não se perder o que lá está.»
+     *
+     * @param  Collection<int, TimetableActivitySession>  $sessions  as sessões preservadas
+     * @param  string  $lead  «Horário guardado.» / «Atividade removida do horário.»
+     */
+    public static function describeActivitySessions(Collection $sessions, string $title, string $lead): ?string
+    {
+        if ($sessions->isEmpty()) {
+            return null;
+        }
+
+        $count = $sessions->count();
+        $dates = array_values($sessions
+            ->sortBy(fn (TimetableActivitySession $session): string => $session->occurs_on->toDateString())
+            ->map(fn (TimetableActivitySession $session): string => $session->occurs_on->format('d/m'))
+            ->all());
+
+        return sprintf(
+            '%s %s com registos de «%s» %s na data e hora anteriores — %s — para não se perder o que lá está.',
+            $lead,
+            $count === 1 ? '1 sessão' : $count.' sessões',
+            $title,
+            $count === 1 ? 'ficou' : 'ficaram',
+            self::dates($dates),
+        );
     }
 
     /**

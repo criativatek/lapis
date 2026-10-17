@@ -345,12 +345,13 @@ class TimetableActivityTest extends TestCase
     public function the_timetable_offers_the_kinds_with_their_portuguese_labels(): void
     {
         $this->timetable('2026-10-12')->assertInertia(fn (AssertableInertia $page) => $page
-            ->has('activityKinds', 5)
+            ->has('activityKinds', 6)
             ->where('activityKinds.0', ['value' => 'class_direction', 'label' => 'Direção de turma'])
             ->where('activityKinds.1', ['value' => 'student_support', 'label' => 'Apoio a alunos'])
             ->where('activityKinds.2', ['value' => 'meeting', 'label' => 'Reunião'])
             ->where('activityKinds.3', ['value' => 'coordination', 'label' => 'Coordenação / cargo'])
-            ->where('activityKinds.4', ['value' => 'other', 'label' => 'Outra']));
+            ->where('activityKinds.4', ['value' => 'club', 'label' => 'Clube'])
+            ->where('activityKinds.5', ['value' => 'other', 'label' => 'Outra']));
     }
 
     // ------------------------------------------------ the central guarantee

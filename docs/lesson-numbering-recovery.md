@@ -41,7 +41,7 @@ quanto à numeração:
    `docs/deployment.md`, **sem** `migrate` e **sem** `migrate:rollback`. Atenção ao que «anterior» quer dizer:
    o plano de 2026-10-16 é instalar a 0.169.0 num só deploy a partir da 0.167.1 (a 0.168.0 nunca fica sozinha em
    produção). Nesse caso o pacote guardado é o `update-0.167.1.tgz`, e voltar a ele retira também a correção do
-   horário e as atividades não letivas da 0.168.0 (a tabela `timetable_activities` fica, intacta e ignorada). Se
+   horário e as outras atividades da 0.168.0 (a tabela `timetable_activities` fica, intacta e ignorada). Se
    houver um pacote 0.168.0 instalado antes e validado, é preferível; senão, decide-se com o responsável da 0.168.0
    se essa perda é aceitável.
 2. `php artisan config:cache && php artisan route:cache && php artisan view:cache`, `php artisan up`, reiniciar o SSR.

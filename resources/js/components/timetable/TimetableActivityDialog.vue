@@ -3,6 +3,7 @@ import { router, useForm } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
     DialogContent,
@@ -23,10 +24,13 @@ import type {
 import { WEEKDAYS } from './types';
 
 /**
- * ATIVIDADES NÃO LETIVAS (0.168.0): direção de turma, apoio a alunos,
- * reuniões, coordenação. Não são aulas — não geram aulas, sumários nem
- * assiduidade, e não entram na numeração. Ficam só no horário do professor,
- * numa tabela própria, para a semana dele ficar completa.
+ * «OUTRAS ATIVIDADES» (0.168.0; 0.170.0): direção de turma, apoio a alunos,
+ * clubes, reuniões, coordenação. Não são aulas — não geram aulas nem
+ * assiduidade e não entram na numeração das lições. Ficam no horário do
+ * professor, numa tabela própria, e cada sessão tem o seu sumário.
+ *
+ * Eliminar uma atividade que já tem sessões com registos NÃO a apaga: fecha-a
+ * a partir de uma data e o histórico fica. O diálogo di-lo antes de confirmar.
  */
 const props = defineProps<{
     open: boolean;
@@ -35,6 +39,8 @@ const props = defineProps<{
     kinds: TimetableActivityKindOption[];
     classes: TimetableClassOption[];
     defaultDay?: number;
+    /** Hoje (`Y-m-d`, do servidor): a data por omissão de «deixa de vigorar a partir de». */
+    today?: string;
 }>();
 
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
@@ -48,6 +54,8 @@ const form = useForm<{
     ends_at: string;
     starts_on: string;
     ends_on: string;
+    numbering_enabled: boolean;
+    numbering_start: number | string;
 }>({
     kind: 'other',
     title: '',
@@ -57,9 +65,14 @@ const form = useForm<{
     ends_at: '',
     starts_on: '',
     ends_on: '',
+    numbering_enabled: false,
+    numbering_start: 1,
 });
 
 const confirmingDelete = ref(false);
+const effectiveFrom = ref('');
+const removeError = ref<string | null>(null);
+const recordsCount = computed(() => props.activity?.records_count ?? 0);
 
 watch(
     () => [props.open, props.activity?.ulid] as const,
@@ -69,6 +82,8 @@ watch(
         }
 
         confirmingDelete.value = false;
+        removeError.value = null;
+        effectiveFrom.value = props.today ?? '';
         form.clearErrors();
         form.kind = props.activity?.kind ?? props.kinds[0]?.value ?? 'other';
         form.title = props.activity?.title ?? '';
@@ -78,6 +93,8 @@ watch(
         form.ends_at = props.activity?.ends_at ?? '';
         form.starts_on = props.activity?.starts_on ?? '';
         form.ends_on = props.activity?.ends_on ?? '';
+        form.numbering_enabled = props.activity?.numbering_enabled ?? false;
+        form.numbering_start = props.activity?.numbering_start ?? 1;
     },
     { immediate: true },
 );
@@ -90,6 +107,8 @@ function submit(): void {
     form.transform((data) => ({
         ...data,
         class_ulid: data.class_ulid === '' ? null : data.class_ulid,
+        numbering_start:
+            data.numbering_start === '' ? 1 : Number(data.numbering_start),
     }));
 
     const options = { preserveScroll: true, onSuccess: close };
@@ -109,15 +128,23 @@ function remove(): void {
     }
 
     router.delete(`/timetable-activities/${props.activity.ulid}`, {
+        // A data só conta quando há sessões com registos (o bloco fecha).
+        data:
+            recordsCount.value > 0 && effectiveFrom.value !== ''
+                ? { effective_from: effectiveFrom.value }
+                : {},
         preserveScroll: true,
         onSuccess: close,
+        onError: (errors) => {
+            removeError.value = errors.effective_from ?? null;
+        },
     });
 }
 
 const title = computed(() =>
     props.activity === null
-        ? 'Adicionar atividade não letiva'
-        : 'Editar atividade não letiva',
+        ? 'Adicionar outra atividade'
+        : 'Editar outra atividade',
 );
 </script>
 
@@ -127,8 +154,9 @@ const title = computed(() =>
             <DialogHeader>
                 <DialogTitle>{{ title }}</DialogTitle>
                 <DialogDescription>
-                    Direção de turma, apoio, reuniões, coordenação… Aparecem no
-                    teu horário, mas não geram aulas nem sumários.
+                    Direção de turma, apoio, clube, reuniões, coordenação…
+                    Aparecem no teu horário, não geram aulas e cada sessão tem o
+                    seu sumário.
                 </DialogDescription>
             </DialogHeader>
 
@@ -256,6 +284,36 @@ const title = computed(() =>
                     </div>
                 </div>
 
+                <div class="grid items-start gap-3 sm:grid-cols-2">
+                    <div class="flex items-center gap-2 pt-6">
+                        <Checkbox
+                            id="timetable-activity-numbering"
+                            :model-value="form.numbering_enabled"
+                            data-numbering-enabled
+                            @update:model-value="
+                                (value) =>
+                                    (form.numbering_enabled = value === true)
+                            "
+                        />
+                        <Label for="timetable-activity-numbering"
+                            >Numerar as sessões</Label
+                        >
+                    </div>
+                    <div v-if="form.numbering_enabled" class="grid gap-1.5">
+                        <Label for="timetable-activity-numbering-start"
+                            >Número inicial</Label
+                        >
+                        <Input
+                            id="timetable-activity-numbering-start"
+                            v-model="form.numbering_start"
+                            type="number"
+                            min="1"
+                            max="9999"
+                        />
+                        <InputError :message="form.errors.numbering_start" />
+                    </div>
+                </div>
+
                 <DialogFooter class="gap-2 sm:justify-between">
                     <div>
                         <Button
@@ -266,29 +324,59 @@ const title = computed(() =>
                             data-remove-activity
                             @click="confirmingDelete = true"
                         >
-                            Eliminar
+                            {{ recordsCount > 0 ? 'Terminar' : 'Eliminar' }}
                         </Button>
                         <span
                             v-if="activity !== null && confirmingDelete"
-                            class="flex items-center gap-2 text-sm"
+                            class="grid gap-2 text-sm"
                             data-confirm-remove-activity
                         >
-                            Eliminar esta atividade?
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="destructive"
-                                data-confirm-remove
-                                @click="remove"
-                                >Sim, eliminar</Button
-                            >
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                @click="confirmingDelete = false"
-                                >Não</Button
-                            >
+                            <span v-if="recordsCount > 0" data-closes-activity>
+                                Esta atividade tem
+                                {{ recordsCount }}
+                                {{
+                                    recordsCount === 1
+                                        ? 'sessão com registos'
+                                        : 'sessões com registos'
+                                }}: não é apagada. Deixa de vigorar a partir da
+                                data escolhida e o histórico fica guardado.
+                            </span>
+                            <span v-else>Eliminar esta atividade?</span>
+                            <span v-if="recordsCount > 0" class="grid gap-1">
+                                <Label for="timetable-activity-effective-from"
+                                    >Deixa de vigorar a partir de</Label
+                                >
+                                <Input
+                                    id="timetable-activity-effective-from"
+                                    v-model="effectiveFrom"
+                                    type="date"
+                                    :min="today"
+                                />
+                                <InputError
+                                    :message="removeError ?? undefined"
+                                />
+                            </span>
+                            <span class="flex items-center gap-2">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    data-confirm-remove
+                                    @click="remove"
+                                    >{{
+                                        recordsCount > 0
+                                            ? 'Sim, terminar'
+                                            : 'Sim, eliminar'
+                                    }}</Button
+                                >
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    @click="confirmingDelete = false"
+                                    >Não</Button
+                                >
+                            </span>
                         </span>
                     </div>
                     <div class="flex gap-2">

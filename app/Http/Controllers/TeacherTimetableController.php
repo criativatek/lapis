@@ -6,9 +6,11 @@ use App\Models\RecurringLessonSlot;
 use App\Models\SchoolClass;
 use App\Models\TimetableActivity;
 use App\Models\TimetableActivityKind;
+use App\Models\TimetableActivitySession;
 use App\Models\User;
 use App\Services\Classes\ClassArchivalWindow;
 use App\Services\Classes\ClassIdentityTones;
+use App\Services\Timetable\ActivitySessionWeek;
 use App\Support\Tenancy\CurrentOrganization;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -42,6 +44,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         protected CurrentOrganization $currentOrganization,
         protected ClassArchivalWindow $archivalWindow,
         protected ClassIdentityTones $identityTones,
+        protected ActivitySessionWeek $activitySessions,
     ) {}
 
     /**
@@ -168,7 +171,7 @@ class TeacherTimetableController extends Controller implements HasMiddleware
         // arquivamento da turma referida — a «DT 6.º D» é uma referência, não
         // uma aula dessa turma. Nunca geram aulas: esta página continua a não
         // escrever nada.
-        $activities = TimetableActivity::query()
+        $activityRows = TimetableActivity::query()
             ->where('user_id', $teacher->getKey())
             ->with('schoolClass')
             ->orderBy('day_of_week')
@@ -177,26 +180,66 @@ class TeacherTimetableController extends Controller implements HasMiddleware
             ->filter(fn (TimetableActivity $activity): bool => $activity->isInForceOn(
                 $weekStart->addDays($activity->day_of_week - 1)->toDateString(),
             ))
-            ->map(fn (TimetableActivity $activity) => [
-                'ulid' => $activity->ulid,
-                'kind' => $activity->kind->value,
-                'kind_label' => $activity->kind->label(),
-                'title' => $activity->title,
-                'day_of_week' => $activity->day_of_week,
-                'starts_at' => substr($activity->starts_at, 0, 5),
-                'ends_at' => substr($activity->ends_at, 0, 5),
-                'starts_on' => $activity->starts_on?->toDateString(),
-                'ends_on' => $activity->ends_on?->toDateString(),
-                'school_class' => $activity->schoolClass === null ? null : [
-                    'ulid' => $activity->schoolClass->ulid,
-                    'label' => $activity->schoolClass->label,
-                ],
-            ])
+            ->values();
+
+        // O registo por sessão (0.170.0): a ocorrência de cada bloco NESTA
+        // semana, com o estado da sessão dessa data se já existir — uma só
+        // consulta por intervalo, e só leitura: ver a semana nunca cria uma
+        // sessão. As sessões que já não batem com nenhum bloco desta semana
+        // (o bloco mudou de dia, fechou ou foi eliminado) vão à parte, na sua
+        // data, para o que lá está continuar à vista.
+        $weekItems = collect($this->activitySessions->between($teacher, $weekStart, $weekStart->endOfWeek(), false));
+        $recordsByActivity = TimetableActivitySession::query()
+            ->where('user_id', $teacher->getKey())
+            ->withRecords()
+            ->whereNotNull('timetable_activity_id')
+            ->selectRaw('timetable_activity_id, count(*) as total')
+            ->groupBy('timetable_activity_id')
+            ->pluck('total', 'timetable_activity_id');
+        $shownKeys = [];
+
+        $activities = $activityRows
+            ->map(function (TimetableActivity $activity) use ($weekItems, $weekStart, $recordsByActivity, &$shownKeys): array {
+                $date = $weekStart->addDays($activity->day_of_week - 1)->toDateString();
+                $occurrence = $weekItems->first(
+                    fn (array $item): bool => $item['activity_ulid'] === $activity->ulid && $item['occurs_on'] === $date,
+                );
+
+                if ($occurrence !== null) {
+                    $shownKeys[$occurrence['key']] = true;
+                }
+
+                return [
+                    'ulid' => $activity->ulid,
+                    'kind' => $activity->kind->value,
+                    'kind_label' => $activity->kind->label(),
+                    'title' => $activity->title,
+                    'day_of_week' => $activity->day_of_week,
+                    'starts_at' => substr($activity->starts_at, 0, 5),
+                    'ends_at' => substr($activity->ends_at, 0, 5),
+                    'starts_on' => $activity->starts_on?->toDateString(),
+                    'ends_on' => $activity->ends_on?->toDateString(),
+                    'numbering_enabled' => $activity->numbering_enabled,
+                    'numbering_start' => $activity->numbering_start,
+                    // Quantas sessões com registos tem (decide se eliminar fecha o bloco).
+                    'records_count' => (int) ($recordsByActivity[$activity->getKey()] ?? 0),
+                    'school_class' => $activity->schoolClass === null ? null : [
+                        'ulid' => $activity->schoolClass->ulid,
+                        'label' => $activity->schoolClass->label,
+                    ],
+                    'occurrence' => $occurrence,
+                ];
+            })
+            ->values();
+
+        $detachedSessions = $weekItems
+            ->reject(fn (array $item): bool => isset($shownKeys[$item['key']]))
             ->values();
 
         return Inertia::render('timetable/Index', [
             'slots' => $slots,
             'activities' => $activities,
+            'detachedSessions' => $detachedSessions,
             'activityKinds' => collect(TimetableActivityKind::cases())
                 ->map(fn (TimetableActivityKind $kind): array => ['value' => $kind->value, 'label' => $kind->label()])
                 ->values(),

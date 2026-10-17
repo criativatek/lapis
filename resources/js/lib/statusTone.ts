@@ -85,6 +85,14 @@ const TONES: Record<string, QualitativeTone> = {
     // Acompanhamento dos registos (0.164.0) — «Por tratar» partilha o âmbar
     // de «pending» acima; «Registado no Inovar» é verde, como o que já assentou.
     registered: 'green',
+
+    // Sessões das «outras atividades» (0.170.0), chaveadas por
+    // `presentation` — «Preparada» é um `planned` com texto. Não realizada é
+    // âmbar, como a ausência do professor: não aconteceu, não é um erro.
+    session_planned: 'neutral',
+    session_prepared: 'blue',
+    session_done: 'green',
+    session_not_held: 'amber',
 };
 
 export function statusTone(status: string): QualitativeTone {

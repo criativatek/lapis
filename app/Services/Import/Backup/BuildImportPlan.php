@@ -93,6 +93,7 @@ class BuildImportPlan
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
         private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
         private readonly BuildTimetableActivitiesPlan $timetableActivitiesPlan,
+        private readonly BuildTimetableActivitySessionsPlan $timetableActivitySessionsPlan,
         private readonly BuildRecordFollowupPlan $recordFollowupPlan,
     ) {}
 
@@ -156,6 +157,17 @@ class BuildImportPlan
             $destination,
             $actor,
             $classesByUlid,
+        );
+
+        // Schema v19 — the exporter's own per-session records of those
+        // activities. Needs the activities plan: a session attaches to an
+        // activity restorable in this same file, or becomes an orphan.
+        $timetableActivitySessions = $this->timetableActivitySessionsPlan->build(
+            $canonical['timetable_activity_occurrences'] ?? [],
+            $destination,
+            $actor,
+            $classesByUlid,
+            $timetableActivities['rows']['timetable_activities'],
         );
 
         $data = $this->dataPlan->build(
@@ -251,6 +263,7 @@ class BuildImportPlan
             $resultsAnalysisNotes['rows'],
             $classNotebookEntries['rows'],
             $timetableActivities['rows'],
+            $timetableActivitySessions['rows'],
             $recordFollowups['rows'],
         );
 

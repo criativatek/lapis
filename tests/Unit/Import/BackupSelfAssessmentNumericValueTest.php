@@ -38,7 +38,7 @@ class BackupSelfAssessmentNumericValueTest extends TestCase
     #[Test]
     public function the_current_version_is_eighteen(): void
     {
-        $this->assertSame(18, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(19, BackupSchemaCompatibility::CURRENT);
         $this->assertSame(BackupSchemaCompatibility::LegacyCompatible, BackupSchemaCompatibility::for(17));
         $this->assertSame(BackupSchemaCompatibility::LegacyCompatible, BackupSchemaCompatibility::for(16));
         $this->assertSame(BackupSchemaCompatibility::LegacyCompatible, BackupSchemaCompatibility::for(15));

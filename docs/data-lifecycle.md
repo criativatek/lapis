@@ -227,10 +227,10 @@ nunca faz reaparecer um registo eliminado no destino. O dump diário da base
 incluídos, como leva os `evidence_records` eliminados. Detalhe em
 [backup-schema.md](backup-schema.md#caderno-da-turma-schema-v14).
 
-## Atividades não letivas do horário (0.168.0)
+## Outras atividades do horário (0.168.0)
 
 `timetable_activities` guarda a configuração pessoal do horário de UM professor
-(direção de turma, apoios, reuniões, coordenação). Não é conteúdo pedagógico e
+(direção de turma, apoios, clubes, reuniões, coordenação). Não é conteúdo pedagógico e
 não tem história a proteger, por isso o ciclo de vida é o mais simples:
 
 - **Eliminar a conta ou a organização apaga-as** (`user_id` e `organization_id`
@@ -244,7 +244,37 @@ não tem história a proteger, por isso o ciclo de vida é o mais simples:
   que ele escreveu (até 60 caracteres).
 - **Exportação e backup**: só as do próprio exportador (schema v17); nunca as
   de um colega.
-- Nunca geram aulas, sumários nem assiduidade.
+- Nunca geram aulas nem assiduidade.
+
+## Registo por sessão das outras atividades (0.170.0)
+
+`timetable_activity_sessions` guarda o sumário que o professor escreveu em cada
+sessão. Ao contrário da atividade, **é texto dele**, e o ciclo de vida protege-o:
+
+- **Só nasce quando o professor guarda.** Ver o horário ou a semana nunca cria
+  uma sessão; nada converte atividades existentes em sessões.
+- **Eliminar o bloco com registos não apaga**: fecha a vigência e as sessões com
+  registos ficam (e continuam a identificar-se pela cópia de título, tipo e
+  turma). Sem registos, o bloco e as sessões vazias saem. A FK para a atividade
+  é `NULL ON DELETE` — nunca `CASCADE` (apagaria sumários) nem `RESTRICT`
+  (partiria a eliminação da conta).
+- **Editar o bloco nunca altera uma sessão com registos**: mantém data, horas,
+  título, tipo e turma. As sem registos acompanham o bloco ou saem.
+- **Eliminar a turma referida não as apaga** (`class_id` `NULL ON DELETE`); apagar
+  um ano letivo em rascunho também não (`academic_year_id` `NULL ON DELETE`).
+- **Eliminar a conta ou a organização apaga-as** (`user_id` e `organization_id`
+  `CASCADE`).
+- **Anonimização** (`AnonymiseClosedAccount`): as sessões do professor são
+  apagadas **antes** das atividades — são o texto que ele escreveu — e contadas
+  em `timetable_activity_sessions`. A tabela chama-se assim, e nunca `sessions`,
+  porque a anonimização apaga a tabela de sessões de login do Laravel.
+- **Exportação e backup**: só as do exportador (schema v19, coleção
+  `timetable_activity_occurrences`); folha «Outras atividades» no Excel de
+  «Exportar os meus dados» e Excel próprio do histórico.
+- **Permissões**: só o dono vê e edita (404 aos outros); os coprofessores da
+  turma associada não têm acesso — a turma é só uma referência. Em acesso técnico
+  (ADR-0014) lê-se, não se escreve.
+- Recuperação: [activity-sessions-recovery.md](activity-sessions-recovery.md).
 
 ## Acompanhamento dos registos (0.164.0)
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\AcademicYearContextController;
 use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AccumulatedBreakdownController;
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\ActivitySessionController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\CalendarEventController;
@@ -582,6 +583,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // own contextual shortcut. One segment, so it never collides with the
         // timetable-imports/* routes further down.
         Route::get('timetable', [TeacherTimetableController::class, 'index'])->name('timetable.index');
+
+        // Registo por sessão das «outras atividades» (0.170.0). Prefixo próprio,
+        // nunca `lessons/…`: não são aulas e não passam pelas rotas das aulas.
+        // `export` antes de qualquer wildcard, pela mesma razão que as rotas das
+        // aulas: um segmento solto seria tomado por um ulid.
+        Route::get('activity-sessions', [ActivitySessionController::class, 'index'])->name('activity-sessions.index');
+        Route::get('activity-sessions/export', [ActivitySessionController::class, 'export'])->name('activity-sessions.export');
+        Route::post('activity-sessions', [ActivitySessionController::class, 'store'])->name('activity-sessions.store');
+        Route::put('activity-sessions/{timetableActivitySession}', [ActivitySessionController::class, 'update'])->name('activity-sessions.update');
 
         Route::get('lessons', [LessonWeekController::class, 'index'])->name('lessons.index');
         Route::post('lessons/materialize-week', [LessonWeekController::class, 'materialize'])->name('lessons.materialize-week');

@@ -58,6 +58,7 @@ class ExecuteDataImport
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
         private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
         private readonly WriteTimetableActivities $timetableActivitiesWriter,
+        private readonly WriteTimetableActivitySessions $timetableActivitySessionsWriter,
         private readonly WriteRecordFollowups $recordFollowupsWriter,
         private readonly AuditLog $audit,
         private readonly CurrentOrganization $currentOrganization,
@@ -171,6 +172,13 @@ class ExecuteDataImport
                 $rows['timetable_activities'] ?? [], $classModels['byUlid'],
             );
 
+            // Schema v19 — the per-session records, AFTER the activities: each
+            // points at its activity through the map that writer just built.
+            $timetableActivitySessionsCreated = $this->timetableActivitySessionsWriter->write(
+                $rows['timetable_activity_occurrences'] ?? [], $classModels['byUlid'],
+                $this->timetableActivitiesWriter->idsByUlid,
+            );
+
             // Schema v15 — after the logbook records, whose new ulids the
             // declarations point at. Never runs the alert threshold.
             $followupCounts = $this->recordFollowupsWriter->write(
@@ -212,6 +220,7 @@ class ExecuteDataImport
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
                 'class_notebook_entries_created' => $classNotebookEntriesCreated,
                 'timetable_activities_created' => $timetableActivitiesCreated,
+                'timetable_activity_occurrences_created' => $timetableActivitySessionsCreated,
                 'record_followup_cases_created' => $followupCounts['cases'],
                 'record_followup_confirmations_created' => $followupCounts['confirmations'],
                 'record_followup_confirmations_incomplete' => $followupCounts['incomplete'],

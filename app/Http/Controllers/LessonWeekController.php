@@ -15,6 +15,7 @@ use App\Services\Lessons\ClassLessonsView;
 use App\Services\Lessons\LessonSummarySearch;
 use App\Services\Lessons\NextLessonDay;
 use App\Services\Lessons\WeeklyLessonsQuery;
+use App\Services\Timetable\ActivitySessionWeek;
 use App\Support\Entitlements\AccessState;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Retention\ResolveSelectedAcademicYear;
@@ -38,6 +39,7 @@ class LessonWeekController extends Controller implements HasMiddleware
         private readonly ResolveSelectedAcademicYear $resolveAcademicYear,
         private readonly Entitlements $entitlements,
         private readonly NextLessonDay $nextLessonDay,
+        private readonly ActivitySessionWeek $activitySessions,
     ) {}
 
     /** @return list<string> */
@@ -80,6 +82,12 @@ class LessonWeekController extends Controller implements HasMiddleware
 
         return Inertia::render('lessons/Index', [
             'lessons' => $academicYear === null ? [] : $this->weeklyLessons->for($this->user($request), $academicYear, $weekStart),
+            // As sessões das «outras atividades» do professor nesta semana
+            // (0.170.0): prop PRÓPRIA e separada. `lessons` fica só com aulas —
+            // as sessões não são aulas e nunca entram em contadores, lote,
+            // filtros, pesquisa, numeração nem «Aulas de hoje». Só leitura: ver
+            // a semana nunca cria uma sessão.
+            'activitySessions' => $this->activitySessions->between($teacher, $weekStart, $weekStart->endOfWeek()),
             // Todas as turmas do professor neste ano (arquivadas marcadas), com
             // a cor de identidade que ele lhes deu e os grupos ativos.
             'classes' => $classes,

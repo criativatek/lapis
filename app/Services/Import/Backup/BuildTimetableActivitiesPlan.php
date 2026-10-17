@@ -60,7 +60,7 @@ class BuildTimetableActivitiesPlan
             $authorId = $this->resolveAuthor($row['author_email'] ?? null, $actor);
 
             if ($authorId === null) {
-                return ['ulid' => $ulid, 'classification' => 'invalid', 'reason' => $this->t('Esta atividade não letiva foi escrita por outra conta e não é restaurada: cada professor tem o seu horário.')];
+                return ['ulid' => $ulid, 'classification' => 'invalid', 'reason' => $this->t('Esta outra atividade foi escrita por outra conta e não é restaurada: cada professor tem o seu horário.')];
             }
 
             // 2. The same ulid already in this organization.
@@ -69,7 +69,7 @@ class BuildTimetableActivitiesPlan
             if ($existing !== null) {
                 if ((int) $existing->user_id !== (int) $authorId) {
                     // Neutral and decided without comparing content: no oracle.
-                    return ['ulid' => $ulid, 'classification' => 'invalid', 'reason' => $this->t('Esta atividade não letiva não pode ser restaurada nesta conta.')];
+                    return ['ulid' => $ulid, 'classification' => 'invalid', 'reason' => $this->t('Esta outra atividade não pode ser restaurada nesta conta.')];
                 }
 
                 $diverges = $this->naturalKey($existing->toArray() + ['class_ulid' => null]) !== $this->naturalKey($row)
@@ -107,6 +107,8 @@ class BuildTimetableActivitiesPlan
                 'ends_at' => $row['ends_at'],
                 'starts_on' => $row['starts_on'],
                 'ends_on' => $row['ends_on'],
+                'numbering_enabled' => $row['numbering_enabled'] ?? false,
+                'numbering_start' => $row['numbering_start'] ?? 1,
                 'notice' => null,
             ];
         })->values()->all();

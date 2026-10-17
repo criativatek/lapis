@@ -47,6 +47,8 @@ import {
     ref,
     watch,
 } from 'vue';
+import ActivitySessionCard from '@/components/activity-sessions/ActivitySessionCard.vue';
+import ActivitySessionDialog from '@/components/activity-sessions/ActivitySessionDialog.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import BatchTaughtDialog from '@/components/lessons/BatchTaughtDialog.vue';
@@ -87,6 +89,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useSummarySearch } from '@/composables/useSummarySearch';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
+import { compareActivitySessions } from '@/lib/activitySessions';
+import type { ActivitySessionItem } from '@/lib/activitySessions';
 import {
     consumeLessonsStale,
     hasPendingConfirmations,
@@ -167,6 +171,12 @@ type InsertableClass = {
 const props = withDefaults(
     defineProps<{
         lessons: WeekLesson[];
+        /**
+         * As sessões das «outras atividades» desta semana (0.170.0) — PROP
+         * PRÓPRIA. `lessons` é só aulas: as sessões não entram em contadores,
+         * lote, filtros de estado, pesquisa, numeração nem «Aulas de hoje».
+         */
+        activitySessions?: ActivitySessionItem[];
         week: { start: string; end: string };
         academicYear: string | null;
         configuredClassesCount: number;
@@ -181,7 +191,12 @@ const props = withDefaults(
         /** Os limites do ano letivo selecionado — as datas do filtro da pesquisa. */
         academicYearBounds?: { start: string; end: string } | null;
     }>(),
-    { classes: () => [], classView: null, academicYearBounds: null },
+    {
+        activitySessions: () => [],
+        classes: () => [],
+        classView: null,
+        academicYearBounds: null,
+    },
 );
 
 // ------------------------------------------- aulas com as gravações confirmadas
@@ -254,7 +269,9 @@ const view = computed<WeekView>(() => state.value.view);
  * âmbito e as turmas marcadas são sempre a mesma coisa.
  */
 const searchState = computed<SummarySearchState | null>(() => {
-    const parsed = props.academicYear ? parseSummarySearchState(page.url) : null;
+    const parsed = props.academicYear
+        ? parseSummarySearchState(page.url)
+        : null;
 
     if (parsed === null) {
         return null;
@@ -553,17 +570,89 @@ const visibleWeekLessons = computed(() =>
     ),
 );
 
-const days = computed(() => {
-    const dates = [...new Set(visibleWeekLessons.value.map(lessonDate))];
+// ------------------------------------- sessões das «outras atividades» (0.170.0)
+//
+// Vivem ao lado das aulas na vista Semana, e SÓ nela. Nunca entram em
+// `weekLessons`, nos contadores (`facts`, cabeçalho do dia), no fecho em lote,
+// nos filtros de estado/atenção/sumário nem na pesquisa. O único filtro que as
+// toca é o da turma: com turmas escolhidas, só as sessões dessas turmas.
 
-    return dates.map((date) => ({
-        date,
-        lessons: visibleWeekLessons.value.filter(
+const weekSessions = computed(() =>
+    [...props.activitySessions].sort(compareActivitySessions),
+);
+
+const visibleSessions = computed(() =>
+    weekSessions.value.filter(
+        (session) =>
+            state.value.classes.length === 0 ||
+            (session.school_class !== null &&
+                state.value.classes.includes(session.school_class.ulid)),
+    ),
+);
+
+type DayEntry =
+    | { kind: 'lesson'; key: string; startsAt: number; lesson: WeekLesson }
+    | {
+          kind: 'session';
+          key: string;
+          startsAt: number;
+          session: ActivitySessionItem;
+      };
+
+const days = computed(() => {
+    const dates = [
+        ...new Set([
+            ...visibleWeekLessons.value.map(lessonDate),
+            ...visibleSessions.value.map((session) => session.occurs_on),
+        ]),
+    ].sort();
+
+    return dates.map((date) => {
+        const lessons = visibleWeekLessons.value.filter(
             (lesson) => lessonDate(lesson) === date,
-        ),
-        all: weekLessons.value.filter((lesson) => lessonDate(lesson) === date),
-    }));
+        );
+        const sessions = visibleSessions.value.filter(
+            (session) => session.occurs_on === date,
+        );
+
+        // ORDEM EXPLÍCITA POR INÍCIO: o servidor não junta nem desempata
+        // aulas e sessões, e a ordem de `lessons` é a que `days` recebe.
+        // Empate: as aulas primeiro, depois as sessões, cada grupo pela sua
+        // ordem (o sort é estável).
+        const entries: DayEntry[] = [
+            ...lessons.map((lesson): DayEntry => ({
+                kind: 'lesson',
+                key: `lesson-${lesson.ulid}`,
+                startsAt: Date.parse(lesson.starts_at),
+                lesson,
+            })),
+            ...sessions.map((session): DayEntry => ({
+                kind: 'session',
+                key: session.key,
+                startsAt: Date.parse(session.starts_at),
+                session,
+            })),
+        ].sort((a, b) => a.startsAt - b.startsAt);
+
+        return {
+            date,
+            lessons,
+            sessions,
+            entries,
+            all: weekLessons.value.filter(
+                (lesson) => lessonDate(lesson) === date,
+            ),
+        };
+    });
 });
+
+const sessionDialogOpen = ref(false);
+const openedSession = ref<ActivitySessionItem | null>(null);
+
+function openSession(session: ActivitySessionItem): void {
+    openedSession.value = session;
+    sessionDialogOpen.value = true;
+}
 
 const facts = computed(() => weekFacts(weekLessons.value, now.value));
 
@@ -1023,7 +1112,7 @@ function persistSummary(
             {
                 preserveScroll: true,
                 preserveState: true,
-                only: ['lessons', 'classView'],
+                only: ['lessons', 'activitySessions', 'classView'],
                 onSuccess: () => {
                     saved = true;
 
@@ -1323,7 +1412,9 @@ const todayNotice = ref<TodayNotice | null>(null);
 const todayVisited = new Set<string>();
 
 function wantsTodayFocus(): boolean {
-    const query = page.url.includes('?') ? page.url.slice(page.url.indexOf('?') + 1).split('#')[0] : '';
+    const query = page.url.includes('?')
+        ? page.url.slice(page.url.indexOf('?') + 1).split('#')[0]
+        : '';
 
     return new URLSearchParams(query).get('foco') === 'hoje';
 }
@@ -1347,7 +1438,9 @@ function weekStartOf(date: string): string {
 }
 
 function nextFrame(): Promise<void> {
-    return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+    return new Promise((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+    );
 }
 
 async function positionToday(): Promise<void> {
@@ -1453,7 +1546,12 @@ async function seekNextLessonDay(): Promise<void> {
 
 function clearAllFilters(): void {
     todayNotice.value = null;
-    updateFilters({ classes: [], states: [], attention: false, summary: 'todos' });
+    updateFilters({
+        classes: [],
+        states: [],
+        attention: false,
+        summary: 'todos',
+    });
 }
 
 // ------------------------------------------------------- pesquisa nos sumários
@@ -1474,7 +1572,10 @@ const summarySearch = useSummarySearch(
     // outra organização ou outro ano letivo.
     () => {
         const auth = page.props?.auth as
-            | { user?: { id?: number } | null; organization?: { ulid?: string } | null }
+            | {
+                  user?: { id?: number } | null;
+                  organization?: { ulid?: string } | null;
+              }
             | undefined;
 
         return `${auth?.user?.id ?? '-'}|${auth?.organization?.ulid ?? '-'}|${props.academicYear ?? '-'}`;
@@ -1509,7 +1610,11 @@ const searchClasses = computed(() =>
 const showSubject = computed(() => needsSubject(props.classes));
 const searchScope = computed(() =>
     searchState.value !== null && props.academicYear
-        ? summarySearchScope(props.academicYear, props.classes, searchState.value)
+        ? summarySearchScope(
+              props.academicYear,
+              props.classes,
+              searchState.value,
+          )
         : [],
 );
 
@@ -1603,7 +1708,9 @@ function submitSearch(): void {
 
         // Começa nas turmas que o calendário estava a mostrar: as filtradas,
         // ou a turma aberta na vista Por turma. Nenhuma = todas.
-        const known = new Set(props.classes.map((schoolClass) => schoolClass.ulid));
+        const known = new Set(
+            props.classes.map((schoolClass) => schoolClass.ulid),
+        );
         const classes =
             view.value === 'turma'
                 ? classViewData.value
@@ -1709,17 +1816,25 @@ function clearSearch(): void {
 
 /** Escape sai da seleção — fora de campos de texto, menus e diálogos, que usam a tecla. */
 function onWindowKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !selectionMode.value || event.defaultPrevented) {
+    if (
+        event.key !== 'Escape' ||
+        !selectionMode.value ||
+        event.defaultPrevented
+    ) {
         return;
     }
 
     const target = event.target instanceof HTMLElement ? event.target : null;
 
     if (
-        target?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]') ||
+        target?.closest(
+            'input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]',
+        ) ||
         // Só um menu ou diálogo ABERTO: um que se está a fechar (animação de
         // saída) continua no DOM com `data-state="closed"` e não usa a tecla.
-        document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]')
+        document.querySelector(
+            '[role="dialog"][data-state="open"], [role="menu"][data-state="open"]',
+        )
     ) {
         return;
     }
@@ -1788,7 +1903,7 @@ onMounted(() => {
         page.url,
         {},
         {
-            only: ['lessons', 'classView'],
+            only: ['lessons', 'activitySessions', 'classView'],
             preserveState: true,
             preserveScroll: true,
             preserveUrl: true,
@@ -1910,7 +2025,9 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                         <DropdownMenuItem
                             v-if="!searching"
                             class="min-h-11 sm:min-h-9"
-                            :disabled="!selectionMode && selectableLessons.length === 0"
+                            :disabled="
+                                !selectionMode && selectableLessons.length === 0
+                            "
                             data-testid="selection-toggle"
                             @select="selectionMode = !selectionMode"
                         >
@@ -1957,7 +2074,9 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                 class="text-xs font-semibold text-muted-foreground"
                                 >Mostrar os sumários</DropdownMenuLabel
                             >
-                            <DropdownMenuRadioGroup :model-value="state.density">
+                            <DropdownMenuRadioGroup
+                                :model-value="state.density"
+                            >
                                 <DropdownMenuRadioItem
                                     value="completo"
                                     class="min-h-11 sm:min-h-9"
@@ -1970,7 +2089,8 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     class="min-h-11 sm:min-h-9"
                                     data-testid="density-compact"
                                     @select="setDensity('compacto')"
-                                    >Compacto (duas linhas)</DropdownMenuRadioItem
+                                    >Compacto (duas
+                                    linhas)</DropdownMenuRadioItem
                                 >
                             </DropdownMenuRadioGroup>
                         </template>
@@ -2053,7 +2173,8 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
         <LessonWeekFilters
             v-else-if="
                 (academicYear &&
-                    weekLessons.length + (classViewData?.lessons.length ?? 0) > 0) ||
+                    weekLessons.length + (classViewData?.lessons.length ?? 0) >
+                        0) ||
                 (academicYear && view === 'turma')
             "
             class="mt-3"
@@ -2132,8 +2253,8 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                         :aria-current="isCurrentWeek ? 'date' : undefined"
                         @click="goToWeek(today)"
                     >
-                        <CalendarDays class="size-4" aria-hidden="true" /> Semana
-                        atual
+                        <CalendarDays class="size-4" aria-hidden="true" />
+                        Semana atual
                     </Button>
                     <Button
                         type="button"
@@ -2162,7 +2283,9 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 </p>
             </div>
             <p
-                v-if="academicYear && view !== 'turma' && weekLessons.length > 0"
+                v-if="
+                    academicYear && view !== 'turma' && weekLessons.length > 0
+                "
                 class="mt-2 text-sm text-muted-foreground"
                 data-testid="week-facts"
             >
@@ -2199,7 +2322,9 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 :items="dayNavItems"
                 :back-label="cameFromTimetable ? 'Voltar ao horário' : null"
                 :aria-label="
-                    view === 'turma' && classViewData && classViewData.range.key !== '1'
+                    view === 'turma' &&
+                    classViewData &&
+                    classViewData.range.key !== '1'
                         ? 'Atalhos para as semanas'
                         : 'Atalhos para os dias'
                 "
@@ -2324,7 +2449,10 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             </template>
 
             <EmptyState
-                v-else-if="weekLessons.length === 0"
+                v-else-if="
+                    weekLessons.length === 0 &&
+                    (view === 'horario' || weekSessions.length === 0)
+                "
                 title="Sem aulas nesta semana"
                 :description="
                     configuredClassesCount > 0
@@ -2370,7 +2498,10 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             <!-- SEMANA -->
             <template v-else>
                 <p
-                    v-if="visibleWeekLessons.length === 0"
+                    v-if="
+                        weekLessons.length > 0 &&
+                        visibleWeekLessons.length === 0
+                    "
                     class="rounded-[14px] border border-dashed bg-card p-6 text-center text-sm text-muted-foreground"
                 >
                     Os filtros escondem todas as aulas desta semana.
@@ -2394,6 +2525,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                 >Hoje</span
                             >
                             <span
+                                v-if="day.all.length > 0"
                                 class="text-[13px] font-normal text-muted-foreground"
                                 >{{ day.all.length }} aula{{
                                     day.all.length === 1 ? '' : 's'
@@ -2406,72 +2538,114 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                 }}
                                 com sumário</span
                             >
+                            <!-- As sessões não são aulas: contam-se à parte. -->
+                            <span
+                                v-if="day.sessions.length > 0"
+                                class="text-[13px] font-normal text-muted-foreground"
+                                data-testid="day-activity-sessions-count"
+                                >{{ day.sessions.length }} outra{{
+                                    day.sessions.length === 1 ? '' : 's'
+                                }}
+                                atividade{{
+                                    day.sessions.length === 1 ? '' : 's'
+                                }}</span
+                            >
                         </h2>
                         <ol class="grid gap-3">
-                            <li
-                                v-for="lesson in day.lessons"
-                                :key="lesson.ulid"
-                            >
-                                <LessonWeekCard
-                                    :lesson="lesson"
-                                    :tone="toneOf(lesson)"
-                                    mode="semana"
-                                    :day-lessons="day.all"
-                                    :density="state.density"
-                                    :expanded="expanded.includes(lesson.ulid)"
-                                    :now="now"
-                                    :selection-mode="selectionMode"
-                                    :selected="selected.includes(lesson.ulid)"
-                                    :editing="editor?.ulid === lesson.ulid"
-                                    :saved-note="
-                                        savedNotes[lesson.ulid] ?? null
-                                    "
-                                    :highlighted="highlighted === lesson.ulid"
-                                    @edit="startEdit(lesson)"
-                                    @open="rememberReturn(lesson)"
-                                    @project="openProjection(lesson)"
-                                    @toggle-expanded="
-                                        toggleExpanded(lesson.ulid)
-                                    "
-                                    @update:selected="
-                                        (value) =>
-                                            setSelected(lesson.ulid, value)
-                                    "
-                                    @outcome="
-                                        (outcome) =>
-                                            openOutcome(lesson, outcome)
-                                    "
-                                >
-                                    <template #editor>
-                                        <LessonSummaryEditor
-                                            v-if="
-                                                editor &&
-                                                editor.ulid === lesson.ulid
-                                            "
-                                            :ref="setEditorComponent"
-                                            v-model="editor.draft"
-                                            :lesson="lesson"
-                                            :original="editor.original"
-                                            :saving="editor.saving"
-                                            :error="editor.error"
-                                            :notice="editor.notice"
-                                            :conflict="editor.conflict"
-                                            :number="editor.number"
-                                            :number-original="editor.numberOriginal"
-                                            :number-errors="editor.numberErrors"
-                                            :number-preview="editor.numberPreview"
-                                            @update:number="setNumber"
-                                            @confirm-number="confirmNumber"
-                                            @cancel-number="cancelNumberConfirmation"
-                                            @save="saveSummary"
-                                            @cancel="cancelEdit"
-                                            @project="openProjection(lesson)"
-                                            @combine="combineTexts"
-                                            @keep-mine="keepMine"
-                                            @use-stored="useStored"
-                                        />
-                                    </template>
-                                </LessonWeekCard>
+                            <li v-for="entry in day.entries" :key="entry.key">
+                                <ActivitySessionCard
+                                    v-if="entry.kind === 'session'"
+                                    :session="entry.session"
+                                    @open="openSession(entry.session)"
+                                />
+                                <template v-else>
+                                    <LessonWeekCard
+                                        :lesson="entry.lesson"
+                                        :tone="toneOf(entry.lesson)"
+                                        mode="semana"
+                                        :day-lessons="day.all"
+                                        :density="state.density"
+                                        :expanded="
+                                            expanded.includes(entry.lesson.ulid)
+                                        "
+                                        :now="now"
+                                        :selection-mode="selectionMode"
+                                        :selected="
+                                            selected.includes(entry.lesson.ulid)
+                                        "
+                                        :editing="
+                                            editor?.ulid === entry.lesson.ulid
+                                        "
+                                        :saved-note="
+                                            savedNotes[entry.lesson.ulid] ??
+                                            null
+                                        "
+                                        :highlighted="
+                                            highlighted === entry.lesson.ulid
+                                        "
+                                        @edit="startEdit(entry.lesson)"
+                                        @open="rememberReturn(entry.lesson)"
+                                        @project="openProjection(entry.lesson)"
+                                        @toggle-expanded="
+                                            toggleExpanded(entry.lesson.ulid)
+                                        "
+                                        @update:selected="
+                                            (value) =>
+                                                setSelected(
+                                                    entry.lesson.ulid,
+                                                    value,
+                                                )
+                                        "
+                                        @outcome="
+                                            (outcome) =>
+                                                openOutcome(
+                                                    entry.lesson,
+                                                    outcome,
+                                                )
+                                        "
+                                    >
+                                        <template #editor>
+                                            <LessonSummaryEditor
+                                                v-if="
+                                                    editor &&
+                                                    editor.ulid ===
+                                                        entry.lesson.ulid
+                                                "
+                                                :ref="setEditorComponent"
+                                                v-model="editor.draft"
+                                                :lesson="entry.lesson"
+                                                :original="editor.original"
+                                                :saving="editor.saving"
+                                                :error="editor.error"
+                                                :notice="editor.notice"
+                                                :conflict="editor.conflict"
+                                                :number="editor.number"
+                                                :number-original="
+                                                    editor.numberOriginal
+                                                "
+                                                :number-errors="
+                                                    editor.numberErrors
+                                                "
+                                                :number-preview="
+                                                    editor.numberPreview
+                                                "
+                                                @update:number="setNumber"
+                                                @confirm-number="confirmNumber"
+                                                @cancel-number="
+                                                    cancelNumberConfirmation
+                                                "
+                                                @save="saveSummary"
+                                                @cancel="cancelEdit"
+                                                @project="
+                                                    openProjection(entry.lesson)
+                                                "
+                                                @combine="combineTexts"
+                                                @keep-mine="keepMine"
+                                                @use-stored="useStored"
+                                            />
+                                        </template>
+                                    </LessonWeekCard>
+                                </template>
                             </li>
                         </ol>
                     </section>
@@ -2529,11 +2703,16 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                     data-testid="quick-batch-confirm"
                     @click="batchDialog?.openForSelection()"
                 >
-                    <CheckSquare class="size-4" aria-hidden="true" /> Marcar como
-                    lecionadas
+                    <CheckSquare class="size-4" aria-hidden="true" /> Marcar
+                    como lecionadas
                 </Button>
             </div>
         </div>
+
+        <ActivitySessionDialog
+            v-model:open="sessionDialogOpen"
+            :session="openedSession"
+        />
 
         <LessonOutcomeDialog
             v-model:open="outcomeDialogOpen"

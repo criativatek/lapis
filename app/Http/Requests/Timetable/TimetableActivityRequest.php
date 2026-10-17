@@ -60,6 +60,9 @@ class TimetableActivityRequest extends FormRequest
             'ends_at' => ['required', 'date_format:H:i', 'after:starts_at'],
             'starts_on' => ['nullable', 'date_format:Y-m-d'],
             'ends_on' => $endsOnRules,
+            // Numeração das sessões, opcional (0.170.0): independente da das aulas.
+            'numbering_enabled' => ['sometimes', 'boolean'],
+            'numbering_start' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:9999'],
         ];
     }
 
@@ -77,6 +80,8 @@ class TimetableActivityRequest extends FormRequest
             'ends_at' => 'fim',
             'starts_on' => 'válido desde',
             'ends_on' => 'válido até',
+            'numbering_enabled' => 'numeração das sessões',
+            'numbering_start' => 'número inicial',
         ];
     }
 
