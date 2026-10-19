@@ -23,8 +23,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon $starts_at
  * @property Carbon|null $ends_at
  * @property int|null $lesson_number
- * @property int|null $lesson_number_end NULL = uma só lição; preenchido = a aula corresponde às lições `lesson_number`..`lesson_number_end` (sempre maior do que o início)
- * @property bool $lesson_number_manual o professor indicou o número (e o fim): nunca é recalculado
+ * @property int|null $lesson_number_end LEGADO (0.172.0, ADR-0017): o fim de um intervalo «12–13» gravado até à 0.171.0. Conserva-se e mostra-se, mas não ocupa números nem é escrito por nenhum caminho novo; NULL em todas as aulas novas
+ * @property bool $lesson_number_manual o professor indicou o número: nunca é recalculado
  * @property string|null $lesson_unit_key
  * @property LessonStatus $status
  * @property LessonOutcome|null $outcome NULL = ocorrência ainda não fechada (0.146.0)

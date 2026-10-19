@@ -128,8 +128,8 @@ class LessonNumberingRecoveryCheckTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertSame([11, 12, 1], $this->triple($manual));
-        // A livre voltou a ser derivada à volta do intervalo: 13.
-        $this->assertSame(13, DB::table('lessons')->where('id', $free->id)->value('lesson_number'));
+        // A livre volta a ser derivada a partir do NÚMERO (0.172.0: o fim legado não ocupa números): 12.
+        $this->assertSame(12, DB::table('lessons')->where('id', $free->id)->value('lesson_number'));
 
         // Idempotente: uma segunda reposição não encontra nada para mudar.
         $this->artisan('lapis:lesson-numbering-recovery-check', ['--restore' => $this->path, '--apply' => true])

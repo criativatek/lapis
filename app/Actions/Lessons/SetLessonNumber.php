@@ -15,8 +15,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * «Esta aula é a Lição 11» — o professor indica o número (ou o intervalo
- * «11–12») de uma aula, ou repõe a sugestão automática (0.169.0).
+ * «Esta aula é a Lição 11» — o professor indica o número de uma aula, ou repõe
+ * a sugestão automática (0.169.0).
+ *
+ * UMA AULA, UM NÚMERO (0.172.0, ADR-0017). O resultado nunca tem fim; indicar o
+ * número de uma aula com um intervalo legado («12–13») deixa-a com um só. Os
+ * intervalos legados das OUTRAS aulas não contam para conflitos nem avisos: só
+ * o número de cada uma está ocupado, como na derivação.
  *
  * A REGRA VIVE EM LessonNumbering; isto é só a alteração explícita. A unidade da
  * aula passa a MANUAL (fixa, nunca recalculada) e as outras unidades LIVRES da
@@ -151,9 +156,10 @@ class SetLessonNumber
         ];
 
         // SEM MUDANÇA: o número pedido é o que a aula já tem — e, se a aula não
-        // é manual, o professor deixou a sugestão: continua automática.
+        // é manual, o professor deixou a sugestão: continua automática. Uma aula
+        // com um intervalo legado e o mesmo número MUDA: passa a uma só lição.
         $unchanged = $change->manual
-            ? $stored['start'] === $change->start && $stored['end'] === $change->end && ($stored['manual'] || $change->end === null)
+            ? $stored['start'] === $change->start && $stored['end'] === null
             : ! $stored['manual'];
 
         if ($unchanged) {
@@ -166,7 +172,6 @@ class SetLessonNumber
         $projection = $this->numbering->projectClass((int) $lesson->class_id, (int) $lesson->getKey(), [
             'mode' => $change->mode(),
             'start' => $change->start,
-            'end' => $change->end,
         ]);
 
         $records = $projection['records'];
@@ -180,8 +185,9 @@ class SetLessonNumber
 
         $result = [
             'start' => $records[$target]['start'],
-            // Modo automático: a derivação só dá um início; nunca um fim.
-            'end' => $change->manual ? $records[$target]['end'] : null,
+            // Nunca um fim (0.172.0). A chave fica na resposta por
+            // compatibilidade com ecrãs anteriores, sempre NULL.
+            'end' => null,
             'manual' => $change->manual,
         ];
 
@@ -225,8 +231,10 @@ class SetLessonNumber
     }
 
     /**
-     * O intervalo da unidade da aula sobrepõe-se ao de OUTRA unidade fixa?
-     * (Manual ou histórica: ambas guardam o número que têm.)
+     * O número da aula é o de OUTRA unidade fixa? (Manual ou histórica: ambas
+     * guardam o número que têm.) Só o número de cada uma conta: o fim de um
+     * intervalo legado não está ocupado (0.172.0), tal como na derivação — a
+     * sugestão automática e a escolha manual nunca discordam sobre o que é livre.
      *
      * @param  Records  $records
      * @param  array{start: int|null, end: int|null, manual: bool}  $result
@@ -242,38 +250,21 @@ class SetLessonNumber
             return [];
         }
 
-        $from = $result['start'];
-        $to = $result['end'] ?? $from;
         $conflicts = [];
 
         foreach ($records as $index => $record) {
-            if ($index === $target || $record['kind'] === 'free' || $record['start'] === null) {
-                continue;
-            }
-
-            $otherFrom = $record['start'];
-            $otherTo = $record['end'] ?? $otherFrom;
-
-            if ($otherFrom > $to || $otherTo < $from) {
+            if ($index === $target || $record['kind'] === 'free' || $record['start'] !== $result['start']) {
                 continue;
             }
 
             $other = $record['lessons'][0];
             $other->loadMissing(['schoolClass', 'classGroup']);
-            $when = $other->starts_at->setTimezone(self::TIMEZONE)->format('d/m/Y');
 
-            $conflicts[] = $result['end'] === null
-                ? __('A Lição :number já está atribuída à aula de :date (:context).', [
-                    'number' => (string) $from,
-                    'date' => $when,
-                    'context' => $other->contextLabel(),
-                ])
-                : __('As lições :range sobrepõem-se à Lição :other da aula de :date (:context).', [
-                    'range' => (string) Lesson::formatLessonNumber($from, $result['end']),
-                    'other' => (string) Lesson::formatLessonNumber(max($from, $otherFrom), min($to, $otherTo)),
-                    'date' => $when,
-                    'context' => $other->contextLabel(),
-                ]);
+            $conflicts[] = __('A Lição :number já está atribuída à aula de :date (:context).', [
+                'number' => (string) $result['start'],
+                'date' => $other->starts_at->setTimezone(self::TIMEZONE)->format('d/m/Y'),
+                'context' => $other->contextLabel(),
+            ]);
         }
 
         return $conflicts;
@@ -362,14 +353,14 @@ class SetLessonNumber
     {
         $warnings = [];
         $start = (int) $result['start'];
-        $end = $result['end'] ?? $start;
 
+        // Os números das vizinhas, nunca o fim de um intervalo legado (0.172.0).
         for ($index = $target - 1; $index >= 0; $index--) {
             if ($records[$index]['start'] === null) {
                 continue;
             }
 
-            if (($records[$index]['end'] ?? $records[$index]['start']) >= $start) {
+            if ($records[$index]['start'] >= $start) {
                 $warnings[] = __('A aula de :date (Lição :number) vem antes desta e tem um número superior. Os números das outras aulas não foram alterados.', [
                     'date' => $records[$index]['lessons'][0]->starts_at->setTimezone(self::TIMEZONE)->format('d/m/Y'),
                     'number' => (string) Lesson::formatLessonNumber($records[$index]['start'], $records[$index]['end']),
@@ -384,7 +375,7 @@ class SetLessonNumber
                 continue;
             }
 
-            if ($records[$index]['start'] <= $end) {
+            if ($records[$index]['start'] <= $start) {
                 $warnings[] = __('A aula de :date (Lição :number) vem depois desta e tem um número inferior. Os números das outras aulas não foram alterados.', [
                     'date' => $records[$index]['lessons'][0]->starts_at->setTimezone(self::TIMEZONE)->format('d/m/Y'),
                     'number' => (string) Lesson::formatLessonNumber($records[$index]['start'], $records[$index]['end']),

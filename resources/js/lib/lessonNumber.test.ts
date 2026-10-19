@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     canSetLessonNumber,
-    draftInterval,
+    draftNumber,
     effectLine,
     numberDraftDirty,
     numberDraftFromLesson,
@@ -51,31 +51,33 @@ afterEach(() => {
 });
 
 describe('o rascunho do número', () => {
-    it('parte do número da aula, com o fim quando o há', () => {
+    it('parte do número da aula; o fim de uma linha antiga fica como legado', () => {
         expect(numberDraftFromLesson({ lesson_number: 11, lesson_number_end: 12 })).toEqual({
             start: '11',
-            end: '12',
-            multiple: true,
+            legacyEnd: 12,
             automatic: false,
         });
         expect(numberDraftFromLesson({ lesson_number: null, lesson_number_end: null })).toEqual({
             start: '',
-            end: '',
-            multiple: false,
+            legacyEnd: null,
             automatic: false,
         });
     });
 
-    it('só é alteração quando o intervalo difere do guardado', () => {
+    it('só é alteração quando o número difere do guardado', () => {
         expect(numberDraftDirty(draft(), original)).toBe(false);
         expect(numberDraftDirty(draft({ start: '12' }), original)).toBe(true);
-        expect(numberDraftDirty(draft({ multiple: true, end: '12' }), original)).toBe(true);
+        expect(draftNumber(draft({ start: ' 11 ' }))).toBe(11);
+        expect(draftNumber(draft({ start: 'x' }))).toBeNull();
     });
 
-    it('«várias lições» sem fim, ou com fim igual ao início, não altera nada', () => {
-        expect(numberDraftDirty(draft({ multiple: true, end: '' }), original)).toBe(false);
-        expect(numberDraftDirty(draft({ multiple: true, end: '11' }), original)).toBe(false);
-        expect(draftInterval(draft({ multiple: true, end: '11' }))).toEqual({ start: 11, end: null });
+    it('abrir uma aula legada não é alteração; editar-lhe o número, mesmo para o mesmo valor, é', () => {
+        const legacy = numberDraftFromLesson({ lesson_number: 12, lesson_number_end: 13 });
+
+        expect(numberDraftDirty(legacy, legacy)).toBe(false);
+        // O campo emite `legacyEnd: null` ao escrever, ainda que o valor volte a ser 12.
+        expect(numberDraftDirty({ ...legacy, start: '12', legacyEnd: null }, legacy)).toBe(true);
+        expect(numberDraftDirty({ ...legacy, start: '13', legacyEnd: null }, legacy)).toBe(true);
     });
 
     it('apagar o número de uma aula que o tinha conta como alteração; numa aula sem número, não', () => {
@@ -104,22 +106,23 @@ describe('validação local', () => {
         }
     });
 
-    it('o fim tem de existir, não pode ser anterior ao início e cobre no máximo 10 lições', () => {
-        expect(validateNumberDraft(draft({ multiple: true, end: '' })).end).toContain('Indique');
-        expect(validateNumberDraft(draft({ multiple: true, end: '10' })).end).toContain('anterior');
-        expect(validateNumberDraft(draft({ multiple: true, end: '21' })).end).toContain('10 lições');
-        expect(validateNumberDraft(draft({ multiple: true, end: '20' }))).toEqual({ number: null, end: null });
+    it('valida só o número: um número válido não tem erros', () => {
+        expect(validateNumberDraft(draft({ start: '20' }))).toEqual({ number: null });
+        expect(validateNumberDraft(draft({ start: '10000' })).number).not.toBeNull();
+        expect(validateNumberDraft(draft({ automatic: true, start: '' }))).toEqual({ number: null });
     });
 });
 
 describe('o pedido de gravação', () => {
-    it('manual: início, fim (ou null) e a confirmação', () => {
-        expect(numberSavePayload(draft({ start: '12' }), null)).toEqual({ lesson_number: 12, lesson_number_end: null });
-        expect(numberSavePayload(draft({ start: '12', multiple: true, end: '13' }), 'abc')).toEqual({
-            lesson_number: 12,
-            lesson_number_end: 13,
-            lesson_number_confirmation: 'abc',
-        });
+    it('manual: só o número e a confirmação — nunca a chave do fim', () => {
+        const plain = numberSavePayload(draft({ start: '12' }), null);
+        expect(plain).toEqual({ lesson_number: 12 });
+        expect('lesson_number_end' in plain).toBe(false);
+
+        // Uma linha legada que o professor editou: o fim legado não viaja.
+        const legacy = numberSavePayload(draft({ start: '12', legacyEnd: 13 }), 'abc');
+        expect(legacy).toEqual({ lesson_number: 12, lesson_number_confirmation: 'abc' });
+        expect('lesson_number_end' in legacy).toBe(false);
     });
 
     it('repor a automática envia só a bandeira', () => {
@@ -145,14 +148,14 @@ describe('a pré-visualização', () => {
         const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(preview()) });
         vi.stubGlobal('fetch', fetchMock);
 
-        const result = await requestNumberPreview('aula-a', draft({ start: '12', multiple: true, end: '13' }));
+        const result = await requestNumberPreview('aula-a', draft({ start: '12', legacyEnd: 13 }));
 
         expect(result.kind).toBe('ok');
         const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
         expect(url).toBe('/lessons/aula-a/number/preview');
         expect(init.method).toBe('POST');
         expect(init.credentials).toBe('same-origin');
-        expect(JSON.parse(init.body as string)).toEqual({ mode: 'manual', start: 12, end: 13 });
+        expect(JSON.parse(init.body as string)).toEqual({ mode: 'manual', start: 12 });
     });
 
     it('um 422 vira erros do campo; outra falha vira uma mensagem', async () => {
@@ -161,12 +164,12 @@ describe('a pré-visualização', () => {
             vi.fn().mockResolvedValue({
                 ok: false,
                 status: 422,
-                json: () => Promise.resolve({ errors: { end: ['Fim inválido.'], lesson_number: ['Sem lição.'] } }),
+                json: () => Promise.resolve({ errors: { lesson_number: ['Sem lição.'] } }),
             }),
         );
         expect(await requestNumberPreview('aula-a', draft())).toEqual({
             kind: 'invalid',
-            errors: { number: 'Sem lição.', end: 'Fim inválido.' },
+            errors: { number: 'Sem lição.' },
         });
 
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));

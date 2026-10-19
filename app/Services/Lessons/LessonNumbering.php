@@ -69,6 +69,13 @@ use Illuminate\Validation\ValidationException;
  * (nunca duplica, nunca invade um intervalo fixo), exceto se já tinha um número
  * guardado e livre, que é preservado. Numa turma sem números manuais e coerente,
  * o resultado é idêntico ao da numeração sempre derivada de antes.
+ *
+ * UMA AULA, UM NÚMERO (0.172.0, ADR-0017). Uma ocorrência corresponde a uma só
+ * lição. O fim de um intervalo antigo («Lições 12–13», `lesson_number_end`,
+ * gravado até à 0.171.0) é LEGADO: conserva-se e mostra-se tal como está, mas
+ * NÃO OCUPA números nem empurra a sequência — a lição seguinte à «12–13» é a 13.
+ * Nenhum caminho desta classe cria um fim novo; um fim gravado só se mantém
+ * enquanto a sua aula mantiver o número.
  */
 final class LessonNumbering
 {
@@ -78,7 +85,7 @@ final class LessonNumbering
 
     private const FREE = 'free';
 
-    /** Um intervalo de lições por aula tem limite (o pedido recusa mais de 10); isto é só defesa contra dados estragados. */
+    /** Defesa contra dados estragados ao LER um fim legado; nenhum fim novo é escrito. */
     private const MAX_SPAN = 999;
 
     /**
@@ -307,12 +314,13 @@ final class LessonNumbering
      * professor (SetLessonNumber): a pré-visualização e a execução leem o mesmo
      * resultado.
      *
-     * `$override` impõe a uma unidade: `manual` = um intervalo indicado;
-     * `automatic` = a unidade deixa de ser manual e conta como LIVRE, mesmo que
-     * esteja fechada (o número guardado é ignorado, e por isso também não é
-     * preservado). `changes` compara sempre com o que está GRAVADO.
+     * `$override` impõe a uma unidade: `manual` = um número indicado (uma só
+     * lição: um fim legado que a unidade tivesse é retirado); `automatic` = a
+     * unidade deixa de ser manual e conta como LIVRE, mesmo que esteja fechada
+     * (o número guardado é ignorado, e por isso também não é preservado).
+     * `changes` compara sempre com o que está GRAVADO.
      *
-     * @param  array{mode: string, start: int|null, end: int|null}|null  $override
+     * @param  array{mode: string, start: int|null}|null  $override
      * @return array{records: list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>, changes: array<int, array{lesson: Lesson, from: int|null, from_end: int|null, from_manual: bool, to: int|null, to_end: int|null, manual: bool}>, links: array<int, string>, target: int|null}
      */
     public function projectClass(int $classId, ?int $targetLessonId = null, ?array $override = null): array
@@ -334,7 +342,7 @@ final class LessonNumbering
                     foreach ($unit as $member) {
                         if ($override !== null && $override['mode'] === 'manual') {
                             $member->lesson_number = $override['start'];
-                            $member->lesson_number_end = $override['end'];
+                            $member->lesson_number_end = null;
                             $member->lesson_number_manual = true;
                         } elseif ($override !== null) {
                             $member->lesson_number = null;
@@ -362,9 +370,13 @@ final class LessonNumbering
      * essa seja LIVRE. Se for fixa — manual ou histórica —, o manual da ausente
      * perde-se. Chamado depois de a ausência estar gravada (já fora da sequência).
      *
-     * @return bool se o intervalo passou a outra unidade
+     * Passa SÓ o número (0.172.0): a unidade que o recebe é uma aula nova para
+     * este número e corresponde a uma só lição, mesmo que a ausente tivesse um
+     * intervalo legado.
+     *
+     * @return bool se o número passou a outra unidade
      */
-    public function handOverManualNumber(Lesson $absent, int $start, ?int $end): bool
+    public function handOverManualNumber(Lesson $absent, int $start): bool
     {
         // Congelada, nenhum número que já exista muda: o manual da ausente não
         // passa a outra aula (a ausente fica sem número, como sempre).
@@ -390,7 +402,7 @@ final class LessonNumbering
             foreach ($unit as $lesson) {
                 DB::table('lessons')->where('id', $lesson->getKey())->update([
                     'lesson_number' => $start,
-                    'lesson_number_end' => $this->normalizedEnd($start, $end),
+                    'lesson_number_end' => null,
                     'lesson_number_manual' => true,
                 ]);
             }
@@ -520,17 +532,18 @@ final class LessonNumbering
      * ordem da cadeia, com o intervalo FINAL de cada uma.
      *
      * 1. As unidades FIXAS (manuais e, se `$historyFixed`, históricas) guardam o
-     *    intervalo que têm, e todos os seus números ficam OCUPADOS.
+     *    número que têm, e esse número fica OCUPADO. Um fim legado («12–13»)
+     *    guarda-se no registo, mas não ocupa nada (0.172.0).
      * 2. As livres ANTES da primeira fixa numeram-se PARA TRÁS a partir dela: a
      *    k-ésima a contar da fixa recebe `início − k`. É o que faz com que, com a
      *    primeira aula registada na Lição 11, abrir uma semana anterior sugira
      *    10, 9… em vez de 1, 2.
-     * 3. As restantes numeram-se PARA A FRENTE: o fim da unidade numerada
+     * 3. As restantes numeram-se PARA A FRENTE: o número da unidade numerada
      *    anterior + 1, saltando os números ocupados; se esse número já alcança a
      *    próxima fixa, não há lugar.
      * 4. Sem lugar, a unidade fica sem número — EXCETO se já tinha um número
-     *    guardado (sem fim) que está livre: esse mantém-se. As turmas reais têm
-     *    números do antigo «maior + 1», e a derivação nova não lhos tira.
+     *    guardado que está livre: esse mantém-se. As turmas reais têm números do
+     *    antigo «maior + 1», e a derivação nova não lhos tira.
      *
      * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
      * @return list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>
@@ -556,10 +569,9 @@ final class LessonNumbering
             }
 
             $fixed[] = $index;
-
-            for ($number = $interval[1]; $number <= ($interval[2] ?? $interval[1]); $number++) {
-                $occupied[$number] = true;
-            }
+            // UMA AULA, UM NÚMERO: só o início. Era aqui que um intervalo
+            // «12–13» ocupava também a 13 e mandava a aula seguinte para a 14.
+            $occupied[$interval[1]] = true;
         }
 
         // Para cada posição, a primeira unidade fixa a seguir: a «próxima fixa».
@@ -593,16 +605,17 @@ final class LessonNumbering
         }
 
         // O resto, para a frente.
-        $previousEnd = 0;
+        $previous = 0;
 
         for ($index = $first ?? 0; $index < count($units); $index++) {
             if ($kinds[$index] !== self::FREE) {
-                $previousEnd = (int) ($ends[$index] ?? $starts[$index]);
+                // O número da fixa, nunca o fim de um intervalo legado.
+                $previous = (int) $starts[$index];
 
                 continue;
             }
 
-            $candidate = $previousEnd + 1;
+            $candidate = $previous + 1;
 
             while (isset($occupied[$candidate])) {
                 $candidate++;
@@ -621,8 +634,8 @@ final class LessonNumbering
             // «maior + 1» de antes, ou um número de antes de uma correção). Não
             // faz recuar a contagem: a livre seguinte no mesmo intervalo também
             // não tem lugar, em vez de ganhar um número fora de ordem.
-            if ($number !== null && $number > $previousEnd) {
-                $previousEnd = $number;
+            if ($number !== null && $number > $previous) {
+                $previous = $number;
             }
         }
 
@@ -637,8 +650,8 @@ final class LessonNumbering
 
     /**
      * Atribui o número a uma unidade livre e marca-o como ocupado. Sem
-     * candidato, a unidade MANTÉM o número que já tinha, se tinha um (só o
-     * início) e ele está livre; senão fica sem número.
+     * candidato, a unidade MANTÉM o número que já tinha, se tinha um e ele está
+     * livre; senão fica sem número.
      *
      * @param  list<Lesson>  $unit
      * @param  array<int, true>  $occupied
@@ -651,7 +664,7 @@ final class LessonNumbering
                     continue;
                 }
 
-                if ($lesson->lesson_number_end === null && ! isset($occupied[$lesson->lesson_number])) {
+                if (! isset($occupied[$lesson->lesson_number])) {
                     $candidate = $lesson->lesson_number;
                 }
 
@@ -721,9 +734,10 @@ final class LessonNumbering
     /**
      * O número POSICIONAL de cada aula gravada — a regra de antes da 0.169.0, com
      * as unidades manuais como pontos de recomeço: começa em 1, cada unidade não
-     * manual ocupa uma posição, e uma manual faz a contagem seguir do seu fim +
-     * 1. Só serve a guarda do histórico: sem fixas por histórico, sem nulos e
-     * sem corrida para trás. Aulas de unidades manuais não têm posicional (NULL).
+     * manual ocupa uma posição, e uma manual faz a contagem seguir do seu número
+     * + 1 (nunca do fim de um intervalo legado: a mesma regra de `project()`).
+     * Só serve a guarda do histórico: sem fixas por histórico, sem nulos e sem
+     * corrida para trás. Aulas de unidades manuais não têm posicional (NULL).
      *
      * @param  Collection<int, Lesson>  $lessons  ordenadas por starts_at, id
      * @return array<int, int|null>
@@ -737,7 +751,7 @@ final class LessonNumbering
             $manual = $this->manualInterval($unit);
 
             if ($manual !== null) {
-                $next = ($manual[1] ?? $manual[0]) + 1;
+                $next = $manual[0] + 1;
 
                 foreach ($unit as $lesson) {
                     if ($lesson->exists) {
@@ -803,11 +817,15 @@ final class LessonNumbering
      * As escritas que a derivação pede: por aula gravada, o triplo (início, fim,
      * manual) quando difere do que está gravado.
      *
-     *  - unidade MANUAL: todas as aulas recebem o intervalo e a marca (um T2 que
+     *  - unidade MANUAL: todas as aulas recebem o número e a marca (um T2 que
      *    se junte depois herda-os);
      *  - unidade HISTÓRICA: só as aulas ainda abertas (ou fechadas sem número);
      *    uma aula fechada com número nunca é escrita;
      *  - unidade LIVRE: todas recebem o número derivado, sem fim e sem marca.
+     *
+     * UM FIM LEGADO NUNCA SE COPIA (0.172.0): fica só na aula que o tem, e só
+     * enquanto ela mantiver o número. Um T2 que se junte a uma unidade «12–13»
+     * fica com a Lição 12, não com um intervalo novo.
      *
      * @param  list<array{lessons: list<Lesson>, kind: string, start: int|null, end: int|null}>  $records
      * @param  array<int, array{number: int|null, end: int|null, manual: bool}>  $originals  o gravado, quando o modelo em memória foi alterado para a projeção
@@ -834,7 +852,11 @@ final class LessonNumbering
                     'manual' => (bool) $lesson->lesson_number_manual,
                 ];
                 $manual = $record['kind'] === self::MANUAL;
-                $toEnd = $record['kind'] === self::FREE ? null : $record['end'];
+                // O fim da PRÓPRIA aula (em memória: o de uma aula cujo número o
+                // professor acabou de indicar já é NULL), e só se o número fica.
+                $toEnd = $record['kind'] !== self::FREE && $record['start'] !== null && $lesson->lesson_number === $record['start']
+                    ? $this->normalizedEnd($record['start'], $lesson->lesson_number_end)
+                    : null;
 
                 if ($from['number'] === $record['start'] && $from['end'] === $toEnd && $from['manual'] === $manual) {
                     continue;

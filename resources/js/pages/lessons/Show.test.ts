@@ -989,6 +989,37 @@ describe('lessons/Show — «Aula anterior»', () => {
 
         expect(summaryForm().content).toBe('Plano de terça.');
     });
+
+    it('CASO D: «Basear…» copia o conteúdo mas não mexe no rascunho do número, e o PUT não leva chaves lesson_number*', async () => {
+        stubFetch({
+            previous: json({
+                content: 'Plano de terça.',
+                private_notes: null,
+                resources: 'Manual p. 12',
+                homework: 'Ficha 3',
+                starts_at: '2026-09-08T09:00:00+01:00',
+                state: 'taught',
+                state_label: 'Lecionada',
+            }),
+        });
+        const wrapper = mountPage({ lesson_number: 13 });
+        await flushPromises();
+
+        const base = wrapper.findAll('button').find((button) => button.text().startsWith('Basear na aula de'));
+        await base!.trigger('click');
+
+        expect(summaryForm().content).toBe('Plano de terça.');
+        expect(summaryForm().homework).toBe('Ficha 3');
+        expect((wrapper.get('[data-testid="lesson-number-start"]').element as HTMLInputElement).value).toBe('13');
+
+        await wrapper.get('form').trigger('submit');
+        await flushPromises();
+
+        expect(summaryForm().put).toHaveBeenCalledOnce();
+        const transform = (summaryForm().transform as unknown as { mock: { calls: [(data: Record<string, unknown>) => Record<string, unknown>][] } }).mock.calls[0][0];
+        const sent = transform({ content: 'x' });
+        expect(Object.keys(sent).filter((key) => key.startsWith('lesson_number'))).toEqual([]);
+    });
 });
 
 describe('lessons/Show — gravação confirmada e falhas (0.158.1)', () => {
@@ -1082,11 +1113,14 @@ describe('lessons/Show — o número da lição (0.169.0)', () => {
         ...overrides,
     });
 
-    it('mostra o selo «Lições 11–12» numa aula de várias lições', () => {
+    it('uma aula antiga «Lições 11–12» mantém o selo (histórico), sem input do fim e com o aviso legado', () => {
         const wrapper = mountPage({ lesson_number: 11, lesson_number_end: 12 });
 
         expect(wrapper.text()).toContain('Lições 11–12');
-        expect((wrapper.get('[data-testid="lesson-number-end"]').element as HTMLInputElement).value).toBe('12');
+        expect(wrapper.find('[data-testid="lesson-number-end"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="lesson-number-multiple"]').exists()).toBe(false);
+        expect((wrapper.get('[data-testid="lesson-number-start"]').element as HTMLInputElement).value).toBe('11');
+        expect(wrapper.get('[data-testid="lesson-number-legacy-range"]').text()).toContain('Lições 11–12');
     });
 
     it('número igual: grava como sempre, sem pré-visualização nem chaves de numeração', async () => {
@@ -1119,7 +1153,7 @@ describe('lessons/Show — o número da lição (0.169.0)', () => {
         await flushPromises();
 
         expect(summaryForm().put).toHaveBeenCalledOnce();
-        expect(transformOf()({ content: 'x' })).toEqual({ content: 'x', lesson_number: 14, lesson_number_end: null });
+        expect(transformOf()({ content: 'x' })).toEqual({ content: 'x', lesson_number: 14 });
     });
 
     it('um conflito aparece junto do campo e não grava', async () => {
@@ -1156,7 +1190,6 @@ describe('lessons/Show — o número da lição (0.169.0)', () => {
         expect(transformOf()({ content: 'x' })).toEqual({
             content: 'x',
             lesson_number: 14,
-            lesson_number_end: null,
             lesson_number_confirmation: 'hash-9',
         });
     });

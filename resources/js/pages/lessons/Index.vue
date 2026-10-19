@@ -983,7 +983,7 @@ async function saveSummary(): Promise<boolean> {
     // óbvio para poupar o pedido; o servidor valida de novo.
     const local = validateNumberDraft(current.number);
 
-    if (local.number !== null || local.end !== null) {
+    if (local.number !== null) {
         current.numberErrors = local;
         current.numberPreview = null;
 
@@ -1023,7 +1023,6 @@ async function saveSummary(): Promise<boolean> {
     if (preview.conflicts.length > 0) {
         current.numberErrors = {
             number: preview.conflicts.join(' '),
-            end: null,
         };
 
         return false;

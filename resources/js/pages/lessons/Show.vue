@@ -136,13 +136,12 @@ const numberDirty = computed(() => props.lesson.can_set_number && numberDraftDir
 const serverErrors = computed(() => summaryForm.errors as Record<string, string | undefined>);
 const numberErrors = computed<LessonNumberErrors>(() => ({
     number: numberLocalErrors.value.number ?? serverErrors.value.lesson_number ?? null,
-    end: numberLocalErrors.value.end ?? serverErrors.value.lesson_number_end ?? null,
 }));
 
 // Os erros do número não são campos do formulário (as chaves só viajam quando o
 // número muda), por isso o tipo do `useForm` não os conhece.
 function clearNumberErrors(): void {
-    (summaryForm as unknown as { clearErrors: (...fields: string[]) => void }).clearErrors('lesson_number', 'lesson_number_end');
+    (summaryForm as unknown as { clearErrors: (...fields: string[]) => void }).clearErrors('lesson_number');
 }
 
 function setNumberDraft(value: LessonNumberDraft): void {
@@ -377,7 +376,7 @@ function resolveConflict(choice: 'combine' | 'keep-mine' | 'use-stored'): void {
 const summaryErrors = computed(() =>
     Object.entries(summaryForm.errors)
         // O número tem os erros junto do campo, não no resumo do formulário.
-        .filter(([field]) => !['summary_version', 'lesson_number', 'lesson_number_end'].includes(field))
+        .filter(([field]) => !['summary_version', 'lesson_number'].includes(field))
         .map(([, message]) => message),
 );
 const attendanceErrors = computed(() => [...Object.values(taughtForm.errors), ...Object.values(recordForm.errors)]);
@@ -425,7 +424,7 @@ async function submitSummary(): Promise<boolean> {
 
     const local = validateNumberDraft(numberDraft.value);
 
-    if (local.number !== null || local.end !== null) {
+    if (local.number !== null) {
         numberLocalErrors.value = local;
         numberPreview.value = null;
 
@@ -461,7 +460,7 @@ async function submitSummary(): Promise<boolean> {
 
     if (preview.conflicts.length > 0) {
         releaseSubmission();
-        numberLocalErrors.value = { number: preview.conflicts.join(' '), end: null };
+        numberLocalErrors.value = { number: preview.conflicts.join(' ') };
 
         return false;
     }

@@ -14,9 +14,12 @@ import { lessonNumberLabel } from '@/lib/lessons';
 /** O que o professor tem no campo. Texto, porque é o que um `<input>` entrega. */
 export type LessonNumberDraft = {
     start: string;
-    end: string;
-    /** «Esta aula corresponde a mais do que uma lição». */
-    multiple: boolean;
+    /**
+     * LEGADO: o fim de um intervalo gravado até à 0.171.0 («Lições 12–13»). Só se
+     * lê. É NULL em todas as aulas novas (0.172.0: uma aula, um número) e
+     * qualquer edição do número apaga-o — a aula passa a uma só lição.
+     */
+    legacyEnd: number | null;
     /** «Repor numeração automática» foi carregado: ao guardar, volta à sugestão. */
     automatic: boolean;
 };
@@ -34,7 +37,6 @@ export type LessonNumberSource = {
 /** As chaves que o pedido de gravação (PUT/PATCH do sumário) aceita. */
 export type LessonNumberPayload = {
     lesson_number?: number;
-    lesson_number_end?: number | null;
     lesson_number_automatic?: boolean;
 };
 
@@ -61,13 +63,10 @@ export type LessonNumberPreview = {
     following_from: number | null;
 };
 
-/** Os erros do número, por campo — o `end` aparece junto do segundo input. */
-export type LessonNumberErrors = { number: string | null; end: string | null };
+/** Os erros do número (0.172.0: já não há fim do intervalo). */
+export type LessonNumberErrors = { number: string | null };
 
-export const NO_NUMBER_ERRORS: LessonNumberErrors = { number: null, end: null };
-
-/** Máximo de lições numa só aula — o mesmo limite que o servidor aplica (início + 9). */
-export const LESSON_NUMBER_MAX_SPAN = 10;
+export const NO_NUMBER_ERRORS: LessonNumberErrors = { number: null };
 
 /** Professor ausente: a aula não tem lição, o campo não se oferece. */
 export function canSetLessonNumber(lesson: Pick<LessonNumberSource, 'outcome'>): boolean {
@@ -77,8 +76,7 @@ export function canSetLessonNumber(lesson: Pick<LessonNumberSource, 'outcome'>):
 export function numberDraftFromLesson(lesson: Pick<LessonNumberSource, 'lesson_number' | 'lesson_number_end'>): LessonNumberDraft {
     return {
         start: lesson.lesson_number === null ? '' : String(lesson.lesson_number),
-        end: lesson.lesson_number_end === null ? '' : String(lesson.lesson_number_end),
-        multiple: lesson.lesson_number_end !== null,
+        legacyEnd: lesson.lesson_number_end,
         automatic: false,
     };
 }
@@ -89,34 +87,31 @@ function toInteger(value: string): number | null {
     return /^\d+$/.test(text) ? Number.parseInt(text, 10) : null;
 }
 
-/**
- * O intervalo que o rascunho exprime, já normalizado como o servidor o faz:
- * sem «várias lições», ou com um fim igual ao início, não há fim.
- */
-export function draftInterval(draft: LessonNumberDraft): { start: number | null; end: number | null } {
-    const start = toInteger(draft.start);
-    const end = draft.multiple ? toInteger(draft.end) : null;
-
-    return { start, end: start !== null && end !== null && end > start ? end : null };
+/** O número que o rascunho exprime; NULL se o campo está vazio ou ilegível. */
+export function draftNumber(draft: LessonNumberDraft): number | null {
+    return toInteger(draft.start);
 }
 
-/** O rascunho difere do que a aula tem? É isto que conta como «alterações por guardar». */
+/**
+ * O rascunho difere do que a aula tem? É isto que conta como «alterações por
+ * guardar». Editar o número de uma aula legada (mesmo para o mesmo valor) conta:
+ * é o gesto que a converte a uma só lição.
+ */
 export function numberDraftDirty(draft: LessonNumberDraft, original: LessonNumberDraft): boolean {
     if (draft.automatic) {
         return true;
     }
 
-    const now = draftInterval(draft);
-    const before = draftInterval(original);
+    const now = draftNumber(draft);
+    const before = draftNumber(original);
 
     // Um campo apagado (ou ilegível) numa aula que tinha número é uma alteração
     // — que a validação recusa ao guardar, em vez de a ignorar em silêncio.
-    if (now.start === null && before.start !== null) {
+    if (now === null && before !== null) {
         return true;
     }
 
-    // «Várias lições» marcado mas sem fim válido ainda não é uma alteração do intervalo.
-    return now.start !== before.start || now.end !== before.end;
+    return now !== before || draft.legacyEnd !== original.legacyEnd;
 }
 
 /**
@@ -131,48 +126,26 @@ export function validateNumberDraft(draft: LessonNumberDraft): LessonNumberError
     const start = toInteger(draft.start);
 
     if (start === null || start < 1 || start > 9999) {
-        return { number: 'Indique o número da lição (um número inteiro positivo).', end: null };
-    }
-
-    if (draft.multiple) {
-        const end = toInteger(draft.end);
-
-        if (end === null) {
-            return { number: null, end: 'Indique a lição em que a aula termina.' };
-        }
-
-        if (end < start) {
-            return { number: null, end: 'O fim do intervalo não pode ser anterior ao início.' };
-        }
-
-        if (end > start + LESSON_NUMBER_MAX_SPAN - 1) {
-            return { number: null, end: 'Uma aula pode corresponder, no máximo, a 10 lições.' };
-        }
+        return { number: 'Indique o número da lição (um número inteiro positivo).' };
     }
 
     return NO_NUMBER_ERRORS;
 }
 
 /** O corpo da pré-visualização (`POST /lessons/{ulid}/number/preview`). */
-export function previewBody(draft: LessonNumberDraft): { mode: 'automatic' } | { mode: 'manual'; start: number; end: number | null } {
+export function previewBody(draft: LessonNumberDraft): { mode: 'automatic' } | { mode: 'manual'; start: number } {
     if (draft.automatic) {
         return { mode: 'automatic' };
     }
 
-    const { start, end } = draftInterval(draft);
-
-    return { mode: 'manual', start: start as number, end };
+    return { mode: 'manual', start: draftNumber(draft) as number };
 }
 
 /** As chaves a juntar ao pedido de gravação — só quando o número mudou. */
 export function numberSavePayload(draft: LessonNumberDraft, confirmation: string | null): LessonNumberPayload & { lesson_number_confirmation?: string } {
     const payload: LessonNumberPayload & { lesson_number_confirmation?: string } = draft.automatic
         ? { lesson_number_automatic: true }
-        : (() => {
-              const { start, end } = draftInterval(draft);
-
-              return { lesson_number: start as number, lesson_number_end: end };
-          })();
+        : { lesson_number: draftNumber(draft) as number };
 
     if (confirmation !== null) {
         payload.lesson_number_confirmation = confirmation;
@@ -235,7 +208,6 @@ export async function requestNumberPreview(lessonUlid: string, draft: LessonNumb
                 kind: 'invalid',
                 errors: {
                     number: errors.lesson_number?.[0] ?? errors.start?.[0] ?? errors.mode?.[0] ?? null,
-                    end: errors.end?.[0] ?? null,
                 },
             };
         }
@@ -253,7 +225,6 @@ export async function requestNumberPreview(lessonUlid: string, draft: LessonNumb
 /** Os erros do número que o servidor devolveu na gravação (`errors` do Inertia). */
 export function numberErrorsFrom(errors: Record<string, string | undefined>): LessonNumberErrors | null {
     const number = errors.lesson_number ?? null;
-    const end = errors.lesson_number_end ?? null;
 
-    return number === null && end === null ? null : { number, end };
+    return number === null ? null : { number };
 }

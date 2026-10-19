@@ -51,7 +51,7 @@ function mountEditor(ulid = 'aula-a', lesson: WeekLesson = lessonWith(ulid), mod
             conflict: null,
             number: numberDraftFromLesson({ lesson_number: 3, lesson_number_end: null }),
             numberOriginal: numberDraftFromLesson({ lesson_number: 3, lesson_number_end: null }),
-            numberErrors: { number: null, end: null },
+            numberErrors: { number: null },
             numberPreview: null,
         },
     });

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-10-15 (0.169.0).
+Accepted — 2026-10-15 (0.169.0). The paragraph on lessons covering several lições is superseded by [ADR-0017](0017-one-lesson-one-number.md) (0.172.0): one occurrence, one number; `lesson_number_end` is legacy.
 
 ## Context
 
