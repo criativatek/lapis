@@ -25,6 +25,68 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.172.0] — 2026-10-19
+
+> **Uma aula, um número de lição.** Desaparece a caixa «Esta aula corresponde a
+> mais do que uma lição». Uma ocorrência de aula corresponde a um único número
+> de lição; conteúdos repetidos ou reutilizados tratam-se reutilizando o sumário
+> («Basear na aula anterior»), e não com vários números no mesmo registo. O
+> «N.º da lição» continua visível, sugerido e editável. Sem migrations; o backup
+> não muda.
+
+### Alterado
+
+- **Sem caixa nem «até à lição».** O campo «N.º da lição» (página da aula e
+  editor da semana) fica só com o número, e por baixo «Sugerido automaticamente.
+  Pode alterar se necessário.» («Pode alterar se necessário.» quando o número foi
+  indicado pelo professor ou a aula ainda não tem número). A sugestão, a
+  indicação manual, «Repor numeração automática», a pré-visualização e a
+  confirmação continuam como na 0.169.0 (ADR-0016).
+- **A numeração deixa de saltar.** Era a derivação (`LessonNumbering`) que dava
+  o salto: uma aula fixa «12–13» ocupava a 12 e a 13 e a aula seguinte começava
+  no fim + 1, a 14. Agora uma aula fixa ocupa só o seu número e a seguinte
+  continua a partir dele: depois da Lição 12 vem a 13, mesmo que as duas
+  partilhem o conteúdo. A mesma regra nos conflitos e avisos da indicação manual
+  (`SetLessonNumber`) e na cadeia posicional da guarda do histórico — a sugestão
+  automática e a escolha manual nunca discordam sobre que número está livre.
+- **Pedidos antigos não voltam a criar intervalos.** A gravação do sumário (PUT
+  da página e PATCH do cartão) e a pré-visualização aceitam a chave do fim
+  (`lesson_number_end` / `end`) só vazia — é o que um ecrã anterior envia por
+  omissão — e recusam qualquer valor com «Uma aula corresponde a uma só lição.
+  Indique apenas o número da lição.», sem escrever nada. Recusa, e não ignora:
+  quem a marcou num separador aberto antes da atualização fica a saber.
+- **Um fim legado nunca passa a outra aula.** Fica só na aula que o tem e só
+  enquanto ela mantiver o número: um T2 que se junte mais tarde a uma lição
+  «12–13» fica com a Lição 12; professor ausente numa aula manual passa à
+  seguinte só o número; e, num desdobramento (T1/T2), a chave da lição leva o
+  número e a marca de manual, mas não o fim.
+
+### Compatibilidade
+
+- `lessons.lesson_number_end` fica na base de dados como **legado** (ADR-0017):
+  nenhum valor é apagado nem reescrito, nenhuma aula é renumerada, e as aulas
+  antigas continuam a ler-se «Lições 12–13» nas listas, no caderno, nos
+  relatórios, nas exportações e no backup (`schema_version` continua 19). O fim
+  legado só deixa de contar para a numeração. Uma aula legada passa a uma só
+  lição apenas quando o professor edita o número dela — o campo avisa-o — ou
+  repõe a numeração automática.
+- Numa turma com uma aula legada «12–13», a aula seguinte por preparar passa a
+  sugerir 13. As aulas já lecionadas depois dela com a regra antiga (14, 15…)
+  ficam com os números que têm.
+
+### Testes
+
+- PHPUnit: `SingleLessonNumberTest` (sugestão a seguir à 12; flag antiga sem
+  salto; número manual preservado depois de gravar e recarregar; «Basear» sem
+  copiar número, data, estado nem identidade; payload novo sem o fim; payload
+  antigo recusado no PUT, no PATCH e na pré-visualização sem escrita; histórico
+  byte a byte; professor ausente numa aula legada; isolamento entre
+  organizações), e `ManualLessonNumberTest` e `LessonNumberDerivationTest`
+  ajustados à regra nova.
+- Vitest: `lessonNumber`, `LessonNumberField`, `Show`, `Index` e
+  `LessonSummaryEditor`.
+- Sem migrations.
+
 ## [0.171.0] — 2026-10-17
 
 > **As atividades do calendário passam a falar com as aulas.** Quando uma aula

@@ -83,17 +83,24 @@ class ManualLessonNumberTest extends TestCase
     // 2) ---------------------------------------------------------------------
 
     #[Test]
-    public function a_lesson_that_is_two_lessons_makes_the_next_one_start_after_it_and_reads_as_a_range(): void
+    public function the_range_option_no_longer_exists_but_a_legacy_range_is_still_read_as_one(): void
     {
         $this->weeks('2026-10-08', '2026-10-15', '2026-10-22');
+        $before = $this->numbers();
 
-        $this->save($this->on('2026-10-08'), ['lesson_number' => 11, 'lesson_number_end' => 12])
-            ->assertSessionHasNoErrors()
-            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Lições 11–12.'));
+        // 0.172.0: uma aula é uma lição. O fim do intervalo é recusado, e nada fica gravado.
+        $this->save($this->on('2026-10-08'), ['lesson_number' => 11, 'lesson_number_end' => 12], 'Texto que não pode ficar.')
+            ->assertSessionHasErrors('lesson_number_end');
+        $this->assertSame($before, $this->numbers());
+        $this->inTenant($this->organization, fn () => $this->assertSame(0, LessonSummary::query()->count()));
 
-        $this->assertSame(['2026-10-08' => '11–12', '2026-10-15' => '13', '2026-10-22' => '14'], $this->numbers());
+        // Uma linha LEGADA, como a 0.171.0 a deixava (manual 11, fim 12), continua
+        // a ler-se «11–12» — mas o fim já não ocupa números: a seguinte é a 12.
+        $this->legacy('2026-10-08', 11, 12);
+        $this->resequence();
+        $this->assertSame(['2026-10-08' => '11–12', '2026-10-15' => '12', '2026-10-22' => '13'], $this->numbers());
 
-        // A apresentação e a exportação devolvem «11–12».
+        // A apresentação e a exportação continuam a devolver «11–12».
         $this->asTeacher()->get('/lessons?week=2026-10-05')
             ->assertInertia(fn ($page) => $page
                 ->where('lessons.0.lesson_number', 11)
@@ -265,17 +272,35 @@ class ManualLessonNumberTest extends TestCase
             ->assertSessionHasErrors('lesson_number');
         $this->assertStringContainsString('A Lição 12 já está atribuída à aula de 08/10/2026', $this->firstError('lesson_number'));
 
+        // O fim do intervalo já não existe: recusado na chave do fim.
         $this->save($target, ['lesson_number' => 11, 'lesson_number_end' => 13], 'Texto que não pode ficar.')
-            ->assertSessionHasErrors('lesson_number');
-        $this->assertStringContainsString('As lições 11–13 sobrepõem-se à Lição 12', $this->firstError('lesson_number'));
+            ->assertSessionHasErrors('lesson_number_end');
+        $this->assertStringContainsString('Uma aula corresponde a uma só lição', $this->firstError('lesson_number_end'));
 
         // Entre uma manual e uma manual.
         $this->save($this->on('2026-10-22'), ['lesson_number' => 20])->assertSessionHasNoErrors();
-        $this->save($target, ['lesson_number' => 19, 'lesson_number_end' => 21])->assertSessionHasErrors('lesson_number');
+        $this->save($target, ['lesson_number' => 19, 'lesson_number_end' => 21])->assertSessionHasErrors('lesson_number_end');
 
         $this->assertSame(['2026-10-08' => '12', '2026-10-15' => '13', '2026-10-22' => '20'], $this->numbers());
         $this->assertNotSame($before, $this->numbers());
         $this->inTenant($this->organization, fn () => $this->assertSame(0, LessonSummary::query()->where('lesson_id', $target->id)->count()));
+    }
+
+    #[Test]
+    public function a_legacy_range_of_another_lesson_does_not_block_its_end_number(): void
+    {
+        $this->weeks('2026-10-08', '2026-10-15', '2026-10-22');
+        $this->legacy('2026-10-08', 12, 13);
+        $this->resequence();
+        $this->assertSame(['2026-10-08' => '12–13', '2026-10-15' => '13', '2026-10-22' => '14'], $this->numbers());
+
+        // A 13 só esteve «ocupada» pelo fim legado: indicá-la é possível.
+        $this->save($this->on('2026-10-22'), ['lesson_number' => 13])->assertSessionHasNoErrors();
+        $this->assertManual('2026-10-22', 13);
+
+        // E a linha legada não foi reescrita.
+        $legacy = $this->on('2026-10-08');
+        $this->assertSame([12, 13, true], [$legacy->lesson_number, $legacy->lesson_number_end, $legacy->lesson_number_manual]);
     }
 
     // 8) ---------------------------------------------------------------------
@@ -512,17 +537,22 @@ class ManualLessonNumberTest extends TestCase
             $this->save($lesson, ['lesson_number' => $bad])->assertSessionHasErrors('lesson_number');
         }
 
-        $this->save($lesson, ['lesson_number' => 5, 'lesson_number_end' => 4])->assertSessionHasErrors('lesson_number_end');
-        $this->save($lesson, ['lesson_number' => 5, 'lesson_number_end' => 15])->assertSessionHasErrors('lesson_number_end');
-        $this->assertStringContainsString('no máximo, a 10 lições', $this->firstError('lesson_number_end'));
-        $this->save($lesson, ['lesson_number' => 5, 'lesson_number_end' => 14])->assertSessionHasNoErrors();
-        $this->save($lesson, ['lesson_number_end' => 14])->assertSessionHasErrors('lesson_number');
+        // Uma aula, uma lição: qualquer fim com valor é recusado, na chave do fim.
+        foreach ([4, 5, 14, 15] as $end) {
+            $this->save($lesson, ['lesson_number' => 5, 'lesson_number_end' => $end])->assertSessionHasErrors('lesson_number_end');
+            $this->assertStringContainsString('Uma aula corresponde a uma só lição', $this->firstError('lesson_number_end'));
+        }
+
+        // Vazio é o que um ecrã antigo envia: aceite, e a aula fica com uma só lição.
+        $this->save($lesson, ['lesson_number' => 5, 'lesson_number_end' => null])->assertSessionHasNoErrors();
+        $this->assertManual('2026-10-08', 5);
+        $this->save($lesson, ['lesson_number_end' => 14])->assertSessionHasErrors('lesson_number_end');
 
         // O mesmo na pré-visualização, em JSON.
         $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual', 'start' => 0])->assertJsonValidationErrors('start');
         $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual'])->assertJsonValidationErrors('start');
-        $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual', 'start' => 5, 'end' => 3])->assertJsonValidationErrors('end');
-        $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual', 'start' => 5, 'end' => 20])->assertJsonValidationErrors('end');
+        $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual', 'start' => 5, 'end' => 6])->assertJsonValidationErrors('end');
+        $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'manual', 'start' => 5, 'end' => null])->assertOk();
         $this->asTeacher()->postJson("/lessons/{$lesson->ulid}/number/preview", ['mode' => 'outro'])->assertJsonValidationErrors('mode');
     }
 
@@ -717,6 +747,16 @@ class ManualLessonNumberTest extends TestCase
         $lesson = $this->on($date);
         $this->assertSame($number, $lesson->lesson_number);
         $this->assertTrue($lesson->lesson_number_manual, "A aula de {$date} devia continuar manual.");
+    }
+
+    /**
+     * Escreve direto na BD uma linha como a 0.171.0 a deixava: número manual com fim.
+     */
+    private function legacy(string $date, int $start, int $end): void
+    {
+        DB::table('lessons')->where('id', $this->on($date)->id)->update([
+            'lesson_number' => $start, 'lesson_number_end' => $end, 'lesson_number_manual' => true,
+        ]);
     }
 
     private function firstError(string $key): string

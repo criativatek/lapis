@@ -10,8 +10,9 @@ use Illuminate\Validation\Rule;
 
 /**
  * A pré-visualização do número de uma aula (0.169.0): `mode` = `manual` com o
- * início (e, se a aula corresponde a várias lições, o fim) ou `automatic` para
- * repor a sugestão. Só lê; a autorização é a de editar a aula.
+ * número (`start`) ou `automatic` para repor a sugestão. Só lê; a autorização é
+ * a de editar a aula. A chave `end` é legado (0.172.0): vazia aceita-se, com
+ * valor é recusada (ver `ValidatesLessonNumber`).
  */
 class LessonNumberPreviewRequest extends FormRequest
 {
@@ -56,8 +57,6 @@ class LessonNumberPreviewRequest extends FormRequest
             return NumberChange::automatic();
         }
 
-        $end = $this->validated('end');
-
-        return NumberChange::manual((int) $this->validated('start'), is_numeric($end) ? (int) $end : null);
+        return NumberChange::manual((int) $this->validated('start'));
     }
 }

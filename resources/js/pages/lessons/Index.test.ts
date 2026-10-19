@@ -2071,7 +2071,7 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
 
         expect(previewCalls()).toHaveLength(1);
         expect(String(previewCalls()[0][0])).toBe('/lessons/lesson-a/number/preview');
-        expect(JSON.parse(((previewCalls()[0] as unknown as [string, RequestInit])[1]).body as string)).toEqual({ mode: 'manual', start: 15, end: null });
+        expect(JSON.parse(((previewCalls()[0] as unknown as [string, RequestInit])[1]).body as string)).toEqual({ mode: 'manual', start: 15 });
         expect(inertia.router.patch).not.toHaveBeenCalled();
         const error = wrapper.get('[data-testid="lesson-number-error"]');
         expect(error.attributes('role')).toBe('alert');
@@ -2091,7 +2091,6 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
             content: longSummary.trim(),
             summary_version: 3,
             lesson_number: 13,
-            lesson_number_end: null,
         });
     });
 
@@ -2119,7 +2118,6 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
         expect(inertia.router.patch).toHaveBeenCalledOnce();
         expect(inertia.router.patch.mock.calls[0][1]).toMatchObject({
             lesson_number: 14,
-            lesson_number_end: null,
             lesson_number_confirmation: 'hash-123',
         });
     });

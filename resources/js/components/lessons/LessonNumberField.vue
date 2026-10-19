@@ -3,6 +3,11 @@
  * «N.º DA LIÇÃO» (0.169.0) — o número que o Lapispro sugere e o professor pode
  * ajustar.
  *
+ * 0.172.0: UMA AULA, UM NÚMERO. A opção «esta aula corresponde a mais do que
+ * uma lição» deixou de existir; o campo é só o número. Uma aula antiga que
+ * ficou registada como «Lições 12–13» continua a mostrá-lo (`original.legacyEnd`,
+ * só leitura) com um aviso discreto; editar o número apaga esse fim.
+ *
  * Componente CONTROLADO: o rascunho (`modelValue`) e o ponto de partida
  * (`original`) pertencem ao editor que o usa — a página da aula e o cartão da
  * semana —, porque é o editor que decide quando pedir a pré-visualização e
@@ -37,7 +42,7 @@ const props = withDefaults(
         idPrefix: string;
         disabled?: boolean;
     }>(),
-    { canSet: true, frozen: false, errors: () => ({ number: null, end: null }), disabled: false },
+    { canSet: true, frozen: false, errors: () => ({ number: null }), disabled: false },
 );
 
 const emit = defineEmits<{
@@ -45,11 +50,9 @@ const emit = defineEmits<{
 }>();
 
 const startId = computed(() => `${props.idPrefix}-start`);
-const endId = computed(() => `${props.idPrefix}-end`);
 const helpId = computed(() => `${props.idPrefix}-help`);
 const errorId = computed(() => `${props.idPrefix}-error`);
-const endErrorId = computed(() => `${props.idPrefix}-end-error`);
-const multipleId = computed(() => `${props.idPrefix}-multiple`);
+const legacyId = computed(() => `${props.idPrefix}-legacy`);
 
 /** O número que a aula tem, dito como no resto da aplicação («11» ou «11–12»). */
 const currentLabel = computed(() => {
@@ -57,32 +60,31 @@ const currentLabel = computed(() => {
         return 'sem número';
     }
 
-    return props.original.end === '' ? props.original.start : `${props.original.start}–${props.original.end}`;
+    return props.original.legacyEnd === null ? props.original.start : `${props.original.start}–${props.original.legacyEnd}`;
 });
 
 const dirty = computed(() => numberDraftDirty(props.modelValue, props.original));
 const hadNoNumber = computed(() => props.original.start === '' && !props.manual);
 
-const startDescribedBy = computed(() => `${helpId.value}${props.errors.number ? ` ${errorId.value}` : ''}`);
-const endDescribedBy = computed(() => `${helpId.value}${props.errors.end ? ` ${endErrorId.value}` : ''}`);
+/** Só uma linha antiga (intervalo gravado até à 0.171.0) e ainda por editar. */
+const showLegacy = computed(
+    () => props.original.legacyEnd !== null && props.modelValue.legacyEnd !== null && !props.modelValue.automatic,
+);
+
+/** Sugerida pelo servidor (não indicada pelo professor) e com número. */
+const suggested = computed(() => !props.manual && props.original.start !== '');
+
+const startDescribedBy = computed(
+    () => `${helpId.value}${showLegacy.value ? ` ${legacyId.value}` : ''}${props.errors.number ? ` ${errorId.value}` : ''}`,
+);
 
 function patch(change: Partial<LessonNumberDraft>): void {
     emit('update:modelValue', { ...props.modelValue, ...change });
 }
 
 function onStart(event: Event): void {
-    patch({ start: (event.target as HTMLInputElement).value });
-}
-
-function onEnd(event: Event): void {
-    patch({ end: (event.target as HTMLInputElement).value });
-}
-
-function onMultiple(event: Event): void {
-    const checked = (event.target as HTMLInputElement).checked;
-
-    // Desmarcar esconde o segundo input e esquece-o: o que não se vê não se envia.
-    patch({ multiple: checked, end: checked ? props.modelValue.end : '' });
+    // Qualquer edição do número apaga o fim legado: a aula passa a uma só lição.
+    patch({ start: (event.target as HTMLInputElement).value, legacyEnd: null });
 }
 
 function resetToAutomatic(): void {
@@ -175,60 +177,31 @@ defineExpose({
                 </Button>
             </div>
 
-            <template v-else>
-                <div class="flex flex-wrap items-end gap-x-4 gap-y-2">
-                    <input
-                        :id="startId"
-                        :value="modelValue.start"
-                        type="number"
-                        inputmode="numeric"
-                        min="1"
-                        max="9999"
-                        step="1"
-                        :disabled="disabled"
-                        :aria-invalid="errors.number ? true : undefined"
-                        :aria-describedby="startDescribedBy"
-                        class="h-11 w-28 rounded-[10px] border border-input bg-background px-3 text-base tabular-nums shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive"
-                        data-testid="lesson-number-start"
-                        @input="onStart"
-                    >
+            <input
+                v-else
+                :id="startId"
+                :value="modelValue.start"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                max="9999"
+                step="1"
+                :disabled="disabled"
+                :aria-invalid="errors.number ? true : undefined"
+                :aria-describedby="startDescribedBy"
+                class="h-11 w-28 rounded-[10px] border border-input bg-background px-3 text-base tabular-nums shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive"
+                data-testid="lesson-number-start"
+                @input="onStart"
+            >
 
-                    <label
-                        :for="multipleId"
-                        class="flex min-h-11 items-center gap-2 text-sm"
-                    >
-                        <input
-                            :id="multipleId"
-                            type="checkbox"
-                            :checked="modelValue.multiple"
-                            :disabled="disabled"
-                            class="size-5 shrink-0 accent-primary"
-                            data-testid="lesson-number-multiple"
-                            @change="onMultiple"
-                        >
-                        Esta aula corresponde a mais do que uma lição
-                    </label>
-                </div>
-
-                <div v-if="modelValue.multiple" class="flex flex-wrap items-center gap-2">
-                    <label :for="endId" class="text-sm font-semibold">até à lição</label>
-                    <input
-                        :id="endId"
-                        :value="modelValue.end"
-                        type="number"
-                        inputmode="numeric"
-                        min="1"
-                        max="9999"
-                        step="1"
-                        :disabled="disabled"
-                        :aria-invalid="errors.end ? true : undefined"
-                        :aria-describedby="endDescribedBy"
-                        class="h-11 w-28 rounded-[10px] border border-input bg-background px-3 text-base tabular-nums shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive"
-                        data-testid="lesson-number-end"
-                        @input="onEnd"
-                    >
-                </div>
-            </template>
+            <p
+                v-if="showLegacy"
+                :id="legacyId"
+                class="text-sm text-muted-foreground"
+                data-testid="lesson-number-legacy-range"
+            >
+                Esta aula ficou registada como Lições {{ original.start }}–{{ original.legacyEnd }}, uma opção que deixou de existir. Ao editar o número, a aula passa a corresponder a uma só lição.
+            </p>
 
             <p
                 v-if="errors.number"
@@ -239,18 +212,8 @@ defineExpose({
             >
                 <CircleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />{{ errors.number }}
             </p>
-            <p
-                v-if="errors.end"
-                :id="endErrorId"
-                role="alert"
-                class="flex items-start gap-1.5 text-sm font-semibold text-destructive"
-                data-testid="lesson-number-end-error"
-            >
-                <CircleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />{{ errors.end }}
-            </p>
-
             <p :id="helpId" class="text-xs text-muted-foreground">
-                A numeração é sugerida automaticamente. Pode ajustá-la se começou a utilizar o Lapispro a meio do ano ou precisar de acertar a sequência.
+                {{ suggested ? 'Sugerido automaticamente. Pode alterar se necessário.' : 'Pode alterar se necessário.' }}
             </p>
         </template>
     </div>

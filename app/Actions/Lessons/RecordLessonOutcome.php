@@ -104,14 +104,12 @@ class RecordLessonOutcome
             $manualHandedOver = false;
             $wasManual = false;
             $carriedNumber = null;
-            $carriedEnd = null;
             $hadUnitKey = false;
             $leftover = null;
 
             if ($outcome === LessonOutcome::TeacherAbsent) {
                 $wasManual = $locked->lesson_number_manual && $locked->lesson_number !== null;
                 $carriedNumber = $locked->lesson_number;
-                $carriedEnd = $locked->lesson_number_end;
                 $hadUnitKey = $locked->class_group_id !== null && $locked->lesson_unit_key !== null;
 
                 ['relinked' => $relinked, 'leftover' => $leftover] = $this->handOverLessonUnit($locked);
@@ -128,7 +126,7 @@ class RecordLessonOutcome
                 // outros casos passa à próxima unidade da turma, se esta for livre.
                 $manualHandedOver = $hadUnitKey
                     ? $relinked > 0
-                    : $this->numbering->handOverManualNumber($locked, $carriedNumber, $carriedEnd);
+                    : $this->numbering->handOverManualNumber($locked, $carriedNumber);
             }
 
             $planning = $this->planning->from($locked, $actor);
@@ -138,7 +136,7 @@ class RecordLessonOutcome
             // livre da turma depois da última aula religada — já com a ocorrência
             // que o deslocamento do planeamento possa ter materializado.
             if ($leftover !== null) {
-                $manualHandedOver = $this->numbering->handOverManualNumber($leftover['after'], $leftover['number'], $leftover['end']) || $manualHandedOver;
+                $manualHandedOver = $this->numbering->handOverManualNumber($leftover['after'], $leftover['number']) || $manualHandedOver;
             }
 
             $renumbered = $this->renumber($locked->class_id, $planning['materialized'], $snapshot);
@@ -249,7 +247,7 @@ class RecordLessonOutcome
      * implícito): as lições são as da fila deste grupo, nunca de outro.
      */
     /**
-     * @return array{relinked: int, leftover: array{after: Lesson, number: int, end: int|null}|null}
+     * @return array{relinked: int, leftover: array{after: Lesson, number: int}|null}
      */
     private function handOverLessonUnit(Lesson $absent): array
     {
@@ -257,8 +255,10 @@ class RecordLessonOutcome
             return ['relinked' => 0, 'leftover' => null];
         }
 
-        // A chave leva consigo o que dela depende: o número manual (início, fim e
+        // A chave leva consigo o que dela depende: o número manual (número e
         // marca) fica na chave, e não na aula onde por acaso estava escrito.
+        // O fim de um intervalo legado NÃO viaja (0.172.0): a aula que recebe o
+        // número fica com uma só lição, e um número que muda de aula perde-o.
         //
         // COM A NUMERAÇÃO CONGELADA (`LAPIS_LESSON_NUMBERING_FROZEN`) viaja só a
         // chave: os números das aulas que já têm número não mudam.
@@ -266,7 +266,7 @@ class RecordLessonOutcome
         $carry = [
             'lesson_unit_key' => $absent->lesson_unit_key,
             'lesson_number' => $absent->lesson_number,
-            'lesson_number_end' => $absent->lesson_number_end,
+            'lesson_number_end' => null,
             'lesson_number_manual' => (bool) $absent->lesson_number_manual,
         ];
         $relinked = 0;
@@ -282,7 +282,7 @@ class RecordLessonOutcome
             $displaced = [
                 'lesson_unit_key' => $next->lesson_unit_key,
                 'lesson_number' => $next->lesson_number,
-                'lesson_number_end' => $next->lesson_number_end,
+                'lesson_number_end' => null,
                 'lesson_number_manual' => (bool) $next->lesson_number_manual,
             ];
             DB::table('lessons')->where('id', $next->getKey())->update($frozen ? ['lesson_unit_key' => $carry['lesson_unit_key']] : $carry);
@@ -300,7 +300,7 @@ class RecordLessonOutcome
             ->where('lesson_unit_key', $carry['lesson_unit_key'])
             ->whereKeyNot($absent->getKey())
             ->exists()) {
-            $leftover = ['after' => $after, 'number' => (int) $carry['lesson_number'], 'end' => $carry['lesson_number_end']];
+            $leftover = ['after' => $after, 'number' => (int) $carry['lesson_number']];
         }
 
         return ['relinked' => $relinked, 'leftover' => $leftover];

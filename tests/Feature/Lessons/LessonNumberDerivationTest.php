@@ -66,15 +66,35 @@ class LessonNumberDerivationTest extends TestCase
         $this->assertNumbers([11, 12, 13, 14]);
     }
 
+    /**
+     * 0.172.0: uma aula é uma lição. Uma linha LEGADA «11–12» (manual, fim 12)
+     * continua a ler-se assim, mas o fim já não ocupa números: a livre seguinte
+     * é a 12, e a linha legada não é reescrita.
+     */
     #[Test]
-    public function a_manual_range_makes_the_next_lesson_start_after_its_end(): void
+    public function a_legacy_manual_range_does_not_push_the_next_lesson_past_its_number(): void
     {
         $this->queue([['manual', 11, 12], 'free']);
 
         $this->derive();
 
-        $this->assertNumbers([11, 13]);
+        $this->assertNumbers([11, 12]);
+        $this->assertSame(12, $this->queue[0]->fresh()?->lesson_number_end);
         $this->assertSame('11–12', $this->queue[0]->fresh()?->lessonNumberLabel());
+    }
+
+    /** O mesmo para o histórico lecionado: a lecionada 12 com fim legado 13 não reserva a 13. */
+    #[Test]
+    public function a_taught_lesson_with_a_legacy_end_does_not_reserve_the_next_number(): void
+    {
+        $this->queue([['taught', 12, 13], 'free']);
+
+        $this->derive();
+
+        $this->assertNumbers([12, 13]);
+        // A lecionada não é escrita.
+        $taught = $this->queue[0]->fresh();
+        $this->assertSame([12, 13], [$taught?->lesson_number, $taught?->lesson_number_end]);
     }
 
     #[Test]
@@ -265,7 +285,7 @@ class LessonNumberDerivationTest extends TestCase
             $attributes = ['starts_at' => $day.' 09:30:00', 'ends_at' => $day.' 10:20:00'];
 
             $attributes += match ($kind) {
-                'taught' => ['status' => LessonStatus::Taught, 'lesson_number' => $number],
+                'taught' => ['status' => LessonStatus::Taught, 'lesson_number' => $number, 'lesson_number_end' => $end],
                 'manual' => ['lesson_number' => $number, 'lesson_number_end' => $end, 'lesson_number_manual' => true],
                 'stored' => ['lesson_number' => $number],
                 default => [],
