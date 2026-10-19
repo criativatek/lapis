@@ -895,7 +895,8 @@ class ClassMeasuresMapTest extends TestCase
 
         $this->assertCount(1, $audit);
         $this->assertSame($this->teacher->id, $audit[0]->causer_id);
-        $this->assertSame(
+        // Without depending on key order: MySQL returns a JSON column's keys reordered.
+        $this->assertSameJsonPayload(
             ['format' => 'pdf', 'columns' => ['implemented', 'planned'], 'students_with_measures' => 2, 'implemented' => 1, 'planned' => 1],
             $audit[0]->properties,
         );
