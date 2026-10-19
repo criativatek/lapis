@@ -25,6 +25,81 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.173.0] — 2026-10-19
+
+> **Mapa de Medidas Educativas.** Em Relatórios, um bloco novo — «Documentos da
+> turma» — abre um mapa factual, por turma, dos alunos com medidas registadas
+> em Estratégias e Medidas, separadas entre **Implementadas** e **A
+> implementar**. Pré-visualização, impressão e PDF da mesma estrutura. É gerado
+> na hora e não fica guardado: não é um relatório finalizado. Base. Sem
+> migrations; o backup não muda.
+
+### Adicionado
+
+- **O mapa.** `reports/turma/mapa-de-medidas` (escolher a turma) e
+  `reports/turma/{turma}/mapa-de-medidas` (+ `/pdf`). Cada aluno ativo com pelo
+  menos uma medida aparece uma vez, pela ordem do número na turma, com as
+  colunas «Implementadas» e «A implementar»; «—» numa coluna sem medidas. No
+  topo, só contagens: alunos da turma, com medidas, implementadas, a
+  implementar (medidas distintas — uma medida de grupo conta uma vez). Caixas
+  «Implementadas» / «A implementar» para mostrar só uma das colunas. Turma sem
+  medidas: «Não existem medidas educativas registadas para os alunos desta turma
+  no contexto selecionado.»
+- **O critério é o estado real, e vai escrito no documento.** Implementadas =
+  em curso, concluídas ou suspensas (com o estado ao lado); a implementar =
+  planeadas; canceladas ficam de fora. Não há estado novo nem coluna nova: é uma
+  leitura de `InterventionStatus` (`MeasureMapColumn`, `match` exaustivo).
+- **O que conta como medida do mapa.** Só as marcadas como disponíveis para
+  relatórios — as outras são contadas numa nota, nunca listadas (só as que
+  teriam chegado a um aluno ainda na turma ou à turma inteira). Medidas de
+  toda a turma num bloco próprio, uma vez; medidas de grupo em cada aluno do
+  grupo, «em grupo»; nas medidas de suporte, o nível guardado. Designação pelo
+  rótulo estampado (`typeLabel()`) — só nomes do catálogo, nunca texto escrito
+  pelo professor: «Outro» sai «Outra medida» e uma linha sem tipo «Medida sem
+  tipo registado», nunca a estratégia livre nem o título de preenchimento de
+  uma importação antiga.
+- **PDF A4** pelo motor dos relatórios (dompdf), com o mesmo timbre e «Página N
+  / T»; tabela Aluno | Implementadas | A implementar com o cabeçalho repetido e
+  sem partir a linha de um aluno. A exportação fica registada na auditoria
+  (`reports.measures_map.exported`), só com contagens.
+- **Centro de Ajuda:** «Mapa de Medidas Educativas» (`reports.measures-map`).
+- `docs/reports-class-documents.md`: a família «documentos da turma», o
+  critério, as decisões e as propostas para a revisão da Matriz V3.
+
+### Alterado
+
+- **Um só núcleo de PDF.** O dompdf (isolamento, fonte, paginação) passou de
+  `PdfRenderer` para `App\Services\Documents\Pdf\DompdfPrinter`, com
+  `PaperOrientation` (retrato/paisagem); o timbre e o rodapé passaram a partials
+  (`documents/partials/letterhead*`) que o relatório e o mapa partilham. O PDF
+  dos relatórios é o mesmo (HTML idêntico).
+- Na pré-visualização, `PrintableDocument.vue` é o gancho de impressão comum,
+  com o `@page` a seguir a orientação. A folha fica no fluxo e pagina como um
+  documento (uma turma inteira em várias páginas, cabeçalho da tabela repetido);
+  as regras de impressão só valem numa página que tenha a folha, para não
+  apagarem a impressão de outras páginas.
+
+### Privacidade e acesso
+
+- Do aluno, só número e nome — sem data de nascimento, n.º de processo,
+  fotografia, ids. Das medidas, sem descrição, motivo, objetivo, notas,
+  eficácia, datas, domínio nem autor. Os nomes só são desencriptados para quem
+  aparece. Nenhuma IA é chamada.
+- `module:reports` **e** `module:interventions` (ambos Base);
+  `SchoolClassPolicy::view` — um colega que não leciona a turma recebe 403, uma
+  turma de outra organização 404. Cada medida pertence à sua turma: um aluno
+  inscrito em duas turmas nunca mistura as medidas de uma no mapa da outra.
+
+### Testes
+
+- PHPUnit: `ClassMeasuresMapTest` (47 — seleção, colunas, filtros, contagens,
+  grupo/turma inteira/aluno que saiu, aluno em duas turmas, isolamento,
+  autorização, entitlements, payload mínimo, PDF = mesma estrutura + auditoria,
+  histórico intacto, linhas legadas, nenhum texto livre do professor no ecrã
+  nem no PDF, número de consultas constante, sem rede),
+  `MeasureMapColumnTest`, `DompdfPrinterTest` (retrato e paisagem).
+- Vitest: `MeasuresMap`, `PrintableDocument` e `reports/Index`.
+
 ## [0.172.0] — 2026-10-19
 
 > **Uma aula, um número de lição.** Desaparece a caixa «Esta aula corresponde a

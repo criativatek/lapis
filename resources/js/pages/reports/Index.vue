@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ChevronRight, FileText, LayoutTemplate, Plus } from '@lucide/vue';
+import { ChevronRight, ClipboardList, FileText, LayoutTemplate, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -34,6 +34,7 @@ const props = defineProps<{
     availableTypes: Option[];
     statuses: Option[];
     classes: ClassRow[];
+    canOpenMeasuresMap: boolean;
 }>();
 
 const type = ref(props.filters.type ?? '');
@@ -102,6 +103,36 @@ function formatDate(value: string): string {
             </span>
             <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
         </Link>
+
+        <!-- Documentos de turma «imprimir agora»: gerados na hora a partir do que
+             está registado, nunca guardados como relatório. Por isso vivem aqui
+             ao lado dos relatórios, mas numa secção própria — não aparecem na
+             lista abaixo. -->
+        <section v-if="canOpenMeasuresMap" class="space-y-2">
+            <div>
+                <h2 class="text-base font-medium">Documentos da turma</h2>
+                <p class="text-sm text-muted-foreground">
+                    Gerados na hora, a partir do que está registado. Pode imprimi-los ou guardá-los em PDF; não ficam
+                    guardados como relatórios.
+                </p>
+            </div>
+
+            <Link
+                href="/reports/turma/mapa-de-medidas"
+                class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 hover:bg-muted/30"
+            >
+                <span class="flex items-center gap-3">
+                    <ClipboardList class="size-5 shrink-0 text-muted-foreground" />
+                    <span>
+                        <span class="block font-medium">Mapa de Medidas Educativas</span>
+                        <span class="block text-sm text-muted-foreground">
+                            Os alunos de uma turma com medidas registadas — implementadas e a implementar.
+                        </span>
+                    </span>
+                </span>
+                <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+        </section>
 
         <!-- A pauta já NÃO vive aqui. Foi absorvida pela Pauta de Avaliação, no
              menu Avaliação, que mostra a mesma coisa e mais: por domínio, com o

@@ -70,6 +70,7 @@ use App\Http\Controllers\PublicSelfAssessmentController;
 use App\Http\Controllers\PublicSupportController;
 use App\Http\Controllers\RecordConsultationController;
 use App\Http\Controllers\Records\IncidentDescriptionRewriteController;
+use App\Http\Controllers\Reports\ClassMeasuresMapController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportExportController;
 use App\Http\Controllers\Reports\ReportRewriteController;
@@ -977,6 +978,17 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('reports/novo', [ReportController::class, 'create'])->name('reports.create');
         Route::post('reports', [ReportController::class, 'store'])->name('reports.store');
         Route::get('reports/contexto/{class}', [ReportController::class, 'context'])->name('reports.context');
+
+        // Documentos da turma: gerados na hora a partir dos registos, NÃO um
+        // relatório persistido (sem linha em `reports`, sem rascunho, sem
+        // cópia guardada). `module:interventions` porque lê Estratégias e
+        // Medidas — ambos os módulos estão no plano Base. Antes de
+        // `reports/{report}`, ou «turma» seria apanhado como ulid inválido.
+        Route::middleware('module:interventions')->group(function () {
+            Route::get('reports/turma/mapa-de-medidas', [ClassMeasuresMapController::class, 'index'])->name('reports.measures-map.index');
+            Route::get('reports/turma/{class}/mapa-de-medidas', [ClassMeasuresMapController::class, 'show'])->name('reports.measures-map.show');
+            Route::get('reports/turma/{class}/mapa-de-medidas/pdf', [ClassMeasuresMapController::class, 'pdf'])->name('reports.measures-map.pdf');
+        });
 
         // Modelos (§25). Declared before `reports/{report}`, or «modelos» would
         // be swallowed as an (invalid) report ulid.

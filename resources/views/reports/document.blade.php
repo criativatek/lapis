@@ -11,7 +11,7 @@
     implement — its own user stylesheet gives it a `page` counter and there is
     no `pages` counter anywhere in the engine, so «1 / 0» was never a layout
     bug: it was a total that did not exist. The footer's page label is drawn by
-    PdfRenderer after the render, which is the first moment the page count is a
+    DompdfPrinter after the render, which is the first moment the page count is a
     real number (§49).
 
     KEEPING THINGS TOGETHER IS THE POINT OF THE BREAK RULES. The letterhead
@@ -25,60 +25,7 @@
     <meta charset="utf-8">
     <title>{{ $document['title'] }}</title>
     <style>
-        /* Room for a four-line letterhead above and one footer line below,
-           with enough clearance that neither can meet the text. The top grew
-           from 30mm after SUP-DTQLDG: the timbre and the body need daylight
-           between them, on every page. */
-        @page {
-            margin: 36mm 20mm 24mm 20mm;
-        }
-
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            font-size: 10pt;
-            line-height: 1.55;
-            color: #1a1a1a;
-        }
-
-        /* Repeated on every page: fixed blocks live outside the flow in
-           dompdf and are painted once per page. */
-        #letterhead {
-            position: fixed;
-            top: -26mm;
-            left: 0;
-            right: 0;
-            height: 20mm;
-            /* A régua fina fecha o timbre — papel timbrado, não um
-               parágrafo perdido no topo. */
-            border-bottom: 0.4pt solid #ccc;
-        }
-
-        #letterhead td {
-            vertical-align: top;
-            font-size: 7.5pt;
-            line-height: 1.35;
-            color: #666;
-        }
-
-        /* Smaller than the report's own title: the school identifies the
-           document, it is not what the document is called (§50). */
-        #letterhead .school {
-            font-size: 9pt;
-            font-weight: bold;
-            color: #333;
-            padding-bottom: 0.6mm;
-        }
-
-        #footer {
-            position: fixed;
-            bottom: -16mm;
-            left: 0;
-            right: 0;
-            font-size: 7.5pt;
-            color: #666;
-            border-top: 0.4pt solid #ccc;
-            padding-top: 2.5mm;
-        }
+        @include('documents.partials.letterhead-styles')
 
         /* Em serifa: é um documento. DejaVu Serif embarca no dompdf tal
            como a Sans, por isso rende igual em qualquer instalação. */
@@ -212,35 +159,7 @@
 </head>
 <body>
 
-<div id="letterhead">
-    <table style="width: 100%; border-collapse: collapse;">
-        <tr>
-            {{-- Only when the report asked for one. No logo means no column,
-                 so nothing reserves space for an image that is not there. --}}
-            @if ($document['identity']['logo'])
-                <td style="width: 16mm;">
-                    <img
-                        src="data:{{ $document['identity']['logo']['mime'] }};base64,{{ base64_encode($document['identity']['logo']['data']) }}"
-                        style="height: 12mm;"
-                        alt=""
-                    >
-                </td>
-            @endif
-            <td>
-                <div class="school">{{ $document['identity']['name'] }}</div>
-                @foreach ($document['identity']['header_lines'] as $line)
-                    <div>{{ $line }}</div>
-                @endforeach
-            </td>
-        </tr>
-    </table>
-</div>
-
-{{-- The note only. «Página N / T» is drawn by the renderer, which is the only
-     thing that knows T. --}}
-<div id="footer">
-    {{ $document['identity']['footer_note'] ?? $document['identity']['name'] }}
-</div>
+@include('documents.partials.letterhead', ['identity' => $document['identity']])
 
 <h1>{{ $document['title'] }}</h1>
 @if ($document['subtitle'] !== '')
