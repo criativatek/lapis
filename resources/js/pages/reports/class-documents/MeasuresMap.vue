@@ -244,7 +244,10 @@ function studentHeading(student: StudentRow): string {
                 Escolha uma turma para gerar o mapa.
             </p>
 
-            <PrintableDocument v-else-if="document">
+            <PrintableDocument
+                v-else-if="document"
+                class="mx-auto w-full max-w-[46rem] rounded-lg border border-border bg-card p-6 sm:p-10"
+            >
                 <!-- The school's «not configured» note is advice to the teacher,
                      not part of the document. -->
                 <div class="print:[&>p]:hidden">

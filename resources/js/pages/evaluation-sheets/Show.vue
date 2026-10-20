@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import EvaluationSheetDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDecisionDialog.vue';
 import EvaluationSheetDomainDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDomainDecisionDialog.vue';
@@ -603,7 +604,7 @@ function submitSave(): void {
         />
 
         <!-- O que vai para o papel, e só isto. -->
-        <div class="pauta-print space-y-3">
+        <PrintableDocument orientation="landscape" compact class="pauta-print space-y-3">
             <!-- O cabeçalho que a folha impressa precisa e o ecrã já mostra
                  noutro sítio: turma, disciplina, o período com a sua
                  terminologia própria («Semestre», «Período»…) — nunca uma
@@ -676,7 +677,7 @@ function submitSave(): void {
                     {{ schoolClass.scale_name }}</template>. É informação de apoio: não entra em cálculo nenhum e
                 nunca determina a classificação.
             </p>
-        </div>
+        </PrintableDocument>
 
         <!-- Fora da folha impressa e fora da grelha: um diálogo é trabalho, não
              parte da pauta. Abre pela ação da coluna final e escreve pelo
@@ -709,20 +710,9 @@ function submitSave(): void {
 
 <style>
 /* Imprimir SÓ a pauta, a partir deste mesmo ecrã — sem página paralela (§5).
-   O truque da visibilidade não depende do markup do layout da aplicação, que
-   não é deste ecrã e pode mudar sem aviso. */
+   O isolamento da folha, o `@page` (A4 paisagem, margem de 10 mm) e a
+   visibilidade são do PrintableDocument; aqui fica o que é próprio da pauta. */
 @media print {
-    body * {
-        visibility: hidden;
-    }
-    .pauta-print,
-    .pauta-print * {
-        visibility: visible;
-    }
-    .pauta-print {
-        position: absolute;
-        inset: 0;
-    }
     /* Nada de controlos no papel: toggles, botões, seletor de período e links
        não se carregam numa folha impressa. */
     .print-hide {
@@ -761,12 +751,9 @@ function submitSave(): void {
        larga do que o contentor de propósito e quem lê arrasta-a de lado; numa
        folha, essa mesma largura corta a última coluna — que é justamente o
        «Nível atribuído», a decisão do professor. Landscape porque uma pauta com
-       vários domínios é larga por natureza, e `width: 100%` com quebra de linha
-       permitida para as colunas se ajustarem à folha em vez de saírem dela. */
-    @page {
-        size: A4 landscape;
-        margin: 10mm;
-    }
+       vários domínios é larga por natureza (o PrintableDocument põe a folha em
+       paisagem), e `width: 100%` com quebra de linha permitida para as colunas
+       se ajustarem à folha em vez de saírem dela. */
     .pauta-print .evaluation-sheet-grid table {
         width: 100% !important;
         min-width: 0 !important;

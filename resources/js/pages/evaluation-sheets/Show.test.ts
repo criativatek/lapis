@@ -524,6 +524,17 @@ describe('evaluation-sheets/Show — imprimir e exportar', () => {
         expect(wrapper.find('table').element.closest('.pauta-print')).not.toBeNull();
     });
 
+    it('puts the grid inside the shared print hook, landscape and compact', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const sheet = wrapper.find('table').element.closest('.document-print');
+
+        expect(sheet).not.toBeNull();
+        expect(sheet!.getAttribute('data-orientation')).toBe('landscape');
+        expect(sheet!.getAttribute('data-compact')).toBe('true');
+        expect(sheet!.classList.contains('pauta-print')).toBe(true);
+    });
+
     it('the printed header names the class, the subject and the period in its own terminology', () => {
         const wrapper = mount(Show, { props: baseProps() });
 

@@ -1,25 +1,51 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, watch } from 'vue';
 
 /**
- * O gancho de impressão dos documentos «imprimir agora» de uma turma.
+ * O gancho de impressão dos documentos «imprimir agora» (mapa de medidas,
+ * relatório, pauta).
  *
  * UMA INFRAESTRUTURA DE IMPRESSÃO, não uma por documento. O que se imprime é a
- * pré-visualização que o professor tem à frente (a mesma ideia de `.report-print`
- * em reports/Show.vue): uma vista só para o papel seria uma segunda composição a
- * manter em dia com a do ecrã. Os documentos seguintes (grelhas em paisagem)
- * reutilizam este componente e só mudam a orientação.
+ * pré-visualização que o professor tem à frente: uma vista só para o papel seria
+ * uma segunda composição a manter em dia com a do ecrã.
+ *
+ * SEM ASPETO NO ECRÃ. O componente só marca a folha e trata do papel; cartão,
+ * padding e largura vêm da `class` que cada página passa (o Vue junta-a à do
+ * root). Assim o relatório, o mapa e a pauta mantêm cada um o seu aspeto e
+ * partilham o mesmo comportamento de impressão.
  *
  * O `@page` É INJETADO NO `<head>` porque um SFC não consegue fazer o tamanho da
- * página seguir uma prop: `@page` não aceita seletores nem variáveis, e um
- * `<style>` do componente ficaria fixo em retrato. O elemento sai ao desmontar,
- * para uma página em paisagem não deixar o papel de outra virado de lado.
+ * página seguir uma prop: `@page` não aceita seletores nem variáveis. Um `watch`
+ * reescreve-o quando a orientação ou a margem mudam sem o componente remontar
+ * (`router.get(..., { preserveState: true })` reaproveita a instância); só ler
+ * a prop no `onMounted` deixava o papel da página anterior. O elemento sai ao
+ * desmontar, para uma página em paisagem não deixar o papel de outra virado de
+ * lado.
+ *
+ * A VISIBILIDADE É REPOSTA. Páginas antigas usavam `body * { visibility: hidden }`
+ * e o `<style>` sem âmbito ficava carregado na SPA depois de a página sair: ao
+ * navegar do relatório para o mapa, o mapa imprimia em branco. A regra abaixo
+ * volta a mostrar a folha, com especificidade acima de `body *`.
  */
-const props = withDefaults(defineProps<{ orientation?: 'portrait' | 'landscape' }>(), {
-    orientation: 'portrait',
-});
+const props = withDefaults(
+    defineProps<{
+        orientation?: 'portrait' | 'landscape';
+        /** Margem de 10 mm (grelhas largas) em vez de 18 mm 16 mm. */
+        compact?: boolean;
+    }>(),
+    {
+        orientation: 'portrait',
+        compact: false,
+    },
+);
 
 let pageStyle: HTMLStyleElement | null = null;
+
+function pageRule(): string {
+    const margin = props.compact ? '10mm' : '18mm 16mm';
+
+    return `@page { size: A4 ${props.orientation}; margin: ${margin}; }`;
+}
 
 onMounted(() => {
     if (typeof document === 'undefined') {
@@ -28,9 +54,18 @@ onMounted(() => {
 
     pageStyle = document.createElement('style');
     pageStyle.setAttribute('data-document-print-page', '');
-    pageStyle.textContent = `@page { size: A4 ${props.orientation}; margin: 18mm 16mm; }`;
+    pageStyle.textContent = pageRule();
     document.head.appendChild(pageStyle);
 });
+
+watch(
+    () => [props.orientation, props.compact],
+    () => {
+        if (pageStyle) {
+            pageStyle.textContent = pageRule();
+        }
+    },
+);
 
 onBeforeUnmount(() => {
     pageStyle?.remove();
@@ -39,14 +74,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div
-        class="document-print rounded-lg border border-border bg-card p-6 sm:p-10"
-        :class="orientation === 'landscape' ? 'w-full' : 'mx-auto w-full max-w-[46rem]'"
-        :data-orientation="orientation"
-    >
-        <!-- `document-print` é um GANCHO DE IMPRESSÃO, não estilo: o seletor pelas
-             classes utilitárias partir-se-ia na primeira vez que alguém mudasse o
-             `max-w-[46rem]`. -->
+    <div class="document-print" :data-orientation="orientation" :data-compact="compact">
+        <!-- `document-print` é um GANCHO DE IMPRESSÃO, não estilo: o aspeto no
+             ecrã vem da `class` do pai, e um seletor pelas classes utilitárias
+             partir-se-ia na primeira vez que alguém as mudasse. -->
         <slot />
     </div>
 </template>
@@ -84,8 +115,16 @@ onBeforeUnmount(() => {
         background: transparent !important;
         box-shadow: none !important;
     }
+    /* Cenário «relatório → mapa em branco»: um `body * { visibility: hidden }`
+       de outra página, ainda carregado na SPA, apagava esta folha. Repõe-se aqui
+       com especificidade acima de `body *`, sem `!important`. */
+    body:has(.document-print) .document-print,
+    body:has(.document-print) .document-print * {
+        visibility: visible;
+    }
     body:has(.document-print) .document-print {
         position: static;
+        overflow: visible !important;
         /* No papel não há cartão: o que fica é o documento. */
         border: 0 !important;
         border-radius: 0 !important;

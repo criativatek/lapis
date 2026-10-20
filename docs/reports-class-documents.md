@@ -61,10 +61,20 @@ grelhas seguintes vão precisar.
   impressão de outras páginas (um `<style>` de componente fica carregado depois
   de a página sair).
 
-  *Dívida encontrada, fora desta fatia:* «Imprimir» em `reports/Show.vue`
-  imprime só a primeira página de um relatório longo (verificado na 0.172.0: o
-  fim do texto e a assinatura não saem); a Pauta usa o mesmo padrão. O PDF do
-  servidor não tem o problema. Corrigir é trocar o gancho deles por este.
+  *Resolvido na 0.173.1:* «Imprimir» em `reports/Show.vue` imprimia só a
+  primeira página de um relatório longo e a Pauta usava o mesmo padrão. Ambas
+  passaram a usar este componente (a Pauta com `orientation="landscape"
+  compact`), sem as regras `body *`/`inset: 0`/`@page` próprias; o componente
+  repõe a visibilidade da folha e reescreve o `@page` quando a orientação muda.
+  `resources/js/lib/printStyles.test.ts` impede o regresso (nenhum destes
+  ficheiros pode voltar a ter `body *` solto, `position: absolute`/`inset: 0`
+  em `@media print` nem `@page` estático). O PDF do servidor não tinha o
+  problema.
+- **`LetterheadLayout`** (`Standard`, `Compact`) — as medidas do timbre (margem
+  da página, faixa do timbre, rodapé, posição de «Página N / T»), lidas pelo
+  parcial Blade e pelo `DompdfPrinter`. `Standard` é o que todos os documentos
+  usam; `Compact` (margem 26/14/16/14 mm) existe para grelhas largas em
+  paisagem e ainda não é usado por nenhum documento.
 
 O que **não** se criou: um motor genérico de «documentos», um modelo de snapshot
 novo, um tipo de relatório novo, gráficos. Ficam para quando houver uso.
