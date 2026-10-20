@@ -40,6 +40,7 @@ use App\Services\Reporting\ReportListing;
 use App\Services\Reporting\Templates\TemplateResolver;
 use App\Services\Reporting\Writing\ReportWritingAssistant;
 use App\Services\Reporting\Writing\WritingMode;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use App\Support\Usage\UsageSnapshots;
@@ -84,7 +85,7 @@ class ReportController extends Controller
         protected AuditLog $audit,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request, Entitlements $entitlements): Response
     {
         Gate::authorize('viewAny', Report::class);
 
@@ -108,6 +109,9 @@ class ReportController extends Controller
             ),
             'statuses' => ReportListing::statusOptions(),
             'classes' => $this->teachingClasses(),
+            // The «Documentos da turma» card. The map reads Estratégias e
+            // Medidas, so it is offered only where that module is.
+            'canOpenMeasuresMap' => $entitlements->allows('interventions'),
         ]);
     }
 
