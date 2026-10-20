@@ -45,6 +45,7 @@ use App\Http\Controllers\InovarExportController;
 use App\Http\Controllers\InstitutionAdminController;
 use App\Http\Controllers\InstitutionAiController;
 use App\Http\Controllers\InstrumentController;
+use App\Http\Controllers\InstrumentGridDocumentController;
 use App\Http\Controllers\InstrumentResultsController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
@@ -729,6 +730,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('instruments/{instrument}/resultados', [InstrumentResultsController::class, 'show'])->name('instruments.results');
         Route::get('instruments/{instrument}/resultados/relatorio', [InstrumentResultsController::class, 'report'])->name('instruments.results.report');
         Route::put('instruments/{instrument}/resultados/observacoes', [InstrumentResultsController::class, 'updateNote'])->name('instruments.results.note');
+        // The grid of the instrument as a document to print — made when asked for,
+        // never stored. `/impressao`, NOT `/grelha`: that one is the spreadsheet a
+        // teacher fills in offline, and the two must not be mistaken for each other.
+        Route::get('instruments/{instrument}/impressao', [InstrumentGridDocumentController::class, 'show'])->name('instruments.grid-document');
         // The grid a teacher fills in offline and brings back. Deliberately on
         // the instrument: it is generated FROM one, and there is nothing to ask
         // when the answer is the evaluation already on screen (§11).

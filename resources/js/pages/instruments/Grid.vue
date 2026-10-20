@@ -950,6 +950,16 @@ function revertCancellation(): void {
                     >
                         Resultados
                     </Link>
+                    <!-- The grid as a document to print: not the spreadsheet below
+                         («Descarregar grelha»), which is the one filled in offline.
+                         An annulled instrument has no grid to print. -->
+                    <Link
+                        v-if="!isCancelled"
+                        :href="`/instruments/${instrument.ulid}/impressao`"
+                        class="ml-auto px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                        Imprimir / PDF
+                    </Link>
                 </nav>
             </div>
             <div v-if="!isCancelled" class="flex flex-wrap items-center justify-end gap-3">
