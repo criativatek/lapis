@@ -625,7 +625,10 @@ class InstrumentGridTest extends TestCase
     #[Test]
     public function an_instrument_without_named_groups_has_no_group_header(): void
     {
-        $this->assertNull($this->grid($this->teste1())['blocks'][0]['group_spans']);
+        $grid = $this->grid($this->teste1());
+
+        $this->assertNull($grid['blocks'][0]['group_spans']);
+        $this->assertNull($grid['blocks'][0]['caption'], 'a single block needs no «Parte 1 de 1»');
     }
 
     #[Test]
@@ -648,6 +651,7 @@ class InstrumentGridTest extends TestCase
         $this->assertSame('landscape', $grid['orientation']);
         $this->assertCount(3, $grid['blocks']);
         $this->assertSame(3, $grid['summary']['blocks']);
+        $this->assertSame(['Parte 1 de 3', 'Parte 2 de 3', 'Parte 3 de 3'], array_column($grid['blocks'], 'caption'));
 
         $codes = [];
         foreach ($grid['blocks'] as $index => $block) {

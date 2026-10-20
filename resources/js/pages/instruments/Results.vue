@@ -254,6 +254,14 @@ const noteUpdatedLabel = computed(() => {
             <span class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground" aria-current="page">
                 Resultados
             </span>
+            <!-- The grid as a document to print. An annulled instrument has none. -->
+            <Link
+                v-if="context.instrument.status !== 'cancelled'"
+                :href="`/instruments/${context.instrument.ulid}/impressao`"
+                class="ml-auto px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+                Imprimir / PDF
+            </Link>
         </nav>
 
         <!-- Estado não oficial: nada de indicadores, gráficos, tabelas ou números -->

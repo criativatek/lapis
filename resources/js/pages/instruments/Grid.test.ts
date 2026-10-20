@@ -298,6 +298,25 @@ describe('instruments/Grid — coerência dos resultados com o motor', () => {
     });
 });
 
+describe('instruments/Grid — «Imprimir / PDF»', () => {
+    const printLink = (wrapper: VueWrapper) => wrapper.findAll('a').find((anchor) => anchor.text() === 'Imprimir / PDF');
+
+    it('leva à grelha imprimível do elemento, que não é a folha de cálculo para preencher offline', () => {
+        const wrapper = mount(Grid, { props: props() });
+
+        expect(printLink(wrapper)?.attributes('href')).toBe('/instruments/instrument-a/impressao');
+        // «Descarregar grelha» é outra coisa e continua a apontar para o ficheiro.
+        const download = wrapper.findAll('a').find((anchor) => anchor.text() === 'Descarregar grelha');
+        expect(download?.attributes('href')).toBe('/instruments/instrument-a/grelha');
+    });
+
+    it('não oferece a impressão de um elemento anulado, que não tem grelha para imprimir', () => {
+        const wrapper = mount(Grid, { props: props({ status: 'cancelled', status_label: 'Anulado' }) });
+
+        expect(printLink(wrapper)).toBeUndefined();
+    });
+});
+
 describe('instruments/Grid — correção concluída', () => {
     it('mostra a grelha em modo de consulta: pontos readonly, estado disabled, aviso presente', () => {
         const wrapper = mount(Grid, {

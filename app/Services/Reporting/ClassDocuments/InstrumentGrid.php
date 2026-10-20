@@ -459,7 +459,7 @@ class InstrumentGrid
         $itemCount = count($itemColumns);
         $blocks = [];
 
-        foreach ($plan as $block) {
+        foreach ($plan as $index => $block) {
             // Positions in the flat order «questions, then summary».
             $positions = array_merge($block['items'], array_map(fn (int $index): int => $itemCount + $index, $block['summary']));
 
@@ -471,6 +471,10 @@ class InstrumentGrid
             );
 
             $blocks[] = [
+                // «Parte 2 de 3» — only when the columns did not fit one block.
+                'caption' => count($plan) > 1
+                    ? __('Parte :part de :total', ['part' => $index + 1, 'total' => count($plan)])
+                    : null,
                 'columns' => $columns,
                 'group_spans' => $namedGroups ? $this->groupSpans($positions, $itemColumns, $groupIds) : null,
                 'rows' => array_map(fn (array $row): array => [

@@ -143,6 +143,29 @@ describe('Results.vue', () => {
         expect(positions).toEqual([...positions].sort((a, b) => a - b));
     });
 
+    it('oferece «Imprimir / PDF» para a grelha imprimível, com ou sem resultados oficiais, e não num anulado', () => {
+        const link = (wrapper: ReturnType<typeof mount>) => wrapper.findAll('a').find((anchor) => anchor.text() === 'Imprimir / PDF');
+
+        const official = mount(Results, { props: baseProps() });
+        expect(link(official)?.attributes('href')).toBe('/instruments/instrument-a/impressao');
+
+        const provisional = mount(Results, {
+            props: baseProps({
+                availability: { official: false, status: 'under_correction', status_label: 'Em correção', message: 'A correção ainda não está concluída.' },
+                dimensions: [],
+                students: [],
+                report: null,
+            }),
+        });
+        expect(link(provisional)?.attributes('href')).toBe('/instruments/instrument-a/impressao');
+
+        const base = baseProps();
+        const cancelled = mount(Results, {
+            props: baseProps({ context: { ...base.context, instrument: { ...base.context.instrument, status: 'cancelled' } } }),
+        });
+        expect(link(cancelled)).toBeUndefined();
+    });
+
     it('muda a média mostrada ao trocar de dimensão', async () => {
         const wrapper = mount(Results, { props: baseProps() });
 
