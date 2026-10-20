@@ -100,7 +100,20 @@ class BuildResultsAnalysis
      */
     public function officialCells(Instrument $instrument): array
     {
-        $context = new InstrumentResultsContext($instrument);
+        return $this->officialCellsFor(new InstrumentResultsContext($instrument));
+    }
+
+    /**
+     * `officialCells()` over a context the caller already holds — for a reader
+     * that needs the cells AND the context's other answers (notes, absence rule,
+     * touched domains) and must not pay for the cohort's calculation twice.
+     * Same code path, same cells: `officialCells()` is this with a fresh context.
+     *
+     * @return array{domains: list<array{key: string, id: int, name: string}>, students: array<int, array<string, mixed>>}
+     */
+    public function officialCellsFor(InstrumentResultsContext $context): array
+    {
+        $instrument = $context->instrument();
         $bands = $context->bands();
         $threshold = $context->threshold();
         $dimensions = $context->dimensions();

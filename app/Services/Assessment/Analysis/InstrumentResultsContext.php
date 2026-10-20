@@ -18,7 +18,7 @@ use App\Services\Assessment\InstrumentEligibility;
 
 /**
  * Context A (design spec §2/§4): one instrument's results, read entirely
- * through `ClassResultsCalculator::forInstruments()` — the same engine and
+ * through `ClassResultsCalculator::forInstrumentCohort()` — the same engine and
  * the same frozen profile rules Evolução do Aluno and the accumulated
  * breakdown already use (NOT the grid, whose Total is a client-side points
  * indicator — spec §8 Q2). This class never sums a point or weighs a domain; it only reads
@@ -219,9 +219,12 @@ class InstrumentResultsContext implements ResultsContext
             ];
         }
 
-        $calculator = app(ClassResultsCalculator::class);
         $enrollments = ClassCohort::enrollmentsFor($class)->values();
         $touchedDomains = $this->touchedDomains();
+
+        // The whole cohort in one pass: the per-student loader paid about four
+        // queries for each of them.
+        $outcomes = app(ClassResultsCalculator::class)->forInstrumentCohort($class, $this->instrument, $enrollments);
 
         $globalObservations = [];
         $domainObservations = [];
@@ -230,9 +233,7 @@ class InstrumentResultsContext implements ResultsContext
         }
 
         foreach ($enrollments as $enrollment) {
-            /** @var array<int, CalculationOutcome> $outcomes */
-            $outcomes = $calculator->forInstruments($class, $enrollment, collect([$this->instrument]));
-            $outcome = $outcomes[(int) $this->instrument->getKey()] ?? null;
+            $outcome = $outcomes[(int) $enrollment->getKey()] ?? null;
 
             if ($outcome === null) {
                 continue;
