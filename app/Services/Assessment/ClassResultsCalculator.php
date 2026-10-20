@@ -149,6 +149,54 @@ class ClassResultsCalculator
     }
 
     /**
+     * One instrument's result for EVERY given enrollment, in one pass.
+     *
+     * THE SAME ENGINE, THE SAME RULES, THE SAME INPUTS as `forInstruments()` —
+     * `calculationConfiguration()` and `scoreInputsFor()` are the very methods it
+     * calls — only the loading changes: the profile's weights and scale bands, the
+     * instrument's scores and the non-attendance windows are read ONCE for the
+     * class instead of once per student. Asking `forInstruments()` for each of
+     * thirty students cost about four queries each; this costs the same four for
+     * the whole class, which is what a document that reads a full cohort needs.
+     * `ClassResultsCalculatorTest` holds the two to the same outcome, student by
+     * student.
+     *
+     * @param  Collection<int, Enrollment>  $enrollments
+     * @return array<int, CalculationOutcome> keyed by enrollment id; empty without a profile
+     */
+    public function forInstrumentCohort(SchoolClass $class, Instrument $instrument, Collection $enrollments): array
+    {
+        $version = $class->profileVersion;
+
+        if ($version === null || $enrollments->isEmpty()) {
+            return [];
+        }
+
+        [$rule, $domainWeights, $scaleBands] = $this->calculationConfiguration($version);
+
+        $instrument->loadMissing('items.domainAllocations');
+
+        $enrollmentIds = $enrollments->map(fn (Enrollment $enrollment): int => (int) $enrollment->getKey());
+
+        $scores = StudentItemScore::query()
+            ->where('instrument_id', $instrument->getKey())
+            ->whereIn('enrollment_id', $enrollmentIds)
+            ->get()
+            ->keyBy(fn (StudentItemScore $score) => $score->enrollment_id.':'.$score->instrument_item_id);
+
+        $windows = ClassCohort::windowsFor($enrollmentIds);
+
+        $results = [];
+
+        foreach ($enrollments as $enrollment) {
+            $inputs = $this->scoreInputsFor($enrollment, collect([$instrument]), $scores, $windows);
+            $results[(int) $enrollment->getKey()] = $this->engine->calculate($inputs, $domainWeights, $rule, $scaleBands);
+        }
+
+        return $results;
+    }
+
+    /**
      * @return array{0: CalculationRule, 1: array<int, string>, 2: list<ScaleBand>}
      */
     protected function calculationConfiguration(AssessmentProfileVersion $version): array
