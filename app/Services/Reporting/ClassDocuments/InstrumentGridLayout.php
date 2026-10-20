@@ -59,7 +59,7 @@ final class InstrumentGridLayout
 
     public const LEVEL_WIDTH = 18.0;
 
-    public const DOMAIN_WIDTH = 12.0;
+    public const DOMAIN_WIDTH = 16.0;
 
     /**
      * @param  list<int|null>  $itemGroups  the group of each question, in order — an id, or null for the implicit group; only EQUALITY matters

@@ -25,6 +25,7 @@ use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\RecordScores;
+use App\Services\Documents\Pdf\LetterheadLayout;
 use App\Services\Reporting\ClassDocuments\InstrumentGrid;
 use App\Services\Reporting\ClassDocuments\InstrumentGridOptions;
 use App\Services\StudentEnrollmentService;
@@ -32,10 +33,14 @@ use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\InstrumentTypesSeeder;
 use Database\Seeders\SystemScalesSeeder;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\View;
 use PHPUnit\Framework\Attributes\Test;
+use Smalot\PdfParser\Parser;
 use Tests\TestCase;
 
 /**
@@ -390,6 +395,400 @@ class InstrumentGridDocumentTest extends TestCase
         $this->props();
 
         $this->assertSame($before, $scores());
+    }
+
+    // ====================================================================== PDF
+
+    private function pdfUrl(?Instrument $instrument = null, string $query = ''): string
+    {
+        return '/instruments/'.($instrument ?? $this->teste1())->ulid.'/impressao/pdf'.$query;
+    }
+
+    /** The PDF the teacher would download, as bytes. */
+    private function pdf(string $query = '', ?Instrument $instrument = null, ?User $as = null): string
+    {
+        $response = $this->actingAs($as ?? $this->teacher)->get($this->pdfUrl($instrument, $query));
+        $response->assertOk();
+
+        return (string) $response->getContent();
+    }
+
+    /**
+     * The text of each page of a PDF, in page order.
+     *
+     * @return list<string>
+     */
+    private function pages(string $bytes): array
+    {
+        return array_values(array_map(
+            fn ($page): string => preg_replace('/\s+/u', ' ', $page->getText()) ?? '',
+            (new Parser)->parseContent($bytes)->getPages(),
+        ));
+    }
+
+    private function isLandscape(string $bytes): bool
+    {
+        return (bool) preg_match('/MediaBox\s*\[[\d.]+\s+[\d.]+\s+841\.89\d*\s+595\.28\d*\]/', $bytes);
+    }
+
+    /** A grid wide and long enough to cross pages both ways: `$questions` questions, `$students` more students. */
+    private function longInstrument(int $questions, int $students, string $title = 'Longo'): Instrument
+    {
+        return $this->asTenant(function () use ($questions, $students, $title): Instrument {
+            $class = $this->teste1()->schoolClass;
+            $numeros = Domain::where('name', 'Números e Operações')->firstOrFail();
+            $geometria = Domain::where('name', 'Geometria')->firstOrFail();
+            $service = app(StudentEnrollmentService::class);
+
+            foreach (range(10, 9 + $students) as $n) {
+                $service->enrollNew($class, ['name' => "Aluno {$n}", 'class_number' => $n, 'enrolled_on' => '2026-09-14']);
+            }
+
+            $items = [];
+            foreach (range(1, $questions) as $n) {
+                $domain = $n % 2 === 0 ? $geometria : $numeros;
+                $items[] = [
+                    'group_index' => intdiv($n - 1, 14),
+                    'code' => "Q{$n}", 'label' => "Questão {$n}", 'points_possible' => 1,
+                    'domains' => [['domain_id' => $domain->id, 'allocation_percent' => 100]],
+                ];
+            }
+
+            $instrument = app(InstrumentBuilder::class)->create($class, [
+                'academic_period_id' => $this->teste1()->academic_period_id,
+                'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+                'title' => $title, 'applied_on' => '2026-10-15', 'status' => 'in_correction',
+                'counts_toward_classification' => true, 'purpose' => 'summative', 'total_points' => $questions,
+            ], $items, array_map(fn (int $g): array => ['label' => 'Grupo '.($g + 1)], range(0, intdiv($questions - 1, 14))));
+
+            $enrollments = $class->enrollments()->orderBy('class_number')->get();
+            $ids = $instrument->items()->orderBy('sequence')->pluck('id')->all();
+            $cells = [];
+
+            foreach ($enrollments as $i => $enrollment) {
+                foreach ($ids as $j => $itemId) {
+                    $cells[] = ['enrollment_id' => $enrollment->id, 'instrument_item_id' => $itemId, 'result_state' => ResultState::Assessed->value, 'points_earned' => ($i + $j) % 3 === 0 ? 0.0 : 1.0];
+                }
+            }
+            app(RecordScores::class)->save($instrument, $cells, $this->teacher);
+
+            return Instrument::findOrFail($instrument->id);
+        });
+    }
+
+    #[Test]
+    public function the_pdf_is_a_real_attachment_that_is_never_cached_and_never_named_after_a_student(): void
+    {
+        $response = $this->actingAs($this->teacher)->get($this->pdfUrl());
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', (string) $response->getContent());
+
+        $disposition = (string) $response->headers->get('Content-Disposition');
+        $this->assertStringStartsWith('attachment; filename="grelha-8o-a-teste-1-2026-10-15', $disposition);
+        $this->assertStringNotContainsString('aluno', strtolower($disposition));
+
+        $cache = (string) $response->headers->get('Cache-Control');
+        $this->assertStringContainsString('no-store', $cache);
+        $this->assertStringContainsString('private', $cache);
+    }
+
+    #[Test]
+    public function the_pdf_is_as_closed_as_the_preview(): void
+    {
+        $this->get($this->pdfUrl())->assertRedirect('/login');
+
+        $this->actingAs(User::factory()->create())->get($this->pdfUrl())->assertNotFound();
+
+        $colleague = User::factory()->create();
+        $this->organization->members()->syncWithoutDetaching([$colleague->id => ['joined_at' => now()]]);
+        $this->withSession(['organization_id' => $this->organization->id]);
+        $forbidden = $this->actingAs($colleague)->get($this->pdfUrl());
+        $forbidden->assertForbidden();
+        $this->assertStringStartsNotWith('%PDF', (string) $forbidden->getContent());
+        $this->assertStringNotContainsString('Aluno 1', (string) $forbidden->getContent());
+
+        $this->actingAs($this->teacher)->get('/instruments/01JZZZZZZZZZZZZZZZZZZZZZZZ/impressao/pdf')->assertNotFound();
+    }
+
+    #[Test]
+    public function the_pdf_follows_the_base_plan_and_a_blocked_module(): void
+    {
+        OrganizationSubscription::withoutGlobalScope('organization')->updateOrCreate(
+            ['organization_id' => $this->organization->id],
+            [
+                'plan_id' => Plan::where('key', 'base')->firstOrFail()->id,
+                'status' => SubscriptionStatus::Active,
+                'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
+                'ends_at' => null,
+            ],
+        );
+        app(Entitlements::class)->flush();
+
+        $this->actingAs($this->teacher)->get($this->pdfUrl())->assertOk();
+
+        OrganizationModuleOverride::withoutGlobalScope('organization')->create([
+            'organization_id' => $this->organization->getKey(),
+            'module_id' => Module::where('key', 'instruments')->firstOrFail()->getKey(),
+            'enabled' => false,
+            'reason' => 'Teste de override.',
+        ]);
+        app(Entitlements::class)->flush();
+
+        $this->actingAs($this->teacher)->get($this->pdfUrl())->assertForbidden();
+    }
+
+    #[Test]
+    public function a_draft_and_an_annulled_instrument_get_no_pdf_either(): void
+    {
+        $draft = $this->asTenant(fn (): Instrument => app(InstrumentBuilder::class)->create($this->teste1()->schoolClass, [
+            'academic_period_id' => $this->teste1()->academic_period_id,
+            'instrument_type_id' => InstrumentType::where('code', 'TEST')->firstOrFail()->id,
+            'title' => 'Rascunho', 'applied_on' => '2026-10-15', 'status' => 'draft',
+            'counts_toward_classification' => true, 'purpose' => 'summative', 'total_points' => 10,
+        ], [['code' => 'Q1', 'label' => 'Q1', 'points_possible' => 10]]));
+
+        $this->actingAs($this->teacher)->get($this->pdfUrl($draft))->assertRedirect(route('instruments.edit', $draft->ulid));
+
+        $this->asTenant(function (): void {
+            $this->teste1()->forceFill(['status' => 'cancelled', 'cancelled_at' => now(), 'cancellation_reason' => 'Anulado'])->save();
+        });
+
+        $this->actingAs($this->teacher)->get($this->pdfUrl())->assertRedirect(route('instruments.show', $this->teste1()->ulid));
+        $this->assertSame(0, AuditEvent::where('event', 'instruments.grid_document.exported')->count());
+    }
+
+    #[Test]
+    public function exporting_leaves_exactly_one_audit_event_with_counts_and_never_a_name_or_a_mark(): void
+    {
+        $tables = ['student_item_scores', 'classifications', 'calculation_snapshots', 'instruments', 'instrument_items', 'reports'];
+        $count = fn (): array => array_map(fn (string $table): int => DB::table($table)->count(), $tables);
+        $before = $count();
+
+        $this->pdf('?bruta=0');
+
+        $this->assertSame($before, $count(), 'nothing of the assessment is written');
+
+        $events = AuditEvent::where('event', 'instruments.grid_document.exported')->get();
+        $this->assertCount(1, $events);
+
+        $event = $events->first();
+        $this->assertSame($this->teacher->id, $event->causer_id);
+        $this->assertSame([
+            'format' => 'pdf',
+            'orientation' => 'portrait',
+            'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'orientation' => 'auto'],
+            'provisional' => true,
+            'students' => 5,
+            'excluded' => 1,
+            'questions' => 2,
+            'blocks' => 1,
+        ], collect($event->properties)->only(['format', 'orientation', 'options', 'provisional', 'students', 'excluded', 'questions', 'blocks'])->all());
+
+        $stored = json_encode([$event->summary, $event->properties], JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('Aluno', (string) $stored);
+        $this->assertStringContainsString('Teste 1', (string) $event->summary);
+    }
+
+    #[Test]
+    public function no_ai_service_is_called_for_the_pdf(): void
+    {
+        $this->mock(AiGateway::class);
+
+        $this->pdf();
+
+        $this->addToAssertionCount(1);
+    }
+
+    #[Test]
+    public function the_pdf_carries_every_cell_the_preview_carries_and_the_options_choose_the_same_columns(): void
+    {
+        $document = $this->props()['document'];
+        $pages = implode(' ', $this->pages($this->pdf()));
+
+        foreach ($document['blocks'] as $block) {
+            foreach ($block['rows'] as $row) {
+                $this->assertStringContainsString($row['name'], $pages);
+            }
+            foreach ($block['columns'] as $column) {
+                $this->assertStringContainsString($column['kind'] === 'item' ? $column['code'] : $column['label'], $pages);
+            }
+        }
+        $this->assertStringContainsString('PROVISÓRIO', $pages);
+        $this->assertStringContainsString('não é a classificação do período', $pages);
+
+        // The same options the preview takes choose the same columns on paper.
+        $without = implode(' ', $this->pages($this->pdf('?bruta=0&legenda=0&dominios=0')));
+        $this->assertStringNotContainsString('Pontuação bruta', $without);
+        $this->assertStringNotContainsString('Questões', $without);
+        $this->assertStringNotContainsString('Geometria', $without);
+        $this->assertStringContainsString('Resultado', $without);
+    }
+
+    #[Test]
+    public function the_blade_draws_exactly_the_document_it_is_given_cell_for_cell(): void
+    {
+        $instrument = $this->longInstrument(40, 8, 'Paridade');
+        $document = $this->asTenant(fn (): array => app(InstrumentGrid::class)->build(Instrument::findOrFail($instrument->id), new InstrumentGridOptions));
+        $html = View::make('instruments.grid-document', ['document' => $document, 'layout' => LetterheadLayout::Compact])->render();
+
+        $dom = new DOMDocument;
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="utf-8"?>'.$html);
+        $xpath = new DOMXPath($dom);
+        // A line break between a figure and its level is, to a reader, a space.
+        foreach (iterator_to_array($xpath->query('//br')) as $break) {
+            $break->parentNode->replaceChild($dom->createTextNode(' '), $break);
+        }
+        $clean = fn (string $text): string => trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+
+        $tables = $xpath->query('//table[contains(@class, "grid")]');
+        $this->assertSame(count($document['blocks']), $tables->length);
+
+        foreach ($document['blocks'] as $index => $block) {
+            $table = $tables->item($index);
+
+            // Captions only when there are several blocks.
+            $captions = $xpath->query('./preceding-sibling::h2', $table);
+            $this->assertSame($block['caption'], $captions->length > 0 ? $clean($captions->item($captions->length - 1)->textContent) : null);
+
+            // Header: Nº, Nome, then each column's header.
+            $headers = [];
+            foreach ($xpath->query('./thead/tr[not(@class)]/th', $table) as $th) {
+                $headers[] = $clean($th->textContent);
+            }
+            $expectedHeaders = ['Nº', 'Nome', ...array_map(fn (array $column): string => $column['kind'] === 'item' ? $column['code'] : $column['label'], $block['columns'])];
+            $this->assertSame($expectedHeaders, $headers, "block {$index}");
+
+            // The group line: the labels, in order, with their spans.
+            $spans = [];
+            foreach ($xpath->query('./thead/tr[contains(@class, "groups")]/th[position() > 1]', $table) as $th) {
+                $spans[] = ['label' => $clean($th->textContent) ?: null, 'span' => (int) $th->getAttribute('colspan')];
+            }
+            $this->assertSame($block['group_spans'] ?? [], $spans, "block {$index}");
+
+            // Every row, every cell, in order.
+            $rows = [];
+            foreach ($xpath->query('./tbody/tr', $table) as $tr) {
+                $cells = [];
+                foreach ($xpath->query('./td', $tr) as $td) {
+                    $cells[] = $clean($td->textContent);
+                }
+                $rows[] = $cells;
+            }
+            $expectedRows = array_map(fn (array $row): array => [
+                $row['number'], $row['name'],
+                ...array_map(fn (array $cell): string => $clean($cell['text'].($cell['detail'] !== null ? ' '.$cell['detail'] : '')), $row['cells']),
+            ], $block['rows']);
+            $this->assertSame($expectedRows, $rows, "block {$index}");
+        }
+
+        // The legend, the notes, the notice: all of it, as composed.
+        $text = $clean($dom->textContent);
+        foreach ($document['legend']['questions'] as $question) {
+            $this->assertStringContainsString($question['label'], $text);
+        }
+        foreach ($document['notes'] as $note) {
+            $this->assertStringContainsString($clean($note), $text);
+        }
+        $this->assertStringContainsString($document['notice'], $text);
+    }
+
+    #[Test]
+    public function the_provisional_stamp_is_drawn_for_a_provisional_grid_and_for_no_other(): void
+    {
+        $provisional = $this->asTenant(fn (): array => app(InstrumentGrid::class)->build(Instrument::findOrFail($this->teste1()->id), new InstrumentGridOptions));
+        $html = View::make('instruments.grid-document', ['document' => $provisional, 'layout' => LetterheadLayout::Standard])->render();
+        $this->assertStringContainsString('id="provisional"', $html);
+
+        $concluded = $provisional;
+        $concluded['state'] = ['is_provisional' => false, 'label' => 'Correção concluída'];
+        $html = View::make('instruments.grid-document', ['document' => $concluded, 'layout' => LetterheadLayout::Standard])->render();
+        $this->assertStringNotContainsString('id="provisional"', $html);
+    }
+
+    #[Test]
+    public function a_short_grid_is_a_portrait_page_and_the_orientation_option_is_respected(): void
+    {
+        $this->assertFalse($this->isLandscape($this->pdf()));
+        $this->assertTrue($this->isLandscape($this->pdf('?orientacao=horizontal')));
+        $this->assertFalse($this->isLandscape($this->pdf('?orientacao=vertical')));
+    }
+
+    #[Test]
+    public function an_extensive_grid_is_landscape_multipage_and_loses_no_question_no_student_and_no_column(): void
+    {
+        $instrument = $this->longInstrument(40, 22, 'Extenso');
+        $bytes = $this->pdf('', $instrument);
+        $pages = $this->pages($bytes);
+        $all = implode(' ', $pages);
+
+        $this->assertTrue($this->isLandscape($bytes), 'forty questions do not fit a portrait sheet');
+        $this->assertGreaterThan(3, count($pages), 'three blocks of columns, each on its own page, and 27 rows');
+
+        // Every question, in every block it belongs to, and the three parts.
+        foreach (range(1, 40) as $n) {
+            $this->assertMatchesRegularExpression("/\\bQ{$n}\\b/", $all, "Q{$n} was lost");
+        }
+        foreach ([1, 2, 3] as $part) {
+            $this->assertStringContainsString("Parte {$part} de 3", $all);
+        }
+
+        // Every student appears, and the name is repeated in each block.
+        foreach (array_merge(range(1, 5), range(10, 31)) as $n) {
+            $this->assertGreaterThanOrEqual(3, substr_count($all, "Aluno {$n} "), "Aluno {$n} is not in every block");
+        }
+
+        // The summary columns are in the last block, so they are there.
+        foreach (['Pontuação bruta', 'Resultado', 'Nível', 'Números e Operações', 'Geometria'] as $header) {
+            $this->assertStringContainsString($header, $all);
+        }
+    }
+
+    #[Test]
+    public function every_page_has_its_number_out_of_the_total_and_repeats_the_headings(): void
+    {
+        $instrument = $this->longInstrument(40, 22, 'Extenso');
+        $pages = $this->pages($this->pdf('', $instrument));
+        $total = count($pages);
+
+        foreach ($pages as $index => $text) {
+            $this->assertStringContainsString('Página '.($index + 1).' / '.$total, $text, 'page '.($index + 1));
+            // The heading of whichever table the page carries repeats: the grid's
+            // «Nº Nome» and the question legend's «Código», and so does the stamp of
+            // a provisional grid.
+            $heading = str_contains($text, 'Descrição Cotação Domínios') ? 'Código' : 'Nome';
+            $this->assertStringContainsString($heading, $text, 'page '.($index + 1).' lost its heading');
+            $this->assertStringContainsString('PROVISÓRIO', $text, 'page '.($index + 1).' is not stamped');
+        }
+    }
+
+    #[Test]
+    public function a_concluded_grid_carries_no_provisional_stamp_on_any_page(): void
+    {
+        $this->asTenant(function (): void {
+            $instrument = $this->teste1();
+            $enrollments = $instrument->schoolClass->enrollments()->get()->keyBy('class_number');
+            $items = $instrument->items()->orderBy('sequence')->get();
+
+            // Numbers 4 and 5 have nothing yet: settle them so the correction can close.
+            $cells = [];
+            foreach ([4, 5] as $number) {
+                foreach ($items as $item) {
+                    $cells[] = ['enrollment_id' => $enrollments[$number]->id, 'instrument_item_id' => $item->id, 'result_state' => ResultState::Absent->value];
+                }
+            }
+            app(RecordScores::class)->save($instrument, $cells, $this->teacher);
+            app(CompleteCorrection::class)->complete($this->teste1(), $this->teacher);
+        });
+
+        $pages = $this->pages($this->pdf());
+
+        foreach ($pages as $text) {
+            $this->assertStringNotContainsString('PROVISÓRIO', $text);
+        }
+        $this->assertStringContainsString('Correção concluída', implode(' ', $pages));
     }
 
     #[Test]
