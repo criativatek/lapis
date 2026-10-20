@@ -341,6 +341,9 @@ describe('reports/Show — imprimir', () => {
         // `report-print` é um gancho estável. Um seletor pelas classes
         // utilitárias partir-se-ia na primeira vez que alguém mexesse na
         // largura da coluna.
-        expect(render().find('.report-print').exists()).toBe(true);
+        const preview = render().find('.report-print');
+
+        expect(preview.exists()).toBe(true);
+        expect(preview.classes()).toContain('document-print');
     });
 });

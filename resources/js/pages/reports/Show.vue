@@ -17,6 +17,7 @@ import {
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
+import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import Heading from '@/components/Heading.vue';
 import type { ChosenDifficulty } from '@/components/reports/DifficultyPicker.vue';
 import DifficultyPicker from '@/components/reports/DifficultyPicker.vue';
@@ -1246,8 +1247,9 @@ function print(): void {
         <template v-else>
             <!-- `report-print` é um GANCHO DE IMPRESSÃO, não estilo. O seletor
                  pelas classes utilitárias partir-se-ia na primeira vez que
-                 alguém mudasse o `max-w-[46rem]`. -->
-            <div class="report-print overflow-hidden rounded-lg border border-border bg-card">
+                 alguém mudasse o `max-w-[46rem]`. Sem `overflow-hidden`: cortava
+                 o fim do relatório no papel. -->
+            <PrintableDocument class="report-print rounded-lg border border-border bg-card">
                 <div class="mx-auto max-w-[46rem] px-8 py-10 sm:px-12">
                     <ReportLetterhead :identity="identity" />
 
@@ -1319,56 +1321,25 @@ function print(): void {
                         {{ identity.footer_note }}
                     </p>
                 </div>
-            </div>
+            </PrintableDocument>
         </template>
     </div>
 </template>
 
 <style>
-/* IMPRIMIR SÓ O RELATÓRIO, a partir deste mesmo ecrã — sem página paralela
-   (§45). O truque da visibilidade não depende do markup do layout da aplicação,
-   que não é deste ecrã e pode mudar sem aviso; é o mesmo que a Pauta de
-   Avaliação já usa, pela mesma razão. */
+/* IMPRIMIR SÓ O RELATÓRIO é trabalho do PrintableDocument (gancho, `@page`,
+   visibilidade e quebras de página). Aqui fica só o que é próprio desta folha. */
 @media print {
-    body * {
-        visibility: hidden;
-    }
-    .report-print,
-    .report-print * {
-        visibility: visible;
-    }
-    .report-print {
-        position: absolute;
-        inset: 0;
-        /* No papel não há cartão: nem borda, nem cantos, nem fundo. O que fica
-           é o documento. */
-        border: 0 !important;
-        border-radius: 0 !important;
-        background: transparent !important;
-    }
-    /* A4, com as margens do próprio papel — o documento já tem as suas. */
-    @page {
-        size: A4 portrait;
-        margin: 18mm 16mm;
-    }
+    /* O documento já tem as suas margens: o miolo perde a largura de leitura e o
+       padding de ecrã. */
     .report-print > div {
         max-width: none !important;
         padding: 0 !important;
     }
-    /* Uma secção não se parte a meio de um título, e um título não fica
-       sozinho no fim de uma página. */
-    .report-print h1,
-    .report-print h2 {
-        break-after: avoid;
-        page-break-after: avoid;
-    }
+    /* Uma secção pode partir-se entre páginas; é o título que não fica sozinho
+       (regra do componente). */
     .report-print section {
         break-inside: auto;
-    }
-    /* Preto sobre branco: um cinzento de ecrã imprime-se ilegível. */
-    .report-print,
-    .report-print * {
-        color: #000 !important;
     }
 }
 </style>

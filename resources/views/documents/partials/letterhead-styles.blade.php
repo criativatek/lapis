@@ -9,13 +9,19 @@
     Written for dompdf: fixed blocks live outside the flow and are painted once
     per page, which is how the letterhead and the footer repeat. The page
     number is not here — DompdfPrinter draws it, because only it knows the total.
+
+    The measures come from LetterheadLayout (`$layout`, Standard when omitted), the
+    same enum DompdfPrinter reads to place the page label.
 --}}
+@php
+    $layout = $layout ?? \App\Services\Documents\Pdf\LetterheadLayout::Standard;
+@endphp
 /* Room for a four-line letterhead above and one footer line below,
    with enough clearance that neither can meet the text. The top grew
    from 30mm after SUP-DTQLDG: the timbre and the body need daylight
    between them, on every page. */
 @page {
-    margin: 36mm 20mm 24mm 20mm;
+    margin: {{ $layout->pageMargin() }};
 }
 
 body {
@@ -29,10 +35,10 @@ body {
    dompdf and are painted once per page. */
 #letterhead {
     position: fixed;
-    top: -26mm;
+    top: {{ $layout->letterheadTop() }};
     left: 0;
     right: 0;
-    height: 20mm;
+    height: {{ $layout->letterheadHeight() }};
     /* A régua fina fecha o timbre — papel timbrado, não um
        parágrafo perdido no topo. */
     border-bottom: 0.4pt solid #ccc;
@@ -56,7 +62,7 @@ body {
 
 #footer {
     position: fixed;
-    bottom: -16mm;
+    bottom: {{ $layout->footerBottom() }};
     left: 0;
     right: 0;
     font-size: 7.5pt;

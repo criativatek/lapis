@@ -40,22 +40,19 @@ use Dompdf\Options;
  */
 class DompdfPrinter
 {
-    /** Matches the template's @page side margin (20 mm) and footer band. */
-    private const SIDE_MARGIN = 56.7;
-
-    /**
-     * How far above the bottom edge of the sheet the footer text sits. On a
-     * portrait A4 this lands the top of the text at 806.0 pt, just under the
-     * rule the template draws — the value the report PDF has always used,
-     * now expressed against the sheet's height so a landscape page puts it in
-     * the same place relative to ITS bottom edge.
-     */
-    private const FOOTER_OFFSET_FROM_BOTTOM = 35.89;
-
     private const FOOTER_SIZE = 7.5;
 
-    public function print(string $html, PaperOrientation $orientation = PaperOrientation::Portrait): string
-    {
+    /**
+     * The side margin and the label's distance from the bottom edge come from
+     * `$layout` (see LetterheadLayout): on the Standard layout a portrait A4
+     * lands the label at 806.0 pt, the value the report PDF has always used,
+     * and a landscape page puts it in the same place relative to ITS bottom.
+     */
+    public function print(
+        string $html,
+        PaperOrientation $orientation = PaperOrientation::Portrait,
+        LetterheadLayout $layout = LetterheadLayout::Standard,
+    ): string {
         $options = new Options;
         $options->set('isRemoteEnabled', false);
         // Local file access off as well: the only image in a document is
@@ -73,7 +70,7 @@ class DompdfPrinter
 
         $dompdf->render();
 
-        $this->paginate($dompdf, $orientation);
+        $this->paginate($dompdf, $orientation, $layout);
 
         return (string) $dompdf->output();
     }
@@ -86,7 +83,7 @@ class DompdfPrinter
      * could not have. Right-aligned by measuring the text, because the canvas
      * draws from a point and has no concept of a text box.
      */
-    protected function paginate(Dompdf $dompdf, PaperOrientation $orientation): void
+    protected function paginate(Dompdf $dompdf, PaperOrientation $orientation, LetterheadLayout $layout): void
     {
         $canvas = $dompdf->getCanvas();
         $fontMetrics = $dompdf->getFontMetrics();
@@ -99,15 +96,16 @@ class DompdfPrinter
         }
 
         $pageWidth = $orientation->width();
-        $footerTop = $orientation->height() - self::FOOTER_OFFSET_FROM_BOTTOM;
+        $footerTop = $orientation->height() - $layout->labelOffsetFromBottom();
+        $sideMargin = $layout->sideMargin();
 
         $canvas->page_script(
-            function (int $page, int $total, Canvas $canvas, FontMetrics $fontMetrics) use ($font, $pageWidth, $footerTop): void {
+            function (int $page, int $total, Canvas $canvas, FontMetrics $fontMetrics) use ($font, $pageWidth, $footerTop, $sideMargin): void {
                 $label = self::pageLabel($page, $total);
                 $width = (float) $fontMetrics->getTextWidth($label, $font, self::FOOTER_SIZE);
 
                 $canvas->text(
-                    $pageWidth - self::SIDE_MARGIN - $width,
+                    $pageWidth - $sideMargin - $width,
                     $footerTop,
                     $label,
                     $font,

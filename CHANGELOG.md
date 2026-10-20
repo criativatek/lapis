@@ -25,6 +25,41 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.173.1] — 2026-10-20
+
+> **Imprimir passa a imprimir o documento todo, e só ele.** Três defeitos da
+> impressão pelo browser, partilhados pelo relatório, pela Pauta de Avaliação e
+> pelo Mapa de Medidas Educativas: um relatório longo saía só com a primeira
+> página, o mapa saía em branco depois de visitar um relatório ou uma Pauta, e
+> a Pauta e o mapa podiam herdar o papel (retrato/paisagem) um do outro. Só
+> impressão; sem migrations, sem alterações a dados nem a cálculos.
+
+### Corrigido
+
+- **Relatório e Pauta cortados na primeira página.** Ambos prendiam a folha ao
+  `<main>` do layout (`position: absolute; inset: 0`, dentro de um contentor com
+  altura e `overflow` próprios). Passam a usar o `PrintableDocument`, que deixa
+  a folha no fluxo normal e o browser pagina-a: o relatório de ensaio de 5
+  páginas imprime as 5, com o fim do texto e «Docente responsável».
+- **Impressão em branco depois de navegar.** O `<style>` sem âmbito de uma
+  página (`body * { visibility: hidden }`) ficava carregado na aplicação depois
+  de a página sair, e apagava a impressão da seguinte. As regras antigas saíram
+  das duas páginas e o `PrintableDocument` repõe a visibilidade da folha.
+- **Orientação do papel reativa.** O `PrintableDocument` lia `orientation` só ao
+  montar; agora um `watch` reescreve o `@page` quando a orientação ou a margem
+  mudam sem o componente remontar, e o elemento sai ao desmontar. A Pauta
+  imprime em A4 paisagem, os outros em retrato, em qualquer ordem de navegação.
+
+### Alterado
+
+- **`PrintableDocument`** é só o gancho de impressão (`.document-print`): não
+  tem aspeto no ecrã — cada página passa a sua `class` — e ganha a prop
+  `compact` (margem de 10 mm, para grelhas largas). O ecrã não muda.
+- **Timbre compacto.** Variante `Compact` do timbre dos PDF
+  (`LetterheadLayout`, fonte única das medidas para o parcial Blade e para o
+  `DompdfPrinter`); a `Standard` é a atual, byte a byte. Nenhum documento a usa
+  ainda.
+
 ## [0.173.0] — 2026-10-19
 
 > **Mapa de Medidas Educativas.** Em Relatórios, um bloco novo — «Documentos da

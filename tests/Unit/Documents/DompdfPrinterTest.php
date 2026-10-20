@@ -3,6 +3,7 @@
 namespace Tests\Unit\Documents;
 
 use App\Services\Documents\Pdf\DompdfPrinter;
+use App\Services\Documents\Pdf\LetterheadLayout;
 use App\Services\Documents\Pdf\PaperOrientation;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -47,6 +48,35 @@ class DompdfPrinterTest extends TestCase
     {
         // 841.89 - 35.89: the 806.0 pt the footer label has always been drawn at.
         $this->assertEqualsWithDelta(806.0, PaperOrientation::Portrait->height() - 35.89, 0.0001);
+    }
+
+    #[Test]
+    public function the_standard_layout_keeps_the_label_where_it_always_was(): void
+    {
+        $layout = LetterheadLayout::Standard;
+
+        $this->assertEqualsWithDelta(806.0, PaperOrientation::Portrait->height() - $layout->labelOffsetFromBottom(), 0.0001);
+        $this->assertSame(56.7, $layout->sideMargin());
+    }
+
+    #[Test]
+    public function the_compact_layout_lifts_the_label_with_its_narrower_footer_band(): void
+    {
+        $layout = LetterheadLayout::Compact;
+
+        // (16 - 10) mm + 4.66 mm = 10.66 mm = 30.2 pt above the bottom edge.
+        $this->assertEqualsWithDelta(10.66 * 72 / 25.4, $layout->labelOffsetFromBottom(), 0.05);
+        $this->assertEqualsWithDelta(14 * 72 / 25.4, $layout->sideMargin(), 0.01);
+        $this->assertEqualsWithDelta(811.7, PaperOrientation::Portrait->height() - $layout->labelOffsetFromBottom(), 0.1);
+    }
+
+    #[Test]
+    public function it_prints_a_compact_landscape_pdf(): void
+    {
+        $bytes = app(DompdfPrinter::class)->print(self::HTML, PaperOrientation::Landscape, LetterheadLayout::Compact);
+
+        $this->assertStringStartsWith('%PDF-', $bytes);
+        $this->assertMatchesRegularExpression('/MediaBox\s*\[[\d.]+\s+[\d.]+\s+841\.89\d*\s+595\.28\d*\]/', $bytes);
     }
 
     #[Test]
