@@ -575,7 +575,8 @@ class InstrumentGridDocumentTest extends TestCase
 
         $event = $events->first();
         $this->assertSame($this->teacher->id, $event->causer_id);
-        $this->assertSame([
+        // MySQL gives a JSON column back with its keys reordered: compare the payload, not the order.
+        $this->assertSameJsonPayload([
             'format' => 'pdf',
             'orientation' => 'portrait',
             'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'orientation' => 'auto'],
