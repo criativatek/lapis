@@ -421,9 +421,26 @@ fazem parte da suite do repositório.
 
 ## Para a grelha intercalar/semestral (não implementada)
 
-**O documento ainda não existe.** A grelha de uma turma num momento intercalar ou
-no período/semestre é a Fatia C; só a preparação técnica (C1) está feita, sem
-efeito visível. O que já existe para ela reutilizar, e o que tem de respeitar:
+**O documento ainda não existe para o utilizador.** A grelha de uma turma num
+momento intercalar ou no período/semestre é a Fatia C; estão feitas a preparação
+técnica (C1) e a fonte de dados (C2, `EvaluationSheetGrid`), sem rotas nem ecrã
+(C3–C6). O que já existe, e o que as etapas seguintes têm de respeitar:
+
+- `EvaluationSheetGrid::build(EvaluationSheetDocument, EvaluationSheetGridOptions)`
+  devolve a estrutura neutra da grelha da turma. É uma função pura do documento:
+  sem consultas, sem relógio, sem autorização, sem timbre nem data de emissão (são
+  do controlador). Colunas: Nº e Nome; por domínio, Resultado (a percentagem
+  calculada) e Apreciação; Global (resultado e a banda onde cai); Classificação
+  (Proposta do Lapispro, Nível atribuído, Estado); avisos de cobertura; e a
+  autoavaliação, só com `?autoavaliacao=1`. Calculado, proposto e decidido nunca
+  partilham uma célula: a apreciação decidida leva «prof.» e guarda por baixo a
+  proposta que substituiu; um nível atribuído vazio diz «não decidido» ou «sem
+  classificação». `PROVISÓRIO` enquanto algum aluno não tiver nível atribuído.
+- Nunca viajam `override_reason`, ids, explicações de cobertura nem os campos da
+  proposta de hoje; o controlador da C3 deve ler a Pauta com
+  `withProposalBasis: false`.
+- Horizontal por omissão (`?orientacao=vertical|auto`); a unidade que nunca se
+  parte é o domínio.
 
 - A Pauta de Avaliação é a grelha: o documento consome o `EvaluationSheetDocument`
   (`fromLiveSheet`, que já aceita o `SheetMomentKind` e só muda o título, ou
@@ -437,8 +454,8 @@ efeito visível. O que já existe para ela reutilizar, e o que tem de respeitar:
 - `InstrumentGridLayout::plan()` é uma função pura de orientação e blocos de
   colunas e aceita a largura de cada item (`$itemWidth`, por omissão a de uma
   questão); a grelha da turma terá as suas (domínios e momentos do perfil), e o
-  dompdf continua a não paginar na horizontal. Limite herdado: um bloco leva
-  sempre pelo menos um item, mesmo que não caiba ao lado do resumo.
+  dompdf continua a não paginar na horizontal. Um resumo que cabe numa folha mas
+  não deixa espaço a nenhum item fica num bloco só seu, em vez de passar a margem.
 - Colunas dinâmicas a partir do perfil e do momento reais; nunca número fixo de
   domínios ou de escala.
 - Gráficos factuais como dados compostos no servidor (barras com largura em

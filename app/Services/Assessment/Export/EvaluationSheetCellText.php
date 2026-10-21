@@ -22,6 +22,22 @@ use App\Services\Assessment\DecisionScaleReader;
 final class EvaluationSheetCellText
 {
     /**
+     * A percentagem do motor com uma casa decimal, VAZIA quando não há valor.
+     *
+     * Nunca «0»: sem elementos não é zero (§13.3), e uma célula vazia é a única
+     * escrita que não convida uma folha de cálculo a somar a ausência. O
+     * separador decimal é de quem escreve: ponto no CSV, vírgula no papel.
+     */
+    public static function percentage(mixed $value, string $decimalSeparator = '.'): string
+    {
+        if ($value === null || ! is_numeric($value)) {
+            return '';
+        }
+
+        return number_format((float) $value, 1, $decimalSeparator, '');
+    }
+
+    /**
      * O nível PROPOSTO de uma linha da pauta (um domínio ou o global): o código
      * da escala, ou a etiqueta quando não há código. Vazio sem linha.
      *
