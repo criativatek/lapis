@@ -25,6 +25,73 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.174.0] — 2026-10-21
+
+> **Grelha imprimível de um elemento de avaliação.** Na grelha de correção e em
+> Resultados, um acesso novo — «Imprimir / PDF» — abre a grelha do teste, ficha ou
+> trabalho como documento: um aluno por linha, uma coluna por questão, e a
+> pontuação bruta, o resultado, o nível e os domínios no fim. Pré-visualização,
+> impressão e PDF da mesma estrutura, com gráficos factuais quando a correção
+> está concluída. É gerado na hora e não fica guardado: não é um relatório
+> finalizado. Base. Sem migrations; o backup não muda.
+
+### Adicionado
+
+- **O documento.** `instruments/{elemento}/impressao` (pré-visualização) e
+  `instruments/{elemento}/impressao/pdf`. Mostra os alunos a quem o elemento se
+  aplica — os não abrangidos ficam de fora e são contados —, as questões com a
+  cotação e os grupos, a **pontuação bruta** (soma exata dos pontos avaliados
+  sobre a cotação, calculada no servidor; sem nada avaliado, «—», nunca zero), o
+  **resultado** e o **nível** (as células do motor, as mesmas da grelha de
+  correção e de Resultados) e um resultado por domínio quando o elemento toca
+  dois ou mais. O rótulo é «Resultado», com a nota de que não é a classificação
+  do período. Estados compactos (`—` por avaliar, `Aus`, `AusJ`, `Disp`, `N/A`,
+  `Anul`, `Rev`) com legenda; `*` marca a avaliação parcial.
+- **Opções.** Pontuação bruta, resultado e nível, resultados por domínio,
+  legenda das questões, gráficos e orientação (automática, vertical ou
+  horizontal), lidas da query e normalizadas no servidor.
+- **Orientação automática e blocos de colunas.** Vertical enquanto tudo cabe,
+  horizontal depois; uma grelha larga divide-se em blocos («Parte i de n»), cada
+  um com «Nº» e «Nome», cortados em fronteiras de grupo quando possível. O dompdf
+  não pagina na horizontal, por isso o corte está na estrutura e **nenhuma
+  questão se perde**.
+- **PDF.** Timbre partilhado (`Standard` na vertical, `Compact` na horizontal),
+  cabeçalho da tabela repetido em todas as páginas, linhas inteiras, cada bloco
+  em página nova, «Página N / T», selo «PROVISÓRIO» em todas as páginas de uma
+  grelha provisória. Anexo `grelha-<turma>-<título>-<data>.pdf`, `private,
+  no-store`; auditoria `instruments.grid_document.exported` só com contagens.
+- **Gráficos factuais** (`?graficos=1`, só com a correção concluída): a
+  **distribuição dos resultados** por nível da escala (ou por intervalos de 10
+  pontos sem bandas), a **média da turma** global e por domínio, num eixo
+  absoluto de 0 a 100 % e com o n de alunos, e a **média por questão** com a
+  cobertura («20 de 24 avaliados · 2 ausentes»; ausências e dispensas não contam
+  como zero). Compostos no servidor e desenhados por caixas no ecrã e por células
+  de tabela no PDF — sem Chart.js, sem flexbox. Abaixo de cinco alunos, uma nota
+  de cautela; sem barras por aluno e sem rankings.
+- **Artigo de ajuda** «Ver, imprimir e guardar em PDF a grelha de um elemento de
+  avaliação».
+- **Impressão do browser.** `PrintableDocument` ganha `stamp` e `pageNumbers`: o
+  selo e «Página N / T» saem nas caixas de margem do `@page`, em todas as folhas.
+
+### Alterado
+
+- **A grelha, Resultados e o documento partilham um só cálculo da turma.**
+  `ClassResultsCalculator::forInstrumentCohort()` carrega o elemento para a
+  turma inteira numa passagem (mesma configuração, mesmos *inputs* e mesmo motor
+  que `forInstruments()`), em vez de uma vez por aluno: o número de consultas
+  deixa de crescer com o número de alunos. Os valores são os mesmos.
+  `BuildResultsAnalysis` ganha `officialCellsFor()` e `dimensionsAnalysis()`.
+
+### Limitações
+
+- Só o Chromium recente imprime o selo e a numeração em todas as folhas; noutros
+  browsers a grelha imprime-se completa, sem eles. O PDF é o caminho fiável.
+- Os gráficos só existem com a correção concluída; a média por questão é
+  descritiva e fora do motor.
+- Interpretação, comparação automática e tendências são capacidades Pro e não
+  fazem parte deste documento. A grelha intercalar/semestral não está
+  implementada.
+
 ## [0.173.1] — 2026-10-20
 
 > **Imprimir passa a imprimir o documento todo, e só ele.** Três defeitos da

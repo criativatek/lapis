@@ -1,15 +1,17 @@
 # Documentos da turma — gerados na hora
 
 Relatórios tem, desde a 0.173.0, duas famílias de documentos. Este ficheiro
-descreve a segunda e explica porque é que ela **não** é um `Report`.
+descreve a segunda e explica porque é que ela **não** é um `Report`. Tem hoje
+dois documentos: o **Mapa de Medidas Educativas** (0.173.0) e a **grelha
+imprimível de um instrumento de avaliação** (0.174.0).
 
 | | Relatório (`reports`) | Documento da turma |
 |---|---|---|
 | O que é | Um objeto com vida: rascunho → finalizado → derivado ([ADR-0005](adr/0005-reports-are-documents-not-downloads.md)) | Uma leitura factual dos registos, no momento em que se abre |
 | Guarda alguma coisa? | Sim — secções, texto do professor e, ao finalizar, um `document` congelado | **Não.** Nenhuma linha em `reports`, nenhum PDF guardado |
-| Texto | Frases compostas pelo sistema, editadas pelo professor | Nenhuma frase interpretativa; só listas e contagens |
+| Texto | Frases compostas pelo sistema, editadas pelo professor | Nenhuma frase interpretativa; só listas, contagens, valores e notas factuais |
 | Formatos | Pré-visualização, impressão, PDF, Word | Pré-visualização, impressão, PDF |
-| Exemplo | Relatório de turma, individual, por registos, de escola | **Mapa de Medidas Educativas** (0.173.0) |
+| Exemplo | Relatório de turma, individual, por registos, de escola | **Mapa de Medidas Educativas** (0.173.0); **grelha de um instrumento** (0.174.0) |
 
 **Imprimir agora não é finalizar.** Um documento da turma leva impressa a data
 de emissão e a frase «Documento gerado a partir dos registos à data de emissão;
@@ -27,6 +29,9 @@ nunca entre duas ideias do que o documento diz.
 ```
 ClassMeasuresMap::build()  ──►  props Inertia  ──►  MeasuresMap.vue  (pré-visualização + window.print)
                            └─►  reports/class-measures-map.blade.php  ──►  DompdfPrinter  ──►  PDF
+
+InstrumentGrid::build()    ──►  props Inertia  ──►  instruments/GridDocument.vue  (idem)
+                           └─►  instruments/grid-document.blade.php  ──►  DompdfPrinter  ──►  PDF
 ```
 
 As frases que aparecem nos dois lados (o resumo, a nota dos excluídos, o
@@ -45,8 +50,8 @@ grelhas seguintes vão precisar.
   §5 sobre `counter(pages)`). `PdfRenderer` passou a usá-lo; o PDF dos
   relatórios é o mesmo.
 - **`App\Services\Documents\Pdf\PaperOrientation`** — retrato ou paisagem. A
-  posição do número de página acompanha a orientação. O mapa usa retrato; uma
-  grelha larga poderá pedir paisagem sem tocar no motor.
+  posição do número de página acompanha a orientação. O mapa usa retrato; a
+  grelha de um instrumento pede paisagem quando é larga, sem tocar no motor.
 - **Timbre partilhado** — `resources/views/documents/partials/letterhead*.blade.php`,
   incluídos por `reports/document.blade.php` e pelo mapa. Um só timbre para
   todos os documentos impressos: as correções de espaçamento do cabeçalho
@@ -83,12 +88,13 @@ grelhas seguintes vão precisar.
   problema.
 - **`LetterheadLayout`** (`Standard`, `Compact`) — as medidas do timbre (margem
   da página, faixa do timbre, rodapé, posição de «Página N / T»), lidas pelo
-  parcial Blade e pelo `DompdfPrinter`. `Standard` é o que todos os documentos
-  usam; `Compact` (margem 26/14/16/14 mm) existe para grelhas largas em
-  paisagem e ainda não é usado por nenhum documento.
+  parcial Blade e pelo `DompdfPrinter`. `Standard` é o que os relatórios e o
+  mapa usam; `Compact` (margem 26/14/16/14 mm) é o da grelha de um instrumento em
+  folha horizontal (0.174.0).
 
 O que **não** se criou: um motor genérico de «documentos», um modelo de snapshot
-novo, um tipo de relatório novo, gráficos. Ficam para quando houver uso.
+novo, um tipo de relatório novo. Os gráficos existem só na grelha de um
+instrumento (ver adiante), como dados compostos no servidor.
 
 ## Mapa de Medidas Educativas
 
@@ -171,33 +177,287 @@ documento (alunos e turma inteira): uma medida de grupo com três alunos conta
 uma vez. O número de consultas é constante — não depende do número de alunos
 nem de medidas (testado).
 
-## Para as grelhas seguintes (não implementadas)
+## Grelha imprimível de um instrumento (0.174.0)
 
-Notas para quem fizer a grelha de um instrumento e a grelha intercalar/semestral
-— **nada disto existe ainda**:
+A grelha de um elemento de avaliação (teste, ficha, trabalho…) como documento
+para ver, imprimir e guardar em PDF: um aluno por linha, uma coluna por questão,
+e a pontuação bruta, o resultado, o nível e os domínios no fim. Gerada na hora,
+nunca guardada.
 
-- Colunas dinâmicas a partir do instrumento/perfil reais; nunca número fixo de
-  questões, domínios ou escala.
-- `PaperOrientation::Landscape` e `PrintableDocument orientation="landscape"`
-  para grelhas largas.
-- Gráficos factuais em HTML/CSS (barras com largura em percentagem) renderizam
-  igual no ecrã e no dompdf; um `<canvas>` do chart.js não chega ao PDF.
-- Proposta matemática ≠ classificação final do professor; sem evidência, «—»,
-  nunca zero.
+### Rotas, acessos e quem pode abrir
+
+Dentro de `module:instruments` + `usage:assessment` — Base, os três planos:
+
+| Rota | O quê |
+|---|---|
+| `GET instruments/{instrument}/impressao` | Pré-visualização (`instruments.grid-document`, página `instruments/GridDocument`) |
+| `GET instruments/{instrument}/impressao/pdf` | O mesmo documento em PDF (`instruments.grid-document.pdf`) |
+
+**Não** é `/grelha`: essa é a folha de cálculo que o professor preenche offline
+(«Descarregar grelha»). O acesso é «Imprimir / PDF», nos separadores da grelha de
+correção e de Resultados (não aparece num elemento anulado).
+
+- **Autorização** igual à da grelha de correção e de Resultados:
+  `SchoolClassPolicy::view` (leciona a turma). Um colega da mesma organização que
+  não leciona a turma tem 403; um elemento de outra organização é 404 pela
+  binding e pelo global scope; módulo bloqueado é 403. São GET, por isso
+  funcionam em modo só de leitura. A personificação pelo suporte está sujeita à
+  mesma policy, e a exportação fica atribuída a quem personifica
+  (`acting_as_user_id` na auditoria).
+- **Onde não se aplica.** Um rascunho vai para o editor; um elemento anulado
+  volta à sua página, com a razão — o mesmo para o PDF.
+- **Provisório e concluído.** Qualquer elemento com grelha pode ser impresso;
+  enquanto a correção não estiver concluída (`InstrumentStatus::isConcluded()`:
+  concluído ou publicado — arquivado **não**) o documento leva o selo
+  «PROVISÓRIO» e não tem gráficos. Reabrir a correção volta a torná-lo
+  provisório.
+
+### Uma só estrutura
+
+```
+InstrumentGrid::build()  ──►  props Inertia  ──►  instruments/GridDocument.vue  (pré-visualização + window.print)
+                         └─►  instruments/grid-document.blade.php  ──►  DompdfPrinter  ──►  PDF
+```
+
+O princípio é o do mapa: **um builder produz uma estrutura neutra** e as duas
+vistas só a desenham — a página recebe-a sem lhe mexer (um teste compara-a, ao
+byte, com a do builder) e o Blade não lê mais nada. Todos os textos (cabeçalhos,
+números formatados, abreviaturas, avisos, notas, legendas dos gráficos) são
+compostos no servidor. Peças, em `App\Services\Reporting\ClassDocuments`:
+
+- `InstrumentGrid` — monta o documento.
+- `InstrumentGridOptions` — as opções, lidas da query contra uma lista branca.
+- `InstrumentGridLayout` — função pura: orientação e blocos de colunas.
+- `InstrumentGridCharts` — os gráficos, como dados.
+- `InstrumentGridUnavailable` — rascunho ou anulado.
+
+### O que mostra
+
+| Coluna | Conteúdo |
+|---|---|
+| Nº, Nome | Número na turma (sem número: «—») e nome; só dos alunos a quem o elemento se aplica |
+| Uma por questão | Pontos, ou o estado; no cabeçalho o código, a cotação («Cotação») e, se houver grupos com nome, o grupo — o mesmo código em dois grupos distingue-se |
+| Pontuação bruta | Soma dos pontos das questões **avaliadas** sobre a cotação total |
+| Resultado, Nível | O resultado do motor e a banda da escala (sem bandas, sem coluna «Nível») |
+| Um por domínio | Só quando o elemento toca dois ou mais domínios (com um, é igual ao global) |
+
+- **Estados** compactos, compostos no servidor: «—» = por avaliar (**não é
+  zero**), `Aus`, `AusJ`, `Disp`, `N/A`, `Anul`, `Rev`; a legenda só lista os que
+  aparecem. Uma linha parcialmente avaliada leva `*`, explicado numa nota.
+- **A pontuação bruta é a única grandeza nova** e é calculada no servidor, em
+  aritmética decimal (`Bc`): sem nada avaliado é «—», nunca zero; não há
+  percentagem dela (seria uma segunda percentagem a divergir do motor). **Não é o
+  resultado:** com dois ou mais domínios, ou com questões sem domínio, o valor do
+  motor difere de pontos ÷ cotação de propósito, e o documento di-lo numa nota.
+- **Resultado, nível e domínios** são as células do motor
+  (`BuildResultsAnalysis::officialCellsFor`) — as mesmas da grelha de correção e
+  de Resultados, formatadas como o ecrã as formata (uma casa decimal, ou as duas
+  truncadas quando o arredondamento mudaria o nível). Nada se recalcula. O
+  rótulo no papel é **«Resultado»**, com a nota «não é a classificação do
+  período» (a grelha de correção diz «Classificação oficial/provisória»;
+  proposta e classificação final não existem por instrumento e não se mostram).
+- **Quem aparece.** Os alunos a quem o instrumento se aplica; os que o motor dá
+  como `out_of_scope` (entraram depois, saíram antes, não frequentavam a
+  disciplina) ficam de fora **e são contados** («N alunos não abrangidos…»).
+- **Diagnóstico** vem identificado, com a nota de que não conta para as médias.
+
+### Opções
+
+Na query string, normalizadas no servidor: um valor em falta, repetido ou forjado
+é o valor por omissão — nunca um erro nem uma coluna a mais. Nenhuma muda um
+número; só escolhem o que se desenha. As questões estão sempre presentes.
+
+| Parâmetro | Opção | Omissão |
+|---|---|---|
+| `bruta` | Pontuação bruta | ligada |
+| `resultado` | Resultado e nível | ligada |
+| `dominios` | Resultados por domínio (só com ≥ 2 domínios) | ligada |
+| `legenda` | Legenda das questões | ligada |
+| `graficos` | Gráficos (só com a correção concluída) | **desligada** |
+| `orientacao` | `auto`, `vertical` ou `horizontal` | `auto` |
+
+### Orientação e blocos de colunas
+
+O dompdf **não pagina na horizontal**: uma coluna que passa a margem não vai para
+outra página, perde-se sem aviso. Por isso o corte em blocos está na estrutura
+(`InstrumentGridLayout::plan()`), e o ecrã e o PDF cortam no mesmo sítio.
+
+- **Automática:** vertical enquanto tudo cabe num bloco, horizontal caso contrário;
+  uma orientação escolhida substitui-a e os blocos recalculam-se para essa largura.
+- **Blocos:** cada um repete «Nº» e «Nome»; as questões repartem-se pelo menor
+  número de blocos, por igual, e cada corte desloca-se para uma fronteira de grupo
+  próxima quando existe; o resumo (bruta, resultado, nível, domínios) segue no
+  último, ou, se não couber ao lado das questões, num bloco só dele. Um grupo
+  mais comprido do que um bloco parte-se. Cada bloco leva «Parte i de n».
+  **Nenhuma questão nem coluna se perde** (propriedade testada de 1 a 90
+  questões).
+- As **larguras** (Nº 7, Nome 40, questão 9,5, bruta 16, resultado 14, nível 18,
+  domínio 16 mm) são estimativas calibradas com PDFs reais; usam a largura útil
+  com a margem `Standard` do timbre, o que as torna seguras também com a `Compact`.
+
+### Pré-visualização e impressão do browser
+
+`instruments/GridDocument.vue` sobre `PrintableDocument` (horizontal e compacto
+quando o papel é horizontal). Cada alteração das opções volta a pedir o
+documento ao servidor. O botão «PDF» é uma ligação normal (uma resposta binária
+não passa pelo Inertia) com as mesmas opções que a pré-visualização mostra.
+
+A impressão do browser foi verificada em Chromium com instrumentos curtos e de
+60 questões × 30 alunos, em vertical e horizontal: questões, alunos, grupos e
+resultados completos, cabeçalho da tabela repetido, uma parte por folha, nada
+fora da folha, e nenhuma impressão em branco ao navegar entre relatório, Pauta,
+Mapa e grelha. O selo «PROVISÓRIO» e «Página N / T» saem nas **caixas de margem
+do `@page`**, em todas as folhas (ver `PrintableDocument`).
+
+**Limitação.** Só o Chromium recente desenha caixas de margem; noutros browsers
+a grelha imprime-se completa e com cabeçalhos repetidos, mas com o selo só na
+primeira folha e sem numeração. **O PDF do servidor é o caminho fiável**, em
+particular no telemóvel.
+
+### PDF
+
+`instruments/grid-document.blade.php`, escrito para o dompdf (tabelas; sem flexbox
+nem grid) e lido sempre do mesmo array.
+
+- Timbre partilhado: `LetterheadLayout::Standard` em folha vertical,
+  `Compact` em horizontal (mais colunas e mais linhas por página). «Página N / T»
+  desenhada pelo `DompdfPrinter`.
+- **O cabeçalho inteiro da tabela repete-se** em todas as páginas (linha de
+  grupos, códigos, cotações); uma linha nunca se parte; cada bloco depois do
+  primeiro começa em página nova.
+- Uma grelha **provisória** leva um selo fixo «PROVISÓRIO» em **todas** as páginas.
+- Resposta: anexo `grelha-<turma>-<título>-<data>.pdf` (nunca nomes de alunos),
+  `Cache-Control: private, no-store, max-age=0`.
+- **Auditoria** `instruments.grid_document.exported`: só contagens e opções
+  (alunos, excluídos, questões, blocos, orientação, provisório) — nunca um nome
+  ou uma nota. Ver a pré-visualização não grava nada da avaliação nem gera evento
+  de auditoria.
+- Sem logótipo (como o mapa) e sem fotografias.
+
+### Gráficos factuais (só correção concluída, `?graficos=1`)
+
+Três gráficos, como **dados compostos no servidor** (cada barra com o texto e o
+comprimento já medidos), por isso o ecrã e o PDF desenham o mesmo. A
+pré-visualização usa caixas (que imprimem sem «gráficos de fundo»); o PDF usa
+uma célula de tabela como barra, numa pista com moldura — **sem Chart.js, sem
+flexbox, sem gradientes**. Abaixo do limiar da escala, a barra é mais clara com
+uma aresta escura (legível a preto e branco). Uma barra de comprimento zero é uma
+pista vazia, nunca uma barra a zero.
+
+1. **Distribuição dos resultados** — por nível da escala, na ordem da própria
+   escala, ou pelas dez classes de dez pontos quando a escala não tem bandas.
+   São os números do `ResultsAnalyzer` que Resultados mostra. Quem não tem
+   resultado (ausente, por avaliar…) conta-se à parte; e um resultado que
+   nenhuma banda alcança (acima de 100 % por efeito de um bónus) é dito numa
+   nota, para as barras não somarem menos do que a turma sem explicação.
+2. **Média da turma** — global e por domínio (domínios só com dois ou mais), num
+   eixo **absoluto** de 0 a 100 %, com o n de alunos de cada média.
+3. **Média por questão** — pontos obtidos sobre a cotação **entre os alunos
+   avaliados em cada questão**, com a cobertura ao lado («20 de 24 avaliados · 2
+   ausentes»). É um cálculo novo, descritivo e fora do motor: ausências,
+   dispensas e notas por dar **não contam como zero** — ficam fora da média e na
+   cobertura. Uma questão sem avaliados, ou sem cotação (uma dedução), não tem
+   barra.
+
+Regras comuns: só com a correção concluída (a porta das estatísticas oficiais);
+com ninguém para desenhar, o gráfico di-lo em vez de molduras vazias; abaixo de
+cinco alunos, uma nota de cautela; **sem barras por aluno e sem rankings**.
+
+### Base e Pro
+
+- **Base:** tudo o que está descrito — a grelha, o PDF e os gráficos factuais.
+  O módulo `instruments` está nos três planos; não se usa `advanced_analytics`.
+  Nenhuma IA é chamada (um teste garante que o gateway nunca é tocado).
+- **Reservado ao Pro e não implementado nestes documentos:** a **interpretação**
+  dos resultados, a **comparação automática** com instrumentos e períodos
+  anteriores e as **tendências e padrões**. A interpretação por IA que existe em
+  Resultados (`ai_assessment`) é independente e nunca é chamada por esta grelha.
+  Os gráficos factuais descrevem o que está registado; não o interpretam.
+
+### Privacidade (minimização)
+
+Só entram o número na turma e o nome, as notas e estados, e os resultados do
+motor. **Nunca** viajam, nem nas props nem no PDF: fotografia, identificadores
+(`id`, ULID, `enrollment_id`), data de nascimento, número de processo,
+pseudónimo, índice cego, `state_reason`, notas internas do elemento, observações
+de Resultados, medidas e caracterização, datas de matrícula. As linhas
+distinguem-se pela posição. Os alunos não abrangidos não saem (ficam só na
+contagem). Um título ou descrição com HTML sai como texto, nunca como marcação.
+
+### Desempenho
+
+O cálculo da turma faz-se **uma só vez**: `ClassResultsCalculator::forInstrumentCohort()`
+carrega o elemento para a turma inteira (mesma configuração, mesmos *inputs* e
+mesmo motor que `forInstruments()`, que um teste compara aluno a aluno nas quatro
+regras de ausência) em vez de uma vez por aluno, e a grelha, as notas e os
+gráficos partilham o mesmo contexto (`BuildResultsAnalysis::officialCellsFor` e
+`dimensionsAnalysis`). O número de consultas não cresce com o número de alunos —
+testado na pré-visualização, no PDF e nos gráficos. Isto também acelerou a grelha
+de correção e Resultados, com os mesmos valores.
+
+### Testes e validação
+
+`InstrumentGridTest`, `InstrumentGridDocumentTest`, `InstrumentGridChartsTest`,
+`InstrumentGridValidationTest`, `InstrumentGridLayoutTest`,
+`InstrumentGridOptionsTest`, `ClassResultsCohortLoaderTest`,
+`GridDocument.test.ts` e `PrintableDocument.test.ts`. O que nenhuma suite
+unitária mostra — o PDF real, a impressão do browser e a navegação entre
+documentos — foi validado com guiões Playwright + pypdf sobre uma base isolada
+(turma de 30 alunos, instrumentos de 3, 40 e 60 questões); esses guiões **não**
+fazem parte da suite do repositório.
+
+### Limitações conhecidas
+
+- A impressão do browser só traz o selo e a numeração em todas as folhas no
+  Chromium recente; só se verificou em Chromium e por impressão para PDF.
+- As larguras das colunas são estimativas; um nome muito comprido pode quebrar
+  em duas linhas.
+- A média por questão é descritiva e fora do motor; uma célula avaliada só com
+  nível de escala (só chega por importação) mostra «—», embora o motor a leia
+  como 0.
+- Os gráficos só existem com a correção concluída.
+- Não há cópia guardada, nem gráficos por aluno, nem interpretação (Pro).
+- A grelha intercalar/semestral **não** está implementada.
+
+## Para a grelha intercalar/semestral (não implementada)
+
+**Nada disto existe ainda.** A grelha de uma turma num momento intercalar ou no
+período/semestre é a Fatia C e não foi iniciada. O que já existe para ela
+reutilizar, e o que tem de respeitar:
+
+- `DompdfPrinter`, `PaperOrientation`, `LetterheadLayout`, o timbre partilhado e
+  `PrintableDocument` (com `stamp` e `pageNumbers`): a impressão do browser e o
+  PDF resolvem-se como na grelha de um instrumento.
+- `InstrumentGridLayout` é uma função pura de orientação e blocos de colunas,
+  mas está escrita para as colunas de um instrumento; a grelha da turma terá as
+  suas (domínios e momentos do perfil), e o dompdf continua a não paginar na
+  horizontal.
+- Colunas dinâmicas a partir do perfil e do momento reais; nunca número fixo de
+  domínios ou de escala.
+- Gráficos factuais como dados compostos no servidor (barras com largura em
+  percentagem, desenhadas por caixas no ecrã e por células de tabela no PDF); um
+  `<canvas>` do Chart.js não chega ao PDF.
+- Proposta matemática ≠ classificação final do professor — ao nível do período
+  existem as duas (`classifications`); sem evidência, «—», nunca zero.
 
 ## Propostas para a revisão da Matriz Mestre V3
 
-Registadas aqui; a Matriz canónica não foi editada.
+Registadas aqui; a Matriz canónica não foi editada. Estado na 0.174.0:
 
 1. *(implementado na 0.173.0)* «O professor pode gerar, por turma e ano letivo,
    um mapa factual dos alunos com medidas educativas, distinguindo medidas
    implementadas das medidas a implementar.»
-2. *(futuro)* «O professor pode visualizar, imprimir e gerar PDF da grelha
-   factual de resultados de um instrumento de avaliação, respeitando itens,
-   domínios e escala.»
-3. *(futuro)* «O professor pode visualizar, imprimir e gerar PDF da grelha
-   factual de avaliação de uma turma num momento intercalar ou período/semestre
-   configurado.»
-4. *(futuro)* «As grelhas podem incluir gráficos factuais derivados dos mesmos
-   dados; interpretação, comparação automática entre períodos e tendências
-   permanecem capacidades Pro.»
+2. *(implementado na 0.174.0)* «O professor pode visualizar, imprimir e gerar PDF
+   da grelha factual de resultados de um instrumento de avaliação, respeitando
+   itens, domínios e escala.» Ver «Grelha imprimível de um instrumento».
+3. *(futuro — não iniciado)* «O professor pode visualizar, imprimir e gerar PDF
+   da grelha factual de avaliação de uma turma num momento intercalar ou
+   período/semestre configurado.»
+4. *(parcialmente implementado na 0.174.0)* «As grelhas podem incluir gráficos
+   factuais derivados dos mesmos dados; interpretação, comparação automática
+   entre períodos e tendências permanecem capacidades Pro.» **Feito:** os
+   gráficos factuais da grelha de um instrumento (distribuição, média por
+   domínio e média por questão, só com a correção concluída), no plano Base.
+   **Falta:** os gráficos da grelha da turma (o requisito 3 ainda não existe).
+   **Continua reservado ao Pro e não implementado nestas grelhas:**
+   interpretação, comparação automática entre períodos e tendências.
