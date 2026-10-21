@@ -89,6 +89,7 @@ final class InstrumentGridCharts
             'bars' => [],
             'missing' => [],
             'missing_note' => null,
+            'unplaced_note' => $this->unplacedNote($levels ? (int) ($analysis['qualitative']['unplaced'] ?? 0) : 0),
             'caution' => $this->caution($classified),
             'empty_message' => __('Sem resultados: nenhum aluno tem ainda um resultado calculado.'),
         ];
@@ -124,6 +125,25 @@ final class InstrumentGridCharts
         }
 
         return [...$chart, 'missing' => $this->missing($analysis), 'missing_note' => $this->missingNote($analysis)];
+    }
+
+    /**
+     * A result that no band of the scale reaches — 120 % after a bonus, when the last
+     * band ends at 100 % — is a student WITH a result that is in no bar. Left unsaid,
+     * the bars would add up to less than the class; so the chart counts them aside.
+     * (By ranges, the last class is closed and takes everything above, so none.)
+     */
+    protected function unplacedNote(int $count): ?string
+    {
+        if ($count === 0) {
+            return null;
+        }
+
+        if ($count === 1) {
+            return __('1 resultado fora das bandas da escala (por exemplo, acima de 100 % por efeito de bónus) não consta em nenhum nível.');
+        }
+
+        return __(':count resultados fora das bandas da escala (por exemplo, acima de 100 % por efeito de bónus) não constam em nenhum nível.', ['count' => $count]);
     }
 
     /**

@@ -116,6 +116,7 @@ function makeCharts() {
             ],
             missing: [],
             missing_note: null as string | null,
+            unplaced_note: null as string | null,
             caution: null as string | null,
             empty_message: 'Sem resultados: nenhum aluno tem ainda um resultado calculado.',
         },
@@ -292,6 +293,15 @@ describe('instruments/GridDocument.vue', () => {
         }
 
         expect(wrapper.find('[data-chart]').classes()).toContain('break-inside-avoid');
+    });
+
+    it('says how many results no band of the scale reaches, so the bars are not left adding up to less than the class', () => {
+        const charts = makeCharts();
+        charts.distribution.unplaced_note = '1 resultado fora das bandas da escala não consta em nenhum nível.';
+
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts }) });
+
+        expect(wrapper.findAll('[data-chart]')[0].text()).toContain('1 resultado fora das bandas da escala');
     });
 
     it('says plainly when there is nothing to draw, and shows the caution and the missing note', () => {

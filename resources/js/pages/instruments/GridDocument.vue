@@ -53,7 +53,7 @@ type GridDocument = {
     options: { raw_score: boolean; result: boolean; domains: boolean; legend: boolean; charts: boolean; orientation: Orientation };
     charts_available: boolean;
     charts: {
-        distribution: Chart & { n_label: string; missing: { label: string; count: number }[]; missing_note: string | null };
+        distribution: Chart & { n_label: string; missing: { label: string; count: number }[]; missing_note: string | null; unplaced_note: string | null };
         means: Chart & { axis: string };
         questions: Chart & { axis: string; note: string };
     } | null;
@@ -426,6 +426,9 @@ function print(): void {
                     <p v-if="'axis' in chart" class="text-[0.7rem] text-muted-foreground">{{ chart.axis }}</p>
                     <p v-if="'missing_note' in chart && chart.missing_note" class="text-[0.7rem] text-muted-foreground">
                         {{ chart.missing_note }}
+                    </p>
+                    <p v-if="'unplaced_note' in chart && chart.unplaced_note" class="text-[0.7rem] text-muted-foreground">
+                        {{ chart.unplaced_note }}
                     </p>
                     <p v-if="'note' in chart" class="text-[0.7rem] text-muted-foreground">{{ chart.note }}</p>
                     <p v-if="chart.caution" class="text-[0.7rem] font-medium">{{ chart.caution }}</p>
