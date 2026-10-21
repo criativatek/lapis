@@ -213,4 +213,92 @@ class InstrumentGridLayoutTest extends TestCase
             }
         }
     }
+
+    /**
+     * Every plan the original planner (before the item width became a parameter)
+     * drew for a wide sweep of questions, groups, summaries and orientations, as
+     * one text. `tests/Fixtures/EvaluationSheet/layout-sweep.sha256` holds the
+     * hash of what THAT code produced; this one must still produce it.
+     */
+    private function sweep(): string
+    {
+        $lines = [];
+
+        foreach ([InstrumentGridLayout::AUTO, InstrumentGridLayout::PORTRAIT, InstrumentGridLayout::LANDSCAPE] as $orientation) {
+            foreach ([[], self::SUMMARY, [16.0, 14.0, 18.0, 12.0, 12.0, 12.0], [30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0]] as $summary) {
+                foreach ([0, 4, 7, 11] as $groupSize) {
+                    foreach (range(0, 90) as $count) {
+                        $groups = array_map(fn (int $i): ?int => $groupSize === 0 ? null : intdiv($i, $groupSize), $count === 0 ? [] : range(0, $count - 1));
+                        $plan = InstrumentGridLayout::plan($groups, $summary, $orientation);
+
+                        $lines[] = $orientation.'|'.count($summary).'|'.$groupSize.'|'.$count.'|'.$plan['orientation'].'|'.json_encode($plan['blocks']);
+                    }
+                }
+            }
+        }
+
+        return implode("\n", $lines)."\n";
+    }
+
+    #[Test]
+    public function the_default_item_width_plans_exactly_what_the_planner_always_planned(): void
+    {
+        $path = __DIR__.'/../../Fixtures/EvaluationSheet/layout-sweep.sha256';
+
+        $this->assertFileExists($path);
+        $this->assertSame(trim((string) file_get_contents($path)), hash('sha256', $this->sweep()));
+    }
+
+    #[Test]
+    public function saying_the_default_item_width_out_loud_changes_nothing(): void
+    {
+        foreach ([InstrumentGridLayout::AUTO, InstrumentGridLayout::PORTRAIT, InstrumentGridLayout::LANDSCAPE] as $orientation) {
+            foreach ([7, 22, 40, 61] as $count) {
+                $this->assertSame(
+                    InstrumentGridLayout::plan($this->ungrouped($count), self::SUMMARY, $orientation),
+                    InstrumentGridLayout::plan($this->ungrouped($count), self::SUMMARY, $orientation, InstrumentGridLayout::ITEM_WIDTH),
+                );
+            }
+        }
+    }
+
+    #[Test]
+    public function wider_items_need_more_blocks_and_narrower_ones_fewer(): void
+    {
+        $blocks = fn (float $width): int => count(InstrumentGridLayout::plan($this->ungrouped(66), [], InstrumentGridLayout::LANDSCAPE, $width)['blocks']);
+
+        // Landscape leaves 257 − 7 − 40 = 210 mm of room: 22 items of 9.5 mm to a block, 7 of 30 mm, 52 of 4 mm.
+        $this->assertSame(3, $blocks(InstrumentGridLayout::ITEM_WIDTH));
+        $this->assertSame(10, $blocks(30.0));
+        $this->assertSame(2, $blocks(4.0));
+    }
+
+    #[Test]
+    public function a_chosen_item_width_never_drops_an_item_and_never_overflows_a_block(): void
+    {
+        foreach ([4.0, 9.5, 20.0, 30.0, 61.0, 150.0, 400.0] as $itemWidth) {
+            foreach ([InstrumentGridLayout::AUTO, InstrumentGridLayout::PORTRAIT, InstrumentGridLayout::LANDSCAPE] as $orientation) {
+                foreach ([1, 5, 12, 33] as $count) {
+                    $plan = InstrumentGridLayout::plan($this->ungrouped($count), self::SUMMARY, $orientation, $itemWidth);
+
+                    $this->assertSame(range(0, $count - 1), $this->itemsOf($plan), "{$count} items of {$itemWidth} mm, {$orientation}");
+                    $this->assertSame([0, 1, 2], array_merge(...array_map(fn (array $block): array => $block['summary'], $plan['blocks'])));
+
+                    $room = InstrumentGridLayout::roomFor($plan['orientation']);
+
+                    foreach ($plan['blocks'] as $block) {
+                        $width = count($block['items']) * $itemWidth
+                            + array_sum(array_map(fn (int $index): float => self::SUMMARY[$index], $block['summary']));
+
+                        // A block always takes at least one item, so an item that cannot sit beside the
+                        // summary on the page (or is wider than the page) cannot be helped, as before;
+                        // wherever one can, nothing may exceed the page.
+                        if ($itemWidth + array_sum(self::SUMMARY) <= $room) {
+                            $this->assertLessThanOrEqual($room, $width);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Services\Assessment\Export;
 
-use App\Services\Assessment\DecisionScaleReader;
 use App\Services\Assessment\SelfAssessmentReading;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -220,8 +219,8 @@ class EvaluationSheetXlsxWriter
             foreach ($document->domains as $domain) {
                 $studentDomain = $byDomainId[(int) $domain['domain_id']] ?? null;
 
-                $proposed = $this->levelOf($studentDomain);
-                $decided = $this->decidedLevelOf($studentDomain);
+                $proposed = EvaluationSheetCellText::level($studentDomain);
+                $decided = EvaluationSheetCellText::decidedLevel($studentDomain);
 
                 $this->writePercentage($sheet, $column, $row, $studentDomain['normalized_value'] ?? null);
                 // A apreciação que vale — e a proposta, intacta, ao lado.
@@ -249,7 +248,7 @@ class EvaluationSheetXlsxWriter
             // quantidade a somar, e escrevê-lo como número convidaria a folha a
             // fazer médias de níveis — que não é uma operação que exista.
             $this->writeText($sheet, $column + 1, $row, (string) ($overall['scale_value'] ?? ''));
-            $this->writeText($sheet, $column + 2, $row, $this->levelOf($overall));
+            $this->writeText($sheet, $column + 2, $row, EvaluationSheetCellText::level($overall));
 
             if ($withSelfAssessment) {
                 $this->writeText($sheet, $column + 3, $row, SelfAssessmentReading::exportText($student['self_assessment'] ?? null));
@@ -261,8 +260,8 @@ class EvaluationSheetXlsxWriter
             /** @var array<string, mixed>|null $classification */
             $classification = $student['classification'] ?? null;
 
-            $this->writeText($sheet, $column, $row, $this->proposed($classification));
-            [$decided, $origin] = $this->decided($classification);
+            $this->writeText($sheet, $column, $row, EvaluationSheetCellText::proposed($classification));
+            [$decided, $origin] = EvaluationSheetCellText::decided($classification);
             $this->writeText($sheet, $column + 1, $row, $decided);
             $sheet->getStyle([$column + 1, $row])->getFont()->setBold($decided !== '');
             $this->writeText($sheet, $column + 2, $row, $origin);
@@ -354,80 +353,6 @@ class EvaluationSheetXlsxWriter
         $sheet->getColumnDimensionByColumn($columnCount)->setWidth(34);
         $sheet->getRowDimension($headerRow)->setRowHeight(22);
         $sheet->getRowDimension($secondRow)->setRowHeight(28);
-    }
-
-    /** @param  array<string, mixed>|null  $row */
-    protected function levelOf(?array $row): string
-    {
-        if ($row === null) {
-            return '';
-        }
-
-        return (string) ($row['scale_level_code'] ?? $row['scale_level_label'] ?? '');
-    }
-
-    /**
-     * A decisão do professor sobre um domínio, vazia quando não existe.
-     *
-     * Uma fotografia guardada antes de esta decisão existir não traz estas
-     * chaves, e a ausência delas é exatamente o que significa: ninguém se
-     * pronunciou. O ficheiro histórico continua a dizer o que dizia.
-     *
-     * @param  array<string, mixed>|null  $row
-     */
-    protected function decidedLevelOf(?array $row): string
-    {
-        if ($row === null) {
-            return '';
-        }
-
-        return (string) ($row['decided_scale_level_code'] ?? $row['decided_scale_level_label'] ?? '');
-    }
-
-    /** @param  array<string, mixed>|null  $classification */
-    protected function proposed(?array $classification): string
-    {
-        if ($classification === null) {
-            return '';
-        }
-
-        $proposed = $classification['proposed_scale_level_code']
-            ?? $classification['proposed_scale_level_label']
-            ?? $classification['proposed_value'];
-
-        return $proposed === null ? '' : (string) $proposed;
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $classification
-     * @return array{string, string}
-     */
-    protected function decided(?array $classification): array
-    {
-        if ($classification === null) {
-            return ['', 'Sem classificação registada'];
-        }
-
-        $final = $classification['final_scale_level_code']
-            ?? $classification['final_scale_level_label']
-            ?? $classification['final_value'];
-
-        if ($final !== null) {
-            // Um valor decidido numa escala de percentagem lê-se como percentagem:
-            // 65 é 65%, nunca o nível 65.
-            $isPercentage = ($classification['final_scale_level_code'] ?? $classification['final_scale_level_label'] ?? null) === null
-                && ($classification['final_value_is_percentage'] ?? false) === true;
-
-            return [$isPercentage ? DecisionScaleReader::percentText((string) $final) : (string) $final, 'Decisão do professor'];
-        }
-
-        $proposed = $classification['proposed_scale_level_code']
-            ?? $classification['proposed_scale_level_label']
-            ?? $classification['proposed_value'];
-
-        return ['', $proposed === null
-            ? 'Sem classificação registada'
-            : 'Proposta do Lapispro (não decidida)'];
     }
 
     /** @param  array<string, mixed>  $domain */

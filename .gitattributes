@@ -12,6 +12,10 @@
 # the tests would still pass while no longer testing anything.
 tests/Fixtures/Import/** -text
 
+# The Pauta's CSV and Excel as they were written before their cell text was
+# shared (BOM, quoted fields): characterization files, compared byte for byte.
+tests/Fixtures/EvaluationSheet/** -text
+
 CHANGELOG.md export-ignore
 README.md export-ignore
 .github/workflows/browser-tests.yml export-ignore

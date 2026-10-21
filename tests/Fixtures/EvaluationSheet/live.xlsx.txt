@@ -1,0 +1,137 @@
+title=Pauta
+doc-title=Semestre — 1.º Semestre
+doc-description=7.º A · Português · 2026/2027
+freeze=C10
+autofilter=A9:O14
+merges=A8:A9,B8:B9,C8:E8,F8:H8,I8:K8,L8:N8,O8:O9
+width A=5
+width B=30
+width C=13
+width D=13
+width E=13
+width F=13
+width G=13
+width H=13
+width I=13
+width J=13
+width K=13
+width L=13
+width M=13
+width N=13
+width O=34
+A1|s|"Pauta de Avaliação — Semestre — 1.º Semestre"|General|bold|none|FFFFFF
+A2|s|"Turma"|General|bold|none|FFFFFF
+B2|s|"7.º A"|General|plain|none|FFFFFF
+A3|s|"Disciplina"|General|bold|none|FFFFFF
+B3|s|"Português"|General|plain|none|FFFFFF
+A4|s|"Ano letivo"|General|bold|none|FFFFFF
+B4|s|"2026\/2027"|General|plain|none|FFFFFF
+A5|s|"Semestre"|General|bold|none|FFFFFF
+B5|s|"1.º Semestre"|General|plain|none|FFFFFF
+A6|s|"Âmbito"|General|bold|none|FFFFFF
+B6|s|"Período"|General|plain|none|FFFFFF
+A8|s|"Nº"|General|bold|solid|E5E7EB
+B8|s|"Aluno"|General|bold|solid|E5E7EB
+C8|s|"Oralidade"|General|bold|solid|2563EB
+D8|null|null|General|bold|solid|2563EB
+E8|null|null|General|bold|solid|2563EB
+F8|s|"Escrita"|General|bold|solid|F3F4F6
+G8|null|null|General|bold|solid|F3F4F6
+H8|null|null|General|bold|solid|F3F4F6
+I8|s|"Global"|General|bold|none|FFFFFF
+J8|null|null|General|bold|none|FFFFFF
+K8|null|null|General|bold|none|FFFFFF
+L8|s|"Classificação"|General|bold|none|FFFFFF
+M8|null|null|General|bold|none|FFFFFF
+N8|null|null|General|bold|none|FFFFFF
+O8|s|"Avisos de cobertura"|General|bold|none|FFFFFF
+A9|null|null|General|bold|solid|E5E7EB
+B9|null|null|General|bold|solid|E5E7EB
+C9|s|"Quant."|General|bold|solid|2563EB
+D9|s|"Apreciação"|General|bold|solid|2563EB
+E9|s|"Proposta"|General|bold|solid|2563EB
+F9|s|"Quant."|General|bold|solid|F3F4F6
+G9|s|"Apreciação"|General|bold|solid|F3F4F6
+H9|s|"Proposta"|General|bold|solid|F3F4F6
+I9|s|"Percentagem"|General|bold|none|FFFFFF
+J9|s|"Valor na escala"|General|bold|none|FFFFFF
+K9|s|"Nível"|General|bold|none|FFFFFF
+L9|s|"Proposta do Lapispro"|General|bold|none|FFFFFF
+M9|s|"Nível atribuído"|General|bold|none|FFFFFF
+N9|s|"Origem do nível"|General|bold|none|FFFFFF
+O9|null|null|General|bold|none|FFFFFF
+A10|n|1|General|plain|none|FFFFFF
+B10|s|"Aluno Um"|General|plain|none|FFFFFF
+C10|n|81.3|0.0|plain|solid|9DB9F6
+D10|s|"MB"|General|plain|solid|9DB9F6
+E10|s|"B"|General|plain|solid|9DB9F6
+F10|n|70|0.0|plain|solid|FAFAFB
+G10|s|"S"|General|plain|solid|FAFAFB
+H10|s|"S"|General|plain|solid|FAFAFB
+I10|n|78.5|0.0|plain|none|FFFFFF
+J10|s|"4"|General|plain|none|FFFFFF
+K10|s|"B"|General|plain|none|FFFFFF
+L10|s|"B"|General|plain|none|FFFFFF
+M10|s|"MB"|General|bold|none|FFFFFF
+N10|s|"Decisão do professor"|General|plain|none|FFFFFF
+O10|s|"Escrita"|General|plain|none|FFFFFF
+A11|null|null|General|plain|none|FFFFFF
+B11|s|"Aluno Dois"|General|plain|none|FFFFFF
+C11|null|null|General|plain|solid|9DB9F6
+D11|null|null|General|plain|solid|9DB9F6
+E11|null|null|General|plain|solid|9DB9F6
+F11|null|null|General|plain|solid|FAFAFB
+G11|null|null|General|plain|solid|FAFAFB
+H11|null|null|General|plain|solid|FAFAFB
+I11|null|null|General|plain|none|FFFFFF
+J11|null|null|General|plain|none|FFFFFF
+K11|null|null|General|plain|none|FFFFFF
+L11|null|null|General|plain|solid|F7F8FA
+M11|null|null|General|plain|solid|F7F8FA
+N11|s|"Sem classificação registada"|General|plain|solid|F7F8FA
+O11|s|"Global"|General|plain|solid|F7F8FA
+A12|n|3|General|plain|none|FFFFFF
+B12|s|"Aluno Três"|General|plain|none|FFFFFF
+C12|n|55|0.0|plain|solid|9DB9F6
+D12|s|"Suficiente"|General|plain|solid|9DB9F6
+E12|s|"Suficiente"|General|plain|solid|9DB9F6
+F12|n|55|0.0|plain|solid|FAFAFB
+G12|s|"Bom"|General|plain|solid|FAFAFB
+H12|s|"Suficiente"|General|plain|solid|FAFAFB
+I12|n|55|0.0|plain|none|FFFFFF
+J12|s|"3"|General|plain|none|FFFFFF
+K12|s|"Suficiente"|General|plain|none|FFFFFF
+L12|s|"3"|General|plain|none|FFFFFF
+M12|null|null|General|plain|none|FFFFFF
+N12|s|"Proposta do Lapispro (não decidida)"|General|plain|none|FFFFFF
+O12|null|null|General|plain|none|FFFFFF
+A13|n|4|General|plain|none|FFFFFF
+B13|s|"Aluno Quatro"|General|plain|none|FFFFFF
+C13|null|null|General|plain|solid|9DB9F6
+D13|null|null|General|plain|solid|9DB9F6
+E13|null|null|General|plain|solid|9DB9F6
+F13|null|null|General|plain|solid|FAFAFB
+G13|null|null|General|plain|solid|FAFAFB
+H13|null|null|General|plain|solid|FAFAFB
+I13|n|64.9|0.0|plain|none|FFFFFF
+J13|null|null|General|plain|none|FFFFFF
+K13|null|null|General|plain|none|FFFFFF
+L13|s|"64"|General|plain|solid|F7F8FA
+M13|s|"65%"|General|bold|solid|F7F8FA
+N13|s|"Decisão do professor"|General|plain|solid|F7F8FA
+O13|null|null|General|plain|solid|F7F8FA
+A14|n|5|General|plain|none|FFFFFF
+B14|s|"Aluno Cinco"|General|plain|none|FFFFFF
+C14|n|40|0.0|plain|solid|9DB9F6
+D14|s|"I"|General|plain|solid|9DB9F6
+E14|s|"I"|General|plain|solid|9DB9F6
+F14|n|40|0.0|plain|solid|FAFAFB
+G14|s|"I"|General|plain|solid|FAFAFB
+H14|s|"I"|General|plain|solid|FAFAFB
+I14|n|40|0.0|plain|none|FFFFFF
+J14|null|null|General|plain|none|FFFFFF
+K14|s|"I"|General|plain|none|FFFFFF
+L14|null|null|General|plain|none|FFFFFF
+M14|null|null|General|plain|none|FFFFFF
+N14|s|"Sem classificação registada"|General|plain|none|FFFFFF
+O14|null|null|General|plain|none|FFFFFF

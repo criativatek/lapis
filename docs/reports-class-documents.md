@@ -421,17 +421,24 @@ fazem parte da suite do repositório.
 
 ## Para a grelha intercalar/semestral (não implementada)
 
-**Nada disto existe ainda.** A grelha de uma turma num momento intercalar ou no
-período/semestre é a Fatia C e não foi iniciada. O que já existe para ela
-reutilizar, e o que tem de respeitar:
+**O documento ainda não existe.** A grelha de uma turma num momento intercalar ou
+no período/semestre é a Fatia C; só a preparação técnica (C1) está feita, sem
+efeito visível. O que já existe para ela reutilizar, e o que tem de respeitar:
 
+- A Pauta de Avaliação é a grelha: o documento consome o `EvaluationSheetDocument`
+  (`fromLiveSheet`, que já aceita o `SheetMomentKind` e só muda o título, ou
+  `fromSnapshot`, que lê só o payload congelado), sem segundo motor de cálculo.
+- `EvaluationSheetCellText` é a única leitura do texto das células (nível
+  proposto, decisão do domínio, proposta e decisão da classificação, e a origem
+  dita por palavras), partilhada pelo CSV e pelo Excel; o documento usa a mesma.
 - `DompdfPrinter`, `PaperOrientation`, `LetterheadLayout`, o timbre partilhado e
   `PrintableDocument` (com `stamp` e `pageNumbers`): a impressão do browser e o
   PDF resolvem-se como na grelha de um instrumento.
-- `InstrumentGridLayout` é uma função pura de orientação e blocos de colunas,
-  mas está escrita para as colunas de um instrumento; a grelha da turma terá as
-  suas (domínios e momentos do perfil), e o dompdf continua a não paginar na
-  horizontal.
+- `InstrumentGridLayout::plan()` é uma função pura de orientação e blocos de
+  colunas e aceita a largura de cada item (`$itemWidth`, por omissão a de uma
+  questão); a grelha da turma terá as suas (domínios e momentos do perfil), e o
+  dompdf continua a não paginar na horizontal. Limite herdado: um bloco leva
+  sempre pelo menos um item, mesmo que não caiba ao lado do resumo.
 - Colunas dinâmicas a partir do perfil e do momento reais; nunca número fixo de
   domínios ou de escala.
 - Gráficos factuais como dados compostos no servidor (barras com largura em

@@ -2,7 +2,6 @@
 
 namespace App\Services\Assessment\Export;
 
-use App\Services\Assessment\DecisionScaleReader;
 use App\Services\Assessment\SelfAssessmentReading;
 use RuntimeException;
 
@@ -185,12 +184,8 @@ class EvaluationSheetCsvWriter
 
             $row[] = $this->percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
 
-            $proposed = $studentDomain === null
-                ? ''
-                : (string) ($studentDomain['scale_level_code'] ?? $studentDomain['scale_level_label'] ?? '');
-            $decided = $studentDomain === null
-                ? ''
-                : (string) ($studentDomain['decided_scale_level_code'] ?? $studentDomain['decided_scale_level_label'] ?? '');
+            $proposed = EvaluationSheetCellText::level($studentDomain);
+            $decided = EvaluationSheetCellText::decidedLevel($studentDomain);
 
             // A apreciação que vale, a proposta sempre preservada ao lado, e a
             // origem dita por palavras — porque um ficheiro lido meses depois
@@ -215,7 +210,7 @@ class EvaluationSheetCsvWriter
 
         $row[] = $this->percentage($overall['normalized_value']);
         $row[] = (string) ($overall['scale_value'] ?? '');
-        $row[] = (string) ($overall['scale_level_code'] ?? $overall['scale_level_label'] ?? '');
+        $row[] = EvaluationSheetCellText::level($overall);
 
         if ($withSelfAssessment) {
             $row[] = SelfAssessmentReading::exportText($student['self_assessment'] ?? null);
@@ -224,8 +219,8 @@ class EvaluationSheetCsvWriter
         /** @var array<string, mixed>|null $classification */
         $classification = $student['classification'] ?? null;
 
-        $row[] = $this->proposed($classification);
-        [$decided, $origin] = $this->decided($classification);
+        $row[] = EvaluationSheetCellText::proposed($classification);
+        [$decided, $origin] = EvaluationSheetCellText::decided($classification);
         $row[] = $decided;
         $row[] = $origin;
 
@@ -236,62 +231,6 @@ class EvaluationSheetCsvWriter
         $row[] = $warnings === [] ? '' : implode('; ', $warnings);
 
         return $row;
-    }
-
-    /**
-     * A proposta do Lapispro, na escala — nunca a percentagem normalizada que a
-     * produziu, e nunca na coluna da decisão.
-     *
-     * @param  array<string, mixed>|null  $classification
-     */
-    protected function proposed(?array $classification): string
-    {
-        if ($classification === null) {
-            return '';
-        }
-
-        $proposed = $classification['proposed_scale_level_code']
-            ?? $classification['proposed_scale_level_label']
-            ?? $classification['proposed_value'];
-
-        return $proposed === null ? '' : (string) $proposed;
-    }
-
-    /**
-     * A DECISÃO DO PROFESSOR, e só ela.
-     *
-     * Vazia enquanto ninguém decidiu — e a coluna ao lado diz isso por palavras,
-     * em vez de deixar uma proposta a passar por nota (§3.3).
-     *
-     * @param  array<string, mixed>|null  $classification
-     * @return array{string, string}
-     */
-    protected function decided(?array $classification): array
-    {
-        if ($classification === null) {
-            return ['', 'Sem classificação registada'];
-        }
-
-        $final = $classification['final_scale_level_code']
-            ?? $classification['final_scale_level_label']
-            ?? $classification['final_value'];
-
-        if ($final !== null) {
-            // Um valor decidido numa escala de percentagem lê-se como percentagem:
-            // 65 é 65%, nunca o nível 65.
-            $isPercentage = ($classification['final_scale_level_code'] ?? $classification['final_scale_level_label'] ?? null) === null
-                && ($classification['final_value_is_percentage'] ?? false) === true;
-
-            return [$isPercentage ? DecisionScaleReader::percentText((string) $final) : (string) $final, 'Decisão do professor'];
-        }
-
-        $proposed = $classification['proposed_scale_level_code']
-            ?? $classification['proposed_scale_level_label']
-            ?? $classification['proposed_value'];
-
-        return ['', $proposed === null
-            ? 'Sem classificação registada'
-            : 'Proposta do Lapispro (não decidida)'];
     }
 
     /**
