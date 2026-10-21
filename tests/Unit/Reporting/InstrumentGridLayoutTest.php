@@ -301,4 +301,30 @@ class InstrumentGridLayoutTest extends TestCase
             }
         }
     }
+
+    #[Test]
+    public function a_summary_that_fits_a_page_but_leaves_no_room_for_an_item_gets_a_block_of_its_own(): void
+    {
+        // Portrait leaves 123 mm. A summary of 115 mm fits a page, but only 8 mm
+        // would be left beside it: not even one 9.5 mm question. It must not ride in
+        // the last block of questions (that block would be 124.5 mm wide and dompdf
+        // would lose what passes the margin); it stands alone, after the questions.
+        $plan = InstrumentGridLayout::plan($this->ungrouped(5), [60.0, 55.0], InstrumentGridLayout::PORTRAIT);
+
+        $this->assertSame([['items' => [0, 1, 2, 3, 4], 'summary' => []], ['items' => [], 'summary' => [0, 1]]], $plan['blocks']);
+
+        // One millimetre less and an item fits beside it again: it rides, as it always did.
+        $rides = InstrumentGridLayout::plan($this->ungrouped(5), [60.0, 53.0], InstrumentGridLayout::PORTRAIT);
+
+        $last = $rides['blocks'][count($rides['blocks']) - 1];
+
+        $this->assertSame([0, 1], $last['summary']);
+        $this->assertNotSame([], $last['items']);
+    }
+
+    #[Test]
+    public function a_summary_alone_with_no_items_stays_together_whatever_the_item_width(): void
+    {
+        $this->assertSame([['items' => [], 'summary' => [0, 1]]], InstrumentGridLayout::plan([], [60.0, 55.0], InstrumentGridLayout::PORTRAIT, 30.0)['blocks']);
+    }
 }

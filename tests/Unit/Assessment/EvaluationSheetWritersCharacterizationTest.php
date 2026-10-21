@@ -2,22 +2,16 @@
 
 namespace Tests\Unit\Assessment;
 
-use App\Models\AcademicPeriod;
-use App\Models\AcademicPeriodKind;
-use App\Models\AcademicYear;
 use App\Models\ClassificationScope;
-use App\Models\EvaluationSheetExport;
-use App\Models\SchoolClass;
 use App\Models\SheetMomentKind;
-use App\Models\Subject;
 use App\Services\Assessment\Export\EvaluationSheetCellText;
 use App\Services\Assessment\Export\EvaluationSheetCsvWriter;
 use App\Services\Assessment\Export\EvaluationSheetDocument;
 use App\Services\Assessment\Export\EvaluationSheetXlsxWriter;
-use Illuminate\Support\Carbon;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Support\EvaluationSheetSample;
 use Tests\TestCase;
 
 /**
@@ -45,19 +39,19 @@ class EvaluationSheetWritersCharacterizationTest extends TestCase
     #[Test]
     public function the_csv_of_a_kept_sheet_is_unchanged(): void
     {
-        $this->assertSameAsFixture('kept.csv', (new EvaluationSheetCsvWriter)->write($this->kept(withSelfAssessment: false)));
+        $this->assertSameAsFixture('kept.csv', (new EvaluationSheetCsvWriter)->write(EvaluationSheetSample::kept(withSelfAssessment: false)));
     }
 
     #[Test]
     public function the_csv_of_a_kept_sheet_with_self_assessment_is_unchanged(): void
     {
-        $this->assertSameAsFixture('kept-self-assessment.csv', (new EvaluationSheetCsvWriter)->write($this->kept(withSelfAssessment: true)));
+        $this->assertSameAsFixture('kept-self-assessment.csv', (new EvaluationSheetCsvWriter)->write(EvaluationSheetSample::kept(withSelfAssessment: true)));
     }
 
     #[Test]
     public function the_csv_of_the_live_sheet_is_unchanged(): void
     {
-        $this->assertSameAsFixture('live.csv', (new EvaluationSheetCsvWriter)->write($this->live()));
+        $this->assertSameAsFixture('live.csv', (new EvaluationSheetCsvWriter)->write(EvaluationSheetSample::live()));
     }
 
     // ------------------------------------------------------------ Excel
@@ -65,19 +59,19 @@ class EvaluationSheetWritersCharacterizationTest extends TestCase
     #[Test]
     public function the_xlsx_of_a_kept_sheet_is_unchanged(): void
     {
-        $this->assertSameAsFixture('kept.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write($this->kept(withSelfAssessment: false))));
+        $this->assertSameAsFixture('kept.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write(EvaluationSheetSample::kept(withSelfAssessment: false))));
     }
 
     #[Test]
     public function the_xlsx_of_a_kept_sheet_with_self_assessment_is_unchanged(): void
     {
-        $this->assertSameAsFixture('kept-self-assessment.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write($this->kept(withSelfAssessment: true))));
+        $this->assertSameAsFixture('kept-self-assessment.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write(EvaluationSheetSample::kept(withSelfAssessment: true))));
     }
 
     #[Test]
     public function the_xlsx_of_the_live_sheet_is_unchanged(): void
     {
-        $this->assertSameAsFixture('live.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write($this->live())));
+        $this->assertSameAsFixture('live.xlsx.txt', $this->fingerprint((new EvaluationSheetXlsxWriter)->write(EvaluationSheetSample::live())));
     }
 
     // ------------------------------------------------------------ o texto das células
@@ -123,7 +117,7 @@ class EvaluationSheetWritersCharacterizationTest extends TestCase
     #[Test]
     public function the_live_document_still_names_the_final_moment_when_none_is_given(): void
     {
-        $live = $this->live();
+        $live = EvaluationSheetSample::live();
 
         $this->assertSame('Semestre — 1.º Semestre', $live->momentLabel);
         $this->assertFalse($live->isHistorical);
@@ -134,12 +128,12 @@ class EvaluationSheetWritersCharacterizationTest extends TestCase
     #[Test]
     public function the_live_document_can_be_prepared_for_a_given_moment_and_nothing_else_changes(): void
     {
-        $period = $this->period();
-        $sheet = $this->sheet(withSelfAssessment: false);
+        $period = EvaluationSheetSample::period();
+        $sheet = EvaluationSheetSample::sheet(withSelfAssessment: false);
 
-        $final = EvaluationSheetDocument::fromLiveSheet($this->class(), $period, $sheet, ClassificationScope::Period, SheetMomentKind::Final);
-        $interim = EvaluationSheetDocument::fromLiveSheet($this->class(), $period, $sheet, ClassificationScope::Period, SheetMomentKind::Interim);
-        $default = EvaluationSheetDocument::fromLiveSheet($this->class(), $period, $sheet, ClassificationScope::Period);
+        $final = EvaluationSheetDocument::fromLiveSheet(EvaluationSheetSample::schoolClass(), $period, $sheet, ClassificationScope::Period, SheetMomentKind::Final);
+        $interim = EvaluationSheetDocument::fromLiveSheet(EvaluationSheetSample::schoolClass(), $period, $sheet, ClassificationScope::Period, SheetMomentKind::Interim);
+        $default = EvaluationSheetDocument::fromLiveSheet(EvaluationSheetSample::schoolClass(), $period, $sheet, ClassificationScope::Period);
 
         $this->assertEquals($default, $final);
         $this->assertSame('Momento intercalar do 1.º Semestre', $interim->momentLabel);
@@ -215,126 +209,5 @@ class EvaluationSheetWritersCharacterizationTest extends TestCase
         $spreadsheet->disconnectWorksheets();
 
         return implode("\n", $lines)."\n";
-    }
-
-    private function kept(bool $withSelfAssessment): EvaluationSheetDocument
-    {
-        $sheet = $this->sheet($withSelfAssessment);
-
-        $export = (new EvaluationSheetExport)->forceFill([
-            'scope' => ClassificationScope::Period,
-            'moment_label' => 'Momento intercalar do 1.º Semestre',
-            'effective_at' => Carbon::parse('2026-12-15'),
-            'exported_at' => Carbon::parse('2026-12-16 10:30:00', 'UTC'),
-            'payload' => [
-                'version' => 1,
-                'class' => ['label' => '7.º A', 'subject' => 'Português', 'academic_year' => '2026/2027'],
-                'period' => ['label' => '1.º Semestre', 'kind_label' => 'Semestre'],
-                'moment' => ['label' => 'Momento intercalar do 1.º Semestre', 'effective_at' => '2026-12-15', 'kind' => 'interim'],
-                'author' => ['name' => 'Professora Teste'],
-                'domains' => $sheet['domains'],
-                'students' => $sheet['students'],
-                'warnings' => ['Aviso de cobertura registado no momento.'],
-            ],
-        ]);
-
-        return EvaluationSheetDocument::fromSnapshot($export);
-    }
-
-    private function live(): EvaluationSheetDocument
-    {
-        return EvaluationSheetDocument::fromLiveSheet($this->class(), $this->period(), $this->sheet(withSelfAssessment: false), ClassificationScope::Period);
-    }
-
-    private function class(): SchoolClass
-    {
-        $class = new SchoolClass;
-        $class->label = '7.º A';
-        $class->setRelation('subject', (new Subject)->forceFill(['name' => 'Português']));
-        $class->setRelation('academicYear', (new AcademicYear)->forceFill(['label' => '2026/2027']));
-
-        return $class;
-    }
-
-    private function period(): AcademicPeriod
-    {
-        $period = new AcademicPeriod;
-        $period->label = '1.º Semestre';
-        $period->kind = AcademicPeriodKind::Semester;
-
-        return $period;
-    }
-
-    /**
-     * @return array{domains: list<array<string, mixed>>, students: list<array<string, mixed>>}
-     */
-    private function sheet(bool $withSelfAssessment): array
-    {
-        $reading = fn (string $display, bool $previous = false, bool $earlier = false): array => [
-            'display' => $display, 'code' => $display, 'criteria' => 'Perfil A · versão 2', 'previous_criteria' => $previous, 'earlier' => $earlier,
-        ];
-
-        $domains = [
-            ['domain_id' => 10, 'name' => 'Oralidade', 'color' => '#2563EB'],
-            ['domain_id' => 11, 'name' => 'Escrita', 'color' => 'não é uma cor'],
-        ];
-
-        $students = [
-            // Tudo preenchido: decisão num domínio, proposta no outro, decisão final por nível.
-            [
-                'enrollment_id' => 1, 'class_number' => 1, 'name' => 'Aluno Um',
-                'overall' => ['normalized_value' => '78.46', 'scale_value' => '4', 'scale_level_code' => 'B', 'scale_level_label' => 'Bom', 'has_coverage_warning' => false] + ($withSelfAssessment ? [] : []),
-                'domains' => [
-                    ['domain_id' => 10, 'normalized_value' => '81.25', 'scale_level_code' => 'B', 'scale_level_label' => 'Bom', 'decided_scale_level_code' => 'MB', 'decided_scale_level_label' => 'Muito Bom', 'has_coverage_warning' => false],
-                    ['domain_id' => 11, 'normalized_value' => '70.0', 'scale_level_code' => 'S', 'scale_level_label' => 'Suficiente', 'has_coverage_warning' => true],
-                ],
-                'classification' => ['proposed_scale_level_code' => 'B', 'proposed_scale_level_label' => 'Bom', 'proposed_value' => '4', 'final_scale_level_code' => 'MB', 'final_scale_level_label' => 'Muito Bom', 'final_value' => '5', 'final_value_is_percentage' => false],
-            ],
-            // Sem número, sem classificação, sem o segundo domínio, sem valores.
-            [
-                'enrollment_id' => 2, 'class_number' => null, 'name' => 'Aluno Dois',
-                'overall' => ['normalized_value' => null, 'scale_value' => null, 'scale_level_code' => null, 'scale_level_label' => null, 'has_coverage_warning' => true],
-                'domains' => [
-                    ['domain_id' => 10, 'normalized_value' => null, 'scale_level_code' => null, 'scale_level_label' => null, 'has_coverage_warning' => false],
-                ],
-                'classification' => null,
-            ],
-            // Só proposta: ninguém decidiu.
-            [
-                'enrollment_id' => 3, 'class_number' => 3, 'name' => 'Aluno Três',
-                'overall' => ['normalized_value' => '55', 'scale_value' => '3', 'scale_level_code' => null, 'scale_level_label' => 'Suficiente', 'has_coverage_warning' => false],
-                'domains' => [
-                    ['domain_id' => 10, 'normalized_value' => '55', 'scale_level_code' => null, 'scale_level_label' => 'Suficiente', 'has_coverage_warning' => false],
-                    ['domain_id' => 11, 'normalized_value' => '55', 'scale_level_code' => null, 'scale_level_label' => 'Suficiente', 'decided_scale_level_label' => 'Bom', 'has_coverage_warning' => false],
-                ],
-                'classification' => ['proposed_scale_level_code' => null, 'proposed_scale_level_label' => null, 'proposed_value' => '3', 'final_scale_level_code' => null, 'final_scale_level_label' => null, 'final_value' => null],
-            ],
-            // Decisão numa escala de percentagem: 65 é 65 %, nunca o nível 65.
-            [
-                'enrollment_id' => 4, 'class_number' => 4, 'name' => 'Aluno Quatro',
-                'overall' => ['normalized_value' => '64.9', 'scale_value' => null, 'scale_level_code' => null, 'scale_level_label' => null, 'has_coverage_warning' => false],
-                'domains' => [],
-                'classification' => ['proposed_scale_level_code' => null, 'proposed_scale_level_label' => null, 'proposed_value' => '64', 'final_scale_level_code' => null, 'final_scale_level_label' => null, 'final_value' => '65', 'final_value_is_percentage' => true],
-            ],
-            // Uma fotografia antiga: sem as chaves de decisão por domínio nem de autoavaliação.
-            [
-                'enrollment_id' => 5, 'class_number' => 5, 'name' => 'Aluno Cinco',
-                'overall' => ['normalized_value' => '40', 'scale_level_code' => 'I', 'scale_level_label' => 'Insuficiente'],
-                'domains' => [
-                    ['domain_id' => 10, 'normalized_value' => '40', 'scale_level_code' => 'I', 'scale_level_label' => 'Insuficiente'],
-                    ['domain_id' => 11, 'normalized_value' => '40', 'scale_level_code' => 'I', 'scale_level_label' => 'Insuficiente'],
-                ],
-                'classification' => ['proposed_scale_level_code' => null, 'proposed_scale_level_label' => null, 'proposed_value' => null, 'final_scale_level_code' => null, 'final_scale_level_label' => null, 'final_value' => null],
-            ],
-        ];
-
-        if ($withSelfAssessment) {
-            $students[0]['self_assessment'] = $reading('B');
-            $students[0]['domains'][0]['self_assessment'] = $reading('MB', previous: true);
-            $students[0]['domains'][1]['self_assessment'] = $reading('S', earlier: true);
-            $students[2]['domains'][0]['self_assessment'] = $reading('S', previous: true, earlier: true);
-        }
-
-        return ['domains' => $domains, 'students' => $students];
     }
 }

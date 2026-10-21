@@ -114,8 +114,14 @@ final class InstrumentGridLayout
         $capacity = max(1, (int) floor($room / $itemWidth));
 
         // The summary stays together while it fits a block of its own, and then
-        // it rides in the LAST block of questions, which has less room for them.
-        $summaryTogether = $summaryWidths !== [] && array_sum($summaryWidths) <= $room;
+        // it rides in the LAST block of questions, which has less room for them
+        // — but only while that leaves room for at least ONE item beside it:
+        // a block always takes an item, so a summary that fills the page would
+        // otherwise push a block past the margin and dompdf would drop what
+        // falls outside. Then the summary gets a block of its own.
+        $summaryTogether = $summaryWidths !== []
+            && array_sum($summaryWidths) <= $room
+            && ($itemCount === 0 || $room - array_sum($summaryWidths) >= $itemWidth);
         $lastCapacity = $summaryTogether
             ? max(1, (int) floor(($room - array_sum($summaryWidths)) / $itemWidth))
             : $capacity;

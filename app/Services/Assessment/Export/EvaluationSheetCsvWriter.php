@@ -182,7 +182,7 @@ class EvaluationSheetCsvWriter
             $domainId = (int) $domain['domain_id'];
             $studentDomain = $byDomainId[$domainId] ?? null;
 
-            $row[] = $this->percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
+            $row[] = EvaluationSheetCellText::percentage($studentDomain === null ? null : $studentDomain['normalized_value']);
 
             $proposed = EvaluationSheetCellText::level($studentDomain);
             $decided = EvaluationSheetCellText::decidedLevel($studentDomain);
@@ -208,7 +208,7 @@ class EvaluationSheetCsvWriter
         /** @var array<string, mixed> $overall */
         $overall = $student['overall'];
 
-        $row[] = $this->percentage($overall['normalized_value']);
+        $row[] = EvaluationSheetCellText::percentage($overall['normalized_value']);
         $row[] = (string) ($overall['scale_value'] ?? '');
         $row[] = EvaluationSheetCellText::level($overall);
 
@@ -231,23 +231,5 @@ class EvaluationSheetCsvWriter
         $row[] = $warnings === [] ? '' : implode('; ', $warnings);
 
         return $row;
-    }
-
-    /**
-     * A percentagem do motor com uma casa decimal, VAZIA quando não há valor.
-     *
-     * Nunca «0»: sem elementos não é zero (§13.3), e uma célula vazia é a única
-     * escrita que não convida uma folha de cálculo a somar a ausência.
-     *
-     * Ponto decimal, não vírgula, e o mesmo delimitador do CSV antigo: o
-     * ficheiro continua a abrir da mesma maneira que a pauta que substitui.
-     */
-    protected function percentage(mixed $value): string
-    {
-        if ($value === null || ! is_numeric($value)) {
-            return '';
-        }
-
-        return number_format((float) $value, 1, '.', '');
     }
 }
