@@ -21,7 +21,7 @@ class InstrumentGridOptionsTest extends TestCase
 
         $this->assertEquals(new InstrumentGridOptions, $options);
         $this->assertSame(
-            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'orientation' => 'auto'],
+            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
             $options->toArray(),
         );
     }

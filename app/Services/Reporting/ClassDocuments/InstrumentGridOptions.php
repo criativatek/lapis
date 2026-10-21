@@ -13,12 +13,16 @@ namespace App\Services\Reporting\ClassDocuments;
  * `fromQuery()` reads them against a whitelist: a missing, repeated or forged
  * value becomes the default, never an error and never a surprise column. They
  * are all ON by default, as in the class documents: `?bruta=0` turns one off.
+ * The charts are the exception: OFF by default, `?graficos=1`.
  *
  *   bruta       pontuação bruta (pontos / cotação)
  *   resultado   resultado do motor e nível
  *   dominios    um resultado por domínio — só quando o instrumento toca dois ou
  *               mais; com um só é igual ao global e nunca se imprime
  *   legenda     a tabela das questões (código, grupo, descrição, cotação, domínios)
+ *   graficos    os gráficos factuais — OFF por omissão, e só quando a correção está
+ *               concluída: antes disso não há estatística oficial (InstrumentGrid
+ *               devolve-os `null` e diz-o, mesmo que se peçam)
  *   orientacao  auto | vertical | horizontal
  */
 final readonly class InstrumentGridOptions
@@ -28,6 +32,7 @@ final readonly class InstrumentGridOptions
         public bool $result = true,
         public bool $domains = true,
         public bool $legend = true,
+        public bool $charts = false,
         /** @var 'auto'|'portrait'|'landscape' */
         public string $orientation = InstrumentGridLayout::AUTO,
     ) {}
@@ -42,6 +47,7 @@ final readonly class InstrumentGridOptions
             result: self::flag($query['resultado'] ?? null),
             domains: self::flag($query['dominios'] ?? null),
             legend: self::flag($query['legenda'] ?? null),
+            charts: self::flag($query['graficos'] ?? null, default: false),
             orientation: match ($query['orientacao'] ?? null) {
                 'vertical' => InstrumentGridLayout::PORTRAIT,
                 'horizontal' => InstrumentGridLayout::LANDSCAPE,
@@ -53,7 +59,7 @@ final readonly class InstrumentGridOptions
     /**
      * The options as they travel in the document, for the preview's own form.
      *
-     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, orientation: string}
+     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, charts: bool, orientation: string}
      */
     public function toArray(): array
     {
@@ -62,20 +68,22 @@ final readonly class InstrumentGridOptions
             'result' => $this->result,
             'domains' => $this->domains,
             'legend' => $this->legend,
+            'charts' => $this->charts,
             'orientation' => $this->orientation,
         ];
     }
 
     /**
-     * On unless the value is a clear «no». Anything that is not a plain scalar —
-     * an array in the query string, say — is the default, not a crash.
+     * The value as a yes or a no, or `$default` when it says neither. Anything that is
+     * not a plain scalar — an array in the query string, say — is the default, not a
+     * crash.
      */
-    private static function flag(mixed $value): bool
+    private static function flag(mixed $value, bool $default = true): bool
     {
         if (! is_scalar($value) || $value === '') {
-            return true;
+            return $default;
         }
 
-        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
     }
 }
