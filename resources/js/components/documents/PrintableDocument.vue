@@ -22,6 +22,16 @@ import { onBeforeUnmount, onMounted, watch } from 'vue';
  * desmontar, para uma página em paisagem não deixar o papel de outra virado de
  * lado.
  *
+ * O QUE TEM DE SAIR EM CADA FOLHA VAI NAS MARGENS DA PÁGINA. Um selo («PROVISÓRIO»)
+ * ou a numeração («Página N / T») escritos no corpo do documento só saem na folha
+ * onde calham, e um `position: fixed` repete-se mas falha a última. As caixas de
+ * margem do próprio `@page` (`@top-right`, `@bottom-right`) saem em TODAS, a
+ * última incluída. Só há Chromium recente que as desenha; nos outros browsers o
+ * documento imprime-se na mesma, sem elas — por isso o que importa continua
+ * também escrito no corpo, e o PDF do servidor é o caminho que garante as duas
+ * coisas em todas as páginas. Ambas as props são opcionais e, por omissão, o
+ * `@page` é o de sempre.
+ *
  * A VISIBILIDADE É REPOSTA. Páginas antigas usavam `body * { visibility: hidden }`
  * e o `<style>` sem âmbito ficava carregado na SPA depois de a página sair: ao
  * navegar do relatório para o mapa, o mapa imprimia em branco. A regra abaixo
@@ -32,19 +42,43 @@ const props = withDefaults(
         orientation?: 'portrait' | 'landscape';
         /** Margem de 10 mm (grelhas largas) em vez de 18 mm 16 mm. */
         compact?: boolean;
+        /** Selo no canto superior direito de CADA folha (caixa de margem do `@page`). */
+        stamp?: string | null;
+        /** «Página N / T» no canto inferior direito de cada folha. */
+        pageNumbers?: boolean;
     }>(),
     {
         orientation: 'portrait',
         compact: false,
+        stamp: null,
+        pageNumbers: false,
     },
 );
 
 let pageStyle: HTMLStyleElement | null = null;
 
+/** Um texto como string de CSS: o selo vem do servidor e não pode partir a regra. */
+function cssString(text: string): string {
+    const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\s+/g, ' ');
+
+    return `"${escaped}"`;
+}
+
 function pageRule(): string {
     const margin = props.compact ? '10mm' : '18mm 16mm';
+    const boxes: string[] = [];
 
-    return `@page { size: A4 ${props.orientation}; margin: ${margin}; }`;
+    if (props.stamp) {
+        boxes.push(
+            `@top-right { content: ${cssString(props.stamp)}; font: bold 9pt sans-serif; letter-spacing: 0.4pt; color: #000; text-align: right; vertical-align: middle; }`,
+        );
+    }
+
+    if (props.pageNumbers) {
+        boxes.push('@bottom-right { content: "Página " counter(page) " / " counter(pages); font: 8pt sans-serif; color: #444; }');
+    }
+
+    return `@page { size: A4 ${props.orientation}; margin: ${margin};${boxes.map((box) => ` ${box}`).join('')} }`;
 }
 
 onMounted(() => {
@@ -59,7 +93,7 @@ onMounted(() => {
 });
 
 watch(
-    () => [props.orientation, props.compact],
+    () => [props.orientation, props.compact, props.stamp, props.pageNumbers],
     () => {
         if (pageStyle) {
             pageStyle.textContent = pageRule();
