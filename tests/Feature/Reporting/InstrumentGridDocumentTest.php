@@ -197,7 +197,7 @@ class InstrumentGridDocumentTest extends TestCase
         $props = $this->props('?bruta=0&dominios=0&legenda=0&orientacao=horizontal');
 
         $this->assertSame(
-            ['raw_score' => false, 'result' => true, 'domains' => false, 'legend' => false, 'orientation' => 'landscape'],
+            ['raw_score' => false, 'result' => true, 'domains' => false, 'legend' => false, 'charts' => false, 'orientation' => 'landscape'],
             $props['document']['options'],
         );
         $this->assertSame('landscape', $props['document']['orientation']);
@@ -218,7 +218,7 @@ class InstrumentGridDocumentTest extends TestCase
         $props = $this->props('?bruta[]=0&resultado=banana&orientacao=diagonal&inventada=1');
 
         $this->assertSame(
-            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'orientation' => 'auto'],
+            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
             $props['document']['options'],
         );
     }
@@ -579,7 +579,7 @@ class InstrumentGridDocumentTest extends TestCase
         $this->assertSameJsonPayload([
             'format' => 'pdf',
             'orientation' => 'portrait',
-            'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'orientation' => 'auto'],
+            'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
             'provisional' => true,
             'students' => 5,
             'excluded' => 1,

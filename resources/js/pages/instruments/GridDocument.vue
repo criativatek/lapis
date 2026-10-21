@@ -31,6 +31,10 @@ type Block = {
     rows: { number: string; name: string; cells: Cell[] }[];
 };
 
+type Bar = { label: string; value_text: string; detail: string | null; width: string | null; negative: boolean };
+
+type Chart = { title: string; basis: string; bars: Bar[]; caution: string | null; empty_message: string };
+
 type GridDocument = {
     title: string;
     kind_label: string;
@@ -46,7 +50,13 @@ type GridDocument = {
     meta: { class: string; subject: string; period: string; applied_on: string; type: string | null; purpose: string; status: string };
     is_diagnostic: boolean;
     state: { is_provisional: boolean; label: string };
-    options: { raw_score: boolean; result: boolean; domains: boolean; legend: boolean; orientation: Orientation };
+    options: { raw_score: boolean; result: boolean; domains: boolean; legend: boolean; charts: boolean; orientation: Orientation };
+    charts_available: boolean;
+    charts: {
+        distribution: Chart & { n_label: string; missing: { label: string; count: number }[]; missing_note: string | null };
+        means: Chart & { axis: string };
+        questions: Chart & { axis: string; note: string };
+    } | null;
     orientation: 'portrait' | 'landscape';
     blocks: Block[];
     summary: { students: number; excluded: number; questions: number; blocks: number; domains: number };
@@ -79,13 +89,14 @@ function query(options: GridDocument['options']): Record<string, string> {
         resultado: options.result ? '1' : '0',
         dominios: options.domains ? '1' : '0',
         legenda: options.legend ? '1' : '0',
+        graficos: options.charts ? '1' : '0',
         orientacao: orientationQuery[options.orientation],
     };
 }
 
 // Only the options change the page; the document the server sends back is the
 // whole answer, and nothing here recomputes a figure.
-function setOption(key: 'raw_score' | 'result' | 'domains' | 'legend', checked: boolean | 'indeterminate'): void {
+function setOption(key: 'raw_score' | 'result' | 'domains' | 'legend' | 'charts', checked: boolean | 'indeterminate'): void {
     if (typeof checked !== 'boolean') {
         return;
     }
@@ -113,6 +124,13 @@ const pdfHref = computed(() => `${baseUrl.value}/pdf?${new URLSearchParams(query
 
 // With a single domain the domain IS the global result: there is nothing to choose.
 const hasSeveralDomains = computed(() => props.document.summary.domains >= 2);
+
+// The three charts, in the order they are drawn. The server composed every text and measured every bar.
+const chartList = computed(() => {
+    const charts = props.document.charts;
+
+    return charts ? [charts.distribution, charts.means, charts.questions] : [];
+});
 
 const hasNamedGroups = computed(() => props.document.legend.questions?.some((question) => question.group) ?? false);
 
@@ -187,6 +205,19 @@ function print(): void {
                         @update:model-value="(value) => setOption('legend', value)"
                     />
                     Legenda das questões
+                </label>
+                <!-- Statistics are official only for a concluded correction. -->
+                <label class="flex min-h-11 items-center gap-2 text-sm" :class="{ 'opacity-60': !document.charts_available }">
+                    <Checkbox
+                        id="grid-doc-charts"
+                        :model-value="document.options.charts"
+                        :disabled="!document.charts_available"
+                        @update:model-value="(value) => setOption('charts', value)"
+                    />
+                    Gráficos
+                    <span v-if="!document.charts_available" class="text-xs text-muted-foreground">
+                        (só com a correção concluída)
+                    </span>
                 </label>
 
                 <label class="grid gap-1 text-sm">
@@ -354,6 +385,52 @@ function print(): void {
                 </div>
             </section>
             </template>
+
+            <section v-if="document.charts" data-charts class="mt-8 space-y-6">
+                <article v-for="(chart, chartIndex) in chartList" :key="chartIndex" data-chart class="space-y-2 break-inside-avoid">
+                    <div>
+                        <h2 class="text-[0.95rem] leading-snug font-semibold">{{ chart.title }}</h2>
+                        <p class="text-xs text-muted-foreground">
+                            {{ chart.basis }}<template v-if="'n_label' in chart"> · {{ chart.n_label }}</template>
+                        </p>
+                    </div>
+
+                    <p v-if="chart.bars.length === 0" class="text-sm text-muted-foreground">{{ chart.empty_message }}</p>
+
+                    <ul v-else class="space-y-1">
+                        <li
+                            v-for="(bar, barIndex) in chart.bars"
+                            :key="barIndex"
+                            class="grid grid-cols-[minmax(3.5rem,9rem)_1fr_minmax(5rem,auto)] items-center gap-x-3 text-xs"
+                        >
+                            <span class="font-medium break-words">{{ bar.label }}</span>
+                            <!-- The track and the bar: the server measured the bar on an absolute
+                                 axis. Backgrounds do not print unless told to, hence the
+                                 print-color-adjust. A bar with no width — or none to draw — is an
+                                 empty track, never a bar at zero (the PDF draws the same rule). -->
+                            <span class="h-3.5 border border-border print:[print-color-adjust:exact]">
+                                <span
+                                    v-if="bar.width !== null && Number(bar.width) > 0"
+                                    class="block h-full print:[print-color-adjust:exact]"
+                                    :class="bar.negative ? 'border-r border-foreground bg-foreground/30' : 'bg-foreground/75'"
+                                    :style="{ width: `${bar.width}%` }"
+                                ></span>
+                            </span>
+                            <span class="tabular-nums">
+                                {{ bar.value_text }}
+                                <span v-if="bar.detail" class="block text-[0.65rem] text-muted-foreground">{{ bar.detail }}</span>
+                            </span>
+                        </li>
+                    </ul>
+
+                    <p v-if="'axis' in chart" class="text-[0.7rem] text-muted-foreground">{{ chart.axis }}</p>
+                    <p v-if="'missing_note' in chart && chart.missing_note" class="text-[0.7rem] text-muted-foreground">
+                        {{ chart.missing_note }}
+                    </p>
+                    <p v-if="'note' in chart" class="text-[0.7rem] text-muted-foreground">{{ chart.note }}</p>
+                    <p v-if="chart.caution" class="text-[0.7rem] font-medium">{{ chart.caution }}</p>
+                </article>
+            </section>
 
             <section v-if="document.legend.questions" class="mt-8 space-y-2">
                 <h2 class="text-[0.95rem] leading-snug font-semibold">Questões</h2>

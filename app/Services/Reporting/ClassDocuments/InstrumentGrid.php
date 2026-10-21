@@ -79,6 +79,7 @@ class InstrumentGrid
     public function __construct(
         protected DocumentIdentity $identity,
         protected BuildResultsAnalysis $analysis,
+        protected InstrumentGridCharts $charts,
     ) {}
 
     /**
@@ -163,6 +164,21 @@ class InstrumentGrid
         $issuedAt = now();
         $concluded = $instrument->status->isConcluded();
 
+        // The charts are statistics, and statistics are official only for a concluded
+        // correction: asking for them earlier changes nothing, and the document says
+        // so (`options.charts` is what was actually drawn). Same context, same cohort
+        // calculation: the statistics are read, not recomputed.
+        $drawCharts = $options->charts && $concluded;
+        $charts = $drawCharts
+            ? $this->charts->build(
+                $this->analysis->dimensionsAnalysis($context),
+                $context->threshold(),
+                array_values($items->all()),
+                $roster,
+                $scores,
+            )
+            : null;
+
         return [
             'title' => $instrument->title,
             'kind_label' => __('Grelha do elemento de avaliação'),
@@ -189,7 +205,9 @@ class InstrumentGrid
                 'is_provisional' => ! $concluded,
                 'label' => $concluded ? __('Correção concluída') : __('PROVISÓRIO'),
             ],
-            'options' => $options->toArray(),
+            'options' => [...$options->toArray(), 'charts' => $drawCharts],
+            'charts_available' => $concluded,
+            'charts' => $charts,
             'orientation' => $plan['orientation'],
             'blocks' => $blocks,
             'summary' => [

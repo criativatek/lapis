@@ -72,8 +72,10 @@ function makeDocument(overrides: Record<string, unknown> = {}): Doc {
         meta: { class: '8.º A', subject: 'Matemática', period: '1.º Período', applied_on: '15/10/2026', type: 'Teste', purpose: 'Sumativa', status: 'Em correção' },
         is_diagnostic: false,
         state: { is_provisional: false, label: 'Correção concluída' },
-        options: { raw_score: true, result: true, domains: true, legend: true, orientation: 'auto' },
+        options: { raw_score: true, result: true, domains: true, legend: true, charts: false, orientation: 'auto' },
         orientation: 'portrait',
+        charts_available: true,
+        charts: null,
         blocks: [makeBlock()],
         summary: { students: 2, excluded: 0, questions: 2, blocks: 1, domains: 2 },
         excluded_note: null,
@@ -95,6 +97,49 @@ function makeDocument(overrides: Record<string, unknown> = {}): Doc {
         empty_message: 'Não há alunos abrangidos por este elemento de avaliação.',
         ...overrides,
     } as Doc;
+}
+
+const chartsOn = { raw_score: true, result: true, domains: true, legend: true, charts: true, orientation: 'auto' };
+
+function makeCharts() {
+    const axis = 'Escala absoluta de 0 a 100 %.';
+
+    return {
+        distribution: {
+            title: 'Distribuição dos resultados',
+            basis: 'Por nível da escala',
+            n: 8,
+            n_label: 'n = 8 alunos com resultado',
+            bars: [
+                { label: 'Suficiente', value_text: '5 · 62,5 %', detail: null, width: '62.5', negative: false },
+                { label: 'Insuficiente', value_text: '3 · 37,5 %', detail: null, width: '37.5', negative: true },
+            ],
+            missing: [],
+            missing_note: null as string | null,
+            caution: null as string | null,
+            empty_message: 'Sem resultados: nenhum aluno tem ainda um resultado calculado.',
+        },
+        means: {
+            title: 'Média da turma',
+            basis: 'Global',
+            axis,
+            bars: [{ label: 'Global', value_text: '58,0 %', detail: 'n = 8 alunos com resultado', width: '58.0', negative: false }],
+            caution: null as string | null,
+            empty_message: 'Sem resultados: nenhum aluno tem ainda um resultado calculado.',
+        },
+        questions: {
+            title: 'Média por questão',
+            basis: 'Pontos obtidos sobre a cotação, entre os alunos avaliados em cada questão',
+            axis,
+            note: 'Ausências, dispensas e questões por avaliar não contam como zero.',
+            bars: [
+                { label: 'Q1', value_text: '63,3 %', detail: '8 de 8 avaliados', width: '63.3' as string | null, negative: false },
+                { label: 'Q2', value_text: '—', detail: '0 de 8 avaliados · 8 dispensados', width: null as string | null, negative: false },
+            ],
+            caution: null as string | null,
+            empty_message: 'Sem resultados: nenhuma questão tem ainda pontuações avaliadas.',
+        },
+    };
 }
 
 function mountPage(overrides: Record<string, unknown> = {}) {
@@ -172,6 +217,98 @@ describe('instruments/GridDocument.vue', () => {
         wrappers.pop();
     });
 
+    it('draws no charts section when the server sent none, and offers the option', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.find('[data-charts]').exists()).toBe(false);
+        expect(wrapper.find('#grid-doc-charts').attributes('disabled')).toBeUndefined();
+    });
+
+    it('disables the charts option, saying why, while the correction is not concluded', () => {
+        const wrapper = mountPage({ document: makeDocument({ charts_available: false }) });
+
+        expect(wrapper.find('#grid-doc-charts').attributes('disabled')).toBeDefined();
+        expect(wrapper.text()).toContain('só com a correção concluída');
+    });
+
+    it('turns the charts on by asking the server again with graficos=1', async () => {
+        const wrapper = mountPage();
+
+        await wrapper.find('#grid-doc-charts').trigger('click');
+
+        expect(routerGet).toHaveBeenCalledWith(
+            '/instruments/inst-1/impressao',
+            { bruta: '1', resultado: '1', dominios: '1', legenda: '1', graficos: '1', orientacao: 'auto' },
+            { replace: true, preserveScroll: true, preserveState: true },
+        );
+    });
+
+    it('draws every bar with the length, text and detail the server measured and composed', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+        const section = wrapper.find('[data-charts]');
+
+        expect(section.findAll('[data-chart]')).toHaveLength(3);
+        expect(section.text()).toContain('Distribuição dos resultados');
+        expect(section.text()).toContain('Por nível da escala · n = 8 alunos com resultado');
+
+        const first = section.findAll('[data-chart]')[0];
+        expect(first.text()).toContain('5 · 62,5 %');
+        expect(first.text()).toContain('3 · 37,5 %');
+
+        const widths = first.findAll('li span[style]').map((fill) => fill.attributes('style'));
+        expect(widths).toEqual(['width: 62.5%;', 'width: 37.5%;']);
+
+        // A question with nobody assessed has no bar, only its coverage.
+        const question = section.findAll('[data-chart]')[2].findAll('li')[1];
+        expect(question.find('span[style]').exists()).toBe(false);
+        expect(question.text()).toContain('0 de 8 avaliados · 8 dispensados');
+    });
+
+    it('draws no fill for a bar of zero length, so a level nobody reached shows an empty track', () => {
+        const charts = makeCharts();
+        charts.distribution.bars.push({ label: 'Fraco', value_text: '0 · 0,0 %', detail: null, width: '0.0', negative: true });
+
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts }) });
+        const rows = wrapper.findAll('[data-chart]')[0].findAll('li');
+
+        expect(rows).toHaveLength(3);
+        expect(rows[2].text()).toContain('0 · 0,0 %');
+        expect(rows[2].find('span[style]').exists()).toBe(false);
+    });
+
+    it('marks a bar below the threshold apart from the others', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+        const fills = wrapper.findAll('[data-chart]')[0].findAll('li span[style]');
+
+        expect(fills[0].classes()).not.toContain('bg-foreground/30');
+        expect(fills[1].classes()).toContain('bg-foreground/30');
+    });
+
+    it('keeps the bars printable and a chart in one piece', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+
+        for (const fill of wrapper.findAll('[data-chart] li span[style]')) {
+            expect(fill.classes().join(' ')).toContain('print-color-adjust');
+        }
+
+        expect(wrapper.find('[data-chart]').classes()).toContain('break-inside-avoid');
+    });
+
+    it('says plainly when there is nothing to draw, and shows the caution and the missing note', () => {
+        const charts = makeCharts();
+        charts.distribution.bars = [];
+        charts.distribution.missing_note = 'Sem resultado: 8 ausentes';
+        charts.distribution.caution = 'Poucos alunos com resultado (n = 3): leia com cautela.';
+
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts }) });
+        const first = wrapper.findAll('[data-chart]')[0];
+
+        expect(first.text()).toContain('Sem resultados: nenhum aluno tem ainda um resultado calculado.');
+        expect(first.findAll('li')).toHaveLength(0);
+        expect(first.text()).toContain('Sem resultado: 8 ausentes');
+        expect(first.text()).toContain('leia com cautela');
+    });
+
     it('does not claim provisional values for a concluded grid', () => {
         const wrapper = mountPage();
 
@@ -245,7 +382,7 @@ describe('instruments/GridDocument.vue', () => {
         expect(routerGet).toHaveBeenCalledTimes(1);
         expect(routerGet).toHaveBeenCalledWith(
             '/instruments/inst-1/impressao',
-            { bruta: '0', resultado: '1', dominios: '1', legenda: '1', orientacao: 'auto' },
+            { bruta: '0', resultado: '1', dominios: '1', legenda: '1', graficos: '0', orientacao: 'auto' },
             { replace: true, preserveScroll: true, preserveState: true },
         );
     });
@@ -277,7 +414,7 @@ describe('instruments/GridDocument.vue', () => {
         const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
         expect(pdfLink?.attributes('href')).toBe(
-            '/instruments/inst-1/impressao/pdf?bruta=1&resultado=1&dominios=1&legenda=1&orientacao=auto',
+            '/instruments/inst-1/impressao/pdf?bruta=1&resultado=1&dominios=1&legenda=1&graficos=0&orientacao=auto',
         );
         expect(pdfLink?.attributes('disabled')).toBeUndefined();
 
@@ -291,7 +428,7 @@ describe('instruments/GridDocument.vue', () => {
     it('asks for the PDF with the options the preview is showing, in the words the server reads', () => {
         const wrapper = mountPage({
             document: makeDocument({
-                options: { raw_score: false, result: true, domains: false, legend: false, orientation: 'landscape' },
+                options: { raw_score: false, result: true, domains: false, legend: false, charts: false, orientation: 'landscape' },
                 orientation: 'landscape',
             }),
         });
@@ -299,7 +436,7 @@ describe('instruments/GridDocument.vue', () => {
         const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
         expect(pdfLink?.attributes('href')).toBe(
-            '/instruments/inst-1/impressao/pdf?bruta=0&resultado=1&dominios=0&legenda=0&orientacao=horizontal',
+            '/instruments/inst-1/impressao/pdf?bruta=0&resultado=1&dominios=0&legenda=0&graficos=0&orientacao=horizontal',
         );
     });
 

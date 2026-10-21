@@ -56,14 +56,7 @@ class BuildResultsAnalysis
 
         $dimensions = $context->dimensions();
 
-        $dimensionPayload = [];
-        foreach ($dimensions as $dimension) {
-            $dimensionPayload[] = [
-                'key' => $dimension['key'],
-                'label' => $dimension['label'],
-                'analysis' => $this->analyzer->analyse($dimension['observations'], $bands, $threshold),
-            ];
-        }
+        $dimensionPayload = $this->dimensionsAnalysis($context);
 
         $students = $includeIndividual
             ? $this->studentsPayload($instrument, $dimensions, $bands, $threshold)
@@ -84,6 +77,32 @@ class BuildResultsAnalysis
             'can_edit' => $canEdit,
             'links' => $this->links($instrument, $includeIndividual),
         ];
+    }
+
+    /**
+     * The statistics of every dimension (the global result and one per domain) over a
+     * context the caller already holds — the same `ResultsAnalyzer` figures Resultados
+     * shows, for a reader that needs them beside the cells of the same context and
+     * must not pay for the cohort's calculation twice. Meaningful only for a concluded
+     * instrument: the caller applies the official-statistics gate (`isConcluded()`).
+     *
+     * @return list<array{key: string, label: string, analysis: array<string, mixed>}>
+     */
+    public function dimensionsAnalysis(InstrumentResultsContext $context): array
+    {
+        $bands = $context->bands();
+        $threshold = $context->threshold();
+
+        $payload = [];
+        foreach ($context->dimensions() as $dimension) {
+            $payload[] = [
+                'key' => $dimension['key'],
+                'label' => $dimension['label'],
+                'analysis' => $this->analyzer->analyse($dimension['observations'], $bands, $threshold),
+            ];
+        }
+
+        return $payload;
     }
 
     /**
