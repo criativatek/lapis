@@ -109,6 +109,8 @@ function setOrientation(value: string | number | null): void {
     });
 }
 
+const pdfHref = computed(() => `${baseUrl.value}/pdf?${new URLSearchParams(query(props.document.options)).toString()}`);
+
 // With a single domain the domain IS the global result: there is nothing to choose.
 const hasSeveralDomains = computed(() => props.document.summary.domains >= 2);
 
@@ -206,11 +208,14 @@ function print(): void {
                         <Printer class="size-4" />
                         Imprimir
                     </Button>
-                    <!-- Not available yet: the PDF is a later step. Shown, so the
-                         teacher knows it is coming, and never clickable. -->
-                    <Button variant="outline" class="min-h-11" disabled title="O PDF ainda não está disponível.">
-                        <FileDown class="size-4" />
-                        PDF
+                    <!-- A plain link, not an Inertia visit: a binary response cannot
+                         come back through one. It carries the SAME options the
+                         preview is showing, so the PDF is that sheet. -->
+                    <Button variant="outline" class="min-h-11" as-child>
+                        <a :href="pdfHref">
+                            <FileDown class="size-4" />
+                            PDF
+                        </a>
                     </Button>
                 </div>
             </div>

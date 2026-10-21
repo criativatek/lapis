@@ -250,22 +250,38 @@ describe('instruments/GridDocument.vue', () => {
         expect(wrapper.text()).toContain('só quando o elemento toca dois ou mais domínios');
     });
 
-    it('prints through the browser, and shows the PDF button disabled because it is not implemented yet', async () => {
+    it('prints through the browser, and offers the PDF as a plain download link', async () => {
         const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
         const wrapper = mountPage();
 
-        const buttons = wrapper.findAll('button');
-        const printButton = buttons.find((button) => button.text().includes('Imprimir'));
-        const pdfButton = buttons.find((button) => button.text().includes('PDF'));
+        const printButton = wrapper.findAll('button').find((button) => button.text().includes('Imprimir'));
+        const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
-        expect(pdfButton?.attributes('disabled')).toBeDefined();
-        expect(wrapper.find('a[href$="/pdf"]').exists()).toBe(false);
+        expect(pdfLink?.attributes('href')).toBe(
+            '/instruments/inst-1/impressao/pdf?bruta=1&resultado=1&dominios=1&legenda=1&orientacao=auto',
+        );
+        expect(pdfLink?.attributes('disabled')).toBeUndefined();
 
         await printButton?.trigger('click');
         await wrapper.vm.$nextTick();
         await Promise.resolve();
 
         expect(print).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for the PDF with the options the preview is showing, in the words the server reads', () => {
+        const wrapper = mountPage({
+            document: makeDocument({
+                options: { raw_score: false, result: true, domains: false, legend: false, orientation: 'landscape' },
+                orientation: 'landscape',
+            }),
+        });
+
+        const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
+
+        expect(pdfLink?.attributes('href')).toBe(
+            '/instruments/inst-1/impressao/pdf?bruta=0&resultado=1&dominios=0&legenda=0&orientacao=horizontal',
+        );
     });
 
     it('lists the legend of the questions only when the server sent it, and the states in use', () => {

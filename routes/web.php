@@ -734,6 +734,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // never stored. `/impressao`, NOT `/grelha`: that one is the spreadsheet a
         // teacher fills in offline, and the two must not be mistaken for each other.
         Route::get('instruments/{instrument}/impressao', [InstrumentGridDocumentController::class, 'show'])->name('instruments.grid-document');
+        Route::get('instruments/{instrument}/impressao/pdf', [InstrumentGridDocumentController::class, 'pdf'])->name('instruments.grid-document.pdf');
         // The grid a teacher fills in offline and brings back. Deliberately on
         // the instrument: it is generated FROM one, and there is nothing to ask
         // when the answer is the evaluation already on screen (§11).
