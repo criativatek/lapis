@@ -379,6 +379,9 @@
             @if (! empty($chart['missing_note']))
                 <p class="notes">{{ $chart['missing_note'] }}</p>
             @endif
+            @if (! empty($chart['unplaced_note']))
+                <p class="notes">{{ $chart['unplaced_note'] }}</p>
+            @endif
             @if (isset($chart['note']))
                 <p class="notes">{{ $chart['note'] }}</p>
             @endif
