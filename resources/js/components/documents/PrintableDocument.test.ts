@@ -86,6 +86,52 @@ describe('PrintableDocument', () => {
         expect(pageStyles()[0].textContent).toContain('size: A4 portrait; margin: 18mm 16mm;');
     });
 
+    it('leaves the @page exactly as it always was when no stamp or page numbers are asked for', () => {
+        mountDocument();
+
+        expect(pageStyles()[0].textContent).toBe('@page { size: A4 portrait; margin: 18mm 16mm; }');
+    });
+
+    it('asks for a stamp on every sheet through the page margin box, and escapes what the server sends', () => {
+        mountDocument({ stamp: 'PROVISÓRIO' });
+
+        expect(pageStyles()[0].textContent).toContain('@top-right { content: "PROVISÓRIO";');
+        expect(pageStyles()[0].textContent).not.toContain('@bottom-right');
+
+    });
+
+    it('cannot be broken out of by a stamp with quotes, a backslash or a line break', () => {
+        const hostile = ['say "hi"', String.raw`a\b`, 'two\nlines'];
+        const expected = [String.raw`"say \"hi\""`, String.raw`"a\\b"`, '"two lines"'];
+
+        hostile.forEach((stamp, index) => {
+            const wrapper = mountDocument({ stamp });
+
+            expect(pageStyles().at(-1)?.textContent).toContain(`@top-right { content: ${expected[index]};`);
+
+            wrapper.unmount();
+            wrappers.length = 0;
+        });
+    });
+
+    it('asks for «Página N / T» on every sheet only when told to', () => {
+        mountDocument({ pageNumbers: true });
+
+        expect(pageStyles()[0].textContent).toContain('@bottom-right { content: "Página " counter(page) " / " counter(pages);');
+        expect(pageStyles()[0].textContent).not.toContain('@top-right');
+    });
+
+    it('rewrites the stamp when it changes without remounting, and drops it when it goes', async () => {
+        const wrapper = mountDocument({ stamp: 'PROVISÓRIO', pageNumbers: true });
+
+        expect(pageStyles()[0].textContent).toContain('PROVISÓRIO');
+
+        await wrapper.setProps({ stamp: null, pageNumbers: false });
+
+        expect(pageStyles()).toHaveLength(1);
+        expect(pageStyles()[0].textContent).toBe('@page { size: A4 portrait; margin: 18mm 16mm; }');
+    });
+
     it('leaves exactly the paper of the document the user navigated to', () => {
         const first = mountDocument();
         first.unmount();

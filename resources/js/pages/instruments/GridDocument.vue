@@ -248,6 +248,8 @@ function print(): void {
         <PrintableDocument
             :orientation="document.orientation"
             :compact="document.orientation === 'landscape'"
+            :stamp="document.state.is_provisional ? document.state.label : null"
+            page-numbers
             class="w-full rounded-lg border border-border bg-card p-6 sm:p-10"
         >
             <!-- The school's «not configured» note is advice to the teacher, not
@@ -264,7 +266,9 @@ function print(): void {
                     {{ document.meta.type ?? 'Sem tipo' }} · {{ document.meta.purpose }} · {{ document.issued_label }}
                 </p>
                 <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <!-- On paper too: a provisional grid must say so on every copy. -->
+                    <!-- On paper too: a provisional grid must say so on every copy. This one is on
+                         the first sheet; the stamp in the page margin (see PrintableDocument)
+                         repeats it on every sheet where the browser draws margin boxes. -->
                     <Badge
                         :variant="document.state.is_provisional ? 'outline' : 'secondary'"
                         class="text-xs font-semibold"

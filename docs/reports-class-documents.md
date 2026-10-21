@@ -66,6 +66,17 @@ grelhas seguintes vão precisar.
   passaram a usar este componente (a Pauta com `orientation="landscape"
   compact`), sem as regras `body *`/`inset: 0`/`@page` próprias; o componente
   repõe a visibilidade da folha e reescreve o `@page` quando a orientação muda.
+
+  *Impressão do browser da grelha de um instrumento (verificada em Chromium):*
+  com `stamp` e `pageNumbers` o componente escreve o selo («PROVISÓRIO») e
+  «Página N / T» nas **caixas de margem do `@page`**, que saem em todas as
+  folhas, a última incluída; um `position: fixed` no corpo repetia-se mas
+  falhava a última, e um selo só no corpo saía só na primeira. **Limitação:** só
+  o Chromium recente desenha caixas de margem; noutros browsers o documento
+  imprime-se na mesma, com o selo apenas na 1.ª folha e sem numeração. O PDF do
+  servidor garante as duas coisas em todas as páginas e é o caminho fiável (em
+  particular no telemóvel). Cabeçalhos da tabela repetidos, blocos de colunas
+  numa folha cada e resultados completos não precisaram de correção.
   `resources/js/lib/printStyles.test.ts` impede o regresso (nenhum destes
   ficheiros pode voltar a ter `body *` solto, `position: absolute`/`inset: 0`
   em `@media print` nem `@page` estático). O PDF do servidor não tinha o

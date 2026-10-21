@@ -153,6 +153,25 @@ describe('instruments/GridDocument.vue', () => {
         expect(sheet.text()).toContain('PROVISÓRIO');
     });
 
+    it('puts the provisional stamp and the page numbers in the page margins, so every printed sheet has them', () => {
+        const provisional = mountPage({ document: makeDocument({ state: { is_provisional: true, label: 'PROVISÓRIO' } }) });
+        const rule = document.head.querySelector('style[data-document-print-page]')?.textContent ?? '';
+
+        expect(rule).toContain('@top-right { content: "PROVISÓRIO";');
+        expect(rule).toContain('@bottom-right { content: "Página " counter(page) " / " counter(pages);');
+
+        provisional.unmount();
+        wrappers.pop();
+
+        const concluded = mountPage();
+        const concludedRule = document.head.querySelector('style[data-document-print-page]')?.textContent ?? '';
+
+        expect(concludedRule).not.toContain('@top-right');
+        expect(concludedRule).toContain('@bottom-right');
+        concluded.unmount();
+        wrappers.pop();
+    });
+
     it('does not claim provisional values for a concluded grid', () => {
         const wrapper = mountPage();
 
