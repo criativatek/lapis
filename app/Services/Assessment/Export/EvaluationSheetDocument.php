@@ -6,6 +6,7 @@ use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
+use App\Models\SheetMomentKind;
 use Illuminate\Support\Str;
 
 /**
@@ -99,6 +100,13 @@ final readonly class EvaluationSheetDocument
     /**
      * A pauta como está agora.
      *
+     * O MOMENTO SÓ DÁ O TÍTULO. Os dois momentos de um período leem a mesma
+     * pauta (`SheetMomentKind`), por isso `$moment` muda o que o documento diz
+     * de si — «Momento intercalar do 1.º Semestre» — e nenhum número. Sem o
+     * indicar, o documento chama-se como sempre se chamou, pelo momento final
+     * do período: é o que o CSV e o Excel atuais da pauta viva continuam a
+     * receber.
+     *
      * @param  array{domains: list<array<string, mixed>>, students: list<array<string, mixed>>}  $sheet
      */
     public static function fromLiveSheet(
@@ -106,6 +114,7 @@ final readonly class EvaluationSheetDocument
         AcademicPeriod $period,
         array $sheet,
         ClassificationScope $scope,
+        SheetMomentKind $moment = SheetMomentKind::Final,
     ): self {
         return new self(
             classLabel: (string) $class->label,
@@ -114,8 +123,8 @@ final readonly class EvaluationSheetDocument
             periodLabel: (string) $period->label,
             periodKindLabel: $period->kind->label(),
             // A pauta viva não é um momento guardado e não tem título próprio:
-            // chama-se pelo período que está a ser visto.
-            momentLabel: $period->kind->label().' — '.$period->label,
+            // chama-se pelo período que está a ser visto e pelo momento dele.
+            momentLabel: $moment->momentLabel($period),
             effectiveAt: null,
             keptAt: null,
             authorName: null,

@@ -65,18 +65,19 @@ final class InstrumentGridLayout
      * @param  list<int|null>  $itemGroups  the group of each question, in order — an id, or null for the implicit group; only EQUALITY matters
      * @param  list<float>  $summaryWidths  the width of each summary column, in order
      * @param  'auto'|'portrait'|'landscape'  $orientation  `auto` is portrait while everything fits one block in it, landscape otherwise
+     * @param  float  $itemWidth  the width of one item in mm — a question's column by default; a grid whose items are wider (or narrower) says so here
      * @return array{orientation: 'portrait'|'landscape', blocks: list<array{items: list<int>, summary: list<int>}>}
      */
-    public static function plan(array $itemGroups, array $summaryWidths, string $orientation = self::AUTO): array
+    public static function plan(array $itemGroups, array $summaryWidths, string $orientation = self::AUTO, float $itemWidth = self::ITEM_WIDTH): array
     {
         if ($orientation === self::PORTRAIT || $orientation === self::LANDSCAPE) {
             return [
                 'orientation' => $orientation,
-                'blocks' => self::blocks($itemGroups, $summaryWidths, self::widthOf($orientation)),
+                'blocks' => self::blocks($itemGroups, $summaryWidths, self::widthOf($orientation), $itemWidth),
             ];
         }
 
-        $portrait = self::blocks($itemGroups, $summaryWidths, self::PORTRAIT_WIDTH);
+        $portrait = self::blocks($itemGroups, $summaryWidths, self::PORTRAIT_WIDTH, $itemWidth);
 
         if (count($portrait) === 1) {
             return ['orientation' => self::PORTRAIT, 'blocks' => $portrait];
@@ -84,7 +85,7 @@ final class InstrumentGridLayout
 
         return [
             'orientation' => self::LANDSCAPE,
-            'blocks' => self::blocks($itemGroups, $summaryWidths, self::LANDSCAPE_WIDTH),
+            'blocks' => self::blocks($itemGroups, $summaryWidths, self::LANDSCAPE_WIDTH, $itemWidth),
         ];
     }
 
@@ -106,17 +107,17 @@ final class InstrumentGridLayout
      * @param  list<float>  $summaryWidths
      * @return list<array{items: list<int>, summary: list<int>}>
      */
-    private static function blocks(array $itemGroups, array $summaryWidths, float $width): array
+    private static function blocks(array $itemGroups, array $summaryWidths, float $width, float $itemWidth): array
     {
         $room = $width - self::NUMBER_WIDTH - self::NAME_WIDTH;
         $itemCount = count($itemGroups);
-        $capacity = max(1, (int) floor($room / self::ITEM_WIDTH));
+        $capacity = max(1, (int) floor($room / $itemWidth));
 
         // The summary stays together while it fits a block of its own, and then
         // it rides in the LAST block of questions, which has less room for them.
         $summaryTogether = $summaryWidths !== [] && array_sum($summaryWidths) <= $room;
         $lastCapacity = $summaryTogether
-            ? max(1, (int) floor(($room - array_sum($summaryWidths)) / self::ITEM_WIDTH))
+            ? max(1, (int) floor(($room - array_sum($summaryWidths)) / $itemWidth))
             : $capacity;
 
         if ($itemCount === 0) {
