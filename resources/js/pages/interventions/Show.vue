@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PendingVisit } from '@inertiajs/core';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { CalendarClock, CheckCircle2, ChevronDown, FileText, Pencil, Trash2 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -683,8 +684,30 @@ function warnOnUnload(event: BeforeUnloadEvent): void {
     event.preventDefault();
 }
 
+/**
+ * Só uma visita que SAI desta página perde o formulário. Uma mudança de estado
+ * (PATCH/PUT/DELETE/POST: «Em curso», «Concluir», remover…) volta à mesma
+ * página e conserva o que lá está; o mesmo vale para um GET que fica no mesmo
+ * caminho com `preserveState` (os filtros).
+ */
+function leavesThisPage(event: Event): boolean {
+    const visit = (event as CustomEvent<{ visit?: PendingVisit }>).detail?.visit;
+
+    if (!visit) {
+        return true;
+    }
+
+    if (visit.method !== 'get') {
+        return false;
+    }
+
+    const keepsState = visit.preserveState === true || visit.preserveState === 'errors';
+
+    return !(keepsState && visit.url.pathname === window.location.pathname);
+}
+
 function guardInAppNavigation(event: Event): void {
-    if (!hasUnsavedChanges()) {
+    if (!hasUnsavedChanges() || !leavesThisPage(event)) {
         return;
     }
 
