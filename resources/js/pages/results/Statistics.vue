@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
     ArrowDownRight, ArrowUpRight, ChartNoAxesCombined, ChevronRight, CircleAlert,
     Minus, TrendingDown, TrendingUp, Trophy, Users, X,
@@ -237,6 +237,16 @@ const props = defineProps<{
     } | null;
     aiAnalysisError?: { message: string } | null;
 }>();
+
+// «Comparar momentos»: a entrada para a Análise da Avaliação (Pro). Só existe
+// quando o módulo está disponível para ESCREVER leituras novas — uma assinatura
+// suspensa deixa o módulo só para consulta e a análise não se produz. É
+// conveniência de apresentação: a rota recusa no servidor.
+const canCompareMoments = computed(() => {
+    const shared = usePage().props as { modules?: string[]; readOnlyModules?: string[] };
+
+    return (shared.modules ?? []).includes('advanced_analytics') && !(shared.readOnlyModules ?? []).includes('advanced_analytics');
+});
 
 // ------------------------------------------------------------- «Dados até»
 
@@ -1355,6 +1365,13 @@ const studentRows = computed(() => {
                     </Link>
                     <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-primary hover:underline">
                         Quadro Síntese →
+                    </Link>
+                    <Link
+                        v-if="canCompareMoments"
+                        :href="`/classes/${schoolClass.ulid}/analise-avaliacao`"
+                        class="text-primary hover:underline"
+                    >
+                        Comparar momentos →
                     </Link>
                 </div>
             </div>
