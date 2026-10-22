@@ -8,6 +8,7 @@ use App\Http\Controllers\AcademicYearController;
 use App\Http\Controllers\AccumulatedBreakdownController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ActivitySessionController;
+use App\Http\Controllers\AssessmentAnalysisController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\CalendarEventController;
@@ -870,6 +871,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // capability would halve it (ai-core contract §6).
         Route::post('classes/{class}/results/analise-ia/{period?}', [ResultsController::class, 'analyse'])
             ->name('results.analyse');
+
+        // Análise da Avaliação (Pro) — a turma lida ao longo do tempo. Dentro de
+        // Resultados, como a Estatística, mas com o módulo da camada analítica:
+        // o Base nunca chega ao controlador. Não colide com `results/{period?}`
+        // (outro prefixo).
+        Route::get('classes/{class}/analise-avaliacao', [AssessmentAnalysisController::class, 'show'])
+            ->middleware('module:advanced_analytics')
+            ->name('assessment-analysis.show');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
         // Pautas de Avaliação — one view, not three: quantitativo, apreciação
