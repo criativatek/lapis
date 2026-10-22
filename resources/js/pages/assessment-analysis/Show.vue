@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, CircleAlert, Info, Minus, Scale, TrendingUp, Users } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import StrengthsSection from '@/components/assessment-analysis/StrengthsSection.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import KpiCard from '@/components/infographic/KpiCard.vue';
@@ -16,6 +17,7 @@ import {
     studentsCount,
 } from '@/lib/assessmentComparison';
 import type { Comparison, ComparedStudent, Counts, PointInfo, StudentMovement } from '@/lib/assessmentComparison';
+import type { ClassStrengths } from '@/lib/classStrengths';
 import { card } from '@/lib/surfaces';
 
 /**
@@ -38,6 +40,7 @@ const props = defineProps<{
     schoolClass: { ulid: string; label: string; subject: string; has_profile: boolean; scale_name: string | null };
     availability: { comparison: boolean; trends: boolean; reason: string | null };
     comparison: Comparison;
+    strengths: ClassStrengths;
 }>();
 
 const base = computed(() => `/classes/${props.schoolClass.ulid}/analise-avaliacao`);
@@ -62,7 +65,34 @@ function choose(): void {
         return;
     }
 
-    router.get(base.value, { de: fromKey.value, para: toKey.value }, { preserveScroll: true, preserveState: true, replace: true });
+    visit({ de: fromKey.value, para: toKey.value });
+}
+
+/**
+ * The two sections of the page share one URL: asking for other moments in one keeps what the other
+ * is showing, so choosing a moment for the strengths never undoes the comparison and vice versa.
+ */
+function visit(changes: { de?: string; para?: string; momento?: string }): void {
+    const query: Record<string, string> = {};
+    const comparisonIsExplicit = !props.comparison.selection.defaulted;
+    const from = changes.de ?? (comparisonIsExplicit ? props.comparison.selection.from : null);
+    const to = changes.para ?? (comparisonIsExplicit ? props.comparison.selection.to : null);
+    const moment = changes.momento ?? (props.strengths.selection.defaulted ? null : props.strengths.selection.moment);
+
+    if (from && to) {
+        query.de = from;
+        query.para = to;
+    }
+
+    if (moment) {
+        query.momento = moment;
+    }
+
+    router.get(base.value, query, { preserveScroll: true, preserveState: true, replace: true });
+}
+
+function chooseMoment(momentKey: string): void {
+    visit({ momento: momentKey });
 }
 
 function optionText(point: PointInfo): string {
@@ -165,14 +195,20 @@ const MOVEMENT_CLASS: Record<StudentMovement['state'], string> = {
         <div class="space-y-1">
             <Heading
                 title="Análise da Avaliação"
-                :description="`${schoolClass.label} · ${schoolClass.subject} — comparar dois momentos da avaliação da turma.`"
+                :description="`${schoolClass.label} · ${schoolClass.subject} — a avaliação da turma ao longo do tempo e num momento.`"
             />
             <div class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                 <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
                 <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-primary hover:underline">Estatística →</Link>
                 <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-primary hover:underline">Quadro Síntese →</Link>
             </div>
+            <nav aria-label="Nesta página" class="flex flex-wrap gap-2 pt-2 text-sm">
+                <a href="#comparar" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Comparar dois momentos</a>
+                <a href="#pontos-fortes-titulo" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Pontos fortes e dificuldades</a>
+            </nav>
         </div>
+
+        <h2 id="comparar" class="scroll-mt-4 text-lg font-semibold tracking-tight">Comparar dois momentos</h2>
 
         <!-- ================================================== sem dados suficientes -->
         <EmptyState
@@ -558,5 +594,9 @@ const MOVEMENT_CLASS: Record<StudentMovement['state'], string> = {
                 </div>
             </section>
         </template>
+
+        <hr class="border-border" />
+
+        <StrengthsSection :strengths="strengths" @select="chooseMoment" />
     </div>
 </template>

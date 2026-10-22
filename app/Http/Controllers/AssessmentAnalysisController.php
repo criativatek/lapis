@@ -6,6 +6,7 @@ use App\Models\SchoolClass;
 use App\Services\Assessment\Advanced\AdvancedAnalyticsUnavailable;
 use App\Services\Assessment\Advanced\BuildAssessmentComparison;
 use App\Services\Assessment\Advanced\BuildAssessmentTimeline;
+use App\Services\Assessment\Advanced\BuildClassStrengths;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -16,8 +17,8 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 /**
  * Análise da Avaliação — a class's assessment read ACROSS time (Pro).
  *
- * ONE PAGE, GROWING BY SECTION. Today it holds the comparison between two moments (D1); the
- * strengths and difficulties, the trends and the document come in as further sections of the
+ * ONE PAGE, GROWING BY SECTION. It holds the comparison between two moments (D1) and the strengths
+ * and difficulties of one moment (D3); the trends and the document come in as further sections of the
  * same page, over the same timeline. Nothing here reads anything the timeline does not, and
  * nothing is computed here: the controller authorises, validates the two moments asked for,
  * asks for the timeline and for the comparison, and hands them to the page.
@@ -41,6 +42,7 @@ class AssessmentAnalysisController extends Controller
     public function __construct(
         protected BuildAssessmentTimeline $timeline,
         protected BuildAssessmentComparison $comparison,
+        protected BuildClassStrengths $strengths,
         protected Entitlements $entitlements,
     ) {}
 
@@ -51,6 +53,8 @@ class AssessmentAnalysisController extends Controller
         $validated = $request->validate([
             'de' => ['nullable', 'string', 'regex:'.self::POINT_KEY],
             'para' => ['nullable', 'string', 'regex:'.self::POINT_KEY],
+            // Pontos fortes e dificuldades: um único momento, sem depender da comparação.
+            'momento' => ['nullable', 'string', 'regex:'.self::POINT_KEY],
         ]);
 
         if (! $this->entitlements->allows(BuildAssessmentTimeline::ANALYTICS_MODULE)) {
@@ -60,6 +64,7 @@ class AssessmentAnalysisController extends Controller
         try {
             $timeline = $this->timeline->for($class);
             $comparison = $this->comparison->between($timeline, $validated['de'] ?? null, $validated['para'] ?? null);
+            $strengths = $this->strengths->for($timeline, $validated['momento'] ?? null);
         } catch (AdvancedAnalyticsUnavailable) {
             return $this->unavailable($request);
         }
@@ -76,6 +81,7 @@ class AssessmentAnalysisController extends Controller
             ],
             'availability' => $timeline['availability'],
             'comparison' => $comparison,
+            'strengths' => $strengths,
         ]);
     }
 

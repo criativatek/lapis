@@ -1,7 +1,8 @@
 # Análise Avançada da Avaliação (Pro) — fundação (D0)
 
-Estado: **D0 — fundação** e **D1 — comparação da turma** (integradas) e **D2 — «Ao longo do ano» do
-aluno** (esta etapa). As seguintes (D3–D6) chegam cada uma com autorização própria.
+Estado: **D0 — fundação**, **D1 — comparação da turma** e **D2 — «Ao longo do ano» do aluno**
+(integradas) e **D3 — pontos fortes e dificuldades da turma** (esta etapa). As seguintes (D4–D6) chegam
+cada uma com autorização própria.
 
 ## Decisões aprovadas (Fatia D)
 
@@ -160,7 +161,44 @@ de acesso (`view` da turma; a matrícula tem de ser da turma do URL).
 
 **Testes:** `StudentYearTest` (serviço e página), `YearReading.test.ts`.
 
+## D3 — Pontos fortes e dificuldades da turma
+
+**Onde:** segunda secção da página «Análise da Avaliação» (`classes/{class}/analise-avaliacao`), abaixo
+da comparação, com ligação interna no topo. Query `momento` (chave `period:<ulid>` / `moment:<ulid>`),
+validada como `de`/`para`; as duas secções partilham o URL e cada uma conserva o que a outra mostra.
+Pro nos mesmos três níveis da D1 (rota `module:advanced_analytics`, controlador, serviço).
+
+**`BuildClassStrengths`** lê UM ponto da linha temporal — não precisa de um segundo momento — com a
+escala e os critérios desse momento:
+- *Linha entre positivo e negativo:* a do próprio momento (`band.is_negative`). Um momento guardado antes
+  de a escala viajar com ele, ou uma escala sem níveis, não tem linha: não se contam alunos abaixo do
+  nível positivo, e a página diz porquê (nunca se empresta a linha de hoje).
+- *Contagens com denominador, sempre:* «8 de 27 alunos». Por domínio: média (a mesma soma-e-divisão da
+  Estatística; teste de paridade com `period_series`), alunos com valor, alunos abaixo do nível positivo
+  (n, total e proporção) e cobertura (`none` / `few` (<5) / `incomplete` / `complete`, com a cobertura
+  parcial contada). Um domínio sem resultados é listado, não omitido.
+- *Mais alta e mais baixa:* só com dois ou mais domínios com média; **num empate ninguém é destacado** e o
+  empate é dito (empate, todos iguais, ou um só domínio → nada a destacar). Cada destaque diz o outro
+  extremo («a mais baixa é …») para a afirmação assentar nos números mostrados.
+- *Alunos com resultado abaixo do nível positivo em dois ou mais domínios:* distribuição (nenhum / um /
+  dois ou mais, sobre os alunos com valor em pelo menos um domínio) e lista nominal só desses alunos, com
+  os domínios e valores que a sustentam.
+- *Pontos fortes e resultados a observar:* descrições dos números ao lado, cada uma com evidência
+  (`{domain, count, of}`): média mais alta; domínios sem nenhum aluno abaixo da linha; média mais baixa;
+  maior proporção abaixo da linha (comparada por produto cruzado, única, entre ≥2 domínios); alunos em
+  dois ou mais domínios; cobertura (sem resultados / poucos alunos / parcial / incompleta). O que os
+  dados não sustentam não se produz.
+- *Não é diagnóstico nem recomendação:* «abaixo do nível positivo» descreve uma nota; nenhuma causa,
+  previsão ou medida é sugerida (há um teste sobre as palavras do payload).
+
+**Privacidade:** os únicos nomes que saem são os da lista dos alunos em dois ou mais domínios (e só para
+quem pode `view` a turma); sem ids numéricos nem texto livre. **Desempenho:** aritmética sobre a linha
+temporal em memória; o custo da página não cresce com a turma. O Base não muda (Estatística e restantes
+páginas intactas; a página da análise devolve 403 sem estes dados).
+
+**Testes:** `ClassStrengthsTest` (real + sintética), `StrengthsSection.test.ts`, `Show.test.ts`.
+
 ## Etapas seguintes (não autorizadas)
 
-D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 pontos fortes e dificuldades ·
+D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 ✔ pontos fortes e dificuldades ·
 D4 tendências e dificuldade persistente · D5 documento Pro · D6 validação, ajuda, texto comercial, 0.176.0.

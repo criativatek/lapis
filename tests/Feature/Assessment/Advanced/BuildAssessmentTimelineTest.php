@@ -238,6 +238,7 @@ class BuildAssessmentTimelineTest extends TestCase
             'app/Http/Controllers/StudentProgressController.php',
             'app/Services/Assessment/Advanced/BuildAssessmentComparison.php',
             'app/Services/Assessment/Advanced/BuildAssessmentTimeline.php',
+            'app/Services/Assessment/Advanced/BuildClassStrengths.php',
             'app/Services/Assessment/Advanced/BuildStudentYear.php',
         ], $users);
 
