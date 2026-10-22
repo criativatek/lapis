@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { Comparison, ComparedStudent } from '@/lib/assessmentComparison';
+import type { ClassStrengths } from '@/lib/classStrengths';
 import Show from './Show.vue';
 
 const get = vi.fn();
@@ -87,12 +88,39 @@ function comparison(over: Partial<Comparison> = {}): Comparison {
     };
 }
 
+const STRENGTHS_MOMENT = {
+    key: 'period:p2', kind: 'period' as const, label: '2.º Semestre', ordinal: 2,
+    basis: { kind: 'live' as const, label: 'Calculado com os dados de hoje', as_of: null },
+    students_total: 6, students_with_result: 6, partial_coverage: 0, few_students: false,
+};
+
+function strengths(over: Partial<ClassStrengths> = {}): ClassStrengths {
+    return {
+        state: 'ready', reason: null,
+        options: [{ ...STRENGTHS_MOMENT, key: 'period:p1', label: '1.º Semestre', ordinal: 1 }, STRENGTHS_MOMENT],
+        selection: { moment: 'period:p2', defaulted: true },
+        moment: STRENGTHS_MOMENT,
+        basis_note: 'Este momento é calculado com os dados de hoje.',
+        cautions: [],
+        scale: null,
+        negative_line: { known: true, reason: null, text: null, negative_levels: ['Insuficiente'] },
+        result: { ulid: null, name: null, students: { with_value: 6, of: 6 }, mean: '70.0', below_positive: { count: 1, of: 6, share: '16.7' }, coverage: { state: 'complete', partial: 0 } },
+        domains: [],
+        ranking: { state: 'insufficient', highest_mean: null, lowest_mean: null, highest: null, highest_tie: [], lowest: null, lowest_tie: [] },
+        students_below: { known: true, of: 6, none: 5, one: 1, two_or_more: 0, students: [] },
+        highlights: { strengths: [], attention: [] },
+        explanations: [],
+        ...over,
+    };
+}
+
 function mountPage(data: Comparison) {
     return mount(Show, {
         props: {
             schoolClass: { ulid: 'c1', label: '7.º A', subject: 'Português', has_profile: true, scale_name: 'Escala 1 a 5' },
             availability: { comparison: data.state === 'ready', trends: false, reason: data.reason },
             comparison: data,
+            strengths: strengths(),
         },
     });
 }
@@ -240,5 +268,26 @@ describe('assessment-analysis/Show', () => {
         get.mockClear();
         await wrapper.find('[data-test="select-to"]').setValue('period:p2');
         expect(get).not.toHaveBeenCalled();
+    });
+    it('has both sections on one page, with an in-page way to each', () => {
+        const wrapper = mountPage(comparison());
+
+        expect(wrapper.find('nav a[href="#comparar"]').exists()).toBe(true);
+        expect(wrapper.find('nav a[href="#pontos-fortes-titulo"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="strengths"]').exists()).toBe(true);
+    });
+
+    it('choosing a moment for the strengths keeps an explicit comparison, and the other way round', async () => {
+        get.mockClear();
+        const wrapper = mountPage(comparison({ selection: { from: FROM.key, to: TO.key, defaulted: false, swapped: false } }));
+
+        await wrapper.find('[data-test="strengths-select"]').setValue('period:p1');
+        expect(get).toHaveBeenLastCalledWith('/classes/c1/analise-avaliacao', { de: FROM.key, para: TO.key, momento: 'period:p1' }, expect.objectContaining({ preserveScroll: true }));
+
+        // A default comparison is not pinned into the URL by choosing a moment for the strengths.
+        get.mockClear();
+        const other = mountPage(comparison());
+        await other.find('[data-test="strengths-select"]').setValue('period:p1');
+        expect(get).toHaveBeenLastCalledWith('/classes/c1/analise-avaliacao', { momento: 'period:p1' }, expect.anything());
     });
 });
