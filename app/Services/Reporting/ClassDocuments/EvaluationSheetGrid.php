@@ -70,8 +70,20 @@ final class EvaluationSheetGrid
     /** What the self-assessment adds to each domain, and to the summary. */
     public const SELF_ASSESSMENT_WIDTH = 16.0;
 
-    /** @var array<string, float> the summary columns' widths, in mm */
-    private const SUMMARY_WIDTHS = [
+    /**
+     * The width of every kind of column, in mm, for 7.5–8 pt text.
+     *
+     * THE ONE PLACE A WIDTH IS DECIDED. The planner cuts the blocks with these
+     * and the PDF draws each column with the very same figure, so a block that
+     * fits in the plan fits on the sheet: left to dompdf's auto layout the name
+     * would shrink as columns are added, and a column past the margin is lost.
+     *
+     * @var array<string, float>
+     */
+    public const COLUMN_WIDTHS = [
+        'domain_result' => 14.0,
+        'domain_appreciation' => 16.0,
+        'domain_self_assessment' => self::SELF_ASSESSMENT_WIDTH,
         'result' => 15.0,
         'self_assessment' => self::SELF_ASSESSMENT_WIDTH,
         'proposal' => 16.0,
@@ -79,6 +91,11 @@ final class EvaluationSheetGrid
         'status' => 18.0,
         'coverage' => 24.0,
     ];
+
+    public static function columnWidth(string $kind): float
+    {
+        return self::COLUMN_WIDTHS[$kind];
+    }
 
     /**
      * @return array<string, mixed>
@@ -121,7 +138,7 @@ final class EvaluationSheetGrid
 
         $plan = InstrumentGridLayout::plan(
             array_fill(0, count($domains), null),
-            array_map(fn (array $column): float => self::SUMMARY_WIDTHS[$column['kind']], $summaryColumns),
+            array_map(fn (array $column): float => self::columnWidth($column['kind']), $summaryColumns),
             $options->orientation,
             $domainWidth,
         );

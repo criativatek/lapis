@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Printer } from '@lucide/vue';
+import { FileDown, Printer } from '@lucide/vue';
 import { computed, nextTick } from 'vue';
 import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import Heading from '@/components/Heading.vue';
@@ -120,6 +120,11 @@ function setOrientation(value: string | number | null): void {
 
 const isHistorical = computed(() => props.document.source.is_historical);
 
+// A plain link, not an Inertia visit: a binary response cannot come back through
+// one. It carries the SAME options (and the moment) the preview is showing, so
+// the PDF is that sheet.
+const pdfHref = computed(() => `${props.source.base_url}/pdf?${new URLSearchParams(query(props.document.options)).toString()}`);
+
 // What prints is the preview itself (see PrintableDocument).
 function print(): void {
     void nextTick(() => window.print());
@@ -176,10 +181,18 @@ function print(): void {
                     </NativeSelect>
                 </label>
 
-                <Button variant="outline" class="min-h-11" @click="print">
-                    <Printer class="size-4" />
-                    Imprimir
-                </Button>
+                <div class="flex items-center gap-1">
+                    <Button variant="outline" class="min-h-11" @click="print">
+                        <Printer class="size-4" />
+                        Imprimir
+                    </Button>
+                    <Button variant="outline" class="min-h-11" as-child>
+                        <a :href="pdfHref">
+                            <FileDown class="size-4" />
+                            PDF
+                        </a>
+                    </Button>
+                </div>
             </div>
 
             <p class="text-xs text-muted-foreground">
