@@ -385,9 +385,23 @@ class BuildResultsProgression
      * period with no evidence is not a zero, and inventing progress out of its
      * absence would be reading an absence as a result (§21).
      *
-     * @return array{direction: string, points: string}|null
+     * @return array{direction: string, points: string, previous: string, current: string}|null
      */
     protected function evolution(?string $previous, ?string $current): ?array
+    {
+        return self::movement($previous, $current);
+    }
+
+    /**
+     * THE RULE, FOR ANYONE WHO NEEDS IT. Public and static so that a reading which
+     * compares two figures that are NOT a period and the one before it — the advanced
+     * analysis lays any two moments side by side — asks the same function and can
+     * never mean by «subiu» something else than Resultados and Estatística mean.
+     * `evolution()` above is this, called for the period before.
+     *
+     * @return array{direction: string, points: string, previous: string, current: string}|null
+     */
+    public static function movement(?string $previous, ?string $current): ?array
     {
         if ($previous === null || $current === null) {
             return null;

@@ -16,6 +16,10 @@ tests/Fixtures/Import/** -text
 # shared (BOM, quoted fields): characterization files, compared byte for byte.
 tests/Fixtures/EvaluationSheet/** -text
 
+# Frozen props of the Base pages as they were before the advanced analysis (D0):
+# characterization files, compared byte for byte.
+tests/Fixtures/AdvancedAnalysis/** -text
+
 CHANGELOG.md export-ignore
 README.md export-ignore
 .github/workflows/browser-tests.yml export-ignore

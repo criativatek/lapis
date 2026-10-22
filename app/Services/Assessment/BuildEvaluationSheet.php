@@ -13,6 +13,7 @@ use App\Models\ProfileVersionDomain;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\SelfAssessment;
+use App\Support\Assessment\ScaleSummary;
 use Illuminate\Support\Collection;
 
 /**
@@ -170,20 +171,7 @@ class BuildEvaluationSheet
      */
     protected function scalePayload(?Scale $scale): ?array
     {
-        if ($scale === null) {
-            return null;
-        }
-
-        return [
-            'name' => (string) $scale->name,
-            'kind' => (string) $scale->kind,
-            'levels' => array_values($scale->levels->sortBy('sequence')->map(fn ($level): array => [
-                'code' => (string) $level->code,
-                'label' => (string) $level->label,
-                'sequence' => (int) $level->sequence,
-                'is_negative' => (bool) $level->is_negative,
-            ])->all()),
-        ];
+        return ScaleSummary::of($scale);
     }
 
     /**

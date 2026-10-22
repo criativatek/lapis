@@ -1,0 +1,11 @@
+schoolClass.academic_year
+schoolClass.has_profile
+schoolClass.label
+schoolClass.subject
+schoolClass.ulid
+students[].class_number
+students[].is_current
+students[].is_late_entry
+students[].name
+students[].status_label
+students[].ulid
