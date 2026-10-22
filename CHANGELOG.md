@@ -25,6 +25,91 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.175.0] — 2026-10-22
+
+> **Grelha factual de avaliação da turma.** Na Pauta de Avaliação e no Histórico,
+> um acesso novo — «Grelha para imprimir» — abre a Pauta como documento: um aluno
+> por linha, com o resultado calculado, a proposta do Lapispro, o nível atribuído
+> pelo professor e o estado da classificação, cada um na sua coluna. Pré-visualização,
+> impressão e PDF da mesma estrutura, para a Pauta de hoje e para um momento
+> guardado — este lido só dos dados congelados —, com gráficos factuais
+> opcionais. É gerado na hora e não fica guardado: não é um relatório finalizado.
+> Base. Sem migrations; o backup não muda.
+
+### Adicionado
+
+- **O documento, da Pauta de hoje e de um momento guardado.**
+  `classes/{turma}/pauta-avaliacao/impressao/{período}` (`?momento=interim|final`)
+  e `classes/{turma}/pauta-avaliacao/historico/{registo}/impressao`, cada uma com o
+  seu `/pdf`, no módulo `results` (Base) e com a autorização da Pauta. A Pauta de
+  hoje lê-se sem a proposta de hoje (`withProposalBasis: false`); um momento
+  guardado lê-se só do payload congelado — as suas ações não recebem o construtor
+  da pauta — e diz que é um momento guardado, quando e por quem. Um selo adulterado
+  dá 409 e nenhum documento.
+- **Calculado, proposto e decidido, em colunas e em palavras.** Por domínio, o
+  Resultado e a Apreciação (a decidida pelo professor leva «prof.» e guarda por
+  baixo a proposta que substituiu); o Global com a banda; a Classificação com a
+  Proposta do Lapispro, o Nível atribuído e o Estado (Proposta, Confirmada,
+  Publicada); avisos de cobertura. Um nível atribuído vazio diz «não decidido» ou
+  «sem classificação» e nunca promove a proposta. Sem valor é «—», nunca zero.
+  `PROVISÓRIO` em todas as páginas enquanto algum aluno não tiver nível atribuído.
+- **Opções**, numa lista branca: autoavaliação (desligada por omissão),
+  gráficos (desligados) e orientação (horizontal por omissão, vertical, automática).
+- **Orientação e blocos.** Horizontal compacto por omissão; as colunas dividem-se
+  em blocos («Parte i de n»), cada um com Nº e Nome, e **o domínio nunca se parte**.
+- **PDF.** Vista própria para o dompdf, timbre partilhado, cabeçalho repetido,
+  linhas inteiras, «Página N / T» e selo em todas as páginas; anexo
+  `grelha-pauta-<turma>-<momento>-<data>.pdf`, `private, no-store`, nunca nomeado
+  com um aluno; auditoria `evaluation_sheets.grid_document.exported` só com
+  contagens e opções.
+- **Gráficos factuais** (`?graficos=1`): níveis propostos (uma barra por nível da
+  escala, incluindo os vazios), níveis atribuídos (à parte e só quando há decisões)
+  e média da turma do global e de cada domínio, em eixo absoluto 0–100 e com o n de
+  alunos. Contados só do documento, por isso iguais no ecrã, na impressão e no PDF e,
+  num momento guardado, calculados dos seus dados congelados. Quem não tem proposta,
+  nível ou resultado conta-se à parte (nunca é uma barra a zero); um nível que a
+  escala não tem e um resultado acima de 100 % dizem-se numa nota; abaixo de cinco
+  alunos, uma nota de cautela. Sem rankings, tendências, interpretação nem comparação.
+- **A escala viaja com a Pauta.** `BuildEvaluationSheet` devolve `scale` e a
+  fotografia congela-a (payload v3, aditivo), para os gráficos por nível de um
+  momento guardado se lerem dela e não da escala de hoje.
+- **Artigo de ajuda** «Ver, imprimir e guardar em PDF a grelha de avaliação da
+  turma».
+
+### Alterado
+
+- **O texto das células da Pauta está escrito uma só vez.** O CSV e o Excel
+  repetiam as regras que distinguem uma proposta de uma decisão; passam a ler
+  `EvaluationSheetCellText`, que o documento novo também usa. Saídas inalteradas,
+  provadas por ficheiros de caracterização gerados antes da extração.
+- **O planador de blocos de colunas** (`InstrumentGridLayout`) aceita a largura do
+  item e deixa de pôr num bloco um resumo que, por ocupar a folha, não deixa
+  espaço a nenhum item: fica num bloco só seu em vez de passar a margem (afetava
+  esta grelha com a autoavaliação; nas grelhas de instrumento só mudava onde o
+  bloco antes excedia a folha).
+- `EvaluationSheetDocument::fromLiveSheet()` aceita o momento (só dá o título).
+
+### Corrigido
+
+- A grelha de uma turma **sem perfil de avaliação** dizia «Não há alunos nesta
+  turma»; passa a dizer o mesmo que a Pauta: não tem perfil de avaliação associado,
+  por isso não há pauta a mostrar.
+
+### Limitações
+
+- Só o Chromium recente imprime o selo e a numeração em todas as folhas; o PDF é o
+  caminho fiável.
+- Uma fotografia guardada antes da 0.175.0 não tem a escala: os gráficos por nível
+  dizem que não estão disponíveis (a média desenha-se na mesma).
+- O documento conta os alunos da Pauta no âmbito «Período»; não acompanha o âmbito
+  acumulado da Estatística (diferenças documentadas em
+  `docs/reports-class-documents.md`).
+- O `PROVISÓRIO` não distingue o momento intercalar do final, e os dois leem a mesma
+  pauta. O CSV e o Excel da Pauta ao vivo continuam a não receber o momento.
+- Interpretação, comparação automática e tendências são capacidades Pro e não fazem
+  parte deste documento. Ficam de fora o aviso de proposta desatualizada e o Quadro
+  Síntese anual.
+
 ## [0.174.0] — 2026-10-21
 
 > **Grelha imprimível de um elemento de avaliação.** Na grelha de correção e em
