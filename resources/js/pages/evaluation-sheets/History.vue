@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { Download, History as HistoryIcon } from '@lucide/vue';
+import { Download, History as HistoryIcon, Printer } from '@lucide/vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import type { EvaluationSheetHistoryEntry } from '@/types';
@@ -178,6 +178,14 @@ function statusClasses(entry: EvaluationSheetHistoryEntry): string {
                                 <Download class="size-3.5" />
                                 Excel
                             </a>
+                            <Link
+                                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico/${entry.ulid}/impressao`"
+                                class="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
+                                :aria-label="`Grelha para imprimir de ${entry.moment_label}`"
+                            >
+                                <Printer class="size-3.5" />
+                                Grelha para imprimir
+                            </Link>
                         </div>
                     </div>
                 </div>

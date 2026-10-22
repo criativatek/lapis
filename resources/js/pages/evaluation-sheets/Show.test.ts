@@ -505,6 +505,20 @@ describe('evaluation-sheets/Show — imprimir e exportar', () => {
         expect(after!.attributes('href')).toBe(before);
     });
 
+    it('links to the grid for printing of the period being seen, keeping the moment, and leaves «Imprimir» as it was', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text().includes('Grelha para imprimir'));
+        expect(link).toBeDefined();
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1');
+        // A link to another page, not a control of this one: it never touches the toggles.
+        expect(link!.element.closest('.pauta-print')).toBeNull();
+
+        // The page's own print is still the screen.
+        const printButton = wrapper.findAll('button').find((button) => button.text() === 'Imprimir');
+        expect(printButton).toBeDefined();
+    });
+
     it('prints from this very screen, and keeps the controls off the paper', () => {
         const wrapper = mount(Show, { props: baseProps() });
 

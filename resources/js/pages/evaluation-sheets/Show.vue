@@ -494,6 +494,16 @@ function submitSave(): void {
             >
                 <Printer class="size-4" /> Imprimir
             </button>
+            <!-- A GRELHA PARA IMPRIMIR, composta no servidor: o resultado calculado, a
+                 proposta, o nível atribuído e o seu estado, cada um na sua coluna. É
+                 outra coisa que o «Imprimir» ao lado, que sai como o ecrã está. -->
+            <Link
+                v-if="sheet && selectedPeriod"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/impressao/${selectedPeriod.ulid}${momentQuery(selectedMoment)}`"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+            >
+                <Printer class="size-4" /> Grelha para imprimir
+            </Link>
             <Link
                 :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico`"
                 class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"

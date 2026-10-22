@@ -421,10 +421,23 @@ fazem parte da suite do repositório.
 
 ## Para a grelha intercalar/semestral (não implementada)
 
-**O documento ainda não existe para o utilizador.** A grelha de uma turma num
+**O documento só existe como pré-visualização.** A grelha de uma turma num
 momento intercalar ou no período/semestre é a Fatia C; estão feitas a preparação
-técnica (C1) e a fonte de dados (C2, `EvaluationSheetGrid`), sem rotas nem ecrã
-(C3–C6). O que já existe, e o que as etapas seguintes têm de respeitar:
+técnica (C1), a fonte de dados (C2, `EvaluationSheetGrid`) e a pré-visualização
+(C3). Faltam o PDF do servidor, os gráficos e o fecho (C4–C6). O que já existe, e
+o que as etapas seguintes têm de respeitar:
+
+- **Pré-visualização (C3).** `EvaluationSheetGridDocumentController`, no módulo
+  `results` (Base) e com `SchoolClassPolicy::view`: `classes/{class}/pauta-avaliacao/impressao/{period}`
+  (a Pauta de hoje, com `?momento=interim|final` a titular o documento) e
+  `classes/{class}/pauta-avaliacao/historico/{export}/impressao` (um momento
+  guardado, lido só do payload congelado: a ação não recebe o construtor da pauta,
+  e o registo tem de ser da turma e estar íntegro). A Pauta de hoje lê-se com
+  `withProposalBasis: false`. A página (`evaluation-sheets/GridDocument`) só
+  desenha a estrutura; as opções (autoavaliação, orientação) mudam o que se
+  desenha. Acessos na Pauta, no Histórico e na pauta guardada; o «Imprimir» da
+  Pauta não mudou. Abrir não escreve nada nem deixa rasto: a auditoria vem com o
+  PDF.
 
 - `EvaluationSheetGrid::build(EvaluationSheetDocument, EvaluationSheetGridOptions)`
   devolve a estrutura neutra da grelha da turma. É uma função pura do documento:
