@@ -1145,6 +1145,7 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('interventions', [InterventionController::class, 'index'])->name('interventions.index');
         Route::get('classes/{class}/interventions', [InterventionController::class, 'show'])->name('interventions.show');
         Route::post('classes/{class}/interventions', [InterventionController::class, 'store'])->name('interventions.store');
+        Route::post('classes/{class}/interventions/bulk-status', [InterventionController::class, 'bulkStatus'])->name('interventions.bulk-status');
         Route::put('interventions/{intervention}', [InterventionController::class, 'update'])->name('interventions.update');
         Route::patch('interventions/{intervention}', [InterventionController::class, 'updateStatus'])->name('interventions.status.update');
         Route::post('interventions/{intervention}/reviews', [InterventionController::class, 'addReview'])->name('interventions.reviews.store');

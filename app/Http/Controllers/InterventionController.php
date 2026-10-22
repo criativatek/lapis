@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Interventions\BulkChangeInterventionStatus;
+use App\Actions\Interventions\ChangeInterventionStatus;
 use App\Actions\Interventions\CreateIntervention;
 use App\Http\Requests\StoreInterventionRequest;
 use App\Http\Requests\UpdateInterventionRequest;
@@ -187,7 +189,7 @@ class InterventionController extends Controller
         return Inertia::render('interventions/Index', ['classes' => $classes]);
     }
 
-    public function show(Request $request, SchoolClass $class): Response
+    public function show(Request $request, SchoolClass $class, BulkChangeInterventionStatus $bulkPreview): Response
     {
         Gate::authorize('view', $class);
 
@@ -322,6 +324,10 @@ class InterventionController extends Controller
             ],
             'filters' => $filters,
             'interventions' => $interventions,
+            // O que cada operação em lote tocaria AGORA, na turma inteira — nunca
+            // na lista filtrada. É uma fotografia para o diálogo de confirmação;
+            // a execução recalcula tudo no servidor (ver bulkStatus()).
+            'bulkStatus' => $this->bulkStatusPreview($class, $bulkPreview),
             // Arriving from a student's page: the class is in the URL and the
             // student is named here, so the form opens on them (§17).
             'prefill' => $this->prefillFrom($request, $class),
@@ -329,6 +335,26 @@ class InterventionController extends Controller
             // only — never trusted from an arbitrary URL, see backTo()).
             'backTo' => $this->backTo($request, $class),
         ]);
+    }
+
+    /**
+     * @return array<string, array{from: string, to: string, measures: int, enrollment_ids: list<int>}>
+     */
+    protected function bulkStatusPreview(SchoolClass $class, BulkChangeInterventionStatus $bulk): array
+    {
+        $preview = [];
+
+        foreach (array_keys(BulkChangeInterventionStatus::TRANSITIONS) as $value) {
+            $from = InterventionStatus::from($value);
+
+            $preview[$value] = [
+                'from' => $from->value,
+                'to' => BulkChangeInterventionStatus::targetOf($from)->value,
+                ...$bulk->preview($class, $from),
+            ];
+        }
+
+        return $preview;
     }
 
     /**
@@ -654,7 +680,7 @@ class InterventionController extends Controller
      * one-off (registered and never touched again) or followed over time. This
      * is deliberately a separate, optional action — never part of registering.
      */
-    public function updateStatus(Request $request, Intervention $intervention, UsageRecorder $usage): RedirectResponse
+    public function updateStatus(Request $request, Intervention $intervention, UsageRecorder $usage, ChangeInterventionStatus $changer): RedirectResponse
     {
         Gate::authorize('update', $intervention->schoolClass);
 
@@ -673,41 +699,16 @@ class InterventionController extends Controller
 
         $before = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
-        DB::transaction(function () use ($intervention, $status, $validated): void {
-            $intervention->fill([
-                'status' => $status,
-                // Stamp the conclusion date the moment it is concluded; clear it
-                // when it reopens, so a reopened intervention does not carry a
-                // date saying it ended.
-                'concluded_on' => $status === InterventionStatus::Concluded ? now()->toDateString() : null,
-                // A closed intervention has nothing left to review. The date is
-                // cleared rather than left to sit in the pending list forever —
-                // and it is the teacher's to set again if they reopen it.
-                'review_on' => $status->isOpen() ? $intervention->review_on : null,
-            ])->save();
+        // O mecanismo vive em ChangeInterventionStatus, partilhado com o lote.
+        DB::transaction(fn () => $changer->transition(
+            $intervention,
+            $status,
+            $this->user(),
+            $validated['effectiveness'] ?? null,
+            $validated['notes'] ?? null,
+        ));
 
-            // An appraisal given while concluding is a follow-up like any other,
-            // dated today and kept in the history. It never overwrites an
-            // earlier one (§28).
-            if (($validated['effectiveness'] ?? null) !== null || ($validated['notes'] ?? null) !== null) {
-                $intervention->reviews()->create([
-                    'reviewed_on' => now()->toDateString(),
-                    'effectiveness' => $validated['effectiveness'] ?? null,
-                    'notes' => $validated['notes'] ?? null,
-                    'reviewed_by' => $this->user()->getKey(),
-                ]);
-            }
-        });
-
-        // REOPENING IS ITS OWN EVENT, and the previous conclusion is not erased
-        // from the trail by it (§44).
-        $this->record(
-            $was === InterventionStatus::Concluded && $status->isOpen()
-                ? 'intervention.reopened'
-                : 'intervention.status_changed',
-            $intervention->refresh(),
-            ['from' => $was->value, 'to' => $status->value],
-        );
+        $changer->audit($intervention, $was, $status, $this->user());
 
         $after = $usage->snapshot(fn (): array => UsageSnapshots::intervention($intervention->getKey()));
 
@@ -716,6 +717,45 @@ class InterventionController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Estado atualizado.')]);
+
+        return back();
+    }
+
+    /**
+     * «Marcar todas como Em curso» / «Concluir todas as medidas»: o mesmo gesto
+     * do botão individual, aplicado à turma inteira.
+     *
+     * A AUTORIZAÇÃO É A DO BOTÃO INDIVIDUAL — `update` sobre a turma — e o
+     * módulo e o modo só de leitura vêm do mesmo grupo de rotas. O cliente diz
+     * apenas QUAL das duas operações quer; que medidas e que alunos abrange é
+     * recalculado aqui, nunca lido do pedido, e uma medida que entretanto
+     * deixou de estar no estado de origem fica de fora (ver a Action).
+     */
+    public function bulkStatus(Request $request, SchoolClass $class, BulkChangeInterventionStatus $bulk, UsageRecorder $usage): RedirectResponse
+    {
+        Gate::authorize('update', $class);
+
+        $validated = $request->validate([
+            'from' => ['required', Rule::in(array_keys(BulkChangeInterventionStatus::TRANSITIONS))],
+        ]);
+
+        $from = InterventionStatus::from($validated['from']);
+        $result = $bulk->apply($class, $from, $this->user());
+
+        if ($result['changed'] > 0) {
+            $usage->action(UsageEventType::InterventionUpdated, 'intervention-bulk-status:'.$class->ulid, changed: $result['changed'], created: 0);
+        }
+
+        $target = BulkChangeInterventionStatus::targetOf($from);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $result['changed'] === 0
+                ? __('Nenhuma medida estava :state — nada foi alterado.', ['state' => mb_strtolower($from->label())])
+                : ($target === InterventionStatus::Concluded
+                    ? trans_choice('{1} 1 medida foi concluída.|[2,*] :count medidas foram concluídas.', $result['changed'])
+                    : trans_choice('{1} 1 medida passou a em curso.|[2,*] :count medidas passaram a em curso.', $result['changed'])),
+        ]);
 
         return back();
     }

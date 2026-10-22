@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.176.0] — 2026-10-22
+
+> **Estado das medidas em lote.** Em Acompanhamento → Estratégias e Medidas da
+> turma, duas ações novas: «Marcar todas como Em curso» (Planeada → Em curso) e
+> «Concluir todas as medidas» (Em curso → Concluída). Antes de agir, o diálogo
+> diz quantas medidas e quantos alunos abrange, e que se aplica à turma e ao ano
+> letivo inteiros e não ao que os filtros mostram. Base. Sem migrations; o backup
+> não muda.
+
+### Adicionado
+
+- `POST classes/{turma}/interventions/bulk-status` (`interventions.bulk-status`),
+  no módulo `interventions`, com a autorização do botão individual (`update` sobre
+  a turma) e o mesmo modo só de leitura. O pedido leva apenas qual das duas
+  operações; o servidor recalcula as medidas elegíveis dentro de uma transação, com
+  `lockForUpdate`, pelo que repetir o pedido (duplo clique) não repete eventos e uma
+  medida que entretanto mudou de estado fica de fora.
+- Cada medida alterada escreve o mesmo evento de auditoria do botão individual
+  (`intervention.status_changed`, com o utilizador, a data e `bulk: true`); a data de
+  conclusão é gravada ao concluir. As medidas noutros estados e os registos de
+  acompanhamento não são tocados.
+- A página recebe `bulkStatus`: por operação, o nº de medidas e as matrículas
+  abrangidas (uma medida da turma inteira abrange os alunos ativos).
+
+### Alterado
+
+- A mudança de estado de uma medida passou para `ChangeInterventionStatus`, que o
+  botão individual e o lote partilham. Comportamento do botão individual inalterado.
+
 ## [0.175.0] — 2026-10-22
 
 > **Grelha factual de avaliação da turma.** Na Pauta de Avaliação e no Histórico,

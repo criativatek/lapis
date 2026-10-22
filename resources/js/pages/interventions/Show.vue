@@ -7,6 +7,8 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import type { CatalogueType as InterventionType } from '@/lib/interventionPresentation';
 import { statusToneClasses } from '@/lib/statusTone';
+import BulkStatusActions from './partials/BulkStatusActions.vue';
+import type { BulkPreview } from './partials/BulkStatusActions.vue';
 import InterventionSummary from './partials/InterventionSummary.vue';
 import MeasurePicker from './partials/MeasurePicker.vue';
 import SelectedMeasures from './partials/SelectedMeasures.vue';
@@ -146,6 +148,8 @@ const props = defineProps<{
         needs_review?: boolean | null;
     };
     interventions: Intervention[];
+    /** O que cada operação em lote tocaria agora, na turma inteira (não na lista filtrada). */
+    bulkStatus: Record<string, BulkPreview>;
     /**
      * Arriving from a student's page, with that student already chosen
      * (§17) — and, arriving from «Adicionar estratégia» / «Adaptar
@@ -1491,6 +1495,16 @@ function clearFilters(): void {
                 A mostrar só as de revisão pendente — <span class="font-medium underline">ver todas</span>
             </button>
         </section>
+
+        <!-- Estado em lote — turma e ano inteiros, nunca só o que o filtro
+             mostra. O diálogo de confirmação é do próprio componente. -->
+        <BulkStatusActions
+            v-if="Object.values(bulkStatus).some((entry) => entry.measures > 0)"
+            :class-ulid="schoolClass.ulid"
+            :preview="bulkStatus"
+            :enrollments="enrollments"
+            @submitting="submittingFromThisPage = $event"
+        />
 
         <EmptyState
             v-if="interventions.length === 0"
