@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
 use App\Services\Ai\AiUnavailable;
 use App\Services\Ai\Gateway\AiQuotaExceeded;
+use App\Services\Assessment\Advanced\BuildAssessmentTimeline;
+use App\Services\Assessment\Advanced\BuildStudentYear;
 use App\Services\Assessment\Progress\BuildStudentFactualAlerts;
 use App\Services\Assessment\Progress\BuildStudentInsights;
 use App\Services\Assessment\Progress\BuildStudentPrintDocument;
@@ -84,6 +86,9 @@ use Inertia\Response;
  */
 class StudentProgressController extends Controller
 {
+    /** A moment as the timeline names it: `period:<ulid>` or `moment:<ulid>`. */
+    private const POINT_KEY = '/^(period|moment):[0-9a-z]{26}$/';
+
     public function __construct(
         protected BuildStudentProgress $progress,
         protected StudentProgressNarrative $narrative,
@@ -95,6 +100,8 @@ class StudentProgressController extends Controller
         protected StudentFollowupSynthesist $synthesist,
         protected Entitlements $entitlements,
         protected StudentAttendanceHistory $attendanceHistory,
+        protected BuildAssessmentTimeline $timeline,
+        protected BuildStudentYear $studentYear,
     ) {}
 
     /**
@@ -180,6 +187,9 @@ class StudentProgressController extends Controller
 
         $validated = $request->validate([
             'leitura' => ['nullable', 'in:continua,periodo'],
+            // «Ao longo do ano» (Pro): the two moments to compare, as the timeline names them.
+            'de' => ['nullable', 'string', 'regex:'.self::POINT_KEY],
+            'para' => ['nullable', 'string', 'regex:'.self::POINT_KEY],
         ]);
 
         $reading = match ($validated['leitura'] ?? null) {
@@ -230,6 +240,15 @@ class StudentProgressController extends Controller
             // that would still ship the interpretation to the browser.
             ...($allowsAdvancedAnalytics ? [
                 'pro' => $this->insights->for($progress, $factualAlerts, $previousAlerts, $strengths),
+                // «Ao longo do ano» — this student across ANY two comparable moments. Same gate, same
+                // discipline: the key does not exist for Base (nor for a suspended organization, for
+                // which `allows()` is false), and the timeline is not even built.
+                'yearReading' => $this->studentYear->for(
+                    $this->timeline->for($class),
+                    (string) $enrollment->ulid,
+                    $validated['de'] ?? null,
+                    $validated['para'] ?? null,
+                ),
             ] : []),
             'ai' => [
                 'available' => $this->suggester->isAvailable(),
