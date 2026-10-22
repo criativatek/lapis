@@ -219,19 +219,34 @@ class BuildAssessmentTimelineTest extends TestCase
     }
 
     #[Test]
-    public function nothing_in_the_application_uses_the_timeline_yet_so_no_base_path_can_reach_it(): void
+    public function the_timeline_is_reached_only_through_the_one_route_that_carries_the_module_gate(): void
     {
-        // D0 has no screen and no route. The first step that adds one must add the module gate with
-        // it — and, in doing so, update this list on purpose.
+        // The list is deliberate: a new user of the timeline must be added HERE, on purpose, and must
+        // sit behind `module:advanced_analytics` like the page of the comparison does.
         $users = [];
 
         foreach ((new Finder)->files()->in([base_path('app'), base_path('routes'), base_path('resources/js')])->name(['*.php', '*.vue', '*.ts']) as $file) {
             if (str_contains((string) file_get_contents($file->getPathname()), 'BuildAssessmentTimeline')) {
-                $users[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+                $users[] = str_replace([base_path().DIRECTORY_SEPARATOR, DIRECTORY_SEPARATOR], ['', '/'], $file->getPathname());
             }
         }
 
-        $this->assertSame(['app'.DIRECTORY_SEPARATOR.'Services'.DIRECTORY_SEPARATOR.'Assessment'.DIRECTORY_SEPARATOR.'Advanced'.DIRECTORY_SEPARATOR.'BuildAssessmentTimeline.php'], $users);
+        sort($users);
+
+        $this->assertSame([
+            'app/Http/Controllers/AssessmentAnalysisController.php',
+            'app/Services/Assessment/Advanced/BuildAssessmentComparison.php',
+            'app/Services/Assessment/Advanced/BuildAssessmentTimeline.php',
+        ], $users);
+
+        // Every route that reaches the controller is behind the module's gate.
+        $reaching = collect(app('router')->getRoutes()->getRoutes())
+            ->filter(fn ($route): bool => str_starts_with((string) ($route->getActionName()), 'App\Http\Controllers\AssessmentAnalysisController'));
+
+        $this->assertNotEmpty($reaching);
+        foreach ($reaching as $route) {
+            $this->assertContains('module:advanced_analytics', $route->gatherMiddleware(), $route->uri());
+        }
     }
 
     // ================================================================= a linha temporal é a progressão

@@ -647,6 +647,24 @@ describe('Estratégias e Medidas — estado em lote', () => {
         expect(mocks.post).not.toHaveBeenCalled();
     });
 
+    it('says that concluding in bulk is administrative and not an efficacy assessment', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Concluir todas as medidas')!.trigger('click');
+
+        const dialog = wrapper.find('[role="alertdialog"]').text();
+        expect(dialog).toContain('não constitui uma avaliação da eficácia');
+        expect(dialog).toContain('não é criada nenhuma avaliação');
+    });
+
+    it('does not claim that on the dialog that starts measures', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Marcar todas como Em curso')!.trigger('click');
+
+        expect(wrapper.find('[role="alertdialog"]').text()).not.toContain('avaliação da eficácia');
+    });
+
     it('posts only which operation was asked for, never counts or ids, once confirmed', async () => {
         const wrapper = render({ bulkStatus });
 

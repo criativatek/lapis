@@ -111,6 +111,9 @@ function run(): void {
             <p class="text-xs text-muted-foreground">
                 Aplica-se a toda a turma e ao ano letivo, não apenas ao que os filtros mostram. As medidas noutros estados ficam como estão e os registos de acompanhamento não são alterados.
             </p>
+            <p v-if="selected.from === 'in_progress'" class="text-xs text-muted-foreground">
+                A conclusão em lote é administrativa: não constitui uma avaliação da eficácia das medidas. Os acompanhamentos e as avaliações de eficácia já registados mantêm-se, e não é criada nenhuma avaliação.
+            </p>
             <details v-if="studentNames.length > 0" class="text-xs">
                 <summary class="cursor-pointer text-muted-foreground">Ver os alunos abrangidos</summary>
                 <ul class="mt-1 columns-2 gap-4">
