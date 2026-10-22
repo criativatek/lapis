@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { YearReading } from '@/lib/studentYear';
+import type { StudentTrends } from '@/lib/trajectories';
 import YearReadingSection from './YearReading.vue';
 
 const get = vi.fn();
@@ -66,7 +67,39 @@ function reading(over: Partial<YearReading> = {}): YearReading {
             left_out: 0,
             note: null,
         },
+        trends: null,
         explanations: [{ key: 'reading', title: 'Que resultado é este', text: 'Cada momento mostra o resultado do próprio período.' }],
+        ...over,
+    };
+}
+
+const flat = (text: string): string => text.replace(/\s+/g, '');
+
+const NEGATIVE = { code: '2', label: 'Insuficiente', is_negative: true };
+
+function trendsFixture(over: Partial<StudentTrends> = {}): StudentTrends {
+    const points = [
+        { key: 'period:p1', label: '1.º Semestre', kind: 'period' as const, basis_kind: 'live' as const, comparable: true },
+        { key: 'period:m1', label: 'Fotografia de dezembro', kind: 'kept_moment' as const, basis_kind: 'frozen' as const, comparable: true },
+        { key: 'period:p2', label: '2.º Semestre', kind: 'period' as const, basis_kind: 'live' as const, comparable: true },
+    ];
+    const trend = { state: 'consistent_down' as const, with_value: 3, counts: { up: 0, flat: 0, down: 2 }, gaps: [], steps: [
+        { from: '1.º Semestre', to: 'Fotografia de dezembro', direction: 'down' as const, points: '-5.0', previous: '60.0', current: '55.0' },
+        { from: 'Fotografia de dezembro', to: '2.º Semestre', direction: 'down' as const, points: '-8.0', previous: '55.0', current: '47.0' },
+    ] };
+    const persistent = { state: 'yes' as const, run: 1 + 1, stopped_by: 'positive' as const, points: [
+        { label: 'Fotografia de dezembro', value: '55.0', band: { ...NEGATIVE, label: 'Insuficiente' } },
+        { label: '2.º Semestre', value: '47.0', band: NEGATIVE },
+    ] };
+
+    return {
+        availability: { comparable_points: 3, trends: true, persistence: true, reason: null },
+        reference: { key: 'period:p2', label: '2.º Semestre' },
+        points, left_out: [],
+        result: { values: ['60.0', '55.0', '47.0'], negative: [false, true, true], trend, persistent },
+        domains: [
+            { ulid: 'd1', name: 'Oralidade', values: ['50.0', null, '70.0'], negative: [false, null, false], trend: { state: 'insufficient', with_value: 2, steps: [], counts: { up: 0, flat: 0, down: 0 }, gaps: [] }, persistent: { state: 'no', run: 0, points: [], stopped_by: 'positive' } },
+        ],
         ...over,
     };
 }
@@ -211,5 +244,68 @@ describe('YearReading', () => {
 
         expect((wrapper.find('[data-test="year-select-from"]').element as HTMLSelectElement).value).toBe(P2.key);
         expect((wrapper.find('[data-test="year-select-to"]').element as HTMLSelectElement).value).toBe(P1.key);
+    });
+    it('shows the trend and the persistence as two separate answers, with the values that justify them', () => {
+        const wrapper = mountSection(reading({ trends: trendsFixture() }));
+        const result = wrapper.find('[data-test="year-trends-result"]');
+
+        expect(wrapper.find('[data-test="year-trends"]').text()).toContain('Uma tendência precisa de 3 momentos');
+        expect(flat(result.find('[data-test="trajectory-values"]').text())).toBe(flat('60,0% → 55,0% → 47,0%'));
+        expect(result.find('[data-test="trajectory-trend"]').text()).toContain('Regressão consistente');
+        expect(result.find('[data-test="trajectory-trend"]').text()).toContain('Desceu em 2 de 2 passos');
+        expect(result.find('[data-test="trajectory-persistent"]').text()).toContain('Abaixo do nível positivo em 2 momentos seguidos, incluindo o mais recente.');
+        expect(result.find('[data-test="trajectory-persistent"]').text()).toContain('Fotografia de dezembro: 55,0% · Insuficiente');
+        expect(result.find('[data-test="trajectory-persistent"]').text()).toContain('2.º Semestre: 47,0% · Insuficiente');
+    });
+
+    it('writes a domain with a hole as a dash and says a trend is not possible with two values', () => {
+        const domain = mountSection(reading({ trends: trendsFixture() })).find('[data-test="year-trends-domain"]');
+
+        expect(flat(domain.find('[data-test="trajectory-values"]').text())).toBe(flat('50,0% → — → 70,0%'));
+        expect(domain.find('[data-test="trajectory-trend"]').text()).toContain('Sem momentos suficientes');
+        expect(domain.find('[data-test="trajectory-trend"]').text()).toContain('2 momentos com valor: uma tendência precisa de 3');
+        // A moment without a value is a dash, never a zero (50,0 % is not 0,0 %).
+        expect(domain.text()).not.toMatch(/(^|[^\d])0,0%/);
+        expect(domain.find('[data-test="trajectory-persistent"]').exists()).toBe(false);
+    });
+
+    it('says the reason when there are not three comparable moments, and lists the ones left out', () => {
+        const wrapper = mountSection(reading({
+            trends: trendsFixture({
+                availability: { comparable_points: 2, trends: false, persistence: true, reason: 'Há 2 momentos comparáveis: as tendências precisam de pelo menos 3.' },
+                points: [
+                    { key: 'period:p1', label: '1.º Semestre', kind: 'period', basis_kind: 'live', comparable: false },
+                    { key: 'period:p2', label: '2.º Semestre', kind: 'period', basis_kind: 'live', comparable: true },
+                ],
+                left_out: [{ key: 'period:p1', label: '1.º Semestre', reasons: [{ code: 'criteria_differ', text: 'Os domínios ou os pesos de avaliação mudaram entre os dois momentos.' }] }],
+            }),
+        }));
+
+        expect(wrapper.find('[data-test="year-trends-reason"]').text()).toContain('as tendências precisam de pelo menos 3');
+        expect(wrapper.find('[data-test="year-trends-left-out"]').text()).toContain('1.º Semestre fica fora da linha');
+        expect(wrapper.find('[data-test="year-trends-line"] .line-through').text()).toBe('1.º Semestre');
+    });
+
+    it('does not say «still negative» when the latest moment has no value', () => {
+        const base = trendsFixture();
+        const wrapper = mountSection(reading({
+            trends: trendsFixture({ result: { ...base.result, values: ['60.0', '40.0', null], negative: [false, true, null], persistent: { state: 'no_recent', run: 0, points: [], stopped_by: 'no_value' } } }),
+        }));
+
+        expect(wrapper.find('[data-test="year-trends-result"] [data-test="trajectory-persistent"]').text()).toContain('não se pode dizer que continua abaixo do nível positivo');
+    });
+
+    it('has no trends block when the server sent none', () => {
+        expect(mountSection(reading({ trends: null })).find('[data-test="year-trends"]').exists()).toBe(false);
+    });
+
+    it('never diagnoses or forecasts in the trends block', () => {
+        const text = mountSection(reading({ trends: trendsFixture() })).find('[data-test="year-trends"]').text().toLowerCase();
+
+        for (const word of ['dislexia', 'dificuldade de aprendizagem', 'recomend', 'provavelmente', 'vai piorar']) {
+            expect(text).not.toContain(word);
+        }
+
+        expect(text).toContain('nenhuma é um diagnóstico');
     });
 });

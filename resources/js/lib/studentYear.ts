@@ -6,6 +6,7 @@
  * ficheiro só lhes dá nome. As palavras são as da própria página («Subida», «Descida», «Estável»).
  */
 import type { Basis, Figure, Level, LevelChange, StudentMovement } from '@/lib/assessmentComparison';
+import type { StudentTrends } from '@/lib/trajectories';
 
 export type YearPoint = {
     key: string;
@@ -54,6 +55,8 @@ export type YearReading = {
     assigned: { from: Level | null; to: Level | null; from_value: string | null; to_value: string | null; change: LevelChange } | null;
     domains: YearDomain[];
     series: YearSeries;
+    /** Tendências e resultados abaixo do nível positivo persistentes (D4): null sem nenhum momento com resultados. */
+    trends: StudentTrends | null;
     explanations: Array<{ key: string; title: string; text: string }>;
 };
 

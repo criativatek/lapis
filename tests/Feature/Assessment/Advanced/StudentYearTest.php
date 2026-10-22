@@ -16,7 +16,9 @@ use App\Models\User;
 use App\Services\Assessment\Advanced\AdvancedAnalyticsUnavailable;
 use App\Services\Assessment\Advanced\BuildAssessmentComparison;
 use App\Services\Assessment\Advanced\BuildAssessmentTimeline;
+use App\Services\Assessment\Advanced\BuildClassTrends;
 use App\Services\Assessment\Advanced\BuildStudentYear;
+use App\Services\Assessment\Advanced\TimelineCriteria;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ProposeClassifications;
 use App\Support\Entitlements\Entitlements;
@@ -586,5 +588,171 @@ class StudentYearTest extends TestCase
         $this->assertSame($baseProps['moments'], $proProps['moments']);
         $this->assertSame($baseProps['domains'], $proProps['domains']);
         $this->assertSame($baseProps['headline'], $proProps['headline']);
+    }
+    // ================================================================= tendências e resultados negativos persistentes (D4)
+
+    #[Test]
+    public function the_students_trajectories_are_the_same_reading_the_class_makes_of_that_student(): void
+    {
+        $this->keep('Momento A');
+        $this->keep('Momento B');
+        $timeline = $this->timeline();
+        $class = $this->asTenant(fn (): array => app(BuildClassTrends::class)->for($timeline));
+
+        foreach (['Carolina Nunes', 'Ana Marques', 'Diogo Ferreira'] as $name) {
+            $trends = $this->year($name, timeline: $timeline)['trends'];
+            $row = collect($class['students'])->firstWhere('name', $name);
+
+            $this->assertSame($row['global'], $trends['result'], $name);
+            $this->assertSame(array_column($class['points'], 'key'), array_column($trends['points'], 'key'));
+            foreach ($trends['domains'] as $domain) {
+                $this->assertSame($row['domains'][$domain['ulid']]['trend'], $domain['trend'], "{$name}: {$domain['name']}");
+                $this->assertSame($row['domains'][$domain['ulid']]['persistent'], $domain['persistent'], "{$name}: {$domain['name']}");
+            }
+        }
+    }
+
+    #[Test]
+    public function with_a_series_of_four_the_student_has_a_trend_with_its_steps(): void
+    {
+        $this->keep('Momento A');
+        $this->keep('Momento B');
+
+        $trends = $this->year('Carolina Nunes')['trends'];
+
+        $this->assertTrue($trends['availability']['trends']);
+        $this->assertNotSame('insufficient', $trends['result']['trend']['state']);
+        $this->assertSame($trends['result']['trend']['with_value'] - 1, count($trends['result']['trend']['steps']));
+        $this->assertSame(['Momento A', 'Momento B', '1.º Semestre', '2.º Semestre'], array_column($trends['points'], 'label'));
+    }
+
+    #[Test]
+    public function a_student_with_one_moment_still_gets_the_persistence_answer_and_no_trend(): void
+    {
+        // Diogo Ferreira only has a result in the second period.
+        $trends = $this->year('Diogo Ferreira')['trends'];
+
+        $this->assertSame('insufficient', $trends['result']['trend']['state']);
+        $this->assertContains($trends['result']['persistent']['state'], ['no', 'unknown']);
+        $this->assertSame([null, true], [$trends['result']['values'][0], $trends['result']['values'][1] !== null]);
+    }
+
+    #[Test]
+    public function a_moment_under_other_criteria_is_left_out_of_the_students_line_and_said(): void
+    {
+        $this->keep('Antes');
+        $other = $this->keep('Outros pesos');
+        $this->rewrite($other, function (array $payload): array {
+            $payload['domains'][0]['weight_percent'] = '99.0000';
+
+            return $payload;
+        });
+
+        $trends = $this->year('Carolina Nunes')['trends'];
+
+        $this->assertSame(['Outros pesos'], array_column($trends['left_out'], 'label'));
+        $this->assertSame(['criteria_differ'], array_column($trends['left_out'][0]['reasons'], 'code'));
+    }
+
+    /**
+     * A timeline written by hand, three points under the same criteria, with one student.
+     *
+     * @param  list<string|null>  $values
+     * @return array<string, mixed>
+     */
+    private function syntheticFor(array $values): array
+    {
+        $scale = ['name' => 'Escala de teste', 'kind' => 'levels', 'levels' => [
+            ['code' => '1', 'label' => 'Insuficiente', 'sequence' => 1, 'is_negative' => true],
+            ['code' => '2', 'label' => 'Suficiente', 'sequence' => 2, 'is_negative' => false],
+        ]];
+        $figure = fn (?string $value): array => ['value' => $value, 'band' => $value === null ? null : ((float) $value < 50
+            ? ['code' => '1', 'label' => 'Insuficiente', 'sequence' => 1, 'is_negative' => true]
+            : ['code' => '2', 'label' => 'Suficiente', 'sequence' => 2, 'is_negative' => false]), 'coverage_warning' => false];
+
+        $points = [];
+        $cells = [];
+        foreach ($values as $index => $value) {
+            $key = 'period:p'.($index + 1);
+            $points[] = [
+                'key' => $key, 'kind' => 'period', 'label' => 'Momento '.($index + 1), 'period_ulid' => 'p'.($index + 1), 'closes_the_year' => false,
+                'basis' => ['kind' => 'live', 'label' => 'Calculado com os dados de hoje', 'as_of' => null],
+                'level_signature' => TimelineCriteria::levels($scale), 'percentage_signature' => 'P', 'notices' => [], 'ordinal' => $index + 1,
+                'students_total' => 1, 'students_with_result' => $value === null ? 0 : 1, 'partial_coverage' => 0, 'has_results' => true, 'few_students' => true,
+            ];
+            $cells[$key] = ['result' => $figure($value), 'domains' => ['dom-0' => $figure($value)], 'classification' => null, 'participation' => null];
+        }
+
+        return [
+            'class_ulid' => 'cls', 'scale' => $scale, 'domains' => [['ulid' => 'dom-0', 'name' => 'Escrita', 'weight_percent' => '100.0000']],
+            'points' => $points,
+            'students' => [['enrollment_ulid' => 'enr-0', 'name' => 'Aluno', 'class_number' => 1, 'cells' => $cells]],
+            'availability' => ['points_with_results' => count($values), 'comparable_points' => count($values), 'comparison' => true, 'trends' => true, 'reason' => null],
+            'notices' => [], 'context' => [],
+        ];
+    }
+
+    #[Test]
+    public function two_consecutive_moments_below_the_line_including_the_latest_are_said_with_their_values(): void
+    {
+        $year = $this->asTenant(fn (): array => app(BuildStudentYear::class)->for($this->syntheticFor(['70', '40', '45']), 'enr-0'));
+        $result = $year['trends']['result'];
+
+        $this->assertSame('yes', $result['persistent']['state']);
+        $this->assertSame(['Momento 2', 'Momento 3'], array_column($result['persistent']['points'], 'label'));
+        $this->assertSame(['40', '45'], array_column($result['persistent']['points'], 'value'));
+        $this->assertSame('variable', $result['trend']['state']);
+        $this->assertSame('yes', $year['trends']['domains'][0]['persistent']['state']);
+    }
+
+    #[Test]
+    public function the_distinction_between_a_trend_and_a_persistent_negative_holds_for_the_student(): void
+    {
+        $two = $this->asTenant(fn (): array => app(BuildStudentYear::class)->for($this->syntheticFor(['40', '45']), 'enr-0'));
+
+        $this->assertSame('yes', $two['trends']['result']['persistent']['state']);
+        $this->assertSame('insufficient', $two['trends']['result']['trend']['state']);
+        $this->assertFalse($two['trends']['availability']['trends']);
+        $this->assertTrue($two['trends']['availability']['persistence']);
+    }
+
+    #[Test]
+    public function a_gap_is_not_a_zero_and_it_breaks_the_run_for_the_student(): void
+    {
+        $year = $this->asTenant(fn (): array => app(BuildStudentYear::class)->for($this->syntheticFor(['40', null, '45']), 'enr-0'));
+        $result = $year['trends']['result'];
+
+        $this->assertSame(['40', null, '45'], $result['values']);
+        $this->assertSame('no', $result['persistent']['state']);
+        $this->assertSame('no_value', $result['persistent']['stopped_by']);
+        $this->assertSame('insufficient', $result['trend']['state']);
+    }
+
+    #[Test]
+    public function the_students_trajectories_carry_no_classmates_and_no_counts_of_them(): void
+    {
+        $this->keep('Momento A');
+        $json = (string) json_encode($this->year('Carolina Nunes')['trends'], JSON_UNESCAPED_UNICODE);
+
+        foreach (['Ana Marques', 'Bruno Teixeira', 'Diogo Ferreira', 'Eva Salgado', 'Filipe Andrade'] as $classmate) {
+            $this->assertStringNotContainsString($classmate, $json);
+        }
+        foreach (['students_total', 'students_with_result', 'enrollment_id', 'domain_id', 'period_id'] as $forbidden) {
+            $this->assertStringNotContainsString("\"{$forbidden}\"", $json);
+        }
+    }
+
+    #[Test]
+    public function the_page_carries_the_students_trends_only_for_pro(): void
+    {
+        $this->page()->assertOk()->assertInertia(fn ($page) => $page
+            ->has('yearReading.trends.result.trend.state')
+            ->has('yearReading.trends.domains')
+            ->has('yearReading.trends.availability'));
+
+        $this->subscribe('base');
+        $response = $this->page()->assertOk();
+        $response->assertInertia(fn ($page) => $page->missing('yearReading'));
+        $this->assertStringNotContainsString('persistent', (string) $response->getContent());
     }
 }

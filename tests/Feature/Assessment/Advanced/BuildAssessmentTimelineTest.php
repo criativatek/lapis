@@ -239,7 +239,10 @@ class BuildAssessmentTimelineTest extends TestCase
             'app/Services/Assessment/Advanced/BuildAssessmentComparison.php',
             'app/Services/Assessment/Advanced/BuildAssessmentTimeline.php',
             'app/Services/Assessment/Advanced/BuildClassStrengths.php',
+            'app/Services/Assessment/Advanced/BuildClassTrends.php',
             'app/Services/Assessment/Advanced/BuildStudentYear.php',
+            'app/Services/Assessment/Advanced/TimelineSeries.php',
+            'app/Services/Assessment/Advanced/TrajectoryReading.php',
         ], $users);
 
         // The student page is a Base page with a Pro section: its one call to the timeline sits inside the

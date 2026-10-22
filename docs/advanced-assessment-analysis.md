@@ -1,8 +1,8 @@
 # Análise Avançada da Avaliação (Pro) — fundação (D0)
 
-Estado: **D0 — fundação**, **D1 — comparação da turma** e **D2 — «Ao longo do ano» do aluno**
-(integradas) e **D3 — pontos fortes e dificuldades da turma** (esta etapa). As seguintes (D4–D6) chegam
-cada uma com autorização própria.
+Estado: **D0 — fundação**, **D1 — comparação da turma**, **D2 — «Ao longo do ano» do aluno** e
+**D3 — pontos fortes e dificuldades da turma** (integradas) e **D4 — tendências e resultados negativos
+persistentes** (esta etapa). As seguintes (D5–D6) chegam cada uma com autorização própria.
 
 ## Decisões aprovadas (Fatia D)
 
@@ -198,7 +198,59 @@ páginas intactas; a página da análise devolve 403 sem estes dados).
 
 **Testes:** `ClassStrengthsTest` (real + sintética), `StrengthsSection.test.ts`, `Show.test.ts`.
 
+## D4 — Tendências e resultados abaixo do nível positivo persistentes
+
+**Onde:** terceira secção da página «Análise da Avaliação» (turma, domínios e cada aluno) e um bloco novo
+dentro de «Ao longo do ano» na «Evolução do Aluno» (prop `yearReading.trends`, só Pro). Sem rotas novas:
+o Pro continua nos mesmos três níveis (rota `module:advanced_analytics`, controlador, serviços).
+
+**Duas perguntas, duas regras, nunca misturadas** (`TrajectoryReading`, função pura):
+- **Tendência — pelo menos 3 momentos** comparáveis com valor. Os passos entre momentos seguidos são a
+  regra de movimento que já existe (`BuildResultsProgression::movement()`: qualquer alteração na casa
+  decimal mostrada, sem tolerância escolhida à parte). Todos subiram → *progressão consistente*; todos
+  desceram → *regressão consistente*; todos iguais → *estável*; qualquer outra coisa (subidas e descidas,
+  ou uma pausa pelo meio) → *evolução variável*. Com menos de 3 valores é «sem momentos suficientes»: dois
+  pontos são uma comparação, não uma tendência. A regra é estrita de propósito (uma pausa não é
+  «progressão consistente»; 70,0 → 70,2 → 69,9 é «variável») e os passos aparecem sempre.
+- **Resultado abaixo do nível positivo persistente — 2 momentos.** Abaixo do nível positivo no momento
+  MAIS RECENTE e no anterior (contando para trás enquanto cada um for negativo). Não é uma tendência, não
+  é uma previsão e não é um diagnóstico: dá o nº de momentos seguidos, os valores e os momentos.
+  - o momento mais recente tem de ter valor: sem valor, ou «continua» não se pode confirmar
+    (`no_recent`, quando o último valor anterior estava abaixo da linha) ou não há nada a dizer
+    (`no_value`/`insufficient`);
+  - um momento sem valor ou deixado fora da linha **interrompe** a sequência: não se adivinha o que
+    aconteceu no buraco;
+  - uma banda que a escala não consegue posicionar é `unknown`, nunca «não negativo».
+
+**A linha (`TimelineSeries`):** ancorada no momento mais recente com resultados; só entram os momentos
+que, comprovadamente, têm os mesmos critérios (domínios e pesos) E a mesma escala que ele. Os outros ficam
+de fora, com o motivo, no sítio onde estão (e interrompem uma sequência). Um momento sem resultados para
+ninguém não é um momento da linha. Um aluno sem valor num momento tem uma **lacuna** — dita, nunca zero.
+
+**A turma (`BuildClassTrends`)** lê com os mesmos alunos: a tendência da turma e de cada domínio é a da
+média dos alunos com valor em TODOS os momentos da linha (a média de todos, com o seu total, aparece ao
+lado). Contagens com denominador: alunos por tendência e «k de n com valor no momento mais recente» em
+resultado abaixo do nível positivo persistente, global e por domínio. Lista nominal de todos os alunos
+(só para quem pode `view` a turma), com filtro e o detalhe por domínio.
+
+**O aluno (`BuildStudentYear`)** usa a mesma função: o resultado global e cada domínio, com valores,
+tendência, passos, lacunas, momentos fora da linha e a sequência abaixo do nível positivo com os valores
+e momentos que a sustentam. Turma e aluno não discordam (teste de paridade).
+
+**Linguagem:** factual. Nenhum diagnóstico, previsão, causa ou recomendação (há testes sobre as palavras
+do payload e as explicações dizem «não é um diagnóstico de dificuldades de aprendizagem»).
+
+**Privacidade e desempenho:** sem ids numéricos nem texto livre; o aluno só recebe as suas células;
+aritmética sobre a linha temporal em memória (o custo da página não cresce com a turma). Base intacto: a
+fixture `student-base` não muda; a `student-pro` só acrescenta `yearReading.trends.*` (sem essa chave a
+página Pro é igual à anterior — verificado).
+
+**Testes:** `TrajectoryReadingTest`, `TimelineSeriesTest` (unitários); `ClassTrendsTest` (turma real com
+série de quatro pontos e linhas temporais sintéticas); `StudentYearTest`; `TrendsSection.test.ts`,
+`YearReading.test.ts`, `trajectories.test.ts`.
+
 ## Etapas seguintes (não autorizadas)
 
 D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 ✔ pontos fortes e dificuldades ·
-D4 tendências e dificuldade persistente · D5 documento Pro · D6 validação, ajuda, texto comercial, 0.176.0.
+D4 ✔ tendências e resultados persistentes · D5 documento Pro · D6 validação, ajuda, texto comercial e a
+versão 0.177.0 (fecho da Fatia D). A 0.176.0 já é das operações em lote das medidas (PR #99).

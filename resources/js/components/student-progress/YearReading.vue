@@ -3,6 +3,7 @@ import { router } from '@inertiajs/vue3';
 import { CircleAlert, Info, Sparkles } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import TrajectorySummary from '@/components/assessment-analysis/TrajectorySummary.vue';
 import { levelChangeText, percent, points } from '@/lib/assessmentComparison';
 import { categoryAxis, chromeColours, percentAxis } from '@/lib/chartTheme';
 import type { TooltipContent } from '@/lib/chartTheme';
@@ -299,6 +300,46 @@ const chartRows = computed(() => chart.value.points.map((point, index) => [point
                     Ainda não há dois momentos comparáveis com resultado para desenhar um gráfico.
                 </p>
                 <p v-if="chart.note" class="mt-1 text-xs text-muted-foreground" data-test="year-chart-note">{{ chart.note }}</p>
+            </div>
+
+            <!-- ------------------------------ tendências e persistência (D4) -->
+            <div v-if="reading.trends" class="mt-5 border-t border-border/60 pt-4" data-test="year-trends">
+                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tendências e resultados abaixo do nível positivo</h3>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Uma tendência precisa de 3 momentos comparáveis com valor; estar abaixo do nível positivo em momentos seguidos, incluindo o
+                    mais recente, precisa de 2. São duas perguntas diferentes e nenhuma é um diagnóstico.
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground" data-test="year-trends-line">
+                    Momentos da linha:
+                    <template v-for="(point, index) in reading.trends.points" :key="point.key">
+                        <span v-if="index > 0" aria-hidden="true"> → </span>
+                        <span :class="point.comparable ? '' : 'line-through'">{{ point.label }}</span>
+                    </template>
+                </p>
+                <p v-if="reading.trends.availability.reason" class="mt-2 flex gap-1.5 rounded-lg bg-muted/50 p-2.5 text-xs" data-test="year-trends-reason">
+                    <Info class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span>{{ reading.trends.availability.reason }}</span>
+                </p>
+                <ul
+                    v-if="reading.trends.left_out.length"
+                    class="mt-2 list-disc space-y-0.5 rounded-lg border border-amber-200/70 bg-amber-50/70 p-2.5 pl-6 text-xs dark:border-amber-900/40 dark:bg-amber-950/20"
+                    data-test="year-trends-left-out"
+                >
+                    <li v-for="left in reading.trends.left_out" :key="left.key">
+                        <span class="font-medium">{{ left.label }}</span> fica fora da linha: {{ left.reasons.map((reason) => reason.text).join(' ') }}
+                    </li>
+                </ul>
+
+                <div class="mt-3 grid gap-4 sm:grid-cols-2">
+                    <div class="space-y-1" data-test="year-trends-result">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Resultado global</p>
+                        <TrajectorySummary :reading="reading.trends.result" :points="reading.trends.points" />
+                    </div>
+                    <div v-for="domain in reading.trends.domains" :key="domain.ulid" class="space-y-1" data-test="year-trends-domain">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ domain.name }}</p>
+                        <TrajectorySummary :reading="domain" :points="reading.trends.points" />
+                    </div>
+                </div>
             </div>
 
             <!-- --------------------------------------------- como se calcula -->

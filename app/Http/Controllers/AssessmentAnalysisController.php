@@ -7,6 +7,7 @@ use App\Services\Assessment\Advanced\AdvancedAnalyticsUnavailable;
 use App\Services\Assessment\Advanced\BuildAssessmentComparison;
 use App\Services\Assessment\Advanced\BuildAssessmentTimeline;
 use App\Services\Assessment\Advanced\BuildClassStrengths;
+use App\Services\Assessment\Advanced\BuildClassTrends;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -17,9 +18,10 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 /**
  * Análise da Avaliação — a class's assessment read ACROSS time (Pro).
  *
- * ONE PAGE, GROWING BY SECTION. It holds the comparison between two moments (D1) and the strengths
- * and difficulties of one moment (D3); the trends and the document come in as further sections of the
- * same page, over the same timeline. Nothing here reads anything the timeline does not, and
+ * ONE PAGE, GROWING BY SECTION. It holds the comparison between two moments (D1), the strengths
+ * and difficulties of one moment (D3) and the trajectories — trends and persistent negative results —
+ * across the year (D4); the document comes in as a further section of the same page, over the same
+ * timeline. Nothing here reads anything the timeline does not, and
  * nothing is computed here: the controller authorises, validates the two moments asked for,
  * asks for the timeline and for the comparison, and hands them to the page.
  *
@@ -43,6 +45,7 @@ class AssessmentAnalysisController extends Controller
         protected BuildAssessmentTimeline $timeline,
         protected BuildAssessmentComparison $comparison,
         protected BuildClassStrengths $strengths,
+        protected BuildClassTrends $trends,
         protected Entitlements $entitlements,
     ) {}
 
@@ -65,6 +68,7 @@ class AssessmentAnalysisController extends Controller
             $timeline = $this->timeline->for($class);
             $comparison = $this->comparison->between($timeline, $validated['de'] ?? null, $validated['para'] ?? null);
             $strengths = $this->strengths->for($timeline, $validated['momento'] ?? null);
+            $trends = $this->trends->for($timeline);
         } catch (AdvancedAnalyticsUnavailable) {
             return $this->unavailable($request);
         }
@@ -82,6 +86,7 @@ class AssessmentAnalysisController extends Controller
             'availability' => $timeline['availability'],
             'comparison' => $comparison,
             'strengths' => $strengths,
+            'trends' => $trends,
         ]);
     }
 

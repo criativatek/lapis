@@ -2,7 +2,6 @@
 
 namespace App\Services\Assessment\Advanced;
 
-use App\Domain\Assessment\Bc;
 use App\Services\Assessment\BuildResultsProgression;
 use App\Support\Entitlements\Entitlements;
 
@@ -413,13 +412,13 @@ class BuildAssessmentComparison
             }
         }
 
-        $pairedFromMean = $this->mean($pairedFrom);
-        $pairedToMean = $this->mean($pairedTo);
+        $pairedFromMean = TimelineStatistics::mean($pairedFrom);
+        $pairedToMean = TimelineStatistics::mean($pairedTo);
 
         return [
             'moments' => [
-                'from' => ['students' => count($fromValues), 'mean' => $this->mean($fromValues), 'partial_coverage' => $partial['from']],
-                'to' => ['students' => count($toValues), 'mean' => $this->mean($toValues), 'partial_coverage' => $partial['to']],
+                'from' => ['students' => count($fromValues), 'mean' => TimelineStatistics::mean($fromValues), 'partial_coverage' => $partial['from']],
+                'to' => ['students' => count($toValues), 'mean' => TimelineStatistics::mean($toValues), 'partial_coverage' => $partial['to']],
             ],
             'paired' => [
                 'students' => count($pairedFrom),
@@ -473,25 +472,6 @@ class BuildAssessmentComparison
         return $counts;
     }
 
-    /**
-     * The same sum-and-divide, rounded the same way, as `BuildClassStatistics::mean()`.
-     *
-     * @param  list<string>  $values
-     */
-    private function mean(array $values): ?string
-    {
-        if ($values === []) {
-            return null;
-        }
-
-        $total = '0';
-        foreach ($values as $value) {
-            $total = Bc::add($total, Bc::of($value));
-        }
-
-        return Bc::round(Bc::div($total, (string) count($values)), BuildResultsProgression::PRECISION, 'half_up');
-    }
-
     // ================================================================= the domains
 
     /**
@@ -525,16 +505,16 @@ class BuildAssessmentComparison
                 }
             }
 
-            $pairedFromMean = $this->mean($pairedFrom);
-            $pairedToMean = $this->mean($pairedTo);
+            $pairedFromMean = TimelineStatistics::mean($pairedFrom);
+            $pairedToMean = TimelineStatistics::mean($pairedTo);
 
             $blocks[] = [
                 'ulid' => $domain['ulid'],
                 'name' => $domain['name'],
                 'weight_percent' => $domain['weight_percent'],
                 'moments' => [
-                    'from' => ['students' => count($fromValues), 'mean' => $this->mean($fromValues)],
-                    'to' => ['students' => count($toValues), 'mean' => $this->mean($toValues)],
+                    'from' => ['students' => count($fromValues), 'mean' => TimelineStatistics::mean($fromValues)],
+                    'to' => ['students' => count($toValues), 'mean' => TimelineStatistics::mean($toValues)],
                 ],
                 'paired' => [
                     'students' => count($pairedFrom),
