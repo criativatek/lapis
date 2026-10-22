@@ -203,6 +203,14 @@ class EvaluationSheetGridDocumentController extends Controller
     {
         $structure = $this->grid->build($document, EvaluationSheetGridOptions::fromQuery($request->query()));
 
+        // A CLASS WITHOUT A PROFILE HAS STUDENTS AND NO SHEET. The Pauta says why, and so
+        // must this: «there are no students» would be false, and would send a teacher to
+        // look for a missing enrolment instead of for the missing profile. Only the live
+        // sheet: a kept moment says nothing about what the class has today.
+        if ($structure['is_empty'] && ! $document->isHistorical && $class->assessment_profile_version_id === null) {
+            $structure['empty_message'] = __('Esta turma não tem perfil de avaliação associado, por isso não há pauta a mostrar.');
+        }
+
         $issuedAt = now();
         $identity = $this->identity->for($class->organization);
 

@@ -2,8 +2,9 @@
 
 Relatórios tem, desde a 0.173.0, duas famílias de documentos. Este ficheiro
 descreve a segunda e explica porque é que ela **não** é um `Report`. Tem hoje
-dois documentos: o **Mapa de Medidas Educativas** (0.173.0) e a **grelha
-imprimível de um instrumento de avaliação** (0.174.0).
+três documentos: o **Mapa de Medidas Educativas** (0.173.0), a **grelha
+imprimível de um instrumento de avaliação** (0.174.0) e a **grelha factual de
+avaliação da turma** — a Pauta como documento (0.175.0).
 
 | | Relatório (`reports`) | Documento da turma |
 |---|---|---|
@@ -11,7 +12,7 @@ imprimível de um instrumento de avaliação** (0.174.0).
 | Guarda alguma coisa? | Sim — secções, texto do professor e, ao finalizar, um `document` congelado | **Não.** Nenhuma linha em `reports`, nenhum PDF guardado |
 | Texto | Frases compostas pelo sistema, editadas pelo professor | Nenhuma frase interpretativa; só listas, contagens, valores e notas factuais |
 | Formatos | Pré-visualização, impressão, PDF, Word | Pré-visualização, impressão, PDF |
-| Exemplo | Relatório de turma, individual, por registos, de escola | **Mapa de Medidas Educativas** (0.173.0); **grelha de um instrumento** (0.174.0) |
+| Exemplo | Relatório de turma, individual, por registos, de escola | **Mapa de Medidas Educativas** (0.173.0); **grelha de um instrumento** (0.174.0); **grelha da turma** (0.175.0) |
 
 **Imprimir agora não é finalizar.** Um documento da turma leva impressa a data
 de emissão e a frase «Documento gerado a partir dos registos à data de emissão;
@@ -32,6 +33,9 @@ ClassMeasuresMap::build()  ──►  props Inertia  ──►  MeasuresMap.vue 
 
 InstrumentGrid::build()    ──►  props Inertia  ──►  instruments/GridDocument.vue  (idem)
                            └─►  instruments/grid-document.blade.php  ──►  DompdfPrinter  ──►  PDF
+
+EvaluationSheetGrid::build() ──►  props Inertia  ──►  evaluation-sheets/GridDocument.vue  (idem)
+                             └─►  evaluation-sheets/grid-document.blade.php  ──►  DompdfPrinter  ──►  PDF
 ```
 
 As frases que aparecem nos dois lados (o resumo, a nota dos excluídos, o
@@ -417,116 +421,241 @@ fazem parte da suite do repositório.
   como 0.
 - Os gráficos só existem com a correção concluída.
 - Não há cópia guardada, nem gráficos por aluno, nem interpretação (Pro).
-- A grelha da turma (Pauta) é a Fatia C: já tem pré-visualização, PDF e gráficos (ver abaixo).
+- A grelha da turma (Pauta) é a Fatia C, na 0.175.0: ver «Grelha factual de avaliação da turma».
 
-## A grelha factual da turma (Fatia C, em curso)
+## Grelha factual de avaliação da turma (0.175.0)
 
-**Falta o fecho.** A grelha de uma turma num momento intercalar ou no
-período/semestre é a Fatia C; estão feitas a preparação técnica (C1), a fonte de
-dados (C2, `EvaluationSheetGrid`), a pré-visualização (C3), o PDF (C4) e os gráficos
-(C5). Falta o fecho (C6). O que já existe, e o que a etapa seguinte tem de
-respeitar:
+A grelha de uma turma num momento intercalar ou no período/semestre **é a Pauta de
+Avaliação** vista como documento. Não há uma segunda grelha nem um segundo cálculo:
+o documento lê a Pauta (a de hoje ou um momento guardado) pelo mesmo caminho que o
+CSV e o Excel dela e acrescenta o que faltava — pré-visualização, PDF e gráficos
+factuais. A impressão do próprio ecrã da Pauta (`Show.vue`) não mudou.
 
-- **Gráficos (C5).** `EvaluationSheetGridCharts`, opcionais (`?graficos=1`, desligados
-  por omissão, plano Base), contados **só a partir do documento** — as mesmas linhas
-  que a tabela — e por isso iguais no ecrã, na impressão e no PDF, e num momento
-  guardado só dos seus dados congelados. Três, descritivos, sem ranking, tendência
-  nem comparação: (1) níveis propostos pelo Lapispro (coluna «Proposta do
-  Lapispro»), uma barra por nível da escala, por ordem, incluindo os vazios;
-  (2) níveis atribuídos pelo professor (coluna «Nível atribuído»), **à parte** das
-  propostas e só quando alguém tem nível («n = X de Y alunos»); (3) média da turma
-  do global e de cada domínio (um só domínio = só o global), em eixo absoluto 0–100,
-  com o n de cada média. Quem não tem proposta, nível ou resultado conta-se numa
-  linha própria e nunca é uma barra a zero; um nível que a escala não tem e um
-  resultado acima de 100 % (bónus) dizem-se numa nota; abaixo de cinco alunos há
-  uma nota de cautela. Numa escala de valores (0–20) conta-se valor a valor.
-  Desenhados como no gráfico da grelha de um instrumento: caixas no ecrã e na
-  impressão, células de tabela no PDF.
-- **A escala viaja com a Pauta.** `BuildEvaluationSheet` passou a devolver `scale`
-  (nome, tipo e níveis por ordem, sem identificadores), a fotografia congela-a
-  (payload v3) e o `EvaluationSheetDocument` lê-a de qualquer das origens. Uma
-  fotografia anterior não a traz: os dois gráficos por nível dizem que não estão
-  disponíveis em vez de adivinhar uma ordem, e a média desenha-se na mesma.
-- **Paridade com a Estatística (`BuildClassStatistics`).** Onde os universos
-  coincidem — o período com o âmbito «Período», alunos que frequentam — a média
-  global, a média e o n de cada domínio, a distribuição dos níveis atribuídos
-  (contagens, percentagens, negativos) e a distribuição por níveis das médias
-  coincidem com os da Estatística, e há testes que o provam. Diferenças legítimas:
-  a Estatística acompanha o âmbito primário (num período acumulado lê o acumulado),
-  inclui o universo escolhido (alunos que não frequentam com resultado externo) e
-  decide o domínio pela data da evidência; a grelha conta os alunos da Pauta e o
-  âmbito «Período». E os «níveis propostos» são a proposta **guardada** de cada
-  aluno (o que a coluna mostra), que pode estar desatualizada ou em falta para
-  quem ainda não foi proposto; a Estatística bandeia a média de hoje.
+```
+BuildEvaluationSheet  ──►  EvaluationSheetDocument::fromLiveSheet()  ┐
+EvaluationSheetExport ──►  EvaluationSheetDocument::fromSnapshot()   ┴─►  EvaluationSheetGrid::build()  ──►  props Inertia  ──►  evaluation-sheets/GridDocument.vue
+(payload congelado)                                                        (+ EvaluationSheetGridCharts)  └─►  evaluation-sheets/grid-document.blade.php  ──►  DompdfPrinter  ──►  PDF
+```
 
-- **PDF (C4).** `classes/{class}/pauta-avaliacao/impressao/{period}/pdf` e
-  `classes/{class}/pauta-avaliacao/historico/{export}/impressao/pdf`, no mesmo
-  controlador, com as mesmas portas e opções da pré-visualização (o botão «PDF» leva
-  as opções e o momento). Vista própria para o dompdf
-  (`evaluation-sheets/grid-document`) que só desenha a estrutura: horizontal
-  compacto por omissão, um bloco de colunas por folha com Nº e Nome repetidos, o
-  cabeçalho a repetir quando a lista passa de folha, `PROVISÓRIO` e «Página N / T»
-  em todas as folhas. A largura de cada coluna vem de
-  `EvaluationSheetGrid::columnWidth()`, a mesma que o planeador usou. O ficheiro é
-  um anexo, `private, no-store`, nunca guardado e nunca nomeado com o nome de um
-  aluno. A exportação deixa o evento de auditoria
-  `evaluation_sheets.grid_document.exported` só com contagens e opções (formato,
-  origem, período ou registo, momento, orientação, opções, provisório, alunos,
-  domínios, blocos, atribuídos, pendentes).
+### Rotas, acessos e quem pode abrir
 
-- **Pré-visualização (C3).** `EvaluationSheetGridDocumentController`, no módulo
-  `results` (Base) e com `SchoolClassPolicy::view`: `classes/{class}/pauta-avaliacao/impressao/{period}`
-  (a Pauta de hoje, com `?momento=interim|final` a titular o documento) e
-  `classes/{class}/pauta-avaliacao/historico/{export}/impressao` (um momento
-  guardado, lido só do payload congelado: a ação não recebe o construtor da pauta,
-  e o registo tem de ser da turma e estar íntegro). A Pauta de hoje lê-se com
-  `withProposalBasis: false`. A página (`evaluation-sheets/GridDocument`) só
-  desenha a estrutura; as opções (autoavaliação, orientação) mudam o que se
-  desenha. Acessos na Pauta, no Histórico e na pauta guardada; o «Imprimir» da
-  Pauta não mudou. Abrir a pré-visualização não escreve nada nem deixa rasto; o
-  rasto é o da exportação em PDF.
+| | Rota | Nome |
+|---|---|---|
+| Pré-visualização, Pauta de hoje | `classes/{class}/pauta-avaliacao/impressao/{period}` (`?momento=interim\|final`) | `evaluation-sheets.grid-document` |
+| PDF, Pauta de hoje | `…/impressao/{period}/pdf` | `evaluation-sheets.grid-document.pdf` |
+| Pré-visualização, momento guardado | `classes/{class}/pauta-avaliacao/historico/{export}/impressao` | `evaluation-sheets.snapshot.grid-document` |
+| PDF, momento guardado | `…/historico/{export}/impressao/pdf` | `evaluation-sheets.snapshot.grid-document.pdf` |
 
-- `EvaluationSheetGrid::build(EvaluationSheetDocument, EvaluationSheetGridOptions)`
-  devolve a estrutura neutra da grelha da turma. É uma função pura do documento:
-  sem consultas, sem relógio, sem autorização, sem timbre nem data de emissão (são
-  do controlador). Colunas: Nº e Nome; por domínio, Resultado (a percentagem
-  calculada) e Apreciação; Global (resultado e a banda onde cai); Classificação
-  (Proposta do Lapispro, Nível atribuído, Estado); avisos de cobertura; e a
-  autoavaliação, só com `?autoavaliacao=1`. Calculado, proposto e decidido nunca
-  partilham uma célula: a apreciação decidida leva «prof.» e guarda por baixo a
-  proposta que substituiu; um nível atribuído vazio diz «não decidido» ou «sem
-  classificação». `PROVISÓRIO` enquanto algum aluno não tiver nível atribuído.
-- Nunca viajam `override_reason`, ids, explicações de cobertura nem os campos da
-  proposta de hoje; o controlador da C3 deve ler a Pauta com
-  `withProposalBasis: false`.
-- Horizontal por omissão (`?orientacao=vertical|auto`); a unidade que nunca se
-  parte é o domínio.
+Acessos: «Grelha para imprimir» na Pauta (ao lado do «Imprimir» dela, que não mudou;
+leva o período e o momento que se está a ver), no Histórico (por momento, junto de
+CSV e Excel) e na pauta guardada. O botão «PDF» da pré-visualização leva as opções e
+o momento escolhidos.
 
-- A Pauta de Avaliação é a grelha: o documento consome o `EvaluationSheetDocument`
-  (`fromLiveSheet`, que já aceita o `SheetMomentKind` e só muda o título, ou
-  `fromSnapshot`, que lê só o payload congelado), sem segundo motor de cálculo.
-- `EvaluationSheetCellText` é a única leitura do texto das células (nível
-  proposto, decisão do domínio, proposta e decisão da classificação, e a origem
-  dita por palavras), partilhada pelo CSV e pelo Excel; o documento usa a mesma.
-- `DompdfPrinter`, `PaperOrientation`, `LetterheadLayout`, o timbre partilhado e
-  `PrintableDocument` (com `stamp` e `pageNumbers`): a impressão do browser e o
-  PDF resolvem-se como na grelha de um instrumento.
-- `InstrumentGridLayout::plan()` é uma função pura de orientação e blocos de
-  colunas e aceita a largura de cada item (`$itemWidth`, por omissão a de uma
-  questão); a grelha da turma terá as suas (domínios e momentos do perfil), e o
-  dompdf continua a não paginar na horizontal. Um resumo que cabe numa folha mas
-  não deixa espaço a nenhum item fica num bloco só seu, em vez de passar a margem.
-- Colunas dinâmicas a partir do perfil e do momento reais; nunca número fixo de
-  domínios ou de escala.
-- Gráficos factuais como dados compostos no servidor (barras com largura em
-  percentagem, desenhadas por caixas no ecrã e por células de tabela no PDF); um
-  `<canvas>` do Chart.js não chega ao PDF.
-- Proposta matemática ≠ classificação final do professor — ao nível do período
-  existem as duas (`classifications`); sem evidência, «—», nunca zero.
+Autorização como a da Pauta: `SchoolClassPolicy::view` e módulo `results` (Base).
+Um colega que não leciona a turma recebe 403; uma turma, período ou registo de outra
+organização não se resolve (404); um registo de outra turma da mesma organização dá
+404; uma fotografia cujo selo já não corresponde ao payload dá 409 e nenhum byte de
+documento. São GET, por isso funcionam em modo só de leitura.
+
+### Duas origens que nunca se cruzam
+
+- **A Pauta de hoje** (`liveSource`) lê-se com `withProposalBasis: false`: a grelha
+  não lê «a proposta de hoje» nem «desatualizada», e na unidade final do ano isso
+  custaria apurar as outras unidades. O momento (`?momento=`) só dá o título —
+  os dois momentos leem a mesma pauta. Um período que não seja do ano letivo da
+  turma não se resolve.
+- **Um momento guardado** (`snapshotSource`) lê-se **só do payload congelado**: as
+  ações do guardado não recebem o construtor da pauta (há um teste por reflexão), e
+  o documento diz que é um momento guardado, quando e por quem, e que não reflete
+  alterações posteriores. Mudar uma decisão depois não mexe numa célula, numa barra
+  nem numa letra do PDF desse momento.
+
+### O que mostra
+
+Um aluno por linha, as mesmas linhas que a Pauta. Colunas: **Nº** e **Nome**
+(repetidos em cada bloco); por domínio, o **Resultado** (a percentagem calculada) e
+a **Apreciação**; **Global** (o resultado e a banda onde cai); **Classificação**
+(**Proposta do Lapispro**, **Nível atribuído** e **Estado**); avisos de cobertura; e,
+só se se pedir, a autoavaliação.
+
+**Calculado, proposto e decidido nunca partilham uma célula** (§3.3). O papel não tem
+itálico: a distinção faz-se por colunas e por palavras, como no CSV.
+
+| O que é | Onde | Como se distingue |
+|---|---|---|
+| Calculado | «Resultado» (percentagem do motor, uma casa; `*` quando assenta em elementos parciais ou em falta) | nunca é alterado por uma decisão |
+| Proposto | «Proposta do Lapispro»; por domínio, a apreciação sem marca | é o que o Lapispro propôs |
+| Decidido | «Nível atribuído»; por domínio, a apreciação com a marca «prof.» e a proposta que substituiu por baixo («Proposta: B») | é a decisão do professor |
+| Estado | «Estado» em palavras: Proposta / Confirmada / Publicada | «—» quando não há classificação |
+
+Um nível atribuído vazio diz porquê («não decidido» ou «sem classificação»): nunca
+promove a proposta a decisão. Sem valor é «—», nunca zero. O texto das células é o
+dos exportadores (`EvaluationSheetCellText`), partilhado pelo CSV, pelo Excel e por
+este documento; a percentagem usa a mesma função (`percentage()`), com vírgula.
+
+**`PROVISÓRIO`** — em todas as páginas do PDF e na primeira folha impressa — enquanto
+algum aluno não tiver nível atribuído pelo professor; sem selo (e «Classificações
+tomadas») quando todos têm. O documento diz também a origem («Estado à data de
+emissão» ou «Momento guardado a …»), o período, o âmbito («Período»), a data de
+referência de um momento guardado e os avisos que ficaram registados quando foi
+guardado.
+
+### Opções
+
+Lidas da query numa lista branca (`EvaluationSheetGridOptions`): `autoavaliacao` (o
+que os alunos disseram de si — **desligada** por omissão, e desativada quando a pauta
+não a tem), `graficos` (**desligados** por omissão) e `orientacao`
+(`horizontal` — por omissão —, `vertical`, `auto`). Um valor forjado é o valor por
+omissão. Nenhuma opção altera um número.
+
+### Orientação e blocos de colunas
+
+Horizontal e compacta por omissão: uma Pauta é larga por natureza. O dompdf não
+pagina na horizontal, por isso o corte está na estrutura: o planador
+(`InstrumentGridLayout`, partilhado com a grelha de um instrumento, agora com a
+largura do item como parâmetro) corta em **blocos de colunas**, e **o domínio é a
+unidade que nunca se parte**. Cada bloco leva Nº e Nome, o cabeçalho de grupos e
+todas as linhas; cada bloco depois do primeiro começa numa folha nova («Parte 2 de
+3»). A largura de cada coluna vem de `EvaluationSheetGrid::columnWidth()`, a mesma
+que o planeador usou, para que um bloco que cabe no plano caiba na folha. Um resumo
+que cabe numa folha mas não deixa espaço a nenhum domínio fica num bloco só seu em
+vez de passar a margem (defeito do planador que esta grelha expôs).
+
+### Pré-visualização e impressão do browser
+
+`evaluation-sheets/GridDocument.vue` só desenha a estrutura que o servidor compõe,
+dentro do `PrintableDocument` (selo e «Página N / T» nas caixas de margem do `@page`,
+só em Chromium recente). No ecrã estreito a tabela desloca-se dentro do seu
+contentor; no papel nada se corta e cada bloco começa numa folha.
+
+### PDF
+
+Vista própria para o dompdf (`evaluation-sheets/grid-document`): tabelas, sem flex nem
+grid, horizontal compacto por omissão (timbre `Compact`; vertical usa o `Standard`),
+cabeçalho (grupos e colunas) repetido quando a lista passa de folha, linhas que não
+se partem, `PROVISÓRIO` e «Página N / T» em todas as folhas. Anexo
+`grelha-pauta-<turma>-<momento>-<data>.pdf`, `private, no-store`, nunca guardado e
+**nunca nomeado com o nome de um aluno**. A exportação deixa o evento de auditoria
+`evaluation_sheets.grid_document.exported` com **só contagens e opções** (formato,
+origem, ulid do período ou do registo, momento, orientação, opções, provisório,
+alunos, domínios, blocos, atribuídos, pendentes): nunca um nome, uma nota ou um
+nível. A pré-visualização é um ecrã e não deixa rasto.
+
+### Gráficos factuais (`?graficos=1`)
+
+`EvaluationSheetGridCharts` conta **só a partir do documento** — as mesmas linhas
+que a tabela —, sem consultas, sem relógio e sem chamar a Estatística: a aritmética
+é a dela (decimal, uma casa, «half up») reproduzida sobre o que a pauta traz. Por
+isso os gráficos de um momento guardado são os desse momento, e o ecrã, a impressão e
+o PDF desenham as mesmas barras. Três, descritivos, sem ranking, tendência nem
+comparação:
+
+1. **Níveis propostos** (coluna «Proposta do Lapispro»): uma barra por nível da
+   escala, por ordem, **incluindo os vazios**; numa escala de valores (0–20), um
+   valor de cada vez em ordem numérica.
+2. **Níveis atribuídos** (coluna «Nível atribuído»), **à parte** e **só quando alguém
+   tem nível** («n = 4 de 30 alunos com nível atribuído»).
+3. **Média da turma** do global e de cada domínio (um só domínio = só o global), em
+   eixo absoluto 0–100, com o n de cada média.
+
+Quem não tem proposta, nível ou resultado conta-se numa linha própria e **nunca é uma
+barra a zero**; um domínio sem resultados tem «—»; um nível que a escala não tem e um
+resultado acima de 100 % (bónus) dizem-se numa nota (a barra pára no fim do eixo);
+abaixo de cinco alunos há uma nota de cautela. Desenhados como no gráfico da grelha de
+um instrumento: caixas no ecrã e na impressão, células de tabela no PDF.
+
+**A escala viaja com a Pauta.** Para ler os níveis sem ir buscar a escala ao
+presente, `BuildEvaluationSheet` devolve `scale` (nome, tipo e níveis por ordem, sem
+identificadores) e a fotografia congela-a (payload v3, aditivo). **Uma fotografia
+anterior não a traz**: os dois gráficos por nível dizem que não estão disponíveis em
+vez de adivinhar uma ordem, e a média desenha-se na mesma.
+
+**Paridade com a Estatística (`BuildClassStatistics`).** Onde os universos coincidem —
+o período com o âmbito «Período», alunos que frequentam — a média global, a média e
+o n de cada domínio, a distribuição dos níveis atribuídos (contagens, percentagens,
+negativos, ordem da escala) e a distribuição por níveis das médias coincidem com as da
+Estatística, e há testes sobre a Pauta real que o provam. **Diferenças legítimas:** a
+Estatística acompanha o âmbito primário (num período acumulado lê o acumulado), aceita
+um universo escolhido (alunos que não frequentam com resultado externo) e decide o
+domínio pela data da evidência; a grelha conta os alunos da Pauta e o âmbito
+«Período». E os «níveis propostos» são a proposta **guardada** de cada aluno (o que a
+coluna mostra), que pode estar desatualizada ou em falta para quem ainda não foi
+proposto; a Estatística bandeia a média de hoje.
+
+### Base e Pro
+
+- **Base:** tudo o que está descrito — a pré-visualização, o PDF, os momentos
+  guardados e os gráficos factuais. O módulo é `results`.
+- **Pro, e não implementado aqui:** interpretação dos resultados, comparação
+  automática entre momentos ou períodos e tendências (`advanced_analytics`). Os
+  gráficos descrevem um documento; não o interpretam nem o comparam com outro.
+
+### Privacidade (minimização)
+
+O documento identifica cada aluno só pelo número e pelo nome. **Nunca** viajam
+`override_reason` (texto livre), identificadores (matrículas, domínios, níveis), as
+explicações de cobertura, os campos da proposta de hoje (`current_*`,
+`proposal_is_stale`) nem a escala em que se decidiu; a autoavaliação só viaja se se
+pedir. O PDF não é guardado nem indexado, e a auditoria não leva nomes. Um nome com
+marcação (`<b>`, `<script>`) sai como texto, na página e no PDF.
+
+### Desempenho
+
+Ler a Pauta custa o mesmo número de consultas para 6 e para 30 alunos (pré-visualização
+e PDF, ao vivo), e um momento guardado custa o mesmo para qualquer tamanho (só o
+registo, a turma e a sessão: o documento é o payload). Gerar o PDF é só dompdf —
+medido: 6 domínios × 30 alunos em ~0,7 s, 14 × 40 em ~1,9 s, 14 × 60 em ~2,8 s, com
+autoavaliação e gráficos.
+
+### Testes e validação
+
+- Unit: o compositor (`EvaluationSheetGridTest`), os gráficos
+  (`EvaluationSheetGridChartsTest`), o planador (`InstrumentGridLayoutTest`) e a
+  caracterização do CSV e do Excel (`EvaluationSheetWritersCharacterizationTest`,
+  com ficheiros gerados antes da extração do texto das células).
+- Feature, sobre a Pauta real: `EvaluationSheetGridSourceTest` (paridade com o
+  ecrã e o CSV; um momento guardado é o seu payload),
+  `EvaluationSheetGridDocumentTest` (rotas, portas, privacidade, modo só de leitura),
+  `EvaluationSheetGridPdfTest` (PDFs reais lidos de volta: paridade com a
+  pré-visualização, numeração, selo, cabeçalho repetido, 12 domínios × 30 alunos,
+  auditoria), `EvaluationSheetGridChartsTest` (paridade com `BuildClassStatistics`,
+  página e PDF iguais, fotografia sem escala) e `EvaluationSheetGridValidationTest`
+  (a Pauta, o CSV, o Excel, a pré-visualização e o PDF dizem o mesmo de cada aluno,
+  ao vivo e guardado; fotografias antigas em todos os consumidores sem consultar o
+  presente; os três estados; turma sem perfil; nomes hostis; desempenho).
+- Vitest da página e da Pauta; QA em browser real (Chromium, base isolada) por
+  etapa e no fecho: navegação Pauta → grelha → Histórico → grelha guardada,
+  impressão horizontal e vertical, PDFs descarregados pelo botão, telemóvel a 375 px.
+  Os guiões **não** fazem parte da suite do repositório.
+
+### Limitações conhecidas
+
+- A impressão do browser só traz o selo e a numeração em todas as folhas no
+  Chromium recente; o PDF é o caminho fiável.
+- Uma fotografia guardada antes da 0.175.0 não tem a escala: os dois gráficos por
+  nível dizem que não estão disponíveis (a média desenha-se); só as de agora em
+  diante os têm.
+- O documento e os gráficos contam os alunos da Pauta no âmbito «Período»; não
+  acompanham o âmbito acumulado da Estatística.
+- O `PROVISÓRIO` depende de haver ou não nível atribuído; o documento só conhece o
+  título do momento, não distingue o intercalar do final. Os dois momentos de um
+  período leem a mesma pauta: um intercalar «ao vivo» mostra os mesmos números que o
+  final, e só um momento guardado é um estado congelado.
+- O CSV e o Excel da Pauta ao vivo não recebem o momento: exportar a partir do
+  separador «intercalar» dá o título do momento final (inalterado desde antes da
+  Fatia C).
+- Um aluno sem dados lista nos avisos de cobertura todos os domínios, o que ocupa
+  várias linhas e reduz as linhas por folha numa turma com muitos alunos assim (é o
+  texto do CSV).
+- As larguras das colunas são estimativas; um nome muito comprido quebra em duas
+  linhas, sem se perder.
+- **Fora desta fase, por decisão:** o aviso de proposta desatualizada no documento
+  (custaria apurar as outras unidades) e o **Quadro Síntese** anual.
 
 ## Propostas para a revisão da Matriz Mestre V3
 
-Registadas aqui; a Matriz canónica não foi editada. Estado na 0.174.0:
+Registadas aqui; a Matriz canónica não foi editada. Estado na 0.175.0 — os quatro
+requisitos originais:
 
 1. *(implementado na 0.173.0)* «O professor pode gerar, por turma e ano letivo,
    um mapa factual dos alunos com medidas educativas, distinguindo medidas
@@ -534,17 +663,23 @@ Registadas aqui; a Matriz canónica não foi editada. Estado na 0.174.0:
 2. *(implementado na 0.174.0)* «O professor pode visualizar, imprimir e gerar PDF
    da grelha factual de resultados de um instrumento de avaliação, respeitando
    itens, domínios e escala.» Ver «Grelha imprimível de um instrumento».
-3. *(Fatia C em curso: pré-visualização e PDF feitos, falta o fecho)* «O professor pode visualizar, imprimir e gerar PDF
+3. *(implementado na 0.175.0)* «O professor pode visualizar, imprimir e gerar PDF
    da grelha factual de avaliação de uma turma num momento intercalar ou
-   período/semestre configurado.»
-4. *(parcialmente implementado na 0.174.0)* «As grelhas podem incluir gráficos
-   factuais derivados dos mesmos dados; interpretação, comparação automática
-   entre períodos e tendências permanecem capacidades Pro.» **Feito:** os
-   gráficos factuais da grelha de um instrumento (distribuição, média por
-   domínio e média por questão, só com a correção concluída), no plano Base.
-   **Feito também (C5, ainda não em produção):** os gráficos factuais da grelha da
-   turma (níveis propostos, níveis atribuídos, média por domínio), opcionais, no
-   plano Base. **Falta:** o fecho da Fatia C (C6): artigo de ajuda, versão e
-   CHANGELOG.
-   **Continua reservado ao Pro e não implementado nestas grelhas:**
-   interpretação, comparação automática entre períodos e tendências.
+   período/semestre configurado.» É a Pauta de Avaliação como documento, ao vivo e
+   num momento guardado; o período/semestre vem da configuração do ano letivo e o
+   «intercalar» é o momento estrutural da Pauta (e os momentos guardados), **não** a
+   «avaliação intercalar» da Estatística (corte por data). Ver «Grelha factual da
+   turma». **Fora:** o aviso de proposta desatualizada e o Quadro Síntese anual.
+4. *(implementado na 0.175.0 para os dois documentos)* «As grelhas podem incluir
+   gráficos factuais derivados dos mesmos dados; interpretação, comparação
+   automática entre períodos e tendências permanecem capacidades Pro.» **Feito:** os
+   gráficos factuais da grelha de um instrumento (0.174.0: distribuição, média por
+   domínio e média por questão, só com a correção concluída) e os da grelha da
+   turma (0.175.0: níveis propostos, níveis atribuídos, média por domínio),
+   opcionais, no plano Base. **Continua reservado ao Pro e não implementado nestas
+   grelhas:** interpretação, comparação automática entre períodos e tendências.
+
+**Limitações dos requisitos 3 e 4** (detalhe nas secções respetivas): a impressão do
+browser com selo e numeração em todas as folhas é só Chromium recente (o PDF é o
+caminho fiável); as fotografias anteriores à 0.175.0 não têm gráficos por nível; o
+âmbito é «Período»; o `PROVISÓRIO` não distingue intercalar de final.
