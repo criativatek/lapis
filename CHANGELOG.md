@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.175.1] — 2026-10-22
+
+> **«Em curso», «Concluir» e as outras mudanças de estado deixam de pedir
+> confirmação sem motivo.** Em Acompanhamento → Intervenções da turma, o aviso
+> «Tem alterações por submeter neste formulário» aparecia ao marcar uma
+> intervenção como «Em curso» sem o professor ter escrito nada. Só interface;
+> sem migrations, sem alterações a dados nem à lógica de acompanhamento.
+
+### Corrigido
+
+- **Aviso de saída indevido.** O guarda de navegação intercetava todas as
+  visitas do Inertia, incluindo as que não saem da página (PATCH/PUT/DELETE/POST
+  de «Em curso», «Concluir», «Suspender», «Reabrir», remover e remover lote, e
+  os filtros, que são GET com `preserveState`). O formulário nasce limpo —
+  não era esse o defeito —, mas o aviso aparecia em qualquer uma destas ações
+  sempre que o formulário tivesse alguma alteração (por exemplo, depois de
+  «Editar»), embora nada se perdesse. Passa a valer só para a navegação que sai da página; continua a avisar ao sair («Voltar», links) e ao
+  fechar o separador com dados realmente introduzidos.
+
 ## [0.175.0] — 2026-10-22
 
 > **Grelha factual de avaliação da turma.** Na Pauta de Avaliação e no Histórico,
