@@ -50,8 +50,14 @@ class CaptureEvaluationSheet
      * As decisões por domínio entraram no mesmo momento, mas dentro de
      * `students[].domains[]`, onde a sua ausência já significa exatamente o que
      * significa: não houve nenhuma.
+     *
+     * v2 → v3: a escala (nome, tipo e níveis por ordem) passou a viajar na
+     * fotografia, para que os gráficos por nível de um momento guardado se leiam
+     * dela e não da escala de hoje. Uma fotografia anterior não a traz, e não lhe
+     * é atribuída nenhuma: o documento diz que esses gráficos não estão disponíveis
+     * em vez de adivinhar uma ordem.
      */
-    public const CURRENT_VERSION = 2;
+    public const CURRENT_VERSION = 3;
 
     public function __construct(
         protected BuildEvaluationSheet $builder,
@@ -136,6 +142,7 @@ class CaptureEvaluationSheet
             'author' => ['name' => (string) $author->name],
             'domains' => $domains,
             'students' => $students,
+            'scale' => $sheet['scale'],
             'warnings' => $warnings,
         ];
 

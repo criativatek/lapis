@@ -34,6 +34,7 @@ final readonly class EvaluationSheetDocument
      * @param  list<array<string, mixed>>  $domains
      * @param  list<array<string, mixed>>  $students
      * @param  list<string>  $warnings
+     * @param  array{name?: string, kind?: string, levels?: list<array{code?: string, label?: string, sequence?: int, is_negative?: bool}>}|null  $scale  a escala em que a pauta se lê, quando a pauta a traz
      */
     private function __construct(
         public string $classLabel,
@@ -52,6 +53,7 @@ final readonly class EvaluationSheetDocument
         public array $warnings,
         /** Se isto é um momento guardado, e não o estado de hoje. */
         public bool $isHistorical,
+        public ?array $scale = null,
     ) {}
 
     /**
@@ -75,6 +77,9 @@ final readonly class EvaluationSheetDocument
         $domains = $payload['domains'] ?? [];
         /** @var array<array-key, array<string, mixed>> $students */
         $students = $payload['students'] ?? [];
+        // Uma fotografia anterior à versão 3 não traz a escala, e continua sem ela.
+        /** @var array{name?: string, kind?: string, levels?: list<array{code?: string, label?: string, sequence?: int, is_negative?: bool}>}|null $scale */
+        $scale = is_array($payload['scale'] ?? null) ? $payload['scale'] : null;
 
         return new self(
             classLabel: (string) ($class['label'] ?? '—'),
@@ -94,6 +99,7 @@ final readonly class EvaluationSheetDocument
             students: array_values($students),
             warnings: array_values($warnings),
             isHistorical: true,
+            scale: $scale,
         );
     }
 
@@ -107,7 +113,7 @@ final readonly class EvaluationSheetDocument
      * do período: é o que o CSV e o Excel atuais da pauta viva continuam a
      * receber.
      *
-     * @param  array{domains: list<array<string, mixed>>, students: list<array<string, mixed>>}  $sheet
+     * @param  array{domains: list<array<string, mixed>>, students: list<array<string, mixed>>, scale?: array{name?: string, kind?: string, levels?: list<array{code?: string, label?: string, sequence?: int, is_negative?: bool}>}|null}  $sheet
      */
     public static function fromLiveSheet(
         SchoolClass $class,
@@ -133,6 +139,7 @@ final readonly class EvaluationSheetDocument
             students: $sheet['students'],
             warnings: [],
             isHistorical: false,
+            scale: $sheet['scale'] ?? null,
         );
     }
 

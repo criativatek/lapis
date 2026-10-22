@@ -30,6 +30,12 @@
     once per page like the letterhead, because a copy with levels still to be
     assigned must not be taken for the final one from page 2 on.
 
+    THE CHARTS ARE TABLES. dompdf has no flexbox, no gradients and cannot run Chart.js:
+    a bar is a table cell whose width is the percentage the server measured, inside a
+    framed track. Every label, figure and width arrives composed
+    (EvaluationSheetGridCharts) and is drawn as given, so the PDF cannot disagree with
+    the preview. A bar with no width is an empty track — never a bar at zero.
+
     THE TIMBRE IS THE SHARED ONE (`$layout`: Standard for a portrait sheet, Compact
     for a landscape one). «Página N / T» is drawn by DompdfPrinter.
 --}}
@@ -174,6 +180,66 @@
             color: #666;
             margin: 0 0 1.5mm 0;
         }
+
+        div.chart {
+            margin: 0 0 5mm 0;
+            page-break-inside: avoid;
+        }
+
+        table.chart {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0 0 1.5mm 0;
+            font-size: 7.5pt;
+            line-height: 1.3;
+        }
+
+        table.chart tr {
+            page-break-inside: avoid;
+        }
+
+        td.chart-label {
+            width: 44mm;
+            padding: 0.9mm 2mm 0.9mm 0;
+            vertical-align: middle;
+            font-weight: bold;
+        }
+
+        td.chart-track {
+            padding: 0.9mm 0;
+            vertical-align: middle;
+        }
+
+        table.track {
+            width: 100%;
+            border-collapse: collapse;
+            border: 0.4pt solid #999;
+        }
+
+        td.fill {
+            height: 3.2mm;
+            background-color: #555555;
+            font-size: 1pt;
+            line-height: 1;
+        }
+
+        /* A level the scale calls negative: a lighter fill with a dark edge, readable in black and white. */
+        td.fill.negative {
+            background-color: #bbbbbb;
+            border-right: 0.9pt solid #222222;
+        }
+
+        td.rest {
+            height: 3.2mm;
+            font-size: 1pt;
+            line-height: 1;
+        }
+
+        td.chart-value {
+            width: 46mm;
+            padding: 0.9mm 0 0.9mm 2mm;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -232,6 +298,53 @@
                     @endforeach
                 </tbody>
             </table>
+        </div>
+    @endforeach
+@endif
+
+@if ($document['charts'])
+    @foreach (array_filter([$document['charts']['proposals'], $document['charts']['assigned'], $document['charts']['means']]) as $chart)
+        <div class="chart">
+            <h2>{{ $chart['title'] }}</h2>
+            <p class="notes">{{ $chart['basis'] }}@if (isset($chart['n_label'])) · {{ $chart['n_label'] }}@endif</p>
+
+            @if (($chart['available'] ?? true) === false)
+                <p class="notes">{{ $chart['unavailable_message'] }}</p>
+            @elseif ($chart['bars'] === [])
+                <p class="notes">{{ $chart['empty_message'] }}</p>
+            @else
+                <table class="chart">
+                    @foreach ($chart['bars'] as $bar)
+                        <tr>
+                            <td class="chart-label">{{ $bar['label'] }}</td>
+                            <td class="chart-track">
+                                <table class="track">
+                                    <tr>
+                                        @if ($bar['width'] !== null && (float) $bar['width'] > 0)
+                                            <td class="fill{{ $bar['negative'] ? ' negative' : '' }}" style="width: {{ $bar['width'] }}%;">&nbsp;</td>
+                                        @endif
+                                        <td class="rest">&nbsp;</td>
+                                    </tr>
+                                </table>
+                            </td>
+                            <td class="chart-value">{{ $bar['value_text'] }}@if ($bar['detail'])<br><span class="detail">{{ $bar['detail'] }}</span>@endif</td>
+                        </tr>
+                    @endforeach
+                </table>
+            @endif
+
+            @if (isset($chart['axis']))
+                <p class="notes">{{ $chart['axis'] }}</p>
+            @endif
+            @if (! empty($chart['missing_note']))
+                <p class="notes">{{ $chart['missing_note'] }}</p>
+            @endif
+            @if (! empty($chart['unplaced_note']))
+                <p class="notes">{{ $chart['unplaced_note'] }}</p>
+            @endif
+            @if ($chart['caution'])
+                <p class="notes strong">{{ $chart['caution'] }}</p>
+            @endif
         </div>
     @endforeach
 @endif

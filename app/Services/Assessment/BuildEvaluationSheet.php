@@ -62,7 +62,7 @@ class BuildEvaluationSheet
 
     /**
      * @param  bool  $withProposalBasis  se a leitura traz a proposta de HOJE ao lado da guardada e o aviso de desatualizada. Na unidade que fecha o ano isso obriga a apurar os resultados das outras unidades, e quem não vai ler esses campos não tem por que os pagar — é o caso do Quadro Síntese, que abre a pauta de cada unidade e faz a sua própria leitura do ano.
-     * @return array{class_id: int, academic_period_id: int, scope: string, domains: list<array<string, mixed>>, students: list<array<string, mixed>>}
+     * @return array{class_id: int, academic_period_id: int, scope: string, domains: list<array<string, mixed>>, students: list<array<string, mixed>>, scale: array{name: string, kind: string, levels: list<array{code: string, label: string, sequence: int, is_negative: bool}>}|null}
      */
     public function for(
         SchoolClass $schoolClass,
@@ -156,6 +156,33 @@ class BuildEvaluationSheet
                 'weight_percent' => (string) $profileDomain->weight_percent,
             ])->all()),
             'students' => $students,
+            // A ESCALA VIAJA COM A PAUTA, pelo mesmo motivo por que cada nível
+            // viaja com código E etiqueta: um documento que mostra níveis tem de
+            // poder dizer quais existem e por que ordem sem ir perguntar à escala
+            // de hoje — e uma fotografia, menos ainda. Só a forma que se lê (nome,
+            // tipo, níveis por ordem), nunca identificadores.
+            'scale' => $this->scalePayload($scale),
+        ];
+    }
+
+    /**
+     * @return array{name: string, kind: string, levels: list<array{code: string, label: string, sequence: int, is_negative: bool}>}|null
+     */
+    protected function scalePayload(?Scale $scale): ?array
+    {
+        if ($scale === null) {
+            return null;
+        }
+
+        return [
+            'name' => (string) $scale->name,
+            'kind' => (string) $scale->kind,
+            'levels' => array_values($scale->levels->sortBy('sequence')->map(fn ($level): array => [
+                'code' => (string) $level->code,
+                'label' => (string) $level->label,
+                'sequence' => (int) $level->sequence,
+                'is_negative' => (bool) $level->is_negative,
+            ])->all()),
         ];
     }
 

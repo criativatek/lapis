@@ -20,6 +20,44 @@ vi.mock('@inertiajs/vue3', () => ({
 
 const wrappers: VueWrapper[] = [];
 
+const chartsOn = { self_assessment: false, orientation: 'landscape', charts: true };
+
+function makeCharts(overrides: Record<string, unknown> = {}) {
+    return {
+        proposals: {
+            title: 'Distribuição dos níveis propostos',
+            basis: 'Proposta do Lapispro, por nível da escala',
+            available: true,
+            unavailable_message: null as string | null,
+            n_label: 'n = 8 alunos com proposta',
+            bars: [
+                { label: '1 · Insuficiente', value_text: '1 · 12,5 %', detail: null, width: '12.5' as string | null, negative: true },
+                { label: '2 · Insuficiente', value_text: '0 · 0,0 %', detail: null, width: '0.0' as string | null, negative: true },
+                { label: '3 · Suficiente', value_text: '7 · 87,5 %', detail: null, width: '87.5' as string | null, negative: false },
+            ],
+            missing_note: 'Sem proposta: 1' as string | null,
+            unplaced_note: null as string | null,
+            caution: null as string | null,
+            empty_message: 'Sem dados: nenhum aluno tem ainda um nível para contar.',
+        },
+        assigned: null as Record<string, unknown> | null,
+        means: {
+            title: 'Média da turma',
+            basis: 'Global e por domínio',
+            axis: 'Escala absoluta de 0 a 100 %.',
+            bars: [
+                { label: 'Global', value_text: '67,9 %', detail: 'n = 8 alunos com resultado', width: '67.9' as string | null, negative: false },
+                { label: 'Oralidade', value_text: '—', detail: 'sem resultados', width: null as string | null, negative: false },
+            ],
+            missing_note: null as string | null,
+            unplaced_note: null as string | null,
+            caution: null as string | null,
+            empty_message: 'Sem resultados: nenhum aluno tem ainda um resultado calculado.',
+        },
+        ...overrides,
+    };
+}
+
 const cell = (text: string, overrides: Record<string, unknown> = {}) => ({ text, detail: null, origin: null, mark: null, ...overrides });
 
 function makeBlock(overrides: Record<string, unknown> = {}) {
@@ -83,7 +121,8 @@ function makeDocument(overrides: Record<string, unknown> = {}): Doc {
         },
         source: { is_historical: false, label: 'Estado à data de emissão', kept_at: null, author: null },
         state: { is_provisional: true, label: 'PROVISÓRIO' },
-        options: { self_assessment: false, orientation: 'landscape' },
+        options: { self_assessment: false, orientation: 'landscape', charts: false },
+        charts: null,
         self_assessment_available: true,
         orientation: 'landscape',
         blocks: [makeBlock()],
@@ -153,10 +192,8 @@ describe('evaluation-sheets/GridDocument.vue', () => {
         const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
         expect(link).toBeDefined();
-        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?autoavaliacao=0&orientacao=horizontal');
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?autoavaliacao=0&graficos=0&orientacao=horizontal');
         expect(wrapper.findAll('button').map((button) => button.text())).toContain('Imprimir');
-        // Charts are the next step: no control for what does not exist yet.
-        expect(wrapper.text()).not.toContain('Gráficos');
     });
 
     it('keeps the moment and every chosen option in the PDF link', () => {
@@ -168,12 +205,12 @@ describe('evaluation-sheets/GridDocument.vue', () => {
                 base_url: '/classes/class-1/pauta-avaliacao/impressao/period-1',
                 fixed_query: { momento: 'interim' },
             },
-            document: makeDocument({ options: { self_assessment: true, orientation: 'portrait' } }),
+            document: makeDocument({ options: { self_assessment: true, orientation: 'portrait', charts: false } }),
         });
 
         const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
-        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?momento=interim&autoavaliacao=1&orientacao=vertical');
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?momento=interim&autoavaliacao=1&graficos=0&orientacao=vertical');
     });
 
     it('points the PDF of a kept moment at that moment, never at the live sheet', () => {
@@ -190,7 +227,7 @@ describe('evaluation-sheets/GridDocument.vue', () => {
 
         const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
-        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/historico/exp-1/impressao/pdf?autoavaliacao=0&orientacao=horizontal');
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/historico/exp-1/impressao/pdf?autoavaliacao=0&graficos=0&orientacao=horizontal');
     });
 
     it('marks a provisional grid on screen and on the sheet itself, which is what is printed', () => {
@@ -288,25 +325,25 @@ describe('evaluation-sheets/GridDocument.vue', () => {
 
         expect(routerGet).toHaveBeenCalledWith(
             '/classes/class-1/pauta-avaliacao/impressao/period-1',
-            { momento: 'interim', autoavaliacao: '1', orientacao: 'horizontal' },
+            { momento: 'interim', autoavaliacao: '1', graficos: '0', orientacao: 'horizontal' },
             { replace: true, preserveScroll: true, preserveState: true },
         );
     });
 
     it('changes the orientation by asking the server again, keeping the options', async () => {
-        const wrapper = mountPage({ document: makeDocument({ options: { self_assessment: true, orientation: 'landscape' } }) });
+        const wrapper = mountPage({ document: makeDocument({ options: { self_assessment: true, orientation: 'landscape', charts: false } }) });
 
         await wrapper.find('#sheet-doc-orientation').setValue('portrait');
 
         expect(routerGet).toHaveBeenCalledWith(
             '/classes/class-1/pauta-avaliacao/impressao/period-1',
-            { autoavaliacao: '1', orientacao: 'vertical' },
+            { autoavaliacao: '1', graficos: '0', orientacao: 'vertical' },
             { replace: true, preserveScroll: true, preserveState: true },
         );
     });
 
     it('prints in the orientation the server applied, and says so', () => {
-        const portrait = mountPage({ document: makeDocument({ orientation: 'portrait', options: { self_assessment: false, orientation: 'auto' } }) });
+        const portrait = mountPage({ document: makeDocument({ orientation: 'portrait', options: { self_assessment: false, orientation: 'auto', charts: false } }) });
 
         expect(portrait.text()).toContain('Orientação aplicada: vertical');
         expect(portrait.find('.document-print').exists()).toBe(true);
@@ -340,5 +377,106 @@ describe('evaluation-sheets/GridDocument.vue', () => {
 
         expect(wrapper.find('.print\\:hidden').exists()).toBe(true);
         expect(wrapper.find('.document-print').find('button').exists()).toBe(false);
+    });
+
+    it('offers the charts, off, and asks the server again with graficos=1 keeping the other options', async () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.find('#sheet-doc-charts').attributes('aria-checked')).toBe('false');
+        expect(wrapper.find('[data-charts]').exists()).toBe(false);
+
+        await wrapper.find('#sheet-doc-charts').trigger('click');
+
+        expect(routerGet).toHaveBeenCalledWith(
+            '/classes/class-1/pauta-avaliacao/impressao/period-1',
+            { autoavaliacao: '0', graficos: '1', orientacao: 'horizontal' },
+            { replace: true, preserveScroll: true, preserveState: true },
+        );
+    });
+
+    it('draws every bar with the length, text and note the server measured and composed', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+        const section = wrapper.find('[data-charts]');
+
+        // The assigned chart is absent when nobody was given a level: two charts, not three.
+        expect(section.findAll('[data-chart]')).toHaveLength(2);
+        expect(section.text()).toContain('Distribuição dos níveis propostos');
+        expect(section.text()).toContain('Proposta do Lapispro, por nível da escala · n = 8 alunos com proposta');
+        expect(section.text()).toContain('Sem proposta: 1');
+
+        const first = section.findAll('[data-chart]')[0];
+        expect(first.text()).toContain('1 · 12,5 %');
+        expect(first.text()).toContain('7 · 87,5 %');
+        expect(first.findAll('li span[style]').map((fill) => fill.attributes('style'))).toEqual(['width: 12.5%;', 'width: 87.5%;']);
+
+        const means = section.findAll('[data-chart]')[1];
+        expect(means.text()).toContain('Escala absoluta de 0 a 100 %.');
+        expect(means.text()).toContain('n = 8 alunos com resultado');
+    });
+
+    it('draws no fill for a level nobody has or a domain without results: an empty track, never a bar at zero', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+        const [proposals, means] = wrapper.findAll('[data-chart]');
+
+        expect(proposals.findAll('li')[1].text()).toContain('0 · 0,0 %');
+        expect(proposals.findAll('li')[1].find('span[style]').exists()).toBe(false);
+        expect(means.findAll('li')[1].text()).toContain('—');
+        expect(means.findAll('li')[1].find('span[style]').exists()).toBe(false);
+    });
+
+    it('draws the assigned chart apart from the proposals when somebody was given a level', () => {
+        const assigned = { ...makeCharts().proposals, title: 'Distribuição dos níveis atribuídos', basis: 'Decisão do professor, por nível da escala', n_label: 'n = 2 de 8 alunos com nível atribuído' };
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts({ assigned }) }) });
+        const titles = wrapper.findAll('[data-chart] h2').map((heading) => heading.text());
+
+        expect(titles).toEqual(['Distribuição dos níveis propostos', 'Distribuição dos níveis atribuídos', 'Média da turma']);
+        expect(wrapper.text()).toContain('n = 2 de 8 alunos com nível atribuído');
+    });
+
+    it('marks a negative level apart, keeps the bars printable and a chart in one piece', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+        const fills = wrapper.findAll('[data-chart]')[0].findAll('li span[style]');
+
+        expect(fills[0].classes()).toContain('bg-foreground/30');
+        expect(fills[1].classes()).not.toContain('bg-foreground/30');
+
+        for (const fill of wrapper.findAll('[data-chart] li span[style]')) {
+            expect(fill.classes().join(' ')).toContain('print-color-adjust');
+        }
+
+        expect(wrapper.find('[data-chart]').classes()).toContain('break-inside-avoid');
+    });
+
+    it('says a level chart is not available for a sheet kept before the scale travelled with it, and still draws the means', () => {
+        const charts = makeCharts();
+        charts.proposals = { ...charts.proposals, available: false, bars: [], unavailable_message: 'Esta pauta foi guardada antes de a escala viajar com ela: o gráfico por nível não está disponível.', missing_note: null };
+
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts }) });
+        const [proposals, means] = wrapper.findAll('[data-chart]');
+
+        expect(proposals.text()).toContain('guardada antes de a escala viajar com ela');
+        expect(proposals.findAll('li')).toHaveLength(0);
+        expect(means.findAll('li')).toHaveLength(2);
+    });
+
+    it('shows the caution, the results outside the bands and the students counted aside', () => {
+        const charts = makeCharts();
+        charts.proposals.caution = 'Poucos alunos (n = 3): leia com cautela.';
+        charts.proposals.unplaced_note = '1 aluno com um nível que não consta da escala desta pauta não aparece em nenhuma barra.';
+        charts.means.unplaced_note = '2 resultados acima de 100 % (por exemplo, por efeito de bónus) entram na média e a barra fica no fim do eixo.';
+        charts.means.missing_note = 'Sem resultado global: 1';
+
+        const text = mountPage({ document: makeDocument({ options: chartsOn, charts }) }).find('[data-charts]').text();
+
+        for (const expected of ['Poucos alunos (n = 3): leia com cautela.', 'não consta da escala desta pauta', '2 resultados acima de 100 %', 'Sem resultado global: 1']) {
+            expect(text).toContain(expected);
+        }
+    });
+
+    it('draws charts in the sheet that prints and keeps the PDF link carrying graficos', () => {
+        const wrapper = mountPage({ document: makeDocument({ options: chartsOn, charts: makeCharts() }) });
+
+        expect(wrapper.find('.document-print').find('[data-charts]').exists()).toBe(true);
+        expect(wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF')!.attributes('href')).toContain('graficos=1');
     });
 });

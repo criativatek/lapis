@@ -233,7 +233,7 @@ class EvaluationSheetGridDocumentTest extends TestCase
     {
         $default = $this->props($this->liveUrl())['document'];
 
-        $this->assertSame(['self_assessment' => false, 'orientation' => 'landscape'], $default['options']);
+        $this->assertSame(['self_assessment' => false, 'orientation' => 'landscape', 'charts' => false], $default['options']);
         $this->assertSame('landscape', $default['orientation']);
 
         $vertical = $this->props($this->liveUrl('?orientacao=vertical&autoavaliacao=1'))['document'];
@@ -249,7 +249,7 @@ class EvaluationSheetGridDocumentTest extends TestCase
     {
         $document = $this->props($this->liveUrl('?autoavaliacao[]=1&orientacao=diagonal&inventada=1'))['document'];
 
-        $this->assertSame(['self_assessment' => false, 'orientation' => 'landscape'], $document['options']);
+        $this->assertSame(['self_assessment' => false, 'orientation' => 'landscape', 'charts' => false], $document['options']);
     }
 
     #[Test]

@@ -9,6 +9,7 @@ use App\Models\Domain;
 use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Support\Tenancy\CurrentOrganization;
@@ -358,7 +359,7 @@ class EvaluationSheetHistoryTest extends TestCase
         // Sem indicação nenhuma, o final — o momento por omissão, e o que toda
         // a pauta guardada até aqui foi.
         $this->assertSame('final', $export->payload['moment']['kind']);
-        $this->assertSame(2, $export->payload['version']);
+        $this->assertSame(CaptureEvaluationSheet::CURRENT_VERSION, $export->payload['version']);
         $this->assertSame('period', $export->payload['scope']);
         $this->assertSame('7.º A', $export->payload['class']['label']);
 

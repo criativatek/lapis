@@ -417,15 +417,47 @@ fazem parte da suite do repositório.
   como 0.
 - Os gráficos só existem com a correção concluída.
 - Não há cópia guardada, nem gráficos por aluno, nem interpretação (Pro).
-- A grelha da turma (Pauta) é a Fatia C: já tem pré-visualização e PDF (ver abaixo); faltam os gráficos.
+- A grelha da turma (Pauta) é a Fatia C: já tem pré-visualização, PDF e gráficos (ver abaixo).
 
 ## A grelha factual da turma (Fatia C, em curso)
 
 **Falta o fecho.** A grelha de uma turma num momento intercalar ou no
 período/semestre é a Fatia C; estão feitas a preparação técnica (C1), a fonte de
-dados (C2, `EvaluationSheetGrid`), a pré-visualização (C3) e o PDF (C4). Faltam os
-gráficos e o fecho (C5–C6). O que já existe, e o que as etapas seguintes têm de
+dados (C2, `EvaluationSheetGrid`), a pré-visualização (C3), o PDF (C4) e os gráficos
+(C5). Falta o fecho (C6). O que já existe, e o que a etapa seguinte tem de
 respeitar:
+
+- **Gráficos (C5).** `EvaluationSheetGridCharts`, opcionais (`?graficos=1`, desligados
+  por omissão, plano Base), contados **só a partir do documento** — as mesmas linhas
+  que a tabela — e por isso iguais no ecrã, na impressão e no PDF, e num momento
+  guardado só dos seus dados congelados. Três, descritivos, sem ranking, tendência
+  nem comparação: (1) níveis propostos pelo Lapispro (coluna «Proposta do
+  Lapispro»), uma barra por nível da escala, por ordem, incluindo os vazios;
+  (2) níveis atribuídos pelo professor (coluna «Nível atribuído»), **à parte** das
+  propostas e só quando alguém tem nível («n = X de Y alunos»); (3) média da turma
+  do global e de cada domínio (um só domínio = só o global), em eixo absoluto 0–100,
+  com o n de cada média. Quem não tem proposta, nível ou resultado conta-se numa
+  linha própria e nunca é uma barra a zero; um nível que a escala não tem e um
+  resultado acima de 100 % (bónus) dizem-se numa nota; abaixo de cinco alunos há
+  uma nota de cautela. Numa escala de valores (0–20) conta-se valor a valor.
+  Desenhados como no gráfico da grelha de um instrumento: caixas no ecrã e na
+  impressão, células de tabela no PDF.
+- **A escala viaja com a Pauta.** `BuildEvaluationSheet` passou a devolver `scale`
+  (nome, tipo e níveis por ordem, sem identificadores), a fotografia congela-a
+  (payload v3) e o `EvaluationSheetDocument` lê-a de qualquer das origens. Uma
+  fotografia anterior não a traz: os dois gráficos por nível dizem que não estão
+  disponíveis em vez de adivinhar uma ordem, e a média desenha-se na mesma.
+- **Paridade com a Estatística (`BuildClassStatistics`).** Onde os universos
+  coincidem — o período com o âmbito «Período», alunos que frequentam — a média
+  global, a média e o n de cada domínio, a distribuição dos níveis atribuídos
+  (contagens, percentagens, negativos) e a distribuição por níveis das médias
+  coincidem com os da Estatística, e há testes que o provam. Diferenças legítimas:
+  a Estatística acompanha o âmbito primário (num período acumulado lê o acumulado),
+  inclui o universo escolhido (alunos que não frequentam com resultado externo) e
+  decide o domínio pela data da evidência; a grelha conta os alunos da Pauta e o
+  âmbito «Período». E os «níveis propostos» são a proposta **guardada** de cada
+  aluno (o que a coluna mostra), que pode estar desatualizada ou em falta para
+  quem ainda não foi proposto; a Estatística bandeia a média de hoje.
 
 - **PDF (C4).** `classes/{class}/pauta-avaliacao/impressao/{period}/pdf` e
   `classes/{class}/pauta-avaliacao/historico/{export}/impressao/pdf`, no mesmo
@@ -502,7 +534,7 @@ Registadas aqui; a Matriz canónica não foi editada. Estado na 0.174.0:
 2. *(implementado na 0.174.0)* «O professor pode visualizar, imprimir e gerar PDF
    da grelha factual de resultados de um instrumento de avaliação, respeitando
    itens, domínios e escala.» Ver «Grelha imprimível de um instrumento».
-3. *(futuro — não iniciado)* «O professor pode visualizar, imprimir e gerar PDF
+3. *(Fatia C em curso: pré-visualização e PDF feitos, falta o fecho)* «O professor pode visualizar, imprimir e gerar PDF
    da grelha factual de avaliação de uma turma num momento intercalar ou
    período/semestre configurado.»
 4. *(parcialmente implementado na 0.174.0)* «As grelhas podem incluir gráficos
@@ -510,6 +542,9 @@ Registadas aqui; a Matriz canónica não foi editada. Estado na 0.174.0:
    entre períodos e tendências permanecem capacidades Pro.» **Feito:** os
    gráficos factuais da grelha de um instrumento (distribuição, média por
    domínio e média por questão, só com a correção concluída), no plano Base.
-   **Falta:** os gráficos da grelha da turma (o requisito 3 ainda não existe).
+   **Feito também (C5, ainda não em produção):** os gráficos factuais da grelha da
+   turma (níveis propostos, níveis atribuídos, média por domínio), opcionais, no
+   plano Base. **Falta:** o fecho da Fatia C (C6): artigo de ajuda, versão e
+   CHANGELOG.
    **Continua reservado ao Pro e não implementado nestas grelhas:**
    interpretação, comparação automática entre períodos e tendências.
