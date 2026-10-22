@@ -417,15 +417,30 @@ fazem parte da suite do repositório.
   como 0.
 - Os gráficos só existem com a correção concluída.
 - Não há cópia guardada, nem gráficos por aluno, nem interpretação (Pro).
-- A grelha intercalar/semestral **não** está implementada.
+- A grelha da turma (Pauta) é a Fatia C: já tem pré-visualização e PDF (ver abaixo); faltam os gráficos.
 
-## Para a grelha intercalar/semestral (não implementada)
+## A grelha factual da turma (Fatia C, em curso)
 
-**O documento só existe como pré-visualização.** A grelha de uma turma num
-momento intercalar ou no período/semestre é a Fatia C; estão feitas a preparação
-técnica (C1), a fonte de dados (C2, `EvaluationSheetGrid`) e a pré-visualização
-(C3). Faltam o PDF do servidor, os gráficos e o fecho (C4–C6). O que já existe, e
-o que as etapas seguintes têm de respeitar:
+**Falta o fecho.** A grelha de uma turma num momento intercalar ou no
+período/semestre é a Fatia C; estão feitas a preparação técnica (C1), a fonte de
+dados (C2, `EvaluationSheetGrid`), a pré-visualização (C3) e o PDF (C4). Faltam os
+gráficos e o fecho (C5–C6). O que já existe, e o que as etapas seguintes têm de
+respeitar:
+
+- **PDF (C4).** `classes/{class}/pauta-avaliacao/impressao/{period}/pdf` e
+  `classes/{class}/pauta-avaliacao/historico/{export}/impressao/pdf`, no mesmo
+  controlador, com as mesmas portas e opções da pré-visualização (o botão «PDF» leva
+  as opções e o momento). Vista própria para o dompdf
+  (`evaluation-sheets/grid-document`) que só desenha a estrutura: horizontal
+  compacto por omissão, um bloco de colunas por folha com Nº e Nome repetidos, o
+  cabeçalho a repetir quando a lista passa de folha, `PROVISÓRIO` e «Página N / T»
+  em todas as folhas. A largura de cada coluna vem de
+  `EvaluationSheetGrid::columnWidth()`, a mesma que o planeador usou. O ficheiro é
+  um anexo, `private, no-store`, nunca guardado e nunca nomeado com o nome de um
+  aluno. A exportação deixa o evento de auditoria
+  `evaluation_sheets.grid_document.exported` só com contagens e opções (formato,
+  origem, período ou registo, momento, orientação, opções, provisório, alunos,
+  domínios, blocos, atribuídos, pendentes).
 
 - **Pré-visualização (C3).** `EvaluationSheetGridDocumentController`, no módulo
   `results` (Base) e com `SchoolClassPolicy::view`: `classes/{class}/pauta-avaliacao/impressao/{period}`
@@ -436,8 +451,8 @@ o que as etapas seguintes têm de respeitar:
   `withProposalBasis: false`. A página (`evaluation-sheets/GridDocument`) só
   desenha a estrutura; as opções (autoavaliação, orientação) mudam o que se
   desenha. Acessos na Pauta, no Histórico e na pauta guardada; o «Imprimir» da
-  Pauta não mudou. Abrir não escreve nada nem deixa rasto: a auditoria vem com o
-  PDF.
+  Pauta não mudou. Abrir a pré-visualização não escreve nada nem deixa rasto; o
+  rasto é o da exportação em PDF.
 
 - `EvaluationSheetGrid::build(EvaluationSheetDocument, EvaluationSheetGridOptions)`
   devolve a estrutura neutra da grelha da turma. É uma função pura do documento:

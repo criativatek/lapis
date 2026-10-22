@@ -910,6 +910,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // A GRELHA PARA IMPRIMIR DE UM MOMENTO GUARDADO — pré-visualização. Lida só
         // do payload congelado, como o CSV e o Excel acima, e pelas mesmas portas.
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}/impressao', [EvaluationSheetGridDocumentController::class, 'snapshot'])->name('evaluation-sheets.snapshot.grid-document');
+        // O MESMO MOMENTO EM PDF, do mesmo payload e pelas mesmas portas.
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}/impressao/pdf', [EvaluationSheetGridDocumentController::class, 'snapshotPdf'])->name('evaluation-sheets.snapshot.grid-document.pdf');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
 
         // O CSV e o Excel da pauta do período que está a ser visto. Declarados
@@ -925,6 +927,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // não é um ulid de período. O período é obrigatório (a ligação sai sempre
         // do período que está a ser visto) e o momento vai em `?momento=`.
         Route::get('classes/{class}/pauta-avaliacao/impressao/{period}', [EvaluationSheetGridDocumentController::class, 'live'])->name('evaluation-sheets.grid-document');
+        // O MESMO DOCUMENTO EM PDF, com as mesmas opções e o mesmo momento.
+        Route::get('classes/{class}/pauta-avaliacao/impressao/{period}/pdf', [EvaluationSheetGridDocumentController::class, 'livePdf'])->name('evaluation-sheets.grid-document.pdf');
         Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', [EvaluationSheetCsvExportController::class, 'csv'])->name('evaluation-sheets.csv');
         Route::get('classes/{class}/pauta-avaliacao/xlsx/{period?}', [EvaluationSheetCsvExportController::class, 'xlsx'])->name('evaluation-sheets.xlsx');
 

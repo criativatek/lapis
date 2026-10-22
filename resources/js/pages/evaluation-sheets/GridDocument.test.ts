@@ -148,12 +148,49 @@ describe('evaluation-sheets/GridDocument.vue', () => {
         expect(decided.text()).toContain('Proposta: B');
     });
 
-    it('draws no PDF button and no control that is not implemented', () => {
+    it('offers the PDF as a plain link carrying the options the preview is showing', () => {
         const wrapper = mountPage();
+        const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
-        expect(wrapper.text()).not.toContain('PDF');
-        expect(wrapper.findAll('a').some((anchor) => (anchor.attributes('href') ?? '').includes('/pdf'))).toBe(false);
+        expect(link).toBeDefined();
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?autoavaliacao=0&orientacao=horizontal');
         expect(wrapper.findAll('button').map((button) => button.text())).toContain('Imprimir');
+        // Charts are the next step: no control for what does not exist yet.
+        expect(wrapper.text()).not.toContain('Gráficos');
+    });
+
+    it('keeps the moment and every chosen option in the PDF link', () => {
+        const wrapper = mountPage({
+            source: {
+                kind: 'live',
+                moment: 'interim',
+                back: { href: '/classes/class-1/pauta-avaliacao/period-1?momento=interim', label: 'Voltar à pauta' },
+                base_url: '/classes/class-1/pauta-avaliacao/impressao/period-1',
+                fixed_query: { momento: 'interim' },
+            },
+            document: makeDocument({ options: { self_assessment: true, orientation: 'portrait' } }),
+        });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
+
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/impressao/period-1/pdf?momento=interim&autoavaliacao=1&orientacao=vertical');
+    });
+
+    it('points the PDF of a kept moment at that moment, never at the live sheet', () => {
+        const wrapper = mountPage({
+            source: {
+                kind: 'snapshot',
+                moment: null,
+                back: { href: '/classes/class-1/pauta-avaliacao/historico/exp-1', label: 'Voltar à pauta guardada' },
+                base_url: '/classes/class-1/pauta-avaliacao/historico/exp-1/impressao',
+                fixed_query: {},
+            },
+            document: makeDocument({ source: { is_historical: true, label: 'Momento guardado a 16/12/2026, 10:30', kept_at: null, author: null } }),
+        });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
+
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/historico/exp-1/impressao/pdf?autoavaliacao=0&orientacao=horizontal');
     });
 
     it('marks a provisional grid on screen and on the sheet itself, which is what is printed', () => {
