@@ -1,7 +1,7 @@
 # Análise Avançada da Avaliação (Pro) — fundação (D0)
 
-Estado: **D0 — fundação** (integrada) e **D1 — comparação da turma** (esta etapa). A D1 é a primeira
-superfície visível; as seguintes (D2–D6) chegam cada uma com autorização própria.
+Estado: **D0 — fundação** e **D1 — comparação da turma** (integradas) e **D2 — «Ao longo do ano» do
+aluno** (esta etapa). As seguintes (D3–D6) chegam cada uma com autorização própria.
 
 ## Decisões aprovadas (Fatia D)
 
@@ -119,7 +119,48 @@ O teste de arquitetura da D0 passou a exigir que toda a rota que chega ao contro
 `module:advanced_analytics`. As fixtures de caracterização do Base não mudaram (a entrada na
 Estatística usa as props partilhadas `modules` e `readOnlyModules`, sem props novas).
 
+## D2 — «Ao longo do ano» na Evolução do Aluno
+
+**Onde:** secção exclusiva Pro da página «Evolução do Aluno» (`classes/{class}/evolucao/{enrollment}`),
+depois de «Em que domínios». Query opcional `de` e `para` (chaves `period:<ulid>` / `moment:<ulid>`),
+validadas como na D1; a `leitura` da página mantém-se ao trocar de momentos.
+
+**Pro, sem rasto no Base:** a prop `yearReading` só existe com `advanced_analytics` (nem para o Base,
+nem para uma organização suspensa, para a qual `allows()` é falso); a linha temporal nem sequer é
+construída. O serviço `BuildStudentYear` recusa de seguida (`AdvancedAnalyticsUnavailable`). O teste de
+caracterização do Base não mudou; o do Pro (`student-pro`) foi regenerado de propósito — acrescenta só
+`yearReading.*` — e, com essa chave removida, a página Pro é byte a byte a de antes.
+
+**`BuildStudentYear`** (sobre a linha temporal, sem aritmética própria):
+- usa `BuildAssessmentComparison::studentRow()` — a função que a página da turma usa para o mesmo
+  aluno — e `select()` para a escolha dos dois momentos: turma e aluno nunca discordam sobre quem subiu
+  (teste de paridade, e paridade com a `evolution` da progressão);
+- só oferece os momentos em que ESTE aluno tem resultado; por omissão, os dois últimos;
+- *não repete o que a página já diz:* «Como evoluiu» (últimos dois momentos na leitura escolhida) e
+  «Em que domínios» (acumulado e última variação) ficam como estão. A secção acrescenta a escolha livre
+  de dois momentos, a mudança de NÍVEL (e a travessia da linha da escala), cada domínio em todos os
+  momentos, e a origem dos dados e os limites de comparabilidade;
+- *outra leitura, dita:* usa o resultado de cada período por si (o de Resultados), não a leitura
+  contínua; a secção e a explicação «Que resultado é este» dizem-no;
+- *sem comparação artificial:* critérios diferentes → números lado a lado, sem variação e com a razão;
+  escala desconhecida/diferente → só os níveis são recusados; um domínio ou resultado em falta num
+  extremo é «sem comparação», nunca zero;
+- *gráfico factual:* resultado global e domínios nos momentos que partilham os critérios do último
+  (círculo = fim de período, quadrado = momento guardado); sem valor há uma lacuna, nunca um zero; os
+  momentos que ficam de fora dizem-se; com menos de dois pontos não há gráfico, há uma frase. Tabela
+  acessível com os mesmos números;
+- *não é diagnóstico:* uma descida ou um nível negativo são dois números; não se procura persistência
+  (é da D4) e não se sugere causa.
+
+**Privacidade:** só as células deste aluno saem da turma; não viaja nenhum nome de colega nem a
+contagem de colegas com resultado (que a página da turma mostra ao professor da turma). Mesmas regras
+de acesso (`view` da turma; a matrícula tem de ser da turma do URL).
+
+**Desempenho:** o número de queries da página é o mesmo com 6 ou 30 alunos.
+
+**Testes:** `StudentYearTest` (serviço e página), `YearReading.test.ts`.
+
 ## Etapas seguintes (não autorizadas)
 
-D1 ✔ comparação da turma · D2 comparação por aluno · D3 pontos fortes e dificuldades ·
+D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 pontos fortes e dificuldades ·
 D4 tendências e dificuldade persistente · D5 documento Pro · D6 validação, ajuda, texto comercial, 0.176.0.

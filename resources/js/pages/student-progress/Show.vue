@@ -21,6 +21,7 @@ import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
 import AiTextPrivacyNotice from '@/components/ai/AiTextPrivacyNotice.vue';
 import Heading from '@/components/Heading.vue';
 import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
+import YearReadingSection from '@/components/student-progress/YearReading.vue';
 import { Button } from '@/components/ui/button';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { useAiTextPrivacyGuard } from '@/composables/useAiTextPrivacyGuard';
@@ -36,6 +37,7 @@ import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { formatLessonNumber } from '@/lib/lessons';
 import { isOtherCriteria } from '@/lib/selfAssessmentReading';
 import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
+import type { YearReading } from '@/lib/studentYear';
 import { card, INSET } from '@/lib/surfaces';
 
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
@@ -354,6 +356,8 @@ const props = defineProps<{
     // (§8.2 of CLAUDE.md): gating happened on the server, before this ever
     // left it.
     pro?: ProPayload;
+    /** «Ao longo do ano» (Pro): AUSENTE para o Base — a chave nem existe. */
+    yearReading?: YearReading;
     ai: { available: boolean; reason: string | null };
     /**
      * «Síntese de acompanhamento (IA)» — a SEPARATE capability from the
@@ -448,6 +452,17 @@ function setReading(kind: 'accumulated' | 'period') {
         { preserveScroll: true, preserveState: false },
     );
 }
+
+/** What the section keeps in the URL when it asks for two other moments: the reading the page is on. */
+const yearQuery = computed<Record<string, string>>(() => {
+    const query: Record<string, string> = {};
+
+    if (props.reading.kind !== props.reading.canonical) {
+        query.leitura = props.reading.kind === 'accumulated' ? 'continua' : 'periodo';
+    }
+
+    return query;
+});
 
 // -------------------------------------------------------------- formatação
 
@@ -1425,6 +1440,15 @@ const PURPOSE_LABEL: Record<string, string> = {
                     </li>
                 </ul>
             </section>
+
+            <!-- ------------------------------- 4a. ao longo do ano (Pro) -->
+            <YearReadingSection
+                v-if="yearReading"
+                :reading="yearReading"
+                :action="`/classes/${schoolClass.ulid}/evolucao/${student.ulid}`"
+                :query="yearQuery"
+                :student-name="student.name"
+            />
 
             <!-- ---------------------------------------- 4b. potencialidades (Pro) -->
             <section

@@ -235,9 +235,20 @@ class BuildAssessmentTimelineTest extends TestCase
 
         $this->assertSame([
             'app/Http/Controllers/AssessmentAnalysisController.php',
+            'app/Http/Controllers/StudentProgressController.php',
             'app/Services/Assessment/Advanced/BuildAssessmentComparison.php',
             'app/Services/Assessment/Advanced/BuildAssessmentTimeline.php',
+            'app/Services/Assessment/Advanced/BuildStudentYear.php',
         ], $users);
+
+        // The student page is a Base page with a Pro section: its one call to the timeline sits inside the
+        // `allowsAdvancedAnalytics` branch, so a Base organization never builds it.
+        $source = (string) file_get_contents(base_path('app/Http/Controllers/StudentProgressController.php'));
+        $this->assertSame(1, substr_count($source, '$this->timeline->for('));
+        $this->assertGreaterThan(
+            (int) strpos($source, '...($allowsAdvancedAnalytics ? ['),
+            (int) strpos($source, '$this->timeline->for('),
+        );
 
         // Every route that reaches the controller is behind the module's gate.
         $reaching = collect(app('router')->getRoutes()->getRoutes())

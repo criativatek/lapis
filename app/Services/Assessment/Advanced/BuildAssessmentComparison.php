@@ -109,7 +109,7 @@ class BuildAssessmentComparison
      * @param  list<array<string, mixed>>  $withResults  in timeline order
      * @return array{array<string, mixed>, array<string, mixed>, array{from: string, to: string, defaulted: bool, swapped: bool}}
      */
-    private function select(array $withResults, ?string $fromKey, ?string $toKey): array
+    public function select(array $withResults, ?string $fromKey, ?string $toKey): array
     {
         $byKey = [];
         foreach ($withResults as $point) {
@@ -150,7 +150,7 @@ class BuildAssessmentComparison
      * @param  array<string, mixed>  $point
      * @return array{percentage_signature: string|null, level_signature: string|null}
      */
-    private function signatures(array $point): array
+    public function signatures(array $point): array
     {
         return [
             'percentage_signature' => isset($point['percentage_signature']) ? (string) $point['percentage_signature'] : null,
@@ -211,7 +211,7 @@ class BuildAssessmentComparison
      * @param  array<string, mixed>  $from
      * @param  array<string, mixed>  $to
      */
-    private function basisNote(array $from, array $to): string
+    public function basisNote(array $from, array $to): string
     {
         $kinds = [$from['basis']['kind'], $to['basis']['kind']];
 
@@ -231,7 +231,7 @@ class BuildAssessmentComparison
      * @param  list<array<string, mixed>>  $points
      * @return list<array<string, mixed>>
      */
-    private function noticesOf(array $timeline, array $points): array
+    public function noticesOf(array $timeline, array $points): array
     {
         $notices = [];
 
@@ -262,46 +262,70 @@ class BuildAssessmentComparison
         $rows = [];
 
         foreach ($timeline['students'] as $student) {
-            $before = $student['cells'][$fromKey] ?? null;
-            $after = $student['cells'][$toKey] ?? null;
-
-            $beforeResult = $before['result'] ?? null;
-            $afterResult = $after['result'] ?? null;
-            $hasBefore = ($beforeResult['value'] ?? null) !== null;
-            $hasAfter = ($afterResult['value'] ?? null) !== null;
-
-            $domains = [];
-            foreach ($timeline['domains'] as $domain) {
-                $domainBefore = $before['domains'][$domain['ulid']] ?? null;
-                $domainAfter = $after['domains'][$domain['ulid']] ?? null;
-                $movement = TimelineMovement::between($domainBefore, $domainAfter, $comparability);
-
-                $domains[$domain['ulid']] = [
-                    'from' => $domainBefore['value'] ?? null,
-                    'to' => $domainAfter['value'] ?? null,
-                    'movement' => $this->movementOf($domainBefore['value'] ?? null, $domainAfter['value'] ?? null, $movement),
-                ];
-            }
-
-            $resultMovement = TimelineMovement::between($beforeResult, $afterResult, $comparability);
-
-            $rows[] = [
-                'enrollment_ulid' => $student['enrollment_ulid'],
-                'name' => $student['name'],
-                'class_number' => $student['class_number'],
-                'from' => $beforeResult,
-                'to' => $afterResult,
-                'movement' => $this->movementOf($beforeResult['value'] ?? null, $afterResult['value'] ?? null, $resultMovement),
-                'result_level' => $resultMovement['level'],
-                'assigned' => $this->assigned($before['classification'] ?? null, $after['classification'] ?? null, $comparability),
-                'domains' => $domains,
-                'pair' => ['both' => $hasBefore && $hasAfter, 'from' => $hasBefore, 'to' => $hasAfter],
-            ];
+            $rows[] = $this->studentRow($student, $timeline['domains'], $fromKey, $toKey, $comparability);
         }
 
         usort($rows, fn (array $first, array $second): int => [$first['class_number'] ?? PHP_INT_MAX, $first['name']] <=> [$second['class_number'] ?? PHP_INT_MAX, $second['name']]);
 
         return $rows;
+    }
+
+    /**
+     * One student at the two moments: the result, the domains, the levels — and what moved.
+     *
+     * PUBLIC, FOR THE READING OF A SINGLE STUDENT. The class comparison and the student's «Ao longo do
+     * ano» say «progrediu» with the same function over the same cells; a second copy of this is how
+     * they would come to disagree about the same child.
+     *
+     * @param  array<string, mixed>  $student  a student of the timeline
+     * @param  list<array<string, mixed>>  $domains  the timeline's domains
+     * @param  array{percentages: bool, levels: bool, reasons: list<array{code: string, text: string}>}  $comparability
+     * @param  bool  $withDomainLevels  also each domain's band at both ends and the change of level
+     * @return array<string, mixed>
+     */
+    public function studentRow(array $student, array $domains, string $fromKey, string $toKey, array $comparability, bool $withDomainLevels = false): array
+    {
+        $before = $student['cells'][$fromKey] ?? null;
+        $after = $student['cells'][$toKey] ?? null;
+
+        $beforeResult = $before['result'] ?? null;
+        $afterResult = $after['result'] ?? null;
+        $hasBefore = ($beforeResult['value'] ?? null) !== null;
+        $hasAfter = ($afterResult['value'] ?? null) !== null;
+
+        $byDomain = [];
+        foreach ($domains as $domain) {
+            $domainBefore = $before['domains'][$domain['ulid']] ?? null;
+            $domainAfter = $after['domains'][$domain['ulid']] ?? null;
+            $movement = TimelineMovement::between($domainBefore, $domainAfter, $comparability);
+
+            $byDomain[$domain['ulid']] = [
+                'from' => $domainBefore['value'] ?? null,
+                'to' => $domainAfter['value'] ?? null,
+                'movement' => $this->movementOf($domainBefore['value'] ?? null, $domainAfter['value'] ?? null, $movement),
+                ...($withDomainLevels ? [
+                    'from_band' => $domainBefore['band'] ?? null,
+                    'to_band' => $domainAfter['band'] ?? null,
+                    'level' => $movement['level'],
+                    'coverage_warning' => [($domainBefore['coverage_warning'] ?? false) === true, ($domainAfter['coverage_warning'] ?? false) === true],
+                ] : []),
+            ];
+        }
+
+        $resultMovement = TimelineMovement::between($beforeResult, $afterResult, $comparability);
+
+        return [
+            'enrollment_ulid' => $student['enrollment_ulid'],
+            'name' => $student['name'],
+            'class_number' => $student['class_number'],
+            'from' => $beforeResult,
+            'to' => $afterResult,
+            'movement' => $this->movementOf($beforeResult['value'] ?? null, $afterResult['value'] ?? null, $resultMovement),
+            'result_level' => $resultMovement['level'],
+            'assigned' => $this->assigned($before['classification'] ?? null, $after['classification'] ?? null, $comparability),
+            'domains' => $byDomain,
+            'pair' => ['both' => $hasBefore && $hasAfter, 'from' => $hasBefore, 'to' => $hasAfter],
+        ];
     }
 
     /**
