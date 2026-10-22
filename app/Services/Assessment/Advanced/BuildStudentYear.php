@@ -80,7 +80,7 @@ class BuildStudentYear
             return $this->unavailable($timeline, $options, match (count($mine)) {
                 0 => __('Este aluno ainda não tem resultado em nenhum momento: não há nada para comparar.'),
                 default => __('Este aluno só tem resultado em 1 momento: a comparação precisa de pelo menos 2.'),
-            });
+            }, $student);
         }
 
         [$from, $to, $selection] = $this->comparison->select($mine, $fromKey, $toKey);
@@ -119,6 +119,7 @@ class BuildStudentYear
             'assigned' => $row['assigned'],
             'domains' => $domains,
             'series' => $this->series($timeline, $mine, $to, $student),
+            'trends' => $this->trends($timeline, $student),
             'explanations' => $this->explanations(),
         ];
     }
@@ -215,11 +216,51 @@ class BuildStudentYear
     }
 
     /**
+     * This student's trajectories along the moments that may be put in one line: the overall result and
+     * each domain, each read for its trend (three points) and for being persistently below the positive
+     * level (two, the latest included) — the same two rules, from the same function, as the class's.
+     *
+     * @param  array<string, mixed>  $timeline
+     * @param  array<string, mixed>  $student
+     * @return array<string, mixed>|null null when no moment has results
+     */
+    private function trends(array $timeline, array $student): ?array
+    {
+        $series = TimelineSeries::of($timeline);
+
+        if ($series === null) {
+            return null;
+        }
+
+        $domains = [];
+        foreach ($timeline['domains'] as $domain) {
+            $domains[] = [
+                'ulid' => $domain['ulid'],
+                'name' => $domain['name'],
+                ...TrajectoryReading::read(TimelineSeries::entries(
+                    $series['points'],
+                    fn (string $key): ?array => $student['cells'][$key]['domains'][$domain['ulid']] ?? null,
+                )),
+            ];
+        }
+
+        return [
+            'availability' => TimelineSeries::availability($series['comparable_points']),
+            'reference' => ['key' => $series['reference']['key'], 'label' => $series['reference']['label']],
+            'points' => $series['points'],
+            'left_out' => $series['left_out'],
+            'result' => TrajectoryReading::read(TimelineSeries::entries($series['points'], fn (string $key): ?array => $student['cells'][$key]['result'] ?? null)),
+            'domains' => $domains,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $timeline
      * @param  list<array<string, mixed>>  $options
+     * @param  array<string, mixed>|null  $student
      * @return array<string, mixed>
      */
-    private function unavailable(array $timeline, array $options, string $reason): array
+    private function unavailable(array $timeline, array $options, string $reason, ?array $student = null): array
     {
         return [
             'state' => 'unavailable',
@@ -237,6 +278,7 @@ class BuildStudentYear
             'assigned' => null,
             'domains' => [],
             'series' => ['enough' => false, 'points' => [], 'result' => [], 'domains' => [], 'left_out' => 0, 'note' => null],
+            'trends' => $student === null ? null : $this->trends($timeline, $student),
             'explanations' => $this->explanations(),
         ];
     }

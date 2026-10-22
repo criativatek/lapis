@@ -296,7 +296,7 @@ class BuildClassStrengths
             'name' => $name,
             // Said as «com valor», «sem valor» and «poucos alunos» — the facts of coverage, no threshold chosen here.
             'students' => ['with_value' => $with, 'of' => $total],
-            'mean' => $this->mean($values),
+            'mean' => TimelineStatistics::mean($values),
             'below_positive' => $lineKnown && $with > 0
                 ? ['count' => $below, 'of' => $with, 'share' => Bc::round(Bc::mul(Bc::div((string) $below, (string) $with), '100'), BuildResultsProgression::PRECISION, 'half_up')]
                 : null,
@@ -310,25 +310,6 @@ class BuildClassStrengths
                 'partial' => $partial,
             ],
         ];
-    }
-
-    /**
-     * The same sum-and-divide, rounded the same way, as `BuildClassStatistics::mean()`.
-     *
-     * @param  list<string>  $values
-     */
-    private function mean(array $values): ?string
-    {
-        if ($values === []) {
-            return null;
-        }
-
-        $sum = '0';
-        foreach ($values as $value) {
-            $sum = Bc::add($sum, Bc::of($value));
-        }
-
-        return Bc::round(Bc::div($sum, (string) count($values)), BuildResultsProgression::PRECISION, 'half_up');
     }
 
     // ================================================================= the students below the positive level

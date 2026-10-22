@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { Comparison, ComparedStudent } from '@/lib/assessmentComparison';
 import type { ClassStrengths } from '@/lib/classStrengths';
+import type { ClassTrends } from '@/lib/trajectories';
 import Show from './Show.vue';
 
 const get = vi.fn();
@@ -114,6 +115,15 @@ function strengths(over: Partial<ClassStrengths> = {}): ClassStrengths {
     };
 }
 
+function trends(): ClassTrends {
+    return {
+        state: 'unavailable', reason: 'Ainda não há resultados em nenhum momento: não há trajetórias para ler.',
+        availability: { comparable_points: 0, trends: false, persistence: false, reason: null },
+        reference: null, points: [], left_out: [], class: { global: null, domains: [] },
+        counts: { students: 0, global: null, domains: [] }, students: [], cautions: [], explanations: [],
+    };
+}
+
 function mountPage(data: Comparison) {
     return mount(Show, {
         props: {
@@ -121,6 +131,7 @@ function mountPage(data: Comparison) {
             availability: { comparison: data.state === 'ready', trends: false, reason: data.reason },
             comparison: data,
             strengths: strengths(),
+            trends: trends(),
         },
     });
 }
@@ -274,6 +285,8 @@ describe('assessment-analysis/Show', () => {
 
         expect(wrapper.find('nav a[href="#comparar"]').exists()).toBe(true);
         expect(wrapper.find('nav a[href="#pontos-fortes-titulo"]').exists()).toBe(true);
+        expect(wrapper.find('nav a[href="#tendencias-titulo"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="trends"]').exists()).toBe(true);
         expect(wrapper.find('[data-test="strengths"]').exists()).toBe(true);
     });
 

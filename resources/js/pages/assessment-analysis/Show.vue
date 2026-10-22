@@ -3,6 +3,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, CircleAlert, Info, Minus, Scale, TrendingUp, Users } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import StrengthsSection from '@/components/assessment-analysis/StrengthsSection.vue';
+import TrendsSection from '@/components/assessment-analysis/TrendsSection.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import KpiCard from '@/components/infographic/KpiCard.vue';
@@ -19,6 +20,7 @@ import {
 import type { Comparison, ComparedStudent, Counts, PointInfo, StudentMovement } from '@/lib/assessmentComparison';
 import type { ClassStrengths } from '@/lib/classStrengths';
 import { card } from '@/lib/surfaces';
+import type { ClassTrends } from '@/lib/trajectories';
 
 /**
  * Análise da Avaliação — comparar dois momentos de uma turma (Pro).
@@ -41,6 +43,7 @@ const props = defineProps<{
     availability: { comparison: boolean; trends: boolean; reason: string | null };
     comparison: Comparison;
     strengths: ClassStrengths;
+    trends: ClassTrends;
 }>();
 
 const base = computed(() => `/classes/${props.schoolClass.ulid}/analise-avaliacao`);
@@ -205,6 +208,7 @@ const MOVEMENT_CLASS: Record<StudentMovement['state'], string> = {
             <nav aria-label="Nesta página" class="flex flex-wrap gap-2 pt-2 text-sm">
                 <a href="#comparar" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Comparar dois momentos</a>
                 <a href="#pontos-fortes-titulo" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Pontos fortes e dificuldades</a>
+                <a href="#tendencias-titulo" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Tendências e resultados persistentes</a>
             </nav>
         </div>
 
@@ -598,5 +602,9 @@ const MOVEMENT_CLASS: Record<StudentMovement['state'], string> = {
         <hr class="border-border" />
 
         <StrengthsSection :strengths="strengths" @select="chooseMoment" />
+
+        <hr class="border-border" />
+
+        <TrendsSection :trends="trends" />
     </div>
 </template>

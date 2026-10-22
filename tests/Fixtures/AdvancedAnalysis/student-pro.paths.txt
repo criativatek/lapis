@@ -406,3 +406,44 @@ yearReading.to.kind
 yearReading.to.label
 yearReading.to.ordinal
 yearReading.to.partial_coverage
+yearReading.trends.availability.comparable_points
+yearReading.trends.availability.persistence
+yearReading.trends.availability.reason
+yearReading.trends.availability.trends
+yearReading.trends.domains[].name
+yearReading.trends.domains[].negative[]
+yearReading.trends.domains[].persistent.points = []
+yearReading.trends.domains[].persistent.run
+yearReading.trends.domains[].persistent.state
+yearReading.trends.domains[].persistent.stopped_by
+yearReading.trends.domains[].trend.counts.down
+yearReading.trends.domains[].trend.counts.flat
+yearReading.trends.domains[].trend.counts.up
+yearReading.trends.domains[].trend.gaps = []
+yearReading.trends.domains[].trend.state
+yearReading.trends.domains[].trend.steps = []
+yearReading.trends.domains[].trend.with_value
+yearReading.trends.domains[].ulid
+yearReading.trends.domains[].values[]
+yearReading.trends.left_out = []
+yearReading.trends.points[].basis_kind
+yearReading.trends.points[].basis_label
+yearReading.trends.points[].comparable
+yearReading.trends.points[].key
+yearReading.trends.points[].kind
+yearReading.trends.points[].label
+yearReading.trends.reference.key
+yearReading.trends.reference.label
+yearReading.trends.result.negative[]
+yearReading.trends.result.persistent.points = []
+yearReading.trends.result.persistent.run
+yearReading.trends.result.persistent.state
+yearReading.trends.result.persistent.stopped_by
+yearReading.trends.result.trend.counts.down
+yearReading.trends.result.trend.counts.flat
+yearReading.trends.result.trend.counts.up
+yearReading.trends.result.trend.gaps = []
+yearReading.trends.result.trend.state
+yearReading.trends.result.trend.steps = []
+yearReading.trends.result.trend.with_value
+yearReading.trends.result.values[]
