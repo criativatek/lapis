@@ -683,3 +683,10 @@ requisitos originais:
 browser com selo e numeração em todas as folhas é só Chromium recente (o PDF é o
 caminho fiável); as fotografias anteriores à 0.175.0 não têm gráficos por nível; o
 âmbito é «Período»; o `PROVISÓRIO` não distingue intercalar de final.
+
+**Atualização (0.177.0 — Fatia D).** O que ficou reservado ao Pro nas grelhas — comparação
+automática entre períodos e tendências, e a leitura de pontos fortes e dificuldades — existe agora na
+«Análise da Avaliação» (`classes/{turma}/analise-avaliacao`), no módulo `advanced_analytics`, com o seu
+próprio documento (pré-visualização, impressão e PDF) na mesma infraestrutura documental. As grelhas
+do Base continuam como estão: factuais, sem interpretação. Ver
+[advanced-assessment-analysis.md](advanced-assessment-analysis.md).
