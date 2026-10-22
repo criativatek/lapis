@@ -167,11 +167,31 @@ class BasePagesCharacterizationTest extends TestCase
     private function normalise(mixed $value): mixed
     {
         if (is_array($value)) {
-            return array_map(fn (mixed $item): mixed => $this->normalise($item), $value);
+            // A map keyed by database ids (`scopes`) is told by position: the next id of a table
+            // depends on what ran before it (MySQL does not rewind auto-increment on rollback).
+            if (! array_is_list($value) && $value !== [] && array_reduce(array_keys($value), fn (bool $all, int|string $key): bool => $all && is_numeric($key), true)) {
+                ksort($value);
+                $value = array_values($value);
+            }
+
+            $normalised = [];
+
+            foreach ($value as $key => $item) {
+                // The same for every value that IS a database id: `id`, `domain_id`, `scale_level_ids`…
+                $isId = is_string($key) && preg_match('/(^|_)ids?$/', $key) === 1;
+
+                $normalised[$key] = $isId && (is_int($item) || (is_array($item) && array_is_list($item) && array_filter($item, 'is_int') === $item))
+                    ? (is_array($item) ? array_fill(0, count($item), 'ID') : 'ID')
+                    : $this->normalise($item);
+            }
+
+            return $normalised;
         }
 
         if (is_string($value)) {
             $value = preg_replace('/\b[0-9a-z]{26}\b/', 'ULID', $value) ?? $value;
+            // Database ids that travel inside a string: `period-12`, `?enrollment_id=3`, `&period=2`.
+            $value = preg_replace(['/\bperiod-\d+\b/', '/([?&](?:enrollment_id|enrollment|period_id|period|student_id|student|class_id|class)=)\d+/'], ['period-ID', '${1}ID'], $value) ?? $value;
 
             return preg_replace('/\d{4}-\d\d-\d\d[T ][\d:.]+(Z|[+-]\d\d:?\d\d)?/', 'DATETIME', $value) ?? $value;
         }

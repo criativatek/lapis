@@ -119,8 +119,7 @@ statistics.primary.caption
 statistics.primary.has_supplementary
 statistics.primary.kind
 statistics.primary.label
-statistics.primary.scopes.1
-statistics.primary.scopes.2
+statistics.primary.scopes[]
 statistics.primary.short_label
 statistics.primary.supplementary_label
 statistics.scale.bands[].is_negative
