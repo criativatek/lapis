@@ -9,6 +9,7 @@ use App\Http\Controllers\AccumulatedBreakdownController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ActivitySessionController;
 use App\Http\Controllers\AssessmentAnalysisController;
+use App\Http\Controllers\AssessmentAnalysisDocumentController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentProfileController;
 use App\Http\Controllers\CalendarEventController;
@@ -879,6 +880,15 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/analise-avaliacao', [AssessmentAnalysisController::class, 'show'])
             ->middleware('module:advanced_analytics')
             ->name('assessment-analysis.show');
+
+        // O documento Pro da análise: pré-visualização e PDF, gerados na hora e nunca guardados.
+        // Mesmo módulo e mesmo prefixo da página; antes de `results/{period?}` não há colisão.
+        Route::get('classes/{class}/analise-avaliacao/documento', [AssessmentAnalysisDocumentController::class, 'show'])
+            ->middleware('module:advanced_analytics')
+            ->name('assessment-analysis.document');
+        Route::get('classes/{class}/analise-avaliacao/documento/pdf', [AssessmentAnalysisDocumentController::class, 'pdf'])
+            ->middleware('module:advanced_analytics')
+            ->name('assessment-analysis.document.pdf');
         Route::get('classes/{class}/results/{period?}', [ResultsController::class, 'show'])->name('results.show');
 
         // Pautas de Avaliação — one view, not three: quantitativo, apreciação

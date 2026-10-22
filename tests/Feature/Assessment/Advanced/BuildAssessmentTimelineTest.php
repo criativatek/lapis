@@ -235,12 +235,14 @@ class BuildAssessmentTimelineTest extends TestCase
 
         $this->assertSame([
             'app/Http/Controllers/AssessmentAnalysisController.php',
+            'app/Http/Controllers/AssessmentAnalysisDocumentController.php',
             'app/Http/Controllers/StudentProgressController.php',
             'app/Services/Assessment/Advanced/BuildAssessmentComparison.php',
             'app/Services/Assessment/Advanced/BuildAssessmentTimeline.php',
             'app/Services/Assessment/Advanced/BuildClassStrengths.php',
             'app/Services/Assessment/Advanced/BuildClassTrends.php',
             'app/Services/Assessment/Advanced/BuildStudentYear.php',
+            'app/Services/Assessment/Advanced/Document/BuildAnalysisDocument.php',
             'app/Services/Assessment/Advanced/TimelineSeries.php',
             'app/Services/Assessment/Advanced/TrajectoryReading.php',
         ], $users);
@@ -256,9 +258,10 @@ class BuildAssessmentTimelineTest extends TestCase
 
         // Every route that reaches the controller is behind the module's gate.
         $reaching = collect(app('router')->getRoutes()->getRoutes())
-            ->filter(fn ($route): bool => str_starts_with((string) ($route->getActionName()), 'App\Http\Controllers\AssessmentAnalysisController'));
+            ->filter(fn ($route): bool => str_starts_with((string) ($route->getActionName()), 'App\Http\Controllers\AssessmentAnalysis'));
 
-        $this->assertNotEmpty($reaching);
+        // The page, and the preview and the PDF of its document.
+        $this->assertCount(3, $reaching);
         foreach ($reaching as $route) {
             $this->assertContains('module:advanced_analytics', $route->gatherMiddleware(), $route->uri());
         }

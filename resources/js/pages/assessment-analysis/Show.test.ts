@@ -280,6 +280,16 @@ describe('assessment-analysis/Show', () => {
         await wrapper.find('[data-test="select-to"]').setValue('period:p2');
         expect(get).not.toHaveBeenCalled();
     });
+    it('offers the document of what the page shows, carrying an explicit choice of moments and not a default', () => {
+        const defaulted = mountPage(comparison());
+        expect(defaulted.find('[data-test="document-link"]').attributes('href')).toBe('/classes/c1/analise-avaliacao/documento');
+
+        const explicit = mountPage(comparison({ selection: { from: FROM.key, to: TO.key, defaulted: false, swapped: false } }));
+        const href = explicit.find('[data-test="document-link"]').attributes('href') ?? '';
+        expect(href.startsWith('/classes/c1/analise-avaliacao/documento?')).toBe(true);
+        expect(Object.fromEntries(new URLSearchParams(href.split('?')[1]))).toEqual({ de: FROM.key, para: TO.key });
+    });
+
     it('has both sections on one page, with an in-page way to each', () => {
         const wrapper = mountPage(comparison());
 

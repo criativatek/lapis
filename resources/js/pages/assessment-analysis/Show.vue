@@ -94,6 +94,27 @@ function visit(changes: { de?: string; para?: string; momento?: string }): void 
     router.get(base.value, query, { preserveScroll: true, preserveState: true, replace: true });
 }
 
+/**
+ * The document of what is on this page: the same moments, kept in the address. A default is not pinned
+ * (the document picks the same default); an explicit choice travels.
+ */
+const documentHref = computed(() => {
+    const query: Record<string, string> = {};
+
+    if (!props.comparison.selection.defaulted && props.comparison.selection.from && props.comparison.selection.to) {
+        query.de = props.comparison.selection.from;
+        query.para = props.comparison.selection.to;
+    }
+
+    if (!props.strengths.selection.defaulted && props.strengths.selection.moment) {
+        query.momento = props.strengths.selection.moment;
+    }
+
+    const search = new URLSearchParams(query).toString();
+
+    return `${base.value}/documento${search === '' ? '' : `?${search}`}`;
+});
+
 function chooseMoment(momentKey: string): void {
     visit({ momento: momentKey });
 }
@@ -204,6 +225,7 @@ const MOVEMENT_CLASS: Record<StudentMovement['state'], string> = {
                 <Link :href="`/classes/${schoolClass.ulid}`" class="text-muted-foreground hover:underline">← Voltar à turma</Link>
                 <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-primary hover:underline">Estatística →</Link>
                 <Link :href="`/classes/${schoolClass.ulid}/results/quadro-sintese`" class="text-primary hover:underline">Quadro Síntese →</Link>
+                <Link :href="documentHref" class="text-primary hover:underline" data-test="document-link">Documento (imprimir ou PDF) →</Link>
             </div>
             <nav aria-label="Nesta página" class="flex flex-wrap gap-2 pt-2 text-sm">
                 <a href="#comparar" class="rounded-full border border-border px-3 py-1 hover:bg-muted/40">Comparar dois momentos</a>

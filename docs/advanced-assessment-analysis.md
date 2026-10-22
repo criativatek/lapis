@@ -1,8 +1,8 @@
 # Análise Avançada da Avaliação (Pro) — fundação (D0)
 
-Estado: **D0 — fundação**, **D1 — comparação da turma**, **D2 — «Ao longo do ano» do aluno** e
-**D3 — pontos fortes e dificuldades da turma** (integradas) e **D4 — tendências e resultados negativos
-persistentes** (esta etapa). As seguintes (D5–D6) chegam cada uma com autorização própria.
+Estado: **D0 — fundação**, **D1 — comparação da turma**, **D2 — «Ao longo do ano» do aluno**,
+**D3 — pontos fortes e dificuldades** e **D4 — tendências e resultados negativos persistentes**
+(integradas) e **D5 — documento Pro** (esta etapa). A seguinte (D6) chega com autorização própria.
 
 ## Decisões aprovadas (Fatia D)
 
@@ -249,8 +249,55 @@ página Pro é igual à anterior — verificado).
 série de quatro pontos e linhas temporais sintéticas); `StudentYearTest`; `TrendsSection.test.ts`,
 `YearReading.test.ts`, `trajectories.test.ts`.
 
+## D5 — Documento Pro da Análise da Avaliação
+
+**Onde:** `GET classes/{class}/analise-avaliacao/documento` (pré-visualização, `assessment-analysis.document`)
+e `.../documento/pdf` (`assessment-analysis.document.pdf`), com a ligação «Documento (imprimir ou PDF) →»
+no cabeçalho da página da análise. Gerado na hora e **nunca guardado**; o PDF é streamed e não fica em
+lado nenhum. Mesma infraestrutura documental das Fatias B e C: `PrintableDocument` + `DompdfPrinter` +
+timbre da escola + rasto de auditoria só com contagens.
+
+**Fiel por construção.** O documento é a estrutura que `BuildAnalysisDocument` compõe a partir dos
+**mesmos três payloads** que a página mostra (`BuildAssessmentComparison`, `BuildClassStrengths`,
+`BuildClassTrends`), pedidos com a mesma query (`de`, `para`, `momento`) e validados como na página. A
+estrutura é uma lista de blocos simples (cabeçalho, parágrafo, chave/valor, lista, tabela) com o texto JÁ
+ESCRITO (`DocumentFormat` diz os números como a página: «62,0%», «+8,5 p.p.», «8 de 27 alunos»): nem o Vue
+da pré-visualização nem o Blade do PDF formatam, arredondam ou reescrevem nada. Os testes seguram isto de
+três maneiras: célula a célula contra os payloads da página; a pré-visualização é exatamente a estrutura do
+serviço; e o texto extraído do PDF contém, palavra a palavra, tudo o que a pré-visualização diz.
+
+**Conteúdo:** identificação (turma, disciplina, ano letivo, escala, momentos comparados, momento analisado,
+linha de tendências); **avisos** juntos no topo (cobertura, comparação que não se pode fazer e porquê,
+momentos fora da linha, poucos alunos, falta de linha positivo/negativo); depois, por secção — comparação
+entre momentos (turma, domínios, mudanças de nível), pontos fortes e dificuldades de um momento (domínios,
+destaques com evidência, alunos abaixo do nível positivo em mais de um domínio) e tendências e resultados
+persistentes (regras lado a lado, linha, turma e domínios) — com valores, contagens, denominadores e os
+critérios; e, no fim, a nota de que descreve notas e momentos e não é diagnóstico, previsão nem
+recomendação.
+
+**Opções** (apresentação, lidas contra uma lista fechada, nunca alargam o que o professor pode ver):
+`secoes` (`comparacao`, `pontos-fortes`, `tendencias`; nenhuma = todas) e `alunos` (`1`/`0`). **Os nomes
+são opt-in:** por omissão o documento só traz contagens, domínios e tendências; com `alunos=1` acrescenta as
+listas nominais (quem pode `view` a turma, como no ecrã). A página tem as opções e o PDF herda o que o ecrã
+mostra.
+
+**Pro, nos mesmos três níveis:** rotas com `module:advanced_analytics`; o controlador volta a perguntar ao
+plano (uma organização suspensa passa o gate da rota num GET e não recebe uma leitura nova → 403); o serviço
+recusa. Base, suspensa e override → 403 sem dados e sem rasto. Isolamento: outra organização → 404; colega
+que não leciona a turma → 403.
+
+**Auditoria** (`assessment_analysis.document.exported`, só no PDF): formato, secções, se incluiu nomes, os
+momentos escolhidos e contagens (alunos, domínios, momentos comparáveis, destaques) — nunca um nome, um
+valor ou um texto livre. Nenhum dos pedidos escreve nada da avaliação.
+
+**Desempenho:** o custo (nº de queries) da pré-visualização e do PDF é o mesmo com 6 ou 30 alunos.
+
+**Testes:** `AnalysisDocumentTest` (estrutura, paridade, PDF, Pro, autorização, auditoria, desempenho),
+`Document.test.ts`, e o teste da ligação em `Show.test.ts`. A guarda de arquitetura da linha temporal passou
+a exigir o gate do módulo nas três rotas.
+
 ## Etapas seguintes (não autorizadas)
 
 D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 ✔ pontos fortes e dificuldades ·
-D4 ✔ tendências e resultados persistentes · D5 documento Pro · D6 validação, ajuda, texto comercial e a
+D4 ✔ tendências e resultados persistentes · D5 ✔ documento Pro · D6 validação, ajuda, texto comercial e a
 versão 0.177.0 (fecho da Fatia D). A 0.176.0 já é das operações em lote das medidas (PR #99).
