@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     patch: vi.fn(),
     get: vi.fn(),
     del: vi.fn(),
+    post: vi.fn(),
 }));
 
 vi.mock('@inertiajs/vue3', async () => {
@@ -31,6 +32,7 @@ vi.mock('@inertiajs/vue3', async () => {
             get: mocks.get,
             patch: mocks.patch,
             delete: mocks.del,
+            post: mocks.post,
             on: vi.fn((event: string, handler: unknown) => {
                 if (event === 'before') {
                     mocks.beforeHandlers.push(handler);
@@ -128,6 +130,10 @@ function props(overrides: Record<string, unknown> = {}) {
         purposeOptions: [],
         library: { difficulties: [], strategies: {} },
         filters: {},
+        bulkStatus: {
+            new: { from: 'new', to: 'in_progress', measures: 0, enrollment_ids: [] },
+            in_progress: { from: 'in_progress', to: 'concluded', measures: 0, enrollment_ids: [] },
+        },
         interventions: [baseIntervention()],
         prefill: null,
         backTo: { label: 'Voltar', href: '/interventions' },
@@ -181,6 +187,7 @@ beforeEach(() => {
     mocks.patch.mockClear();
     mocks.get.mockClear();
     mocks.del.mockClear();
+    mocks.post.mockClear();
     window.history.replaceState({}, '', '/classes/class-1/interventions');
     window.scrollTo = vi.fn();
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -233,6 +240,26 @@ describe('Intervenções — o aviso de alterações por submeter', () => {
 
         expect(confirmSpy).not.toHaveBeenCalled();
         expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('o lote «Concluir todas as medidas» não pede confirmação com o formulário sujo, e a ação individual também não', async () => {
+        const wrapper = render({
+            bulkStatus: {
+                new: { from: 'new', to: 'in_progress', measures: 0, enrollment_ids: [] },
+                in_progress: { from: 'in_progress', to: 'concluded', measures: 2, enrollment_ids: [1] },
+            },
+        });
+
+        await typeIntoForm(wrapper);
+        await wrapper.findAll('button').find((button) => button.text().includes('Concluir todas as medidas'))!.trigger('click');
+        await wrapper.find('[role="alertdialog"]').findAll('button').find((button) => button.text() === 'Concluir todas')!.trigger('click');
+
+        expect(mocks.post).toHaveBeenCalledWith('/classes/class-1/interventions/bulk-status', { from: 'in_progress' }, expect.anything());
+        expect(fireBefore({ method: 'post', url: '/classes/class-1/interventions/bulk-status' }).defaultPrevented).toBe(false);
+
+        await buttonByText(wrapper, 'Suspender').trigger('click');
+        expect(fireBefore({ method: 'patch', url: '/interventions/int-1' }).defaultPrevented).toBe(false);
+        expect(confirmSpy).not.toHaveBeenCalled();
     });
 
     it('os filtros (GET, mesmo caminho, preserveState) não pedem confirmação com o formulário sujo', async () => {

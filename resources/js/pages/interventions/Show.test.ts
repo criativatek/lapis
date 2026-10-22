@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
     forms: [] as MockForm[],
     get: vi.fn(),
     patch: vi.fn(),
+    post: vi.fn<(url: string, data: unknown, options?: { onFinish?: () => void }) => void>(),
+    on: vi.fn<(event: string, handler: (event: Event) => void) => () => void>(() => vi.fn()),
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -18,7 +20,7 @@ vi.mock('@inertiajs/vue3', () => ({
         inheritAttrs: false,
         setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()),
     }),
-    router: { get: mocks.get, patch: mocks.patch, delete: vi.fn(), on: vi.fn(() => vi.fn()) },
+    router: { get: mocks.get, patch: mocks.patch, post: mocks.post, delete: vi.fn(), on: mocks.on },
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({
             ...data,
@@ -136,6 +138,10 @@ function props(overrides: Record<string, unknown> = {}) {
         library: { difficulties: [], strategies: {} },
         filters: {},
         interventions: [],
+        bulkStatus: {
+            new: { from: 'new', to: 'in_progress', measures: 0, enrollment_ids: [] },
+            in_progress: { from: 'in_progress', to: 'concluded', measures: 0, enrollment_ids: [] },
+        },
         prefill: null,
         backTo: { label: 'Voltar', href: '/interventions' },
         ...overrides,
@@ -214,6 +220,8 @@ beforeEach(() => {
     mocks.forms.length = 0;
     mocks.get.mockClear();
     mocks.patch.mockClear();
+    mocks.post.mockReset();
+    mocks.on.mockClear();
 });
 
 afterEach(() => {
@@ -589,5 +597,114 @@ describe('Estratégias e Medidas — estados extremos', () => {
         const wrapper = render({ library: { difficulties: [], strategies: {} } });
 
         expect(wrapper.find('#motive').exists()).toBe(true);
+    });
+});
+
+describe('Estratégias e Medidas — estado em lote', () => {
+    const bulkStatus = {
+        new: { from: 'new', to: 'in_progress', measures: 3, enrollment_ids: [1, 2] },
+        in_progress: { from: 'in_progress', to: 'concluded', measures: 1, enrollment_ids: [2] },
+    };
+
+    function buttonNamed(wrapper: VueWrapper, text: string) {
+        return wrapper.findAll('button').find((button) => button.text().includes(text));
+    }
+
+    it('shows nothing when no measure is eligible for a bulk change', () => {
+        const wrapper = render();
+
+        expect(wrapper.text()).not.toContain('Marcar todas como Em curso');
+    });
+
+    it('offers both operations with the number of measures each would touch', () => {
+        const wrapper = render({ bulkStatus });
+
+        expect(buttonNamed(wrapper, 'Marcar todas como Em curso')?.text()).toContain('(3)');
+        expect(buttonNamed(wrapper, 'Concluir todas as medidas')?.text()).toContain('(1)');
+    });
+
+    it('asks before acting, showing the measures, the students and the scope, and posts nothing yet', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Marcar todas como Em curso')!.trigger('click');
+
+        const dialog = wrapper.find('[role="alertdialog"]');
+        expect(dialog.text()).toContain('3 medidas');
+        expect(dialog.text()).toContain('2 alunos');
+        expect(dialog.text()).toContain('Ana Martins');
+        expect(dialog.text()).toContain('Bruno Costa');
+        expect(dialog.text()).toContain('não apenas ao que os filtros mostram');
+        expect(mocks.post).not.toHaveBeenCalled();
+    });
+
+    it('cancelling closes the dialog without a request', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Concluir todas as medidas')!.trigger('click');
+        await buttonNamed(wrapper, 'Cancelar')!.trigger('click');
+
+        expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+        expect(mocks.post).not.toHaveBeenCalled();
+    });
+
+    it('says that concluding in bulk is administrative and not an efficacy assessment', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Concluir todas as medidas')!.trigger('click');
+
+        const dialog = wrapper.find('[role="alertdialog"]').text();
+        expect(dialog).toContain('não constitui uma avaliação da eficácia');
+        expect(dialog).toContain('não é criada nenhuma avaliação');
+    });
+
+    it('does not claim that on the dialog that starts measures', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Marcar todas como Em curso')!.trigger('click');
+
+        expect(wrapper.find('[role="alertdialog"]').text()).not.toContain('avaliação da eficácia');
+    });
+
+    it('posts only which operation was asked for, never counts or ids, once confirmed', async () => {
+        const wrapper = render({ bulkStatus });
+
+        await buttonNamed(wrapper, 'Concluir todas as medidas')!.trigger('click');
+        await wrapper.find('[role="alertdialog"]').findAll('button').find((button) => button.text() === 'Concluir todas')!.trigger('click');
+
+        expect(mocks.post).toHaveBeenCalledTimes(1);
+        expect(mocks.post.mock.calls[0][0]).toBe('/classes/class-1/interventions/bulk-status');
+        expect(mocks.post.mock.calls[0][1]).toEqual({ from: 'in_progress' });
+    });
+
+    it('does not trigger the unsaved-changes warning even when the form is dirty (real guard)', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const wrapper = render({ bulkStatus });
+        // Um formulário com alterações por submeter: o guarda real tem de o ver.
+        (mainForm() as { isDirty: boolean }).isDirty = true;
+
+        const beforeHandler = mocks.on.mock.calls.find(([event]) => event === 'before')![1];
+
+        // O pedido passa pelo guarda, tal como no router real.
+        mocks.post.mockImplementation((_url, _data, options) => {
+            const event = new Event('before', { cancelable: true });
+            beforeHandler(event);
+
+            expect(event.defaultPrevented).toBe(false);
+            options?.onFinish?.();
+        });
+
+        await buttonNamed(wrapper, 'Marcar todas como Em curso')!.trigger('click');
+        await wrapper.find('[role="alertdialog"]').findAll('button').find((button) => button.text() === 'Marcar como Em curso')!.trigger('click');
+
+        expect(mocks.post).toHaveBeenCalledTimes(1);
+        expect(confirmSpy).not.toHaveBeenCalled();
+
+        // Controlo: sem a isenção, o mesmo guarda dispara com o formulário sujo.
+        const outside = new Event('before', { cancelable: true });
+        beforeHandler(outside);
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+        expect(outside.defaultPrevented).toBe(true);
+
+        confirmSpy.mockRestore();
     });
 });
