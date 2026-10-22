@@ -35,6 +35,22 @@ type Block = {
     rows: { number: string; name: string; cells: Cell[] }[];
 };
 
+type Bar = { label: string; value_text: string; detail: string | null; width: string | null; negative: boolean };
+
+type Chart = {
+    title: string;
+    basis: string;
+    bars: Bar[];
+    missing_note: string | null;
+    unplaced_note: string | null;
+    caution: string | null;
+    empty_message: string;
+    n_label?: string;
+    axis?: string;
+    available?: boolean;
+    unavailable_message?: string | null;
+};
+
 type GridDocument = {
     title: string;
     kind_label: string;
@@ -59,8 +75,9 @@ type GridDocument = {
     };
     source: { is_historical: boolean; label: string; kept_at: string | null; author: string | null };
     state: { is_provisional: boolean; label: string };
-    options: { self_assessment: boolean; orientation: Orientation };
+    options: { self_assessment: boolean; orientation: Orientation; charts: boolean };
     self_assessment_available: boolean;
+    charts: { proposals: Chart; assigned: Chart | null; means: Chart } | null;
     orientation: 'portrait' | 'landscape';
     blocks: Block[];
     summary: { students: number; domains: number; blocks: number; decided: number; pending: number };
@@ -90,6 +107,7 @@ function query(options: GridDocument['options']): Record<string, string> {
     return {
         ...props.source.fixed_query,
         autoavaliacao: options.self_assessment ? '1' : '0',
+        graficos: options.charts ? '1' : '0',
         orientacao: orientationQuery[options.orientation],
     };
 }
@@ -110,6 +128,14 @@ function setSelfAssessment(checked: boolean | 'indeterminate'): void {
     visit({ ...props.document.options, self_assessment: checked });
 }
 
+function setCharts(checked: boolean | 'indeterminate'): void {
+    if (typeof checked !== 'boolean') {
+        return;
+    }
+
+    visit({ ...props.document.options, charts: checked });
+}
+
 function setOrientation(value: string | number | null): void {
     if (value !== 'auto' && value !== 'portrait' && value !== 'landscape') {
         return;
@@ -119,6 +145,13 @@ function setOrientation(value: string | number | null): void {
 }
 
 const isHistorical = computed(() => props.document.source.is_historical);
+
+// The charts, in the order they are drawn. The server counted every bar and measured every width.
+const chartList = computed(() => {
+    const charts = props.document.charts;
+
+    return charts ? [charts.proposals, charts.assigned, charts.means].filter((chart): chart is Chart => chart !== null) : [];
+});
 
 // A plain link, not an Inertia visit: a binary response cannot come back through
 // one. It carries the SAME options (and the moment) the preview is showing, so
@@ -165,6 +198,16 @@ function print(): void {
                     <span v-if="!document.self_assessment_available" class="text-xs text-muted-foreground">
                         (não há autoavaliação nesta pauta)
                     </span>
+                </label>
+
+                <!-- A summary of the very rows below: off unless asked for. -->
+                <label class="flex min-h-11 items-center gap-2 text-sm">
+                    <Checkbox
+                        id="sheet-doc-charts"
+                        :model-value="document.options.charts"
+                        @update:model-value="setCharts"
+                    />
+                    Gráficos
                 </label>
 
                 <label class="grid gap-1 text-sm">
@@ -328,6 +371,51 @@ function print(): void {
                     </div>
                 </section>
             </template>
+
+            <section v-if="document.charts" data-charts class="mt-8 space-y-6">
+                <article v-for="(chart, chartIndex) in chartList" :key="chartIndex" data-chart class="space-y-2 break-inside-avoid">
+                    <div>
+                        <h2 class="text-[0.95rem] leading-snug font-semibold">{{ chart.title }}</h2>
+                        <p class="text-xs text-muted-foreground">
+                            {{ chart.basis }}<template v-if="chart.n_label"> · {{ chart.n_label }}</template>
+                        </p>
+                    </div>
+
+                    <p v-if="chart.available === false" class="text-sm text-muted-foreground">{{ chart.unavailable_message }}</p>
+                    <p v-else-if="chart.bars.length === 0" class="text-sm text-muted-foreground">{{ chart.empty_message }}</p>
+
+                    <ul v-else class="space-y-1">
+                        <li
+                            v-for="(bar, barIndex) in chart.bars"
+                            :key="barIndex"
+                            class="grid grid-cols-[minmax(3.5rem,11rem)_1fr_minmax(5rem,auto)] items-center gap-x-3 text-xs"
+                        >
+                            <span class="font-medium break-words">{{ bar.label }}</span>
+                            <!-- The track and the bar: the server measured the bar on an absolute
+                                 axis. Backgrounds do not print unless told to, hence the
+                                 print-color-adjust. A bar with no width — or none to draw — is an
+                                 empty track, never a bar at zero (the PDF draws the same rule). -->
+                            <span class="h-3.5 border border-border print:[print-color-adjust:exact]">
+                                <span
+                                    v-if="bar.width !== null && Number(bar.width) > 0"
+                                    class="block h-full print:[print-color-adjust:exact]"
+                                    :class="bar.negative ? 'border-r border-foreground bg-foreground/30' : 'bg-foreground/75'"
+                                    :style="{ width: `${bar.width}%` }"
+                                ></span>
+                            </span>
+                            <span class="tabular-nums">
+                                {{ bar.value_text }}
+                                <span v-if="bar.detail" class="block text-[0.65rem] text-muted-foreground">{{ bar.detail }}</span>
+                            </span>
+                        </li>
+                    </ul>
+
+                    <p v-if="chart.axis" class="text-[0.7rem] text-muted-foreground">{{ chart.axis }}</p>
+                    <p v-if="chart.missing_note" class="text-[0.7rem] text-muted-foreground">{{ chart.missing_note }}</p>
+                    <p v-if="chart.unplaced_note" class="text-[0.7rem] text-muted-foreground">{{ chart.unplaced_note }}</p>
+                    <p v-if="chart.caution" class="text-[0.7rem] font-medium">{{ chart.caution }}</p>
+                </article>
+            </section>
 
             <div class="mt-8 space-y-1 border-t border-border pt-4 text-xs text-muted-foreground">
                 <p v-for="(note, noteIndex) in document.notes" :key="`n${noteIndex}`">{{ note }}</p>

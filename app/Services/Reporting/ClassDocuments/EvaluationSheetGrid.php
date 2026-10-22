@@ -172,6 +172,9 @@ final class EvaluationSheetGrid
             ],
             'options' => [...$options->toArray(), 'self_assessment' => $withSelfAssessment],
             'self_assessment_available' => $document->hasSelfAssessment(),
+            // The charts are summaries of the very rows above, counted from the
+            // same document: asked for, and drawn from nothing else.
+            'charts' => $options->charts ? (new EvaluationSheetGridCharts)->build($document) : null,
             'orientation' => $plan['orientation'],
             'blocks' => $blocks,
             'summary' => [

@@ -18,6 +18,9 @@ namespace App\Services\Reporting\ClassDocuments;
  *   autoavaliacao  what the students said of themselves — OFF by default: it is
  *                  supporting information, not part of the Pauta, and a sheet
  *                  handed round should not carry it unless it was asked for
+ *   graficos       the factual charts (levels proposed, levels assigned, class
+ *                  means) — OFF by default: a summary the teacher asks for, not
+ *                  part of the Pauta; drawn from the same rows as the table
  *   orientacao     horizontal (default) | vertical | auto — a Pauta is wide by
  *                  nature, so it is laid out landscape unless asked otherwise
  */
@@ -27,6 +30,7 @@ final readonly class EvaluationSheetGridOptions
         public bool $selfAssessment = false,
         /** @var 'auto'|'portrait'|'landscape' */
         public string $orientation = InstrumentGridLayout::LANDSCAPE,
+        public bool $charts = false,
     ) {}
 
     /**
@@ -36,6 +40,7 @@ final readonly class EvaluationSheetGridOptions
     {
         return new self(
             selfAssessment: self::flag($query['autoavaliacao'] ?? null),
+            charts: self::flag($query['graficos'] ?? null),
             orientation: match ($query['orientacao'] ?? null) {
                 'vertical' => InstrumentGridLayout::PORTRAIT,
                 'auto' => InstrumentGridLayout::AUTO,
@@ -45,13 +50,14 @@ final readonly class EvaluationSheetGridOptions
     }
 
     /**
-     * @return array{self_assessment: bool, orientation: string}
+     * @return array{self_assessment: bool, orientation: string, charts: bool}
      */
     public function toArray(): array
     {
         return [
             'self_assessment' => $this->selfAssessment,
             'orientation' => $this->orientation,
+            'charts' => $this->charts,
         ];
     }
 

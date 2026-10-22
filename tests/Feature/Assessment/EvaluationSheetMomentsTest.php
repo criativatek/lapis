@@ -8,6 +8,7 @@ use App\Models\EvaluationSheetExport;
 use App\Models\SchoolClass;
 use App\Models\SheetMomentKind;
 use App\Models\User;
+use App\Services\Assessment\CaptureEvaluationSheet;
 use App\Support\Hashing\CanonicalPayload;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -319,7 +320,7 @@ class EvaluationSheetMomentsTest extends TestCase
         $kept = $this->asTenant($teacher, fn (): EvaluationSheetExport => EvaluationSheetExport::query()->latest('id')->firstOrFail());
 
         $this->assertSame('interim', $kept->payload['moment']['kind']);
-        $this->assertSame(2, $kept->payload['version']);
+        $this->assertSame(CaptureEvaluationSheet::CURRENT_VERSION, $kept->payload['version']);
 
         // E o topo continua a ter QUATRO separadores: uma fotografia não é um
         // momento estrutural, e guardar mais nunca acrescenta separadores (§20).
