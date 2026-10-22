@@ -33,6 +33,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EvaluationSheetController;
 use App\Http\Controllers\EvaluationSheetCsvExportController;
 use App\Http\Controllers\EvaluationSheetDomainDecisionController;
+use App\Http\Controllers\EvaluationSheetGridDocumentController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
 use App\Http\Controllers\EvaluationSheetSnapshotExportController;
@@ -906,6 +907,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // um momento já guardado continua a ser da escola.
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}/csv', [EvaluationSheetSnapshotExportController::class, 'csv'])->name('evaluation-sheets.snapshot.csv');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}/xlsx', [EvaluationSheetSnapshotExportController::class, 'xlsx'])->name('evaluation-sheets.snapshot.xlsx');
+        // A GRELHA PARA IMPRIMIR DE UM MOMENTO GUARDADO — pré-visualização. Lida só
+        // do payload congelado, como o CSV e o Excel acima, e pelas mesmas portas.
+        Route::get('classes/{class}/pauta-avaliacao/historico/{export}/impressao', [EvaluationSheetGridDocumentController::class, 'snapshot'])->name('evaluation-sheets.snapshot.grid-document');
         Route::get('classes/{class}/pauta-avaliacao/historico/{export}', [EvaluationSheetHistoryController::class, 'snapshot'])->name('evaluation-sheets.snapshot');
 
         // O CSV e o Excel da pauta do período que está a ser visto. Declarados
@@ -916,6 +920,11 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // NÃO é «Preparar exportação para o Inovar» (§6): aquela produz a
         // grelha da escola a partir de uma pauta guardada e deixa registo no
         // histórico; esta é uma leitura de dados, aqui e agora, sem snapshot.
+        // A grelha factual da turma para imprimir, a partir da pauta de hoje:
+        // pré-visualização. Mesma razão para estar antes do wildcard — «impressao»
+        // não é um ulid de período. O período é obrigatório (a ligação sai sempre
+        // do período que está a ser visto) e o momento vai em `?momento=`.
+        Route::get('classes/{class}/pauta-avaliacao/impressao/{period}', [EvaluationSheetGridDocumentController::class, 'live'])->name('evaluation-sheets.grid-document');
         Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', [EvaluationSheetCsvExportController::class, 'csv'])->name('evaluation-sheets.csv');
         Route::get('classes/{class}/pauta-avaliacao/xlsx/{period?}', [EvaluationSheetCsvExportController::class, 'xlsx'])->name('evaluation-sheets.xlsx');
 

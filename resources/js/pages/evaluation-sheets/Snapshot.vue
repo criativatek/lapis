@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
+import { Printer } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheetTable.vue';
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
@@ -84,6 +85,15 @@ function formatDateTime(value: string): string {
                 class="text-sm text-muted-foreground hover:underline"
             >
                 ← Voltar ao histórico
+            </Link>
+            <!-- A GRELHA PARA IMPRIMIR DESTE MOMENTO, lida só do que ficou guardado. -->
+            <Link
+                v-if="snapshot"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico/${entry.ulid}/impressao`"
+                class="ml-4 inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted/40"
+            >
+                <Printer class="size-3.5" />
+                Grelha para imprimir
             </Link>
         </div>
 
