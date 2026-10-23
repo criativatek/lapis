@@ -25,7 +25,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.177.0] — 2026-10-22
+## [0.177.0] — 2026-10-23
 
 > **Fatia D — Análise Avançada da Avaliação (Pro).** Uma página nova, «Análise da
 > Avaliação», e uma secção nova na «Evolução do Aluno» («Ao longo do ano») leem a
@@ -90,7 +90,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   aluno «Ao longo do ano» (Pro)», cada um a ajuda da página que descreve.
 - **Validação final** (`FatiaDValidationTest`): paridade do mesmo número entre o
   ecrã, o documento, a Estatística e as exportações da Pauta (CSV de hoje e de um
-  momento guardado); matriz de acesso (todas as superfícies Pro × Base, suspensa,
+  momento guardado); **o Base responde o que respondia antes da Fatia D** (`BaseSurfacesUnchangedTest`: 22 superfícies — Resultados, Estatística, Quadro Síntese, Pauta, Histórico, pauta guardada, grelha documental e o texto do seu PDF, CSV de hoje e de um momento guardado, Evolução do Aluno, painel — comparadas com as respostas que o código da 0.175.0 deu sobre os mesmos dados); matriz de acesso (todas as superfícies Pro × Base, suspensa,
   módulo desligado, outra organização, colega, convidado); abrir tudo o que é Pro
   não escreve um byte nos dados; o Base continua a abrir, imprimir e exportar o que
   sempre abriu, sem rasto da camada Pro; dados históricos (fotografias sem escala e
@@ -111,6 +111,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   números da Estatística, de Resultados, da Pauta e das exportações não mudam.
 - A fixture de caracterização do Pro da página do aluno acrescenta `yearReading.*`
   (sem essa chave a página é igual à anterior); as do Base não mudam.
+
+### Corrigido
+
+- **Terminar o acesso técnico numa conta em encerramento.** `EnsureAccountIsOperational`
+  recusa todo o pedido de escrita de uma conta em encerramento fora de uma lista
+  explícita de rotas, e «Terminar acesso» (`POST impersonate.stop`) não estava nela:
+  o administrador ficava preso na conta impersonada com um 403. A rota só repõe a
+  sessão do administrador e regista o evento de auditoria, por isso passa a constar da
+  lista. (PR #104, integrada antes desta versão sem entrada própria; fica registada
+  aqui, no primeiro release que a leva.)
 
 ### Limites conhecidos
 
