@@ -1,6 +1,6 @@
 # CLAUDE.md — Lapispro
 
-*Mais simples. Mais tempo.*
+*A tecnologia apoia. O professor transforma.*
 
 Modular web app for Portuguese basic/secondary schoolteachers: assessment profiles, classes, instruments, grading grids, deterministic classification proposals, evidence, reports.
 

@@ -20,7 +20,10 @@ import { dashboard } from '@/routes';
 // is allowed to see. A footer section (Configurações) is styled like any other.
 const page = usePage();
 const nav = computed(() => page.props.nav);
-const footerSection = computed(() => ({ label: null, items: nav.value.footer }));
+const footerSection = computed(() => ({
+    label: null,
+    items: nav.value.footer,
+}));
 </script>
 
 <template>
@@ -28,7 +31,15 @@ const footerSection = computed(() => ({ label: null, items: nav.value.footer }))
         <SidebarHeader>
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" as-child>
+                    <!-- h-auto: the slogan wraps onto two lines, so the
+                         header grows past the fixed 3rem of size="lg"
+                         instead of overflowing it. Collapsed to icons the
+                         button is size-8 and the text stays hidden. -->
+                    <SidebarMenuButton
+                        size="lg"
+                        class="h-auto min-h-12"
+                        as-child
+                    >
                         <Link :href="dashboard()">
                             <AppLogo />
                         </Link>
