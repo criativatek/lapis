@@ -142,4 +142,25 @@ describe('PrintableDocument', () => {
         expect(pageStyles()).toHaveLength(1);
         expect(pageStyles()[0].textContent).toContain('size: A4 landscape; margin: 10mm;');
     });
+
+    it('asks for A3 only when told to, and keeps the orientation and margin', () => {
+        mountDocument({ paper: 'A3', orientation: 'landscape', compact: true });
+
+        expect(pageStyles()[0].textContent).toBe('@page { size: A3 landscape; margin: 10mm; }');
+    });
+
+    it('rewrites the paper when it changes without remounting', async () => {
+        const wrapper = mountDocument({ orientation: 'landscape' });
+
+        expect(pageStyles()[0].textContent).toContain('size: A4 landscape');
+
+        await wrapper.setProps({ paper: 'A3' });
+
+        expect(pageStyles()).toHaveLength(1);
+        expect(pageStyles()[0].textContent).toContain('size: A3 landscape');
+
+        await wrapper.setProps({ paper: 'A4' });
+
+        expect(pageStyles()[0].textContent).toContain('size: A4 landscape');
+    });
 });

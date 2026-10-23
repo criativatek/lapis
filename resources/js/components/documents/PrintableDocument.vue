@@ -40,6 +40,11 @@ import { onBeforeUnmount, onMounted, watch } from 'vue';
 const props = withDefaults(
     defineProps<{
         orientation?: 'portrait' | 'landscape';
+        /**
+         * O formato do papel. A4 por omissão, como sempre foi; o A3 existe para
+         * grelhas largas (o Quadro Síntese) que, num A4, ficariam ilegíveis.
+         */
+        paper?: 'A4' | 'A3';
         /** Margem de 10 mm (grelhas largas) em vez de 18 mm 16 mm. */
         compact?: boolean;
         /** Selo no canto superior direito de CADA folha (caixa de margem do `@page`). */
@@ -49,6 +54,7 @@ const props = withDefaults(
     }>(),
     {
         orientation: 'portrait',
+        paper: 'A4',
         compact: false,
         stamp: null,
         pageNumbers: false,
@@ -78,7 +84,7 @@ function pageRule(): string {
         boxes.push('@bottom-right { content: "Página " counter(page) " / " counter(pages); font: 8pt sans-serif; color: #444; }');
     }
 
-    return `@page { size: A4 ${props.orientation}; margin: ${margin};${boxes.map((box) => ` ${box}`).join('')} }`;
+    return `@page { size: ${props.paper} ${props.orientation}; margin: ${margin};${boxes.map((box) => ` ${box}`).join('')} }`;
 }
 
 onMounted(() => {
@@ -93,7 +99,7 @@ onMounted(() => {
 });
 
 watch(
-    () => [props.orientation, props.compact, props.stamp, props.pageNumbers],
+    () => [props.orientation, props.paper, props.compact, props.stamp, props.pageNumbers],
     () => {
         if (pageStyle) {
             pageStyle.textContent = pageRule();

@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { CircleAlert, FileSpreadsheet, Lock } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { CircleAlert, FileSpreadsheet, Lock, Printer } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
+import ReportLetterhead from '@/components/reports/ReportLetterhead.vue';
 import AccumulatedBreakdownPanel from '@/components/results/AccumulatedBreakdownPanel.vue';
 import ClassSynopsisTable from '@/components/results/ClassSynopsisTable.vue';
 import FinalDomainDecisionDialog from '@/components/results/FinalDomainDecisionDialog.vue';
 import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
+import { illegibleScaleNotice, momentsColumnCount, printScale, recommendedPaper, usableWidthPx } from '@/lib/quadroPrint';
+import type { Paper } from '@/lib/quadroPrint';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import {
     ACCUMULATED,
@@ -101,6 +105,18 @@ const props = defineProps<{
     canViewStudentProgress: boolean;
     /** Se este professor pode concluir o ano num domínio — apresentação (§8.2). */
     canDecideDomains: boolean;
+    /** O timbre e a emissão do papel — só para imprimir; nada daqui entra em cálculo. */
+    printDocument: {
+        identity: {
+            name: string;
+            header_lines: string[];
+            footer_note: string | null;
+            is_configured: boolean;
+            logo_url: string | null;
+        };
+        issued_at: string;
+        issued_label: string;
+    };
     progression: {
         // `closes_the_year` vem do SERVIDOR — `ContinuousAssessment::finalUnitOf()`
         // — e nunca de «a última do array»: a síntese da unidade que fecha o ano
@@ -169,6 +185,85 @@ const showQuantitative = ref(true);
  * Ligado por omissão: quem já usava o Quadro Síntese não perde nada ao abrir.
  */
 const showAccumulated = ref(true);
+
+/**
+ * ------------------------------------------------------------------- imprimir
+ *
+ * IMPRIME-SE ESTA PRÓPRIA PÁGINA, e não uma segunda composição. A vista, os
+ * quantitativos e o acumulado já vivem aqui; o que o professor vê é o que sai no
+ * papel, sem tocar em cálculo nenhum. «PDF» é o «Guardar como PDF» do diálogo de
+ * impressão do browser, como nos outros documentos «imprimir agora».
+ *
+ * PAPEL: sempre horizontal. O A3 é o recomendado quando a grelha é larga (regra
+ * em `recommendedPaper`), e o professor pode forçar um ou outro.
+ *
+ * COLUNAS NUNCA CORTADAS: o `zoom` do papel é calculado a partir da largura real
+ * da tabela no momento de imprimir (`beforeprint`, que também apanha o Ctrl+P) e
+ * limpa-se no `afterprint`. Só afeta o papel — a variável CSS só é lida dentro de
+ * `@media print`.
+ */
+const paperChoice = ref<'auto' | Paper>('auto');
+
+const recommendedPaperSize = computed<Paper>(() =>
+    recommendedPaper(view.value, momentsColumnCount(props.synopsis.moments.length, showQuantitative.value)),
+);
+
+const paper = computed<Paper>(() => (paperChoice.value === 'auto' ? recommendedPaperSize.value : paperChoice.value));
+
+const viewLabel = computed(() => (view.value === 'moments' ? 'Ao longo do ano' : 'Por domínio'));
+
+const printDocumentRef = ref<{ $el: HTMLElement } | null>(null);
+const printNotice = ref<string | null>(null);
+
+/** A tabela que se imprime: a dos momentos (dentro do `.synopsis-grid`) ou a dos domínios. */
+const PRINT_TABLE = '.synopsis-grid > table, table[data-quadro-table]';
+
+function applyPrintScale(): void {
+    const root = printDocumentRef.value?.$el;
+    const table = root?.querySelector<HTMLElement>(PRINT_TABLE);
+
+    if (!root || !table) {
+        return;
+    }
+
+    // A largura NATURAL: a tabela tem `min-w-full`, e no ecrã o contentor pode ser
+    // mais largo do que o conteúdo — medi-la assim encolhia o papel sem razão.
+    const previousMinWidth = table.style.minWidth;
+    table.style.minWidth = '0';
+    const naturalWidth = table.offsetWidth;
+    table.style.minWidth = previousMinWidth;
+
+    const { scale, legible } = printScale(naturalWidth, usableWidthPx(paper.value));
+
+    root.style.setProperty('--quadro-print-zoom', String(scale));
+    printNotice.value = legible ? null : illegibleScaleNotice(scale);
+}
+
+function clearPrintScale(): void {
+    printDocumentRef.value?.$el.style.removeProperty('--quadro-print-zoom');
+}
+
+async function printSummary(): Promise<void> {
+    // O `@page` do `PrintableDocument` reescreve-se num `watch`; deixa-o correr
+    // antes de abrir o diálogo, para o papel escolhido ser o que se imprime.
+    await nextTick();
+    window.print();
+}
+
+onMounted(() => {
+    window.addEventListener('beforeprint', applyPrintScale);
+    window.addEventListener('afterprint', clearPrintScale);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeprint', applyPrintScale);
+    window.removeEventListener('afterprint', clearPrintScale);
+});
+
+// Uma mudança de papel ou de vista invalida o aviso do último pedido.
+watch([paper, view, showQuantitative, showAccumulated], () => {
+    printNotice.value = null;
+});
 
 /**
  * ---------------------------------------------------- de onde vem aquele número
@@ -572,8 +667,36 @@ function proposalText(proposal: Proposal | undefined): string {
 <template>
     <Head :title="`Quadro Síntese — ${schoolClass.label}`" />
 
-    <div class="space-y-4 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
+    <PrintableDocument
+        ref="printDocumentRef"
+        orientation="landscape"
+        :paper="paper"
+        compact
+        page-numbers
+        class="quadro-print space-y-4 p-4"
+    >
+        <!-- O CABEÇALHO DO PAPEL. No ecrã o professor já tem o título e as
+             ligações; no papel, o documento tem de se identificar sozinho: a
+             escola, a turma, o ano letivo, a vista escolhida e quando foi
+             emitido. As opções (quantitativos, acumulado) vão por extenso porque
+             o papel não tem caixas de seleção. -->
+        <header class="hidden space-y-2 print:block" data-test="print-header">
+            <div class="print:[&>p]:hidden">
+                <ReportLetterhead :identity="printDocument.identity" />
+            </div>
+            <p class="text-xs font-medium tracking-wide uppercase">Quadro Síntese</p>
+            <h1 class="font-serif text-xl leading-tight">{{ schoolClass.label }} — {{ schoolClass.subject }}</h1>
+            <p class="text-xs">
+                {{ schoolClass.academic_year }} · Vista: {{ viewLabel }} ·
+                {{ showQuantitative ? 'Com valores quantitativos' : 'Sem valores quantitativos'
+                }}<template v-if="view === 'domains'">
+                    · {{ showAccumulated ? 'Com desempenho acumulado' : 'Sem desempenho acumulado' }}</template
+                >
+                · {{ printDocument.issued_label }}
+            </p>
+        </header>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div>
                 <Heading :title="`Quadro Síntese — ${schoolClass.label}`" :description="schoolClass.subject" />
                 <div class="flex gap-3 text-sm">
@@ -623,7 +746,7 @@ function proposalText(proposal: Proposal | undefined): string {
             <!-- DUAS LEITURAS DO MESMO ANO. «Ao longo do ano» segue os momentos
                  — o que aconteceu e quando; «Por domínio» segue os números, e é
                  a leitura que esta página sempre teve. -->
-            <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
                 <div class="flex overflow-hidden rounded-md border border-border" role="tablist">
                     <button
                         type="button"
@@ -679,8 +802,42 @@ function proposalText(proposal: Proposal | undefined): string {
                         <FileSpreadsheet class="size-3.5" />
                         Exportar Excel
                     </a>
+                    <!-- IMPRIMIR / PDF imprime a própria página, com o papel ao
+                         lado. Automático = o recomendado para a largura da
+                         grelha (A3 quando é larga). Em «PDF», escolha «Guardar
+                         como PDF» no diálogo do browser. -->
+                    <label class="flex items-center gap-1.5 text-sm">
+                        <span class="text-muted-foreground">Papel</span>
+                        <select
+                            v-model="paperChoice"
+                            data-test="print-paper"
+                            class="rounded-md border border-border bg-background px-2 py-1 text-sm"
+                        >
+                            <option value="auto">Automático ({{ recommendedPaperSize }})</option>
+                            <option value="A4">A4 horizontal</option>
+                            <option value="A3">A3 horizontal</option>
+                        </select>
+                    </label>
+                    <button
+                        type="button"
+                        data-test="print-button"
+                        class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                        title="Imprime o quadro tal como está no ecrã. Para um PDF, escolha «Guardar como PDF» no diálogo de impressão."
+                        @click="printSummary"
+                    >
+                        <Printer class="size-3.5" />
+                        Imprimir / PDF
+                    </button>
                 </div>
             </div>
+
+            <p
+                v-if="printNotice"
+                class="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 print:hidden"
+                data-test="print-notice"
+            >
+                {{ printNotice }}
+            </p>
 
             <ClassSynopsisTable
                 v-if="view === 'moments'"
@@ -699,7 +856,7 @@ function proposalText(proposal: Proposal | undefined): string {
             v-if="schoolClass.has_profile && students.length > 0 && view === 'domains'"
             class="max-h-[75vh] overflow-auto rounded-lg border border-border"
         >
-            <table class="w-max min-w-full text-sm">
+            <table class="w-max min-w-full text-sm" data-quadro-table>
                 <thead class="text-left">
                     <!-- OS QUATRO GRANDES BLOCOS, e é esta a linha que a grelha
                          existe para se deixar ler: o que aconteceu em cada
@@ -1405,31 +1562,102 @@ function proposalText(proposal: Proposal | undefined): string {
             <p>
                 <strong>{{ ACCUMULATED_LONG }}</strong> ({{ ACCUMULATED }}) — leitura complementar.
                 {{ ACCUMULATED_EXPLANATION }} {{ ACCUMULATED_NOT_AN_AVERAGE }}
-                <template v-if="view === 'domains'">Clique num valor acumulado para ver a conta que o produziu.</template>
+                <span v-if="view === 'domains'" class="print:hidden">Clique num valor acumulado para ver a conta que o produziu.</span>
             </p>
         </div>
 
         <!-- DE ONDE VEM AQUELE NÚMERO. Fora da tabela, porque é um painel sobre
              ela — e montado uma vez só, porque a pergunta faz-se sobre uma
              célula de cada vez. -->
-        <AccumulatedBreakdownPanel
-            :url="breakdownUrl"
-            :student-name="breakdownStudent"
-            :has-declared-period-weights="synopsis.continuous.weights_declared"
-            @close="breakdownUrl = null"
-        />
+        <div class="print:hidden">
+            <AccumulatedBreakdownPanel
+                :url="breakdownUrl"
+                :student-name="breakdownStudent"
+                :has-declared-period-weights="synopsis.continuous.weights_declared"
+                @close="breakdownUrl = null"
+            />
+        </div>
 
         <!-- A CONCLUSÃO DO ANO NUM DOMÍNIO, decidida. Montado uma vez só: a
              decisão toma-se sobre uma célula de cada vez. -->
-        <FinalDomainDecisionDialog
-            :student-name="decidingStudent?.name ?? null"
-            :domain-name="decidingDomain?.name ?? null"
-            :reading="decidingReading"
-            :decision="decision"
-            :saving="decisionSaving"
-            :error="decisionError"
-            @close="closeFinalDecision"
-            @save="saveFinalDecision"
-        />
-    </div>
+        <div class="print:hidden">
+            <FinalDomainDecisionDialog
+                :student-name="decidingStudent?.name ?? null"
+                :domain-name="decidingDomain?.name ?? null"
+                :reading="decidingReading"
+                :decision="decision"
+                :saving="decisionSaving"
+                :error="decisionError"
+                @close="closeFinalDecision"
+                @save="saveFinalDecision"
+            />
+        </div>
+
+        <!-- O RODAPÉ DO PAPEL: a nota da escola e a data de emissão. -->
+        <footer class="hidden border-t border-border pt-2 text-[11px] print:block" data-test="print-footer">
+            <p v-if="printDocument.identity.footer_note">{{ printDocument.identity.footer_note }}</p>
+            <p>{{ printDocument.issued_label }}</p>
+        </footer>
+    </PrintableDocument>
 </template>
+
+<style>
+/* O QUE É PRÓPRIO DO QUADRO NO PAPEL. O isolamento da folha, o `@page` (horizontal,
+   A4 ou A3, margem de 10 mm), as linhas que não se partem e o cabeçalho repetido
+   são do PrintableDocument; aqui fica o que a grelha larga precisa. Tudo preso a
+   `.quadro-print`, para o `<style>` — que fica carregado na SPA depois de a página
+   sair — não tocar noutros documentos. */
+@media print {
+    /* Controlos só-ecrã que o Quadro e a tabela dos momentos marcam com
+       `print-hide` (a classe só estava definida na página da Pauta). */
+    .quadro-print .print-hide {
+        display: none !important;
+    }
+    /* A grelha deixa de ser uma janela com rolagem: no papel é a tabela inteira,
+       sem cortar e sem fixar a altura. */
+    .quadro-print .overflow-auto {
+        overflow: visible !important;
+        max-height: none !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+    }
+    /* Nada de «sticky» no papel: o cabeçalho repete-se pela paginação
+       (`thead` é `table-header-group`) e a coluna do aluno é a primeira de cada
+       linha, que é onde o nome tem de estar em todas as páginas. */
+    .quadro-print th,
+    .quadro-print td,
+    .quadro-print thead tr {
+        position: static !important;
+    }
+    /* A ESCALA que faz a tabela caber na largura útil da folha. A variável é posta
+       pela página em `beforeprint` e limpa em `afterprint`; só a tabela do Quadro
+       leva `zoom` (a tabela dos elementos, aninhada, herdá-lo-ia duas vezes). */
+    .quadro-print .synopsis-grid > table,
+    .quadro-print table[data-quadro-table] {
+        zoom: var(--quadro-print-zoom, 1);
+        min-width: 0 !important;
+    }
+    /* O NOME DE UM MOMENTO É UM <button> no ecrã (abre o detalhe por domínio), e o
+       Chromium não desenha o conteúdo de um botão na repetição do cabeçalho nas
+       folhas seguintes: o PDF perdia os nomes dos momentos a partir da 2.ª folha.
+       No papel é só texto. */
+    .quadro-print thead button {
+        display: contents !important;
+    }
+    /* Sem as setas de abrir/fechar (não há nada a clicar); a máquina fotográfica
+       que marca o momento intercalar fica, em linha com o nome. */
+    .quadro-print thead button svg[class*='chevron'] {
+        display: none !important;
+    }
+    .quadro-print thead button svg {
+        display: inline-block;
+        vertical-align: -1px;
+    }
+    /* Os tons de fundo ficam, quando o browser os imprime; o que identifica a
+       célula é sempre o texto (código, nível, seta), nunca só a cor (§25). */
+    .quadro-print table {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
+</style>
