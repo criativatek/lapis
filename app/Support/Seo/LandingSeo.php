@@ -123,7 +123,7 @@ class LandingSeo
             'Aulas e sumários',
             'Planeamento e sequências de aulas',
             'Agenda do ano letivo',
-            'Análises avançadas e tendências',
+            'Análise da Avaliação: comparação de períodos e momentos, tendências e documento da análise',
             'IA pedagógica de apoio à decisão do professor',
             'Gestão pedagógica para escolas e agrupamentos',
         ];
