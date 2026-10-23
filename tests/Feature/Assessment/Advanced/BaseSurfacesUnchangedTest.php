@@ -35,7 +35,9 @@ use Tests\TestCase;
  * QUAL superfície mudou.
  *
  * NORMALIZADO apenas o que muda sem o conteúdo mudar: ULIDs, ids numéricos (a sequência da BD não é a do
- * teste anterior), datas/horas e o número de versão da aplicação.
+ * teste anterior) — também dentro de uma chave de momento («p1-final») —, datas/horas, o número de versão da
+ * aplicação e a ORDEM DAS CHAVES de um objeto (a coluna JSON do MySQL guarda-as ordenadas; o SQLite como foram
+ * escritas). A ordem de uma lista conta: essa é conteúdo.
  */
 class BaseSurfacesUnchangedTest extends TestCase
 {
@@ -92,6 +94,12 @@ class BaseSurfacesUnchangedTest extends TestCase
                 $value = array_values($value);
             }
 
+            // An object has no order: the JSON column of MySQL keeps its keys sorted and SQLite's keeps them as written, and
+            // neither is the content. A list keeps its order — that one IS the content.
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+
             $normalised = [];
 
             foreach ($value as $key => $item) {
@@ -113,6 +121,7 @@ class BaseSurfacesUnchangedTest extends TestCase
         $version = preg_quote((string) config('app.version'), '/');
 
         $text = preg_replace('/\b[0-9a-z]{26}\b/', 'ULID', $text) ?? $text;
+        $text = preg_replace('/\bp\d+-(interim|final)\b/', 'pID-$1', $text) ?? $text;
         $text = preg_replace(['/\bperiod-\d+\b/', '/([?&](?:enrollment_id|enrollment|period_id|period|student_id|student|class_id|class)=)\d+/'], ['period-ID', '${1}ID'], $text) ?? $text;
         $text = preg_replace('/\d{4}-\d\d-\d\d[T ][\d:.]+(Z|[+-]\d\d:?\d\d)?/', 'DATETIME', $text) ?? $text;
 
