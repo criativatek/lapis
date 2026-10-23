@@ -5,13 +5,17 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import seeder from '../../../../database/seeders/EntitlementsSeeder.php?raw';
 import { featureFor } from '../marketing/features';
 import {
+    ANALYSIS_ROWS,
     availability,
+    BOUNDARIES,
     COMPARE_ROWS,
     FOUNDER,
     FOUNDER_PRICE,
     PLAN_COPY,
+    PRO_HIGHLIGHTS,
     PRO_PRICE,
 } from './commercial';
+import aiBand from './LandingAi.vue?raw';
 import LandingCompare from './LandingCompare.vue';
 import LandingFaq from './LandingFaq.vue';
 import LandingPricing from './LandingPricing.vue';
@@ -552,6 +556,226 @@ describe('the offer against the composition', () => {
     });
 });
 
+/**
+ * A ANÁLISE DA AVALIAÇÃO (0.177.0), NA APRESENTAÇÃO COMERCIAL.
+ *
+ * Cinco linhas novas na tabela, um cartão Pro que as nomeia e uma resposta na
+ * FAQ. O que se guarda aqui: cada linha é Pro porque o SEEDER a põe no Pro
+ * (`advanced_analytics`), nunca porque o texto o diz; o preço e as três frases
+ * não se mexeram; e nada do que descreve a Análise promete IA, previsão ou
+ * diagnóstico — a Análise descreve notas e momentos, e é determinística.
+ */
+describe('the Análise da Avaliação in the commercial copy', () => {
+    const labels = ANALYSIS_ROWS.map((row) => row.label);
+
+    it('adds five rows right after «Estado 360º», in the order the section tells them', () => {
+        expect(labels).toEqual([
+            'Comparação da turma entre períodos ou momentos guardados',
+            'Evolução de cada aluno «ao longo do ano»',
+            'Pontos fortes e resultados a observar da turma',
+            'Tendências e resultados abaixo do nível positivo persistentes',
+            'Documento da análise (impressão e PDF)',
+        ]);
+
+        const all = COMPARE_ROWS.map((row) => row.label);
+        const at = all.indexOf('Estado 360º');
+
+        expect(at).toBeGreaterThan(-1);
+        expect(all.slice(at + 1, at + 1 + labels.length)).toEqual(labels);
+    });
+
+    it('derives all five from the seeder: Pro and Institucional yes, Base no', () => {
+        const [base, pro, institutional] = plans();
+
+        for (const row of ANALYSIS_ROWS) {
+            expect(row.modules).toEqual(['advanced_analytics']);
+            expect(availability(row, base.key, base.moduleKeys)).toBe('absent');
+            expect(availability(row, pro.key, pro.moduleKeys)).toBe('included');
+            expect(
+                availability(row, institutional.key, institutional.moduleKeys),
+            ).toBe('included');
+        }
+
+        expect(BASE_MODULES).not.toContain('advanced_analytics');
+        expect(PRO_MODULES).toContain('advanced_analytics');
+    });
+
+    it('renders them ticked for Pro and Institucional and for nobody in Base', () => {
+        const wrapper = mount(LandingCompare, { props: { plans: plans() } });
+
+        for (const label of labels) {
+            const row = wrapper
+                .findAll('tbody tr')
+                .find((tr) => tr.find('th').text() === label)!;
+
+            expect(row, label).toBeDefined();
+
+            const marks = row.findAll('td').map((td) => td.text());
+
+            expect(marks).toEqual(['não incluído', 'incluído', 'incluído']);
+        }
+
+        expect(wrapper.findAll('tbody tr')).toHaveLength(COMPARE_ROWS.length);
+    });
+
+    it('keeps the old rows honest: «Estatística da turma com evolução» replaces «tendências automáticas»', () => {
+        const all = COMPARE_ROWS.map((row) => row.label);
+
+        expect(all).toContain('Estatística da turma com evolução');
+        expect(all).not.toContain('Tendências e análises automáticas');
+        expect(all).toContain('Estado 360º');
+    });
+
+    it('says under the table where the Análise stops', () => {
+        const text = squish(
+            mount(LandingCompare, { props: { plans: plans() } }).text(),
+        );
+
+        expect(text).toContain(PRO_HIGHLIGHTS.tableNote);
+        expect(PRO_HIGHLIGHTS.tableNote).toBe(
+            'A Análise da Avaliação descreve notas e momentos. Não indica causas, não faz previsões e não propõe medidas.',
+        );
+    });
+
+    it('names the five things on the Pro card, and no longer the vague «análises avançadas»', () => {
+        const features = PLAN_COPY.pro.features;
+
+        for (const sentence of [
+            'Análise da Avaliação: compare períodos e momentos guardados',
+            'Evolução de cada aluno ao longo do ano',
+            'Pontos fortes e resultados a observar da turma',
+            'Tendências e resultados abaixo do nível positivo persistentes',
+            'Documento da análise para imprimir ou guardar em PDF',
+        ]) {
+            expect(features).toContain(sentence);
+        }
+
+        expect(features).not.toContain(
+            'Análises avançadas, tendências e regularidade',
+        );
+    });
+
+    /**
+     * «Inteligentes» sugeria IA onde o código faz cálculo determinístico
+     * (`BuildStudentInsights`, `BuildStudentFactualAlerts`), e «eficácia»
+     * sugeria causa onde o código diz expressamente que não a afirma. Ficam
+     * proibidas de voltar.
+     */
+    it('does not call a deterministic calculation «inteligente», nor claim the efficacy of a strategy', () => {
+        const pro = PLAN_COPY.pro.features.join(' ');
+
+        expect(pro).not.toMatch(/inteligent/i);
+        expect(pro).not.toMatch(/eficácia/i);
+        expect(pro).toContain(
+            'Evolução do aluno após o início de cada estratégia',
+        );
+    });
+
+    it('leaves the prices, the conditions and the three sentences untouched', () => {
+        expect(PRO_PRICE).toBe('44,90 €');
+        expect(FOUNDER_PRICE).toBe('29,90 €');
+        expect(PLAN_COPY.base.price).toBe('0 €');
+        expect(PLAN_COPY.pro.priceFootnote).toBe(
+            'Subscrição anual. Não existe pagamento mensal.',
+        );
+        expect(BOUNDARIES.map((b) => b.sentence)).toEqual([
+            'Base regista e mostra.',
+            'Pro cruza, interpreta e ajuda a agir.',
+            'Institucional coordena, partilha e agrega.',
+        ]);
+        expect(PLAN_COPY.base.boundary).toBe('Base regista e mostra.');
+        expect(PLAN_COPY.pro.boundary).toBe(
+            'Pro cruza, interpreta e ajuda a agir.',
+        );
+    });
+
+    /**
+     * «DOCUMENTAR» NO BASE só é verdade porque as pautas, o quadro síntese e
+     * os relatórios essenciais estão em módulos do Base. Se algum saísse do
+     * seeder, a frase deixava de poder dizer-se.
+     */
+    it('only says the Base documents what the Base modules carry', () => {
+        expect(PLAN_COPY.base.headline).toMatch(/documentar/);
+        expect(BASE_MODULES).toContain('results');
+        expect(BASE_MODULES).toContain('reports');
+        expect(
+            PLAN_COPY.base.features.some((f) =>
+                /Pautas e quadro síntese/.test(f),
+            ),
+        ).toBe(true);
+        expect(PLAN_COPY.base.features).toContain('Relatórios essenciais');
+        // E o Pro não toma o Base por seu: o que o Pro acrescenta é comparar,
+        // analisar e compreender.
+        expect(PLAN_COPY.pro.body).toMatch(/comparar, analisar e compreender/);
+    });
+
+    it('answers «O que acrescenta o Pro na avaliação?» with and without the founder condition', () => {
+        for (const founderOpen of [true, false]) {
+            const text = squish(
+                mount(LandingFaq, { props: { founderOpen } }).text(),
+            );
+
+            expect(text).toContain('O que acrescenta o Pro na avaliação?');
+            expect(text).toContain(
+                'Acrescenta a leitura ao longo do tempo: comparar dois períodos ou momentos guardados',
+            );
+            expect(text).toContain(
+                'Nada disto atribui ou altera classificações.',
+            );
+            // As respostas de preço não se mexeram.
+            expect(text).toContain('44,90 € / ano, em subscrição anual');
+            expect(text.includes('Membro Fundador')).toBe(founderOpen);
+        }
+    });
+
+    /**
+     * NADA DE IA, PREVISÃO OU DIAGNÓSTICO À VOLTA DA ANÁLISE. O texto que a
+     * descreve é lido por professores que acabam de ouvir falar de «IA que
+     * deteta alunos em risco»; a Análise não é isso, e a única frase que
+     * pode dizê-lo é a que o nega.
+     */
+    it('never describes the Análise with AI, prediction or diagnosis words', () => {
+        const forbidden =
+            /\bIA\b|inteligent|deteta|detecta|prevê|prever|risco|insucesso|diagnóstic/i;
+
+        const faq = squish(
+            mount(LandingFaq, { props: { founderOpen: true } }).text(),
+        );
+
+        const described = [
+            PRO_HIGHLIGHTS.title,
+            PRO_HIGHLIGHTS.lead,
+            PRO_HIGHLIGHTS.shortLead,
+            ...PRO_HIGHLIGHTS.blocks.flatMap((block) => [
+                block.title,
+                block.sentence,
+                block.evidence,
+            ]),
+            ...labels,
+            ...PLAN_COPY.pro.features.slice(3, 8),
+            faq
+                .split('O que acrescenta o Pro na avaliação?')[1]
+                .split('Existe uma solução')[0],
+        ];
+
+        for (const text of described) {
+            expect(text, text).not.toMatch(forbidden);
+        }
+
+        // As frases que o negam são as únicas autorizadas a nomeá-lo.
+        expect(PRO_HIGHLIGHTS.honesty).toContain('Não é um diagnóstico');
+        expect(PRO_HIGHLIGHTS.honesty).toContain('não faz previsões');
+        expect(PRO_HIGHLIGHTS.honesty).toContain('não sugere medidas');
+    });
+
+    it('does not put the Análise under the AI band', () => {
+        const ai = aiBand;
+
+        expect(ai).not.toMatch(/Análise da Avaliação/);
+        expect(ai).not.toMatch(/abaixo do nível positivo/);
+    });
+});
+
 function voucher() {
     return mount(LandingVoucher);
 }
@@ -638,10 +862,7 @@ describe('the voucher field', () => {
     });
 
     it('admits a network failure instead of inventing an answer', async () => {
-        vi.stubGlobal(
-            'fetch',
-            vi.fn().mockRejectedValue(new Error('offline')),
-        );
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
 
         const wrapper = voucher();
         await wrapper.find('input').setValue('LPRO-1234-5678');

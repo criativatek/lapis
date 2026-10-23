@@ -7,7 +7,10 @@ vi.mock('@inertiajs/vue3', async () => {
 
     return {
         Head: defineComponent({
-            setup: (_, { slots }) => () => h('div', slots.default?.()),
+            setup:
+                (_, { slots }) =>
+                () =>
+                    h('div', slots.default?.()),
         }),
         Link: defineComponent({
             props: { href: { type: [String, Object], default: '' } },
@@ -67,6 +70,30 @@ function welcome() {
         props: { contactEmail: null },
     });
 }
+
+describe('the landing «Pro em destaque»', () => {
+    it('shows the short version, with the way to /planos, and does not repeat the whole section', () => {
+        const wrapper = welcome();
+        const text = wrapper.text();
+
+        expect(text).toContain(
+            'No Pro, vê a turma ao longo do ano — não só num momento.',
+        );
+        expect(text).toContain('Compare dois momentos');
+        expect(text).toContain('Pontos fortes e resultados a observar');
+        expect(text).toContain('Tendências e resultados persistentes');
+        // Os outros dois blocos vivem só em /planos.
+        expect(text).not.toContain('Cada aluno, ao longo do ano');
+        expect(text).not.toContain('Leve a análise para o papel');
+
+        const link = wrapper
+            .findAll('a')
+            .find((a) => a.attributes('href') === '/planos#pro-em-destaque');
+
+        expect(link).toBeDefined();
+        expect(text).not.toContain('44,90');
+    });
+});
 
 describe('the public landing plan invitation', () => {
     it('leads with the free Base offer and keeps plan discovery available', () => {

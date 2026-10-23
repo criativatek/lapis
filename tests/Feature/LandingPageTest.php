@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\PlatformSetting;
 use App\Models\User;
+use App\Support\Seo\LandingSeo;
+use App\Support\Seo\PublicPages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -122,6 +125,81 @@ class LandingPageTest extends TestCase
             ->assertSee('<link rel="canonical" href="'.url('/').'"', false)
             ->assertSee('og:title', false)
             ->assertSee('application/ld+json', false);
+    }
+
+    /**
+     * A ANÁLISE DA AVALIAÇÃO É PRO NO SERVIDOR, não só no texto. A secção «Pro
+     * em destaque» e as cinco linhas da tabela dizem que a Análise é do Pro; o
+     * que o garante é o middleware das rotas e a composição do plano.
+     * `commercial.test.ts` prova que a tabela segue o seeder; isto prova que o
+     * seeder é o que as rotas aplicam.
+     */
+    public function test_the_analysis_the_plans_page_sells_is_gated_by_the_pro_module(): void
+    {
+        foreach (['assessment-analysis.show', 'assessment-analysis.document', 'assessment-analysis.document.pdf'] as $name) {
+            $route = Route::getRoutes()->getByName($name);
+
+            $this->assertNotNull($route, $name);
+            $this->assertContains('module:advanced_analytics', $route->gatherMiddleware(), $name);
+        }
+
+        $keys = array_column(
+            $this->get(route('marketing.plans'))->viewData('page')['props']['plans'],
+            'moduleKeys',
+            'key',
+        );
+
+        $this->assertNotContains('advanced_analytics', $keys['base']);
+        $this->assertContains('advanced_analytics', $keys['pro']);
+        $this->assertContains('advanced_analytics', $keys['institutional']);
+    }
+
+    /**
+     * What a crawler reads on /planos says the Pro compares and analyses, keeps
+     * the price, and stays inside a snippet; the landing's machine-readable
+     * feature list names the Análise. Neither says «IA» about it.
+     */
+    public function test_the_plans_page_and_the_landing_describe_the_analysis_to_crawlers(): void
+    {
+        $page = PublicPages::current('marketing/Plans', '/planos');
+
+        $this->assertNotNull($page);
+        $this->assertLessThanOrEqual(160, mb_strlen($page['description']));
+        $this->assertStringContainsString('44,90 €', $page['description']);
+        $this->assertStringContainsString('analisar a evolução', $page['description']);
+        $this->assertStringNotContainsString('IA', $page['description']);
+
+        $this->get('/planos')
+            ->assertOk()
+            ->assertSee('<meta name="description" content="'.htmlspecialchars($page['description']).'">', false)
+            ->assertSee('<link rel="canonical" href="'.PublicPages::url('/planos').'">', false);
+
+        $analysis = collect(LandingSeo::featureList())->first(fn (string $line): bool => str_starts_with($line, 'Análise da Avaliação'));
+
+        $this->assertNotNull($analysis);
+        $this->assertDoesNotMatchRegularExpression('/\bIA\b|diagnóstic|previs/iu', $analysis);
+
+        // O preço do JSON-LD não mexeu.
+        $this->assertSame('44.90', LandingSeo::offers()[1]['price']);
+        $this->assertSame('0', LandingSeo::offers()[0]['price']);
+    }
+
+    /**
+     * Nenhuma página pública declara hoje um FAQPage em JSON-LD. Se um dia
+     * declarar, tem de conter a pergunta nova — uma lista estruturada que
+     * ficasse atrás da lista visível era o desencontro que este teste evita.
+     */
+    public function test_any_faq_structured_data_carries_the_pro_assessment_question(): void
+    {
+        foreach (['/', '/planos'] as $path) {
+            $html = $this->get($path)->assertOk()->getContent();
+
+            if (str_contains($html, 'FAQPage')) {
+                $this->assertStringContainsString('O que acrescenta o Pro na avaliação?', $html, $path);
+            } else {
+                $this->assertStringNotContainsString('"@type":"Question"', $html, $path);
+            }
+        }
     }
 
     /**

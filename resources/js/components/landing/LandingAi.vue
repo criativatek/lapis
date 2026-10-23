@@ -15,10 +15,15 @@ import RevealOnScroll from './RevealOnScroll.vue';
  * deterministically and proposes wording and next steps a person accepts or
  * discards.
  *
- * EVERY CLAIM MAPS TO CODE. Reading results, trends, potentialities, the next
- * step and «preparar conversa» are `BuildStudentInsights` (advanced_analytics);
- * strategy proposals are `InterventionStrategySuggester` and report rewriting
- * is `ReportWritingAssistant` (both ai_assistance). Nothing here describes a
+ * EVERY CLAIM MAPS TO CODE. The follow-up synthesis of a student (what goes
+ * well, what changed, what may deserve attention, a next step to consider) is
+ * `StudentFollowupSynthesist` (ai_followup); strategy proposals are
+ * `InterventionStrategySuggester` and report rewriting is
+ * `ReportWritingAssistant` (both ai_assistance). Trends, regularity, strengths
+ * and the progression margin are NOT the model's: they are
+ * `BuildStudentInsights` / `BuildStudentStrengths` (advanced_analytics), plain
+ * deterministic calculation, and this band says so rather than lending them
+ * the word «IA». Nothing here describes a
  * model touching a classification, because nothing in the application lets one
  * — see `ReportWritingAssistant`'s guard, which refuses text that comes back
  * with a number changed.
@@ -26,12 +31,12 @@ import RevealOnScroll from './RevealOnScroll.vue';
 
 const uses = [
     {
-        title: 'Interpreta resultados que o Lapispro já calculou',
-        body: 'Tendências, regularidade e o que mudou de um período para o seguinte — a partir dos números, nunca em vez deles.',
+        title: 'Escreve uma síntese do acompanhamento do aluno',
+        body: 'O que corre bem, o que mudou e o que pode merecer atenção, a partir dos números que o Lapispro já calculou — nunca em vez deles.',
     },
     {
-        title: 'Identifica pontos fortes e potencialidades',
-        body: 'A margem de progressão de cada aluno, dita com a limitação assinalada quando os elementos não chegam para uma leitura.',
+        title: 'Pontos fortes e margem de progressão: sem IA',
+        body: 'São calculados a partir dos resultados, com a limitação assinalada quando os elementos não chegam para uma leitura. A IA não os decide.',
     },
     {
         title: 'Propõe estratégias e o próximo passo pedagógico',

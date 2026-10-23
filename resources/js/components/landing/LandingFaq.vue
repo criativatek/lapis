@@ -71,6 +71,10 @@ const questions = computed(() => [
         answer: `${PRO_PRICE_PER_YEAR}, em subscrição anual — não existe pagamento mensal.${founderSentence.value}`,
     },
     {
+        question: 'O que acrescenta o Pro na avaliação?',
+        answer: 'Acrescenta a leitura ao longo do tempo: comparar dois períodos ou momentos guardados, ver os pontos fortes e os resultados a observar de um momento, acompanhar tendências e obter um documento para imprimir ou guardar em PDF. O Base continua a mostrar os resultados de cada período. Nada disto atribui ou altera classificações.',
+    },
+    {
         question: 'Existe uma solução para escolas e agrupamentos?',
         answer: 'Existe o plano Institucional, que acrescenta ao Pro a gestão de vários professores, os modelos e perfis de avaliação institucionais, a visão agregada e a governação — coordenação à escala da escola, sem retirar autonomia pedagógica a cada professor. Ainda não está disponível para adesão: falta fechar o enquadramento contratual com as escolas. Fale connosco e avisamos quando abrir.',
     },

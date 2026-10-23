@@ -15,6 +15,7 @@ import { LANDING_PRIMARY } from '@/components/landing/chrome';
 import LandingAi from '@/components/landing/LandingAi.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingHowItWorks from '@/components/landing/LandingHowItWorks.vue';
+import LandingProHighlights from '@/components/landing/LandingProHighlights.vue';
 import RevealOnScroll from '@/components/landing/RevealOnScroll.vue';
 import ColorBand from '@/components/marketing/ColorBand.vue';
 import HeroCard from '@/components/marketing/HeroCard.vue';
@@ -329,6 +330,10 @@ const measures = [
         </ColorBand>
 
         <LandingHowItWorks />
+
+        <!-- Three of the five, and the way to /planos: the full section lives
+             there, so the two pages never repeat each other. -->
+        <LandingProHighlights compact />
 
         <PhotoBand
             eyebrow="A regra da casa"

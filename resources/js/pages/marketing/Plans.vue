@@ -5,6 +5,7 @@ import LandingCompare from '@/components/landing/LandingCompare.vue';
 import LandingFaq from '@/components/landing/LandingFaq.vue';
 import LandingFinalCta from '@/components/landing/LandingFinalCta.vue';
 import LandingPricing from '@/components/landing/LandingPricing.vue';
+import LandingProHighlights from '@/components/landing/LandingProHighlights.vue';
 import LandingVoucher from '@/components/landing/LandingVoucher.vue';
 import type { LandingPlan } from '@/components/landing/types';
 import MarketingShell from '@/components/marketing/MarketingShell.vue';
@@ -14,6 +15,9 @@ import PageHero from '@/components/marketing/PageHero.vue';
  * /planos — the three plans, the Fundador condition, the comparison, the
  * voucher and the questions people ask before paying. The pricing section
  * is the same component the landing used, so the two never quote two prices.
+ * «Pro em destaque» sits between the cards and the table: the cards say what
+ * the Pro is, this says what it does with a school year, and the table
+ * (closed by default) is for whoever is already choosing.
  */
 const props = defineProps<{
     plans: LandingPlan[];
@@ -68,6 +72,7 @@ const chips = computed(() =>
             :founder-open="founder.open"
             headless
         />
+        <LandingProHighlights />
         <LandingCompare :plans="plans" />
         <LandingVoucher />
         <LandingFaq :founder-open="founder.open" />
