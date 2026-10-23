@@ -64,8 +64,9 @@ export type PlanCommercial = {
  */
 export const PLAN_COPY: Record<string, PlanCommercial> = {
     base: {
-        headline: 'Tudo o que precisa para organizar, avaliar e acompanhar.',
-        body: 'Para o professor que procura uma ferramenta completa para a gestão de turmas, a avaliação e o acompanhamento de alunos.',
+        headline:
+            'Tudo o que precisa para registar, organizar, acompanhar e documentar.',
+        body: 'Para o professor que quer ter as turmas, a avaliação e o acompanhamento dos alunos em ordem, com as pautas e os relatórios essenciais prontos quando a escola os pede.',
         priceLead: 'Gratuito no ano letivo 2026/27',
         price: '0 €',
         priceNote:
@@ -80,6 +81,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Registos',
             'Autoavaliação',
             'Estratégias e medidas manuais',
+            'Pautas e quadro síntese, para imprimir ou exportar',
             'Relatórios essenciais',
             'Calendário do ano letivo, com acontecimentos manuais',
             'Exportação dos próprios dados',
@@ -88,7 +90,7 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
     },
     pro: {
         headline: 'Menos trabalho. Mais compreensão. Mais tempo para ensinar.',
-        body: 'Tudo o que existe no Base, acrescentando ferramentas que organizam o dia a dia, interpretam informação e ajudam o professor a agir.',
+        body: 'Tudo o que existe no Base, acrescentando as ferramentas para comparar, analisar e compreender a evolução dos resultados — e para organizar o dia a dia e ajudar o professor a agir.',
         price: PRO_PRICE,
         priceUnit: '/ ano',
         priceNote: PRO_MONTHLY_EQUIVALENT,
@@ -98,13 +100,17 @@ export const PLAN_COPY: Record<string, PlanCommercial> = {
             'Horário do professor',
             'Aulas e sumários',
             'Planeamento e sequências de aulas',
-            'Análises avançadas, tendências e regularidade',
-            'Alertas inteligentes',
+            'Análise da Avaliação: compare períodos e momentos guardados',
+            'Evolução de cada aluno ao longo do ano',
+            'Pontos fortes e resultados a observar da turma',
+            'Tendências e resultados abaixo do nível positivo persistentes',
+            'Documento da análise para imprimir ou guardar em PDF',
+            'Alertas de atenção calculados a partir dos registos',
             'Estado 360º do aluno',
             'Identificação automática de pontos fortes, potencialidades e margem de progressão',
             'Apoio à definição do próximo passo pedagógico',
-            'Acompanhamento da eficácia das estratégias',
-            'Sínteses avançadas',
+            'Evolução do aluno após o início de cada estratégia',
+            'Síntese de acompanhamento do aluno, para imprimir',
             'IA pedagógica: sugere estratégias e ajuda a aperfeiçoar relatórios',
             'Importações avançadas: o calendário publicado pela escola e as grelhas de correção',
             'Cópia de segurança completa, restauro e histórico de backups',
@@ -181,6 +187,33 @@ export type CompareRow = {
     planned?: readonly string[];
 };
 
+/**
+ * The five rows the Análise da Avaliação adds to the comparison. Exported on
+ * their own so a test can hold them to the seeder without searching labels.
+ */
+export const ANALYSIS_ROWS: readonly CompareRow[] = [
+    {
+        label: 'Comparação da turma entre períodos ou momentos guardados',
+        modules: ['advanced_analytics'],
+    },
+    {
+        label: 'Evolução de cada aluno «ao longo do ano»',
+        modules: ['advanced_analytics'],
+    },
+    {
+        label: 'Pontos fortes e resultados a observar da turma',
+        modules: ['advanced_analytics'],
+    },
+    {
+        label: 'Tendências e resultados abaixo do nível positivo persistentes',
+        modules: ['advanced_analytics'],
+    },
+    {
+        label: 'Documento da análise (impressão e PDF)',
+        modules: ['advanced_analytics'],
+    },
+];
+
 export const COMPARE_ROWS: readonly CompareRow[] = [
     { label: 'Turmas e alunos', modules: ['classes', 'students'] },
     { label: 'Perfis, critérios e pesos', modules: ['assessment_profiles'] },
@@ -219,12 +252,21 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
     { label: 'Horário do professor', modules: ['lessons'] },
     { label: 'Aulas e sumários', modules: ['lessons'] },
     { label: 'Planeamento e sequências de aulas', modules: ['lessons'] },
+    // «Estatística da turma com evolução», and not «tendências automáticas»:
+    // what Pro adds to the Estatística page is the sorting of every student
+    // into progrediu / manteve-se / regrediu (`evolution`,
+    // `continuous_evolution`, which ClassStatisticsController removes for
+    // Base). The readings across time are the five rows below.
     {
-        label: 'Tendências e análises automáticas',
+        label: 'Estatística da turma com evolução',
         modules: ['advanced_analytics'],
     },
     { label: 'Alertas e atenção automática', modules: ['advanced_analytics'] },
     { label: 'Estado 360º', modules: ['advanced_analytics'] },
+    // THE ANÁLISE DA AVALIAÇÃO (0.177.0), one row per thing a teacher can do
+    // with it. All behind `advanced_analytics`: the routes carry
+    // `module:advanced_analytics` and each service refuses without it.
+    ...ANALYSIS_ROWS,
     // The Pro half of the same subject: not «has strengths», but «names them
     // without being asked». `BuildStudentInsights` is what reads the figures
     // the Base row above already shows.
@@ -296,3 +338,85 @@ export const BOUNDARIES = [
         sentence: 'Institucional coordena, partilha e agrega.',
     },
 ] as const;
+
+/**
+ * «PRO EM DESTAQUE» — what the Análise da Avaliação (0.177.0) gives a teacher
+ * who reads a class across the year. Written once, rendered by
+ * LandingProHighlights on /planos (all five blocks) and on the landing (the
+ * three in `PRO_HIGHLIGHTS_SHORT`).
+ *
+ * WORDS THAT ARE NOT ALLOWED HERE, and a test holds the line: nothing in this
+ * block is AI, a diagnosis, a prediction or a risk. The Análise describes
+ * notes and moments; it is deterministic, reads the results the teacher
+ * already has, and proposes no measure. «Abaixo do nível positivo» and
+ * «resultados a observar» are the vocabulary of the product's own help
+ * articles (assessment.analysis*).
+ */
+export const PRO_HIGHLIGHTS = {
+    id: 'pro-em-destaque',
+    eyebrow: 'Pro em destaque',
+    title: 'No Pro, vê a turma ao longo do ano — não só num momento.',
+    lead: 'O Base mostra os resultados de cada período. O Pro põe-nos lado a lado, diz-lhe o que mudou e deixa-lhe o documento pronto. Tudo a partir das notas que já tem — nada é recalculado nem inventado.',
+    shortLead:
+        'O Base mostra os resultados de cada período. O Pro põe-nos lado a lado e diz-lhe o que mudou — a partir das notas que já tem.',
+    blocks: [
+        {
+            key: 'compare',
+            title: 'Compare dois momentos',
+            sentence:
+                'Escolha dois períodos, ou dois momentos que guardou na Pauta, e veja a evolução da turma domínio a domínio.',
+            evidence:
+                'Quantos alunos progrediram, mantiveram-se ou regrediram, com a variação em pontos percentuais.',
+        },
+        {
+            key: 'student',
+            title: 'Cada aluno, ao longo do ano',
+            sentence:
+                'Na Evolução do Aluno, veja o percurso em cada domínio, momento a momento.',
+            evidence:
+                'Um momento sem resultado fica em branco no gráfico, nunca vira zero.',
+        },
+        {
+            key: 'strengths',
+            title: 'Pontos fortes e resultados a observar',
+            sentence:
+                'Veja onde a turma está mais forte e onde há mais alunos abaixo do nível positivo.',
+            evidence: 'Sempre com a contagem à vista: «8 de 27 alunos».',
+        },
+        {
+            key: 'trends',
+            title: 'Tendências e resultados persistentes',
+            sentence:
+                'Perceba se um domínio sobe, desce ou oscila ao longo de vários momentos, e onde o resultado se mantém abaixo do nível positivo.',
+            evidence: 'Tendência: 3 ou mais momentos. Persistente: 2 seguidos.',
+        },
+        {
+            key: 'document',
+            title: 'Leve a análise para o papel',
+            sentence:
+                'Um documento com avisos, valores e critérios, para imprimir ou guardar em PDF. Sem nomes, a menos que os peça.',
+            evidence: 'Gerado na hora e nunca guardado.',
+        },
+    ],
+    honesty:
+        'A Análise da Avaliação descreve notas e momentos. Não é um diagnóstico, não faz previsões e não sugere medidas — a leitura pedagógica continua a ser sua.',
+    /** Under the comparison table: the same limit, in the table's voice. */
+    tableNote:
+        'A Análise da Avaliação descreve notas e momentos. Não indica causas, não faz previsões e não propõe medidas.',
+    cta: 'Ver o que o Pro acrescenta',
+    /**
+     * A real capture of the page, with fictional data (24 invented students, no
+     * names on show): the comparison between two terms. Cropped to the class
+     * figures and the per-domain table.
+     */
+    screenshot: {
+        src: '/images/landing/analysis-comparison.webp',
+        alt: 'Análise da Avaliação no Lapispro: a evolução da turma entre dois períodos, com quantos alunos progrediram, mantiveram-se ou regrediram, e a variação de cada domínio em pontos percentuais.',
+        width: 1600,
+        height: 950,
+        caption: 'Exemplo com dados fictícios: 24 alunos inventados.',
+    },
+} as const;
+
+/** The landing's short version: three blocks, by key. */
+export const PRO_HIGHLIGHTS_SHORT = ['compare', 'strengths', 'trends'] as const;

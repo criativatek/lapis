@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import LandingProHighlights from '@/components/landing/LandingProHighlights.vue';
 import PageHero from '@/components/marketing/PageHero.vue';
 import Plans from './Plans.vue';
 
@@ -43,6 +44,49 @@ function hero(open: boolean) {
 
     return `${pageHero.props('lead')} ${(pageHero.props('chips') as string[]).join(' ')}`;
 }
+
+/**
+ * A ORDEM DA PÁGINA É PARTE DO ARGUMENTO: os cartões dizem o que cada plano é,
+ * «Pro em destaque» diz o que o Pro faz com um ano letivo, e só depois vem a
+ * tabela (fechada) para quem já está a escolher.
+ */
+describe('the /planos sections', () => {
+    it('puts «Pro em destaque» between the plan cards and the comparison', () => {
+        const wrapper = mount(Plans, {
+            shallow: true,
+            global: {
+                stubs: {
+                    MarketingShell: {
+                        template: '<div><slot :authenticated="false" /></div>',
+                    },
+                },
+            },
+            props: {
+                plans,
+                founder: { open: true },
+                seoTitle: 'Planos e preços para professores | Lapispro',
+                contactEmail: null,
+            },
+        });
+
+        const html = wrapper.html();
+        const order = [
+            'landing-pricing-stub',
+            'landing-pro-highlights-stub',
+            'landing-compare-stub',
+            'landing-voucher-stub',
+            'landing-faq-stub',
+        ].map((tag) => html.indexOf(tag));
+
+        expect(order.every((at) => at > -1)).toBe(true);
+        expect([...order].sort((a, b) => a - b)).toEqual(order);
+
+        // A versão completa: sem `compact`.
+        expect(
+            wrapper.findComponent(LandingProHighlights).props('compact'),
+        ).toBe(false);
+    });
+});
 
 describe('the /planos hero', () => {
     it('names the Membro Fundador condition while it is open', () => {

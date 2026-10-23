@@ -6,6 +6,7 @@ import {
     BASE_ACTIVE_STUDENTS,
     BOUNDARIES,
     COMPARE_ROWS,
+    PRO_HIGHLIGHTS,
 } from './commercial';
 import type { CompareRow, RowAvailability } from './commercial';
 import LandingSection from './LandingSection.vue';
@@ -255,6 +256,9 @@ const hasPlanned = () =>
                             {{ BASE_ACTIVE_CLASSES }} turmas e
                             {{ BASE_ACTIVE_STUDENTS }} alunos ativos. Turmas e
                             alunos arquivados não contam para estes limites.
+                        </p>
+                        <p>
+                            {{ PRO_HIGHLIGHTS.tableNote }}
                         </p>
                         <p>
                             A IA do Lapispro sugere e reescreve texto — propõe
