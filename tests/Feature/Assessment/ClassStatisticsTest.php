@@ -25,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
@@ -769,6 +770,124 @@ class ClassStatisticsTest extends TestCase
         $this->actingAs($stranger)
             ->get("/classes/{$class->ulid}/results/estatistica")
             ->assertNotFound();
+    }
+
+    // ------------------------------------------------ 9b. imprimir / PDF (0.177.2)
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function plans(): array
+    {
+        return ['Base' => ['base'], 'Pro' => ['pro']];
+    }
+
+    #[Test]
+    #[DataProvider('plans')]
+    public function the_page_carries_the_print_document_on_base_and_on_pro(string $planKey): void
+    {
+        $class = $this->schoolClass();
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), $planKey);
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(function ($page): void {
+                $document = $page->toArray()['props']['printDocument'];
+
+                // O timbre vem do mesmo serviço dos outros documentos; sem identidade
+                // configurada o nome da conta é o piso (nunca um timbre em branco).
+                $this->assertNotSame('', $document['identity']['name']);
+                $this->assertIsArray($document['identity']['header_lines']);
+                $this->assertArrayHasKey('footer_note', $document['identity']);
+                $this->assertArrayHasKey('is_configured', $document['identity']);
+                $this->assertNull($document['identity']['logo_url']);
+
+                $this->assertNotSame('', $document['academic_year']);
+                $this->assertNotFalse(Carbon::parse($document['issued_at']));
+                $this->assertMatchesRegularExpression(
+                    '/^Emitido a \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/',
+                    $document['issued_label'],
+                );
+            });
+    }
+
+    #[Test]
+    public function the_print_document_says_nothing_about_the_plan_and_base_still_has_no_automatic_movement(): void
+    {
+        $class = $this->schoolClass();
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'base');
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(function ($page): void {
+                $props = $page->toArray()['props'];
+
+                $this->assertArrayNotHasKey('evolution', $props['statistics']);
+                $this->assertArrayNotHasKey('continuous_evolution', $props['statistics']);
+
+                // Tudo o que o papel acrescenta é do acto de imprimir — nenhum dado
+                // de movimento, de plano ou de módulo viaja na prop nova.
+                $this->assertSame(
+                    ['identity', 'academic_year', 'issued_at', 'issued_label'],
+                    array_keys($props['printDocument']),
+                );
+                $this->assertStringNotContainsString('evolution', json_encode($props['printDocument']));
+            });
+
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->has('statistics.evolution')
+                ->has('statistics.continuous_evolution'));
+    }
+
+    #[Test]
+    public function the_print_document_is_additive_and_leaves_every_existing_prop_alone(): void
+    {
+        $class = $this->schoolClass();
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica")
+            ->assertOk()
+            ->assertInertia(function ($page): void {
+                $props = $page->toArray()['props'];
+
+                foreach ([
+                    'universeOptions', 'schoolClass', 'decision', 'cutoff', 'suggestedInterimName',
+                    'interimAssessments', 'statistics', 'ai', 'aiAnalysis', 'aiAnalysisError', 'printDocument',
+                ] as $key) {
+                    $this->assertArrayHasKey($key, $props);
+                }
+
+                $this->assertSame(
+                    ['ulid', 'label', 'subject', 'has_profile', 'scale_name'],
+                    array_keys($props['schoolClass']),
+                );
+                $this->assertSame(['date', 'label', 'is_open'], array_keys($props['cutoff']));
+            });
+    }
+
+    #[Test]
+    public function the_page_opened_with_a_period_a_cutoff_and_a_universe_keeps_all_three_next_to_the_print_document(): void
+    {
+        $class = $this->schoolClass();
+        $first = $this->period(1);
+        $this->subscribeOrganizationTo($this->teacher->personalOrganization(), 'pro');
+
+        $this->actingAs($this->teacher)
+            ->get("/classes/{$class->ulid}/results/estatistica/{$first->ulid}?ate=2026-01-31&universo=all_class_students")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('statistics.selected_period.id', $first->id)
+                ->where('cutoff.date', '2026-01-31')
+                ->where('statistics.universe.value', 'all_class_students')
+                ->has('printDocument.issued_label'));
     }
 
     // ------------------------------------------------ 10. a taxa de sucesso

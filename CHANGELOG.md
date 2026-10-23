@@ -25,6 +25,39 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.177.2] — 2026-10-23
+
+> **Acompanhamento da Turma (Estatística): Imprimir / PDF.** A página ganha o
+> botão «Imprimir / PDF», nos planos Base e Pro. Imprime-se a própria página — os
+> indicadores, os gráficos e o mapa da turma que o professor tem no ecrã, no
+> período, na data de corte, no universo e na leitura que escolheu —, sem segunda
+> composição e sem tocar em cálculos. **Sem migrations; sem alterações às regras de
+> acesso; o backup não muda.** (A 0.177.1 é a do Quadro Síntese, noutra frente.)
+
+### Adicionado
+
+- **Imprimir / PDF na Estatística da Turma.** A4 vertical, com cabeçalho (timbre da
+  escola, turma, disciplina, ano letivo, período, «Dados até», universo e leitura),
+  rodapé com a nota da escola e a data de emissão, e «Página N / T». O PDF é o
+  «Guardar como PDF» do diálogo de impressão. Prop nova e aditiva `printDocument`.
+- **Gráficos legíveis no papel.** Cada cartão e cada gráfico fica inteiro numa
+  página (nunca partido entre duas); as cores de fundo e de série imprimem-se; a
+  menção de cada célula do mapa sai escrita (o tom sozinho perde-se a preto e
+  branco); com três ou mais períodos, as linhas do gráfico ganham, no papel, a
+  tabela dos mesmos valores.
+- **O mapa da turma cabe na folha.** Mede-se a tabela ao imprimir e aplica-se um
+  `zoom` só ao papel; abaixo de 60 % o ecrã avisa que a letra vai pequena. As linhas
+  não se partem e o cabeçalho repete-se.
+
+### Fica fora do papel
+
+- Ligações, seletores (período, «Dados até», universo, leitura), o formulário de
+  guardar um momento, a lista de momentos guardados, a leitura individual de um
+  aluno e a «Análise com IA» — que nunca se imprime. A leitura secundária das médias
+  calculadas sai como o professor a deixou (aberta ou fechada).
+- O plano Base continua a não receber, nem a imprimir, a leitura automática de
+  movimento (Tendências automáticas): o papel é feito só do que a página recebe.
+
 ## [0.177.0] — 2026-10-23
 
 > **Fatia D — Análise Avançada da Avaliação (Pro).** Uma página nova, «Análise da

@@ -2,11 +2,12 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
     ArrowDownRight, ArrowUpRight, ChartNoAxesCombined, ChevronRight, CircleAlert,
-    Minus, TrendingDown, TrendingUp, Trophy, Users, X,
+    Minus, Printer, TrendingDown, TrendingUp, Trophy, Users, X,
 } from '@lucide/vue';
 import type { ChartConfiguration } from 'chart.js';
-import { computed, defineAsyncComponent, ref } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import ClassAnalysisPanel from '@/components/ai/ClassAnalysisPanel.vue';
+import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import Heading from '@/components/Heading.vue';
 import DistributionBands from '@/components/infographic/DistributionBands.vue';
 import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
@@ -21,6 +22,7 @@ import OutcomeDonut from '@/components/infographic/OutcomeDonut.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
 import StudentSpectrum from '@/components/infographic/StudentSpectrum.vue';
 import type { SpectrumPoint } from '@/components/infographic/StudentSpectrum.vue';
+import ReportLetterhead from '@/components/reports/ReportLetterhead.vue';
 import {
     areaGradient,
     categoryAxis,
@@ -41,6 +43,7 @@ import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTon
 import type { Evolution } from '@/lib/results';
 import { anyOtherCriteria, compactText, detailText, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
+import { illegibleScaleNotice, printScale, usableWidthPx } from '@/lib/statisticsPrint';
 import { card, INSET, PAGE } from '@/lib/surfaces';
 
 type Band = { scale_level_id: number; code: string; label: string; sequence: number; is_negative: boolean } | null;
@@ -226,6 +229,19 @@ const props = defineProps<{
         period_label: string; academic_period_id: number;
     }[];
     statistics: Statistics;
+    /** O timbre, o ano letivo e a emissão do papel — só para imprimir; nada daqui entra em cálculo. */
+    printDocument: {
+        identity: {
+            name: string;
+            header_lines: string[];
+            footer_note: string | null;
+            is_configured: boolean;
+            logo_url: string | null;
+        };
+        academic_year: string;
+        issued_at: string;
+        issued_label: string;
+    };
     // «Analisar com IA» (§4 do brief AI Experiences): the experience's state
     // and the transient reading of the last click, both decided server-side —
     // see ClassStatisticsController. Optional, so a test that mounts this page
@@ -246,6 +262,74 @@ const canCompareMoments = computed(() => {
     const shared = usePage().props as { modules?: string[]; readOnlyModules?: string[] };
 
     return (shared.modules ?? []).includes('advanced_analytics') && !(shared.readOnlyModules ?? []).includes('advanced_analytics');
+});
+
+// ------------------------------------------------------------------- imprimir
+
+/**
+ * IMPRIME-SE ESTA PRÓPRIA PÁGINA, e não uma segunda composição. Os indicadores, os
+ * gráficos e o mapa são os que o professor tem no ecrã, no período, na data de
+ * corte, no universo e na leitura que escolheu; nada é recalculado nem pedido de
+ * novo ao servidor. «PDF» é o «Guardar como PDF» do diálogo de impressão.
+ *
+ * O QUE FICA FORA DO PAPEL é o que só serve no ecrã: ligações, seletores de
+ * período/data/universo/leitura (a escolha vai escrita no cabeçalho), o
+ * formulário de guardar um momento, a lista de momentos guardados, a leitura
+ * individual de um aluno (um painel a pedido) e a «Análise com IA». A análise de
+ * IA nunca se imprime: é um texto transitório, de outra natureza, que o
+ * professor não escolheu pôr num documento.
+ *
+ * AS SECÇÕES RECOLHIDAS SAEM COMO ESTÃO. A «leitura secundária» das médias
+ * calculadas só sai se o professor a tiver aberto — o papel mostra o que o ecrã
+ * mostra, e o que está fechado é o que ele escolheu não ver.
+ *
+ * O MAPA DA TURMA NUNCA SAI CORTADO: o `zoom` do papel é calculado a partir da
+ * largura real da tabela no momento de imprimir (`beforeprint`, que também apanha
+ * o Ctrl+P) e limpa-se no `afterprint`. A variável CSS só é lida em `@media print`.
+ */
+const printDocumentRef = ref<{ $el: HTMLElement } | null>(null);
+const printNotice = ref<string | null>(null);
+
+const PRINT_TABLE = 'table[data-heatmap]';
+
+function applyPrintScale(): void {
+    const root = printDocumentRef.value?.$el;
+    const table = root?.querySelector<HTMLElement>(PRINT_TABLE);
+
+    if (!root || !table) {
+        return;
+    }
+
+    // A largura NATURAL: a tabela tem `min-w-full`, e no ecrã o contentor pode
+    // ser mais largo do que o conteúdo.
+    const previousMinWidth = table.style.minWidth;
+    table.style.minWidth = '0';
+    const naturalWidth = table.offsetWidth;
+    table.style.minWidth = previousMinWidth;
+
+    const { scale, legible } = printScale(naturalWidth, usableWidthPx());
+
+    root.style.setProperty('--estatistica-print-zoom', String(scale));
+    printNotice.value = legible ? null : illegibleScaleNotice(scale);
+}
+
+function clearPrintScale(): void {
+    printDocumentRef.value?.$el.style.removeProperty('--estatistica-print-zoom');
+}
+
+async function printStatistics(): Promise<void> {
+    await nextTick();
+    window.print();
+}
+
+onMounted(() => {
+    window.addEventListener('beforeprint', applyPrintScale);
+    window.addEventListener('afterprint', clearPrintScale);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('beforeprint', applyPrintScale);
+    window.removeEventListener('afterprint', clearPrintScale);
 });
 
 // ------------------------------------------------------------- «Dados até»
@@ -1340,9 +1424,29 @@ const studentRows = computed(() => {
 <template>
     <Head :title="`Acompanhamento — ${schoolClass.label}`" />
 
-    <div :class="PAGE" class="min-h-full space-y-5 p-4 sm:p-5">
+    <PrintableDocument ref="printDocumentRef" page-numbers :class="PAGE" class="estatistica-print min-h-full space-y-5 p-4 sm:p-5">
+        <!-- O CABEÇALHO DO PAPEL. No ecrã o professor já tem o título, as ligações
+             e os seletores; no papel, o documento tem de se identificar sozinho: a
+             escola, a turma, o ano letivo, o período e as opções de leitura que
+             estavam ativas, por extenso (o papel não tem seletores), e a emissão.
+             Só se escreve aqui o que a página já recebe — nada do plano. -->
+        <header class="hidden space-y-2 print:block" data-test="print-header">
+            <div class="print:[&>p]:hidden">
+                <ReportLetterhead :identity="printDocument.identity" />
+            </div>
+            <p class="text-xs font-medium tracking-wide uppercase">Acompanhamento da Turma</p>
+            <h1 class="font-serif text-xl leading-tight">{{ schoolClass.label }} — {{ schoolClass.subject }}</h1>
+            <p class="text-xs" data-test="print-header-options">
+                {{ printDocument.academic_year }}<template v-if="stats.selected_period"> · {{ stats.selected_period.label }}</template>
+                · {{ cutoff.is_open ? 'Dados até hoje' : `Dados até ${cutoff.label}` }}
+                · Universo: {{ stats.universe.label }}<template v-if="canSwitchReading">
+                    · Leitura: {{ continuousView ? 'Avaliação contínua' : `Só no ${stats.selected_period?.label}` }}</template>
+                · {{ printDocument.issued_label }}
+            </p>
+        </header>
+
         <!-- ================================================== cabeçalho -->
-        <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="flex flex-wrap items-start justify-between gap-3 print:hidden">
             <div>
                 <Heading
                     title="Acompanhamento da Turma"
@@ -1393,7 +1497,28 @@ const studentRows = computed(() => {
                 </Link>
                 <span class="rounded-md border border-primary bg-primary px-3 py-1.5 text-sm text-primary-foreground">Estatística</span>
             </div>
+            <!-- IMPRIMIR / PDF imprime a própria página, tal como está. Em «PDF»,
+                 escolha «Guardar como PDF» no diálogo do browser. -->
+            <button
+                v-if="schoolClass.has_profile && hasAnyResult"
+                type="button"
+                data-test="print-button"
+                class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted/40"
+                title="Imprime esta página tal como está no ecrã. Para um PDF, escolha «Guardar como PDF» no diálogo de impressão."
+                @click="printStatistics"
+            >
+                <Printer class="size-3.5" />
+                Imprimir / PDF
+            </button>
         </div>
+
+        <p
+            v-if="printNotice"
+            class="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 print:hidden"
+            data-test="print-notice"
+        >
+            {{ printNotice }}
+        </p>
 
         <p v-if="!schoolClass.has_profile" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             Esta turma não tem perfil de avaliação associado, por isso não há resultados a analisar.
@@ -1420,7 +1545,7 @@ const studentRows = computed(() => {
         <template v-else>
             <!-- ========================================== «Dados até» (§3, §4) -->
             <div
-                class="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3"
+                class="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3 print:hidden"
                 :class="cutoff.is_open ? 'bg-muted/25' : 'border border-amber-300/70 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/30'"
             >
                 <label for="cutoff-date" class="text-sm text-muted-foreground">Dados até:</label>
@@ -1461,7 +1586,7 @@ const studentRows = computed(() => {
             </div>
 
             <!-- ================================= «Universo da análise» (req 8) -->
-            <fieldset class="flex flex-wrap items-center gap-4 rounded-xl bg-muted/25 px-4 py-3">
+            <fieldset class="flex flex-wrap items-center gap-4 rounded-xl bg-muted/25 px-4 py-3 print:hidden">
                 <legend class="text-sm text-muted-foreground">Universo da análise:</legend>
                 <label
                     v-for="option in universeOptions"
@@ -1483,7 +1608,7 @@ const studentRows = computed(() => {
             <!-- O formulário. Só aparece quando o professor o pede. -->
             <form
                 v-if="savingInterim"
-                class="space-y-3 rounded-xl border border-border bg-card p-5"
+                class="space-y-3 rounded-xl border border-border bg-card p-5 print:hidden"
                 @submit.prevent="submitInterim"
             >
                 <h2 class="text-sm font-semibold">Guardar como avaliação intercalar</h2>
@@ -1556,7 +1681,7 @@ const studentRows = computed(() => {
             </form>
 
             <!-- A lista do que já foi guardado (§21). -->
-            <section v-if="interimAssessments.length" class="rounded-xl bg-muted/25 p-5">
+            <section v-if="interimAssessments.length" class="rounded-xl bg-muted/25 p-5 print:hidden">
                 <h2 class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Avaliações intercalares
                 </h2>
@@ -1579,7 +1704,7 @@ const studentRows = computed(() => {
             </section>
 
             <!-- =============================================== período -->
-            <div v-if="stats.periods.length > 1" class="flex flex-wrap items-center gap-2">
+            <div v-if="stats.periods.length > 1" class="flex flex-wrap items-center gap-2 print:hidden">
                 <span class="text-sm text-muted-foreground">Período em análise:</span>
                 <button
                     v-for="period in stats.periods"
@@ -1633,7 +1758,7 @@ const studentRows = computed(() => {
 
                     <button
                         type="button"
-                        class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors print:hidden hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                         @click="clearSelection"
                     >
                         <X class="size-3.5" /> Limpar
@@ -1644,7 +1769,7 @@ const studentRows = computed(() => {
             <!-- ONE SWITCH, NOT TWO DASHBOARDS. It changes which average the
                  result-based readings draw and nothing else — the grades and
                  everything counted from them stay put (§34, §35). -->
-            <div v-if="canSwitchReading" class="flex flex-wrap items-center gap-3">
+            <div v-if="canSwitchReading" class="flex flex-wrap items-center gap-3 print:hidden">
                 <span class="text-xs font-medium text-muted-foreground">Ler os resultados como:</span>
 
                 <div class="inline-flex rounded-full border border-border bg-card p-0.5 shadow-sm">
@@ -1914,9 +2039,10 @@ const studentRows = computed(() => {
                     </p>
 
                     <!-- ---- a leitura secundária: onde caem as médias ---- -->
-                    <div class="mt-5 border-t border-border/60 pt-4">
+                    <div class="mt-5 border-t border-border/60 pt-4" :class="showCalculatedDistribution ? '' : 'print:hidden'">
                         <button
                             type="button"
+                            data-print-heading
                             class="flex w-full items-center gap-2 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                             :aria-expanded="showCalculatedDistribution"
                             aria-controls="distribuicao-calculada"
@@ -2179,11 +2305,30 @@ const studentRows = computed(() => {
                             </li>
                         </ul>
                     </div>
+
+                    <!-- NO PAPEL, AS LINHAS NÃO SE DISTINGUEM SÓ PELA COR. Os mesmos
+                         números do gráfico, escritos (os que o leitor de ecrã já
+                         tem em `StatChart`), para um PDF a preto e branco ou uma
+                         linha de um domínio sobreposta não esconderem nada. -->
+                    <table class="hidden w-full text-xs print:table lg:col-span-2" data-test="print-series-table">
+                        <thead>
+                            <tr class="text-left">
+                                <th scope="col" class="px-2 py-1">Período</th>
+                                <th scope="col" class="px-2 py-1">Turma</th>
+                                <th v-for="domain in stats.domains" :key="domain.id" scope="col" class="px-2 py-1">{{ domain.name }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in seriesRows" :key="row[0]" class="border-t border-border">
+                                <td v-for="(cell, index) in row" :key="index" class="px-2 py-1 tabular-nums">{{ cell }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
             <!-- ================================== 08 · O MAPA DA TURMA -->
-            <section :class="CARD">
+            <section :class="CARD" data-print-breakable>
                 <SectionHeading
                     index="08"
                     title="Mapa da turma"
@@ -2200,7 +2345,7 @@ const studentRows = computed(() => {
                 </SectionHeading>
 
                 <div class="-mx-2 overflow-x-auto px-2">
-                    <table class="w-max min-w-full border-separate border-spacing-y-1 text-sm">
+                    <table class="w-max min-w-full border-separate border-spacing-y-1 text-sm" data-heatmap>
                         <thead>
                             <tr class="text-left">
                                 <th scope="col" class="sticky left-0 z-10 bg-card px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -2293,6 +2438,16 @@ const studentRows = computed(() => {
                                         :title="heatCell(student, domain.id)?.mention?.label ?? 'Sem resultado'"
                                     >
                                         {{ pct(heatValue(student, domain.id)) }}
+                                        <!-- A COR NUNCA É A ÚNICA INFORMAÇÃO NO PAPEL: a menção
+                                             da célula só se distingue pelo tom, e um tom perde-se
+                                             numa impressão a preto e branco. -->
+                                        <span
+                                            v-if="heatCell(student, domain.id)?.mention"
+                                            class="hidden text-[9px] leading-none print:block"
+                                            data-test="print-cell-mention"
+                                        >
+                                            {{ heatCell(student, domain.id)!.mention!.code }}
+                                        </span>
                                     </span>
                                 </td>
                                 <td class="px-3 py-1 text-center">
@@ -2319,7 +2474,7 @@ const studentRows = computed(() => {
         >
             <div
                 v-if="selected"
-                class="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-[2px]"
+                class="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-[2px] print:hidden"
                 role="dialog"
                 aria-modal="true"
                 :aria-label="`Leitura individual de ${selected.name}`"
@@ -2570,14 +2725,113 @@ const studentRows = computed(() => {
              and a teacher should meet the figures before meeting an
              interpretation of them. Renders nothing at all when the page was
              opened without the AI props (a test, an older cached page). -->
-        <ClassAnalysisPanel
-            v-if="ai"
-            :ai="ai"
-            :class-ulid="schoolClass.ulid"
-            :period-ulid="stats.selected_period?.ulid ?? null"
-            :cutoff="cutoff.date"
-            :analysis="aiAnalysis"
-            :error="aiAnalysisError"
-        />
-    </div>
+        <!-- NUNCA NO PAPEL: é um texto transitório, de outra natureza que os
+             números acima, e o professor não o escolheu pôr num documento. -->
+        <div class="print:hidden" data-test="print-hidden-ai">
+            <ClassAnalysisPanel
+                v-if="ai"
+                :ai="ai"
+                :class-ulid="schoolClass.ulid"
+                :period-ulid="stats.selected_period?.ulid ?? null"
+                :cutoff="cutoff.date"
+                :analysis="aiAnalysis"
+                :error="aiAnalysisError"
+            />
+        </div>
+
+        <!-- O RODAPÉ DO PAPEL: a nota da escola e a data de emissão. -->
+        <footer class="hidden border-t border-border pt-2 text-[11px] print:block" data-test="print-footer">
+            <p v-if="printDocument.identity.footer_note">{{ printDocument.identity.footer_note }}</p>
+            <p>{{ printDocument.issued_label }}</p>
+        </footer>
+    </PrintableDocument>
 </template>
+
+<style>
+/* O QUE É PRÓPRIO DO ACOMPANHAMENTO NO PAPEL. O isolamento da folha, o `@page`, as
+   linhas que não se partem e o cabeçalho repetido são do PrintableDocument; aqui
+   fica o que os cartões, os gráficos e o mapa precisam. Tudo preso a
+   `.estatistica-print`, para o `<style>` — que fica carregado na SPA depois de a
+   página sair — não tocar noutros documentos. */
+@media print {
+    /* Os tons de fundo (cartões, barras, células do mapa) e as cores dos gráficos
+       ficam: sem isto o browser omite os fundos e as barras desaparecem. O que
+       identifica cada coisa é sempre o texto ou o número, nunca só a cor. */
+    .estatistica-print,
+    .estatistica-print * {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+    /* Um cartão ou um gráfico não se parte entre páginas; o mapa da turma, que
+       pode ter uma turma inteira, parte-se pelas linhas. */
+    .estatistica-print section:not([data-print-breakable]),
+    .estatistica-print canvas {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    /* Espaço vertical mais curto entre blocos: no papel cada folha conta, e um
+       rodapé sozinho numa folha a mais é o primeiro sinal de desperdício. */
+    .estatistica-print > * + * {
+        margin-top: 0.75rem !important;
+    }
+    /* O fundo da folha é branco: o tom quente do ecrã gastaria tinta. */
+    body:has(.estatistica-print) {
+        background: #fff !important;
+    }
+    /* Um título de secção não fica sozinho no fim da página. */
+    .estatistica-print section > div.mb-5:first-child {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+    /* A letra nunca desce do legível: o ecrã usa 9, 10 e 11 px em legendas. */
+    .estatistica-print .text-\[9px\],
+    .estatistica-print .text-\[10px\],
+    .estatistica-print .text-\[11px\] {
+        font-size: 8pt !important;
+    }
+    /* O «i» de ajuda dos cartões não diz nada no papel. */
+    .estatistica-print button[aria-label^='O que é'] {
+        display: none !important;
+    }
+    /* O mapa deixa de ser uma janela com rolagem, e a coluna do aluno deixa de
+       ser «sticky»: no papel é a primeira de cada linha. */
+    .estatistica-print .overflow-x-auto {
+        overflow: visible !important;
+    }
+    .estatistica-print th,
+    .estatistica-print td {
+        position: static !important;
+    }
+    /* A ESCALA que faz o mapa caber na largura útil da folha. A variável é posta
+       pela página em `beforeprint` e limpa em `afterprint`. */
+    .estatistica-print table[data-heatmap] {
+        zoom: var(--estatistica-print-zoom, 1);
+        min-width: 0 !important;
+    }
+    /* O nome de um domínio é um <button> no ecrã, e o Chromium não desenha o
+       conteúdo de um botão na repetição do cabeçalho nas folhas seguintes. No
+       papel é só texto. (O botão do aluno fica: é o que dá o espaço entre o
+       número e o nome.) */
+    .estatistica-print table[data-heatmap] thead button {
+        display: contents !important;
+    }
+    /* A célula do mapa passa a duas linhas: o valor e a menção. */
+    .estatistica-print table[data-heatmap] td > span {
+        flex-direction: column;
+        gap: 1px;
+    }
+    /* As linhas esbatidas por uma seleção continuam legíveis no papel. */
+    .estatistica-print table[data-heatmap] tr.opacity-30 {
+        opacity: 0.55;
+    }
+    /* A seta da «leitura secundária» não faz sentido sem clique. */
+    .estatistica-print [data-print-heading] svg {
+        display: none !important;
+    }
+    /* Animações e transições não existem no papel. */
+    .estatistica-print * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+</style>
