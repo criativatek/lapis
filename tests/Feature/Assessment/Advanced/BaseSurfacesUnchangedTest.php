@@ -260,4 +260,26 @@ class BaseSurfacesUnchangedTest extends TestCase
         $this->assertCount(22, $first);
         $this->assertCount(22, array_unique(array_keys($first)));
     }
+
+    #[Test]
+    public function diag_dump(): void
+    {
+        $surfaces = $this->surfaces();
+        $out = '';
+
+        foreach (['quadro síntese', 'pauta guardada'] as $label) {
+            [$kind, $url] = $surfaces[$label];
+            $dir = sys_get_temp_dir().'/diag';
+            @mkdir($dir);
+            putenv('BASE_SURFACES_DUMP='.$dir);
+            $this->answer($kind, $url);
+            $file = $dir.'/'.preg_replace('/[^a-z0-9]+/i', '-', $url).'.txt';
+            $out .= "
+<<<SURFACE {$label}>>>
+".file_get_contents($file)."
+<<<END>>>";
+        }
+
+        $this->fail($out);
+    }
 }
