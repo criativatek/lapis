@@ -25,6 +25,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.176.1] — 2026-10-23
+
+> **O administrador consegue terminar o acesso técnico a uma conta em
+> encerramento.** Ao impersonar uma conta que pediu o encerramento, «Terminar
+> acesso» devolvia 403 («A sua conta está em processo de encerramento…») e o
+> administrador ficava preso na conta impersonada. Só código; sem migrations,
+> sem alterações a dados nem ao backup.
+
+### Corrigido
+
+- **«Terminar acesso» bloqueado pelo encerramento.** `EnsureAccountIsOperational`
+  recusa toda a escrita de uma conta em encerramento fora de uma lista explícita
+  de rotas, e `impersonate.stop` (POST) não constava dela. Passa a constar: a
+  rota só repõe a sessão do administrador e regista `admin.impersonation_stopped`,
+  sem permitir qualquer alteração à conta em encerramento. Teste de regressão em
+  `PersonalAccountClosureTest` (PR #104).
+
 ## [0.176.0] — 2026-10-22
 
 > **Estado das medidas em lote.** Em Acompanhamento → Estratégias e Medidas da
