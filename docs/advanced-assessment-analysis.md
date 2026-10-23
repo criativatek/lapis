@@ -1,8 +1,8 @@
 # Análise Avançada da Avaliação (Pro) — fundação (D0)
 
-Estado: **D0 — fundação**, **D1 — comparação da turma**, **D2 — «Ao longo do ano» do aluno**,
-**D3 — pontos fortes e dificuldades** e **D4 — tendências e resultados negativos persistentes**
-(integradas) e **D5 — documento Pro** (esta etapa). A seguinte (D6) chega com autorização própria.
+Estado: **Fatia D fechada na 0.177.0** — D0 fundação, D1 comparação da turma, D2 «Ao longo do ano»
+do aluno, D3 pontos fortes e dificuldades, D4 tendências e resultados negativos persistentes, D5 documento Pro
+e D6 validação e fecho.
 
 ## Decisões aprovadas (Fatia D)
 
@@ -296,8 +296,59 @@ valor ou um texto livre. Nenhum dos pedidos escreve nada da avaliação.
 `Document.test.ts`, e o teste da ligação em `Show.test.ts`. A guarda de arquitetura da linha temporal passou
 a exigir o gate do módulo nas três rotas.
 
-## Etapas seguintes (não autorizadas)
+## D6 — Validação e fecho (0.177.0)
 
-D1 ✔ comparação da turma · D2 ✔ aluno ao longo do ano · D3 ✔ pontos fortes e dificuldades ·
-D4 ✔ tendências e resultados persistentes · D5 ✔ documento Pro · D6 validação, ajuda, texto comercial e a
-versão 0.177.0 (fecho da Fatia D). A 0.176.0 já é das operações em lote das medidas (PR #99).
+**Âmbito:** só validação, documentação, ajuda contextual, CHANGELOG e versão. Nenhuma funcionalidade nova;
+o motor de cálculo e o plano Base não mudam. Sem migrations; o backup não muda.
+
+### O que a validação afirma, com o conjunto (`FatiaDValidationTest`)
+
+| Ponto | O que se prova |
+|---|---|
+| Comparação entre períodos e momentos guardados | O mesmo número é o mesmo na análise, no documento, na Estatística e na Pauta (CSV de hoje); um momento guardado diz na análise o que o seu próprio CSV diz. |
+| Evolução individual | O aluno, a comparação da turma e as tendências concordam sobre o mesmo aluno (a mesma função). |
+| Pontos fortes e tendências | Cobertos nas etapas (D3, D4), incluindo cada regra com linhas temporais sintéticas, e re-exercitados sobre dados históricos. |
+| Documentos | Paridade célula a célula com os payloads da página; o texto do PDF é o da pré-visualização (D5). |
+| Acesso Pro | Matriz: análise, documento, PDF e página do aluno × Pro, Base, assinatura suspensa, módulo desligado, outra organização (404), colega que não leciona (403), convidado (login). Falha fechada em todas, sem dados, sem PDF e sem rasto de auditoria. |
+| O Base não se mexe | **Os dados:** abrir todas as superfícies Pro não altera uma única linha de nenhuma tabela de dados (impressão digital por tabela, excluindo só máquina e rasto). **As respostas:** o Base abre, imprime e exporta o que sempre abriu, sem rasto da camada Pro, e `BaseSurfacesUnchangedTest` compara 22 superfícies do Base (Resultados, Estatística, Quadro Síntese, Pauta, Histórico, pauta guardada, grelha documental e o texto do PDF, CSV de hoje e de um momento guardado, Evolução do Aluno, painel) com um sha256 por superfície **capturado com o código anterior à Fatia D** (a `main` na 0.175.0, `5a550693`) sobre os mesmos dados, depois de normalizar só o que varia sem o conteúdo mudar (ULIDs, ids numéricos, datas e a versão): idênticas. O teste prova que sabe falhar e diz QUAL superfície mudou. |
+| Dados históricos | Fotografias sem escala e sem pesos, de âmbito acumulado ou com selo partido; turma sem perfil; turma sem períodos; aluno que saiu; aluno sem resultados; só o 1.º período com dados. Cada leitura corre, e diz o que não pode dizer. |
+| Desempenho | O nº de queries de cada superfície é o mesmo com 6, 30 e 60 alunos. |
+
+**Regressão das medidas em lote** (`BulkStatusModuleGateTest`): com o módulo `interventions` desligado (override) ou
+a assinatura suspensa, `interventions.bulk-status` devolve 403 e nenhum estado nem evento de auditoria muda; a
+página mostra «módulo não incluído» (override) ou fica só de leitura (suspensa); reativar devolve o lote.
+
+### Desempenho medido (SQLite em memória, máquina de desenvolvimento; ordem de grandeza)
+
+Queries constantes com o tamanho da turma; o tempo cresce de forma aproximadamente linear.
+
+| Superfície | Queries | 6 alunos | 30 | 60 | 120 |
+|---|---|---|---|---|---|
+| Análise da Avaliação | 76 | 51 ms | 108 ms | 638 ms | 1,3 s |
+| Documento (pré-visualização, com nomes) | 79 | 50 ms | 398 ms | 600 ms | 1,1 s |
+| Documento em PDF (com nomes) | 78 | 425 ms | 2,0 s | 2,9 s | 5,1 s |
+| Página do aluno (Pro) | 167–168 | 103 ms | 785 ms | 1,2 s | 2,2 s |
+| Estatística (Base, referência) | 80 | 54 ms | 394 ms | 616 ms | 1,1 s |
+
+A análise custa o que a Estatística custa. A **página do aluno em Pro** acrescenta ao Base uma leitura da turma
+inteira (+73 queries constantes e ≈ +140 ms com 60 alunos: 94 → 167 queries, 141 → 281 ms) porque a secção «Ao
+longo do ano» e as tendências assentam na linha temporal da turma; aceitável, e o ponto a otimizar primeiro se
+algum dia pesar.
+
+### Limites conhecidos
+
+- Em produção só o 1.º período tem resultados hoje; a comparação precisa de dois momentos com resultados e as
+  tendências de três momentos comparáveis.
+- Um período é «calculado com os dados de hoje»; só um momento guardado é imutável. As leituras dizem qual é qual.
+- Fotografias anteriores à escala viajar (0.174/0.175) só comparam percentagens, não níveis, e não têm linha
+  positivo/negativo.
+- A tendência é estrita (uma pausa entre subidas é «evolução variável») e usa a regra de movimento que a
+  aplicação já tinha (qualquer alteração na casa decimal mostrada); não há tolerância escolhida à parte.
+- A impressão do browser com selo e numeração em todas as folhas é só Chromium recente; o PDF do servidor é o
+  caminho fiável.
+- Não há texto comercial novo (landing, comparação de planos) nesta fatia: fica por decidir com o produto.
+
+### Fora desta fatia
+
+Qualquer interpretação além de contar e ordenar números (causas, previsões, recomendações automáticas); a
+exportação das análises em folha de cálculo; a otimização da página do aluno em Pro.

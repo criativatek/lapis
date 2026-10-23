@@ -25,6 +25,105 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.177.0] — 2026-10-23
+
+> **Fatia D — Análise Avançada da Avaliação (Pro).** Uma página nova, «Análise da
+> Avaliação», e uma secção nova na «Evolução do Aluno» («Ao longo do ano») leem a
+> avaliação ao longo do tempo: comparar dois períodos ou momentos guardados, ver os
+> pontos fortes e as dificuldades de um momento, e acompanhar tendências e
+> resultados abaixo do nível positivo persistentes — sempre com os valores, as
+> contagens («8 de 27 alunos») e os critérios que sustentam cada leitura, e com
+> avisos de cobertura e de comparabilidade. Tudo se pode levar para o papel: um
+> documento gerado na hora, com pré-visualização, impressão e PDF, que diz
+> exatamente o que o ecrã diz. Pro (`advanced_analytics`). **Sem migrations; o
+> backup não muda; o plano Base e o motor de cálculo não se alteram.** Descreve notas
+> e momentos: não é um diagnóstico, não indica causas, não faz previsões nem propõe
+> medidas.
+
+### Adicionado
+
+- **Comparação entre dois momentos** (D1). `classes/{turma}/analise-avaliacao`
+  (`assessment-analysis.show`), dentro de Resultados, com a entrada «Comparar
+  momentos →» na Estatística. Dois períodos (calculados com os dados de hoje) ou
+  momentos guardados na Pauta (lidos só do payload congelado). A evolução da turma é
+  a dos **mesmos alunos** nos dois momentos, em pontos percentuais, com a regra de
+  movimento que Resultados e a Estatística já têm; quantos progrediram,
+  mantiveram-se ou regrediram; o mesmo por domínio; mudanças de nível do resultado e
+  do nível atribuído, na ordem e na linha da própria escala; lista nominal para os
+  professores da turma. **Sem comparação artificial:** se os domínios, os pesos ou a
+  escala mudaram — ou não se demonstra que são os mesmos —, os números aparecem lado
+  a lado, sem variação, com o motivo; um resultado em falta é «sem comparação», nunca
+  zero.
+- **Evolução individual do aluno** (D2). Secção «Ao longo do ano» na página do
+  aluno (prop `yearReading`, só Pro): dois momentos à escolha, o resultado global, o
+  nível e o nível atribuído, cada domínio ao longo do ano e um gráfico factual
+  (lacuna, nunca zero). Usa o resultado de cada período, e não a leitura contínua da
+  página, e diz-o. Só as células deste aluno saem da turma.
+- **Pontos fortes e dificuldades de um momento** (D3). Segunda secção da página da
+  análise; um momento (período ou guardado), sem depender da comparação. Média por
+  domínio, alunos com valor e abaixo do nível positivo (n, total e proporção) e
+  cobertura; domínios de média mais alta e mais baixa (num empate ninguém é
+  destacado); alunos abaixo do nível positivo em dois ou mais domínios; destaques
+  «pontos fortes» e «a observar» com a sua evidência. A linha positivo/negativo é a
+  da escala **desse momento**: uma fotografia anterior à escala viajar não conta
+  alunos abaixo dela e diz porquê.
+- **Tendências e resultados abaixo do nível positivo persistentes** (D4). Terceira
+  secção da página e bloco do aluno. Duas perguntas, nunca misturadas: uma
+  **tendência** precisa de pelo menos três momentos comparáveis com valor
+  (progressão consistente, regressão consistente, estável ou evolução variável, a
+  partir dos passos entre momentos seguidos); um resultado **abaixo do nível
+  positivo persistente** precisa de dois, incluindo o mais recente. Só entram na
+  linha os momentos demonstravelmente com os mesmos critérios e a mesma escala; um
+  momento sem valor ou fora da linha interrompe a sequência; um valor em falta é uma
+  lacuna, nunca zero.
+- **Documento Pro da análise** (D5). `classes/{turma}/analise-avaliacao/documento`
+  (+ `/pdf`), na infraestrutura documental das Fatias B e C. Identificação, avisos
+  juntos no topo (cobertura, comparação impossível e porquê, momentos fora da linha,
+  poucos alunos), as secções à escolha e a nota de que não é um diagnóstico. Gerado
+  na hora e nunca guardado. A estrutura leva o texto já escrito: o Vue da
+  pré-visualização e o Blade do PDF não formatam nada, e o texto extraído do PDF é o
+  da pré-visualização. **Os nomes são opt-in:** por omissão só contagens, domínios e
+  tendências. Auditoria (`assessment_analysis.document.exported`, só no PDF) com
+  contagens e opções, nunca um nome ou um valor.
+- **Ajuda contextual.** Três artigos: «Comparar momentos, tendências e pontos fortes
+  da turma (Pro)», «Imprimir ou guardar em PDF a Análise da Avaliação (Pro)» e «Ver um
+  aluno «Ao longo do ano» (Pro)», cada um a ajuda da página que descreve.
+- **Validação final** (`FatiaDValidationTest`): paridade do mesmo número entre o
+  ecrã, o documento, a Estatística e as exportações da Pauta (CSV de hoje e de um
+  momento guardado); **o Base responde o que respondia antes da Fatia D** (`BaseSurfacesUnchangedTest`: 22 superfícies — Resultados, Estatística, Quadro Síntese, Pauta, Histórico, pauta guardada, grelha documental e o texto do seu PDF, CSV de hoje e de um momento guardado, Evolução do Aluno, painel — comparadas com as respostas que o código da 0.175.0 deu sobre os mesmos dados); matriz de acesso (todas as superfícies Pro × Base, suspensa,
+  módulo desligado, outra organização, colega, convidado); abrir tudo o que é Pro
+  não escreve um byte nos dados; o Base continua a abrir, imprimir e exportar o que
+  sempre abriu, sem rasto da camada Pro; dados históricos (fotografias sem escala e
+  sem pesos, de âmbito acumulado ou com selo partido, turmas sem perfil ou sem
+  períodos, alunos que saíram); o custo de cada superfície não cresce com a turma
+  (6, 30 e 60 alunos).
+- **Regressão das medidas em lote** (`BulkStatusModuleGateTest`): com o módulo
+  `interventions` desligado — por override ou por assinatura suspensa — o lote
+  (`interventions.bulk-status`) é recusado e nenhum estado ou evento de auditoria
+  muda; a leitura continua; reativar devolve o lote.
+
+### Alterado
+
+- Sem alteração de comportamento: `BuildResultsProgression::movement()` (a regra de
+  evolução, pública e estática), `ScaleSummary` (a escala que viaja, num só escritor),
+  `BuildAssessmentComparison::studentRow()` e `select()` (partilhados pela turma e pelo
+  aluno) e `TimelineStatistics::mean()` (a média da Estatística, numa só cópia). Os
+  números da Estatística, de Resultados, da Pauta e das exportações não mudam.
+- A fixture de caracterização do Pro da página do aluno acrescenta `yearReading.*`
+  (sem essa chave a página é igual à anterior); as do Base não mudam.
+
+### Limites conhecidos
+
+- Em produção só o 1.º período tem resultados hoje: a comparação aparece com dois
+  momentos com resultados e as tendências com três momentos comparáveis (por exemplo,
+  momentos guardados mais períodos).
+- «Calculado com os dados de hoje»: um período é recalculado cada vez que se abre e
+  reflete correções entretanto feitas; só um momento guardado é imutável.
+- Fotografias guardadas antes de a escala viajar com elas (anteriores à 0.174/0.175)
+  só permitem comparar percentagens, não níveis, e não têm linha positivo/negativo.
+- A impressão do browser com selo e numeração em todas as folhas é só Chromium
+  recente; o PDF do servidor é o caminho fiável.
+
 ## [0.176.1] — 2026-10-23
 
 > **O administrador consegue terminar o acesso técnico a uma conta em
