@@ -41,6 +41,7 @@ class EnsureAccountIsOperational
      */
     protected const ALLOWED_ROUTE_NAMES = [
         'logout',
+        'impersonate.stop',
         'account.closure.request',
         'account.closure.cancel',
         'organization.closure.request',

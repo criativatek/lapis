@@ -181,6 +181,20 @@ class PersonalAccountClosureTest extends TestCase
     }
 
     #[Test]
+    public function an_admin_can_stop_impersonating_a_teacher_in_closure(): void
+    {
+        $admin = User::factory()->create();
+        $admin->forceFill(['is_platform_admin' => true, 'is_support_technician' => true])->save();
+        $teacher = User::factory()->create();
+        $org = $teacher->personalOrganization();
+        app(RequestPersonalAccountClosure::class)->request($teacher);
+
+        $this->actingAs($admin)->post("/admin/accounts/{$org->ulid}/impersonate", ['category' => 'technical_assistance'])->assertRedirect('/dashboard');
+        $this->post('/impersonate/stop')->assertRedirect('/admin');
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    #[Test]
     public function another_user_cannot_affect_someone_elses_closure(): void
     {
         $affected = User::factory()->create();
