@@ -112,16 +112,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - A fixture de caracterização do Pro da página do aluno acrescenta `yearReading.*`
   (sem essa chave a página é igual à anterior); as do Base não mudam.
 
-### Corrigido
-
-- **Terminar o acesso técnico numa conta em encerramento.** `EnsureAccountIsOperational`
-  recusa todo o pedido de escrita de uma conta em encerramento fora de uma lista
-  explícita de rotas, e «Terminar acesso» (`POST impersonate.stop`) não estava nela:
-  o administrador ficava preso na conta impersonada com um 403. A rota só repõe a
-  sessão do administrador e regista o evento de auditoria, por isso passa a constar da
-  lista. (PR #104, integrada antes desta versão sem entrada própria; fica registada
-  aqui, no primeiro release que a leva.)
-
 ### Limites conhecidos
 
 - Em produção só o 1.º período tem resultados hoje: a comparação aparece com dois
@@ -133,6 +123,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   só permitem comparar percentagens, não níveis, e não têm linha positivo/negativo.
 - A impressão do browser com selo e numeração em todas as folhas é só Chromium
   recente; o PDF do servidor é o caminho fiável.
+
+## [0.176.1] — 2026-10-23
+
+> **O administrador consegue terminar o acesso técnico a uma conta em
+> encerramento.** Ao impersonar uma conta que pediu o encerramento, «Terminar
+> acesso» devolvia 403 («A sua conta está em processo de encerramento…») e o
+> administrador ficava preso na conta impersonada. Só código; sem migrations,
+> sem alterações a dados nem ao backup.
+
+### Corrigido
+
+- **«Terminar acesso» bloqueado pelo encerramento.** `EnsureAccountIsOperational`
+  recusa toda a escrita de uma conta em encerramento fora de uma lista explícita
+  de rotas, e `impersonate.stop` (POST) não constava dela. Passa a constar: a
+  rota só repõe a sessão do administrador e regista `admin.impersonation_stopped`,
+  sem permitir qualquer alteração à conta em encerramento. Teste de regressão em
+  `PersonalAccountClosureTest` (PR #104).
 
 ## [0.176.0] — 2026-10-22
 
