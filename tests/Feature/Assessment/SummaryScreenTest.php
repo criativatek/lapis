@@ -5,17 +5,23 @@ namespace Tests\Feature\Assessment;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\Enrollment;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\SchoolClass;
 use App\Models\Student;
 use App\Models\StudentIdentity;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\ProposeClassifications;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -719,6 +725,95 @@ class SummaryScreenTest extends TestCase
             $after,
             "as consultas passaram de {$before} para {$after} ao acrescentar 3 alunos",
         );
+    }
+
+    // -------------------------------------------- 3. imprimir / PDF (0.177.1)
+
+    private function subscribeTo(User $teacher, string $planKey): void
+    {
+        $organization = $teacher->personalOrganization();
+
+        OrganizationSubscription::withoutGlobalScope('organization')
+            ->where('organization_id', $organization->getKey())
+            ->delete();
+
+        OrganizationSubscription::withoutGlobalScope('organization')->create([
+            'organization_id' => $organization->getKey(),
+            'plan_id' => Plan::where('key', $planKey)->firstOrFail()->getKey(),
+            'status' => SubscriptionStatus::Active,
+            'starts_at' => Carbon::parse('2026-01-01 00:00:00'),
+        ]);
+
+        app(Entitlements::class)->flush();
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function plans(): array
+    {
+        return ['Base' => ['base'], 'Pro' => ['pro']];
+    }
+
+    #[Test]
+    #[DataProvider('plans')]
+    public function the_screen_carries_the_print_document_on_base_and_on_pro(string $planKey): void
+    {
+        $teacher = $this->seedDemo();
+        $this->subscribeTo($teacher, $planKey);
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $document = $props['printDocument'];
+
+        // O timbre vem do mesmo serviço dos outros documentos; sem identidade
+        // configurada o nome da conta é o piso (nunca um timbre em branco).
+        $this->assertNotSame('', $document['identity']['name']);
+        $this->assertIsArray($document['identity']['header_lines']);
+        $this->assertArrayHasKey('footer_note', $document['identity']);
+        $this->assertArrayHasKey('is_configured', $document['identity']);
+        $this->assertNull($document['identity']['logo_url']);
+
+        // A emissão vem do servidor, no formato dos outros documentos.
+        $this->assertNotFalse(Carbon::parse($document['issued_at']));
+        $this->assertMatchesRegularExpression('/^Emitido a \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/', $document['issued_label']);
+    }
+
+    #[Test]
+    public function the_print_document_is_additive_and_leaves_every_existing_prop_alone(): void
+    {
+        $teacher = $this->seedDemo();
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        foreach ([
+            'schoolClass', 'decision', 'canExportToInovar', 'canViewStudentProgress',
+            'canDecideDomains', 'scaleBands', 'progression', 'synopsis', 'printDocument',
+        ] as $key) {
+            $this->assertArrayHasKey($key, $props);
+        }
+
+        $this->assertSame(
+            ['ulid', 'label', 'subject', 'academic_year', 'has_profile', 'scale_name'],
+            array_keys($props['schoolClass']),
+        );
+        $this->assertCount(6, $props['progression']['students']);
+        $this->assertSame(
+            ['identity', 'issued_at', 'issued_label'],
+            array_keys($props['printDocument']),
+        );
+    }
+
+    #[Test]
+    public function another_organizations_teacher_still_gets_no_print_document(): void
+    {
+        $teacher = $this->seedDemo();
+        $classUlid = $this->classUlid($teacher);
+
+        $this->subscribeTo($other = User::factory()->create(), 'pro');
+
+        $this->actingAs($other)
+            ->get("/classes/{$classUlid}/results/quadro-sintese")
+            ->assertNotFound();
     }
 
     private function queriesToOpen(User $teacher, string $classUlid): int

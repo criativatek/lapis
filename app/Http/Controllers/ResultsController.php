@@ -15,6 +15,7 @@ use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassResultsCalculator;
 use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
+use App\Services\Documents\DocumentIdentity;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
@@ -345,11 +346,15 @@ class ResultsController extends Controller
      * neste controlador — ou no browser — seria uma segunda opinião sobre
      * números que já têm uma (§3, §17).
      */
-    public function summary(SchoolClass $class, BuildClassSynopsis $synopsis): Response
+    public function summary(SchoolClass $class, BuildClassSynopsis $synopsis, DocumentIdentity $identity): Response
     {
         Gate::authorize('view', $class);
 
         $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        $class->loadMissing('organization.identity');
+        $issuedAt = now();
+        $letterhead = $identity->for($class->organization);
 
         return Inertia::render('results/Summary', [
             'schoolClass' => [
@@ -389,6 +394,24 @@ class ResultsController extends Controller
                 ])->values()->all(),
             'progression' => $this->progression->for($class),
             'synopsis' => $synopsis->for($class),
+            // O QUE É DO ACTO DE IMPRIMIR e não dos dados: o timbre da escola e o
+            // momento da emissão, no mesmo formato dos outros documentos «imprimir
+            // agora». Prop aditiva — a impressão é a própria página (ver
+            // `PrintableDocument`), por isso nada daqui entra em cálculo.
+            'printDocument' => [
+                'identity' => [
+                    'name' => $letterhead['name'],
+                    'header_lines' => $letterhead['header_lines'],
+                    'footer_note' => $letterhead['footer_note'],
+                    'is_configured' => $letterhead['is_configured'],
+                    'logo_url' => null,
+                    'logo' => null,
+                ],
+                'issued_at' => $issuedAt->toIso8601String(),
+                'issued_label' => __('Emitido a :moment', [
+                    'moment' => $issuedAt->copy()->timezone((string) config('app.timezone'))->format('d/m/Y, H:i'),
+                ]),
+            ],
         ]);
     }
 

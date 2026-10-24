@@ -20,6 +20,7 @@ const sources = import.meta.glob(
         '../pages/evaluation-sheets/Show.vue',
         '../pages/reports/class-documents/MeasuresMap.vue',
         '../pages/results/Statistics.vue',
+        '../pages/results/Summary.vue',
         '../components/documents/PrintableDocument.vue',
     ],
     { query: '?raw', import: 'default', eager: true },
