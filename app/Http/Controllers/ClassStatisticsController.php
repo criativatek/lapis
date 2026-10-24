@@ -9,6 +9,7 @@ use App\Models\SchoolClass;
 use App\Services\Assessment\Ai\ClassAnalyst;
 use App\Services\Assessment\BuildClassStatistics;
 use App\Services\Assessment\CaptureInterimAssessment;
+use App\Services\Documents\DocumentIdentity;
 use App\Support\Assessment\AssessmentCutoff;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Entitlements\Entitlements;
@@ -66,9 +67,13 @@ class ClassStatisticsController extends Controller
         protected Entitlements $entitlements,
     ) {}
 
-    public function show(Request $request, SchoolClass $class, ?AcademicPeriod $period = null): Response
+    public function show(Request $request, SchoolClass $class, DocumentIdentity $identity, ?AcademicPeriod $period = null): Response
     {
         Gate::authorize('view', $class);
+
+        $class->loadMissing('organization.identity', 'academicYear');
+        $issuedAt = now();
+        $letterhead = $identity->for($class->organization);
 
         $scale = $class->profileVersion?->scale()->with('levels')->first();
 
@@ -168,6 +173,25 @@ class ClassStatisticsController extends Controller
             ],
             'aiAnalysis' => $request->session()->get('aiAnalysis'),
             'aiAnalysisError' => $request->session()->get('aiAnalysisError'),
+            // O QUE É DO ACTO DE IMPRIMIR e não dos dados: o timbre da escola, o
+            // ano letivo (que `schoolClass` não traz) e o momento da emissão. Prop
+            // aditiva — a impressão é a própria página (ver `PrintableDocument`),
+            // por isso nada daqui entra em cálculo nem diz nada do plano.
+            'printDocument' => [
+                'identity' => [
+                    'name' => $letterhead['name'],
+                    'header_lines' => $letterhead['header_lines'],
+                    'footer_note' => $letterhead['footer_note'],
+                    'is_configured' => $letterhead['is_configured'],
+                    'logo_url' => null,
+                    'logo' => null,
+                ],
+                'academic_year' => $class->academicYear->label,
+                'issued_at' => $issuedAt->toIso8601String(),
+                'issued_label' => __('Emitido a :moment', [
+                    'moment' => $issuedAt->copy()->timezone((string) config('app.timezone'))->format('d/m/Y, H:i'),
+                ]),
+            ],
         ]);
     }
 }
