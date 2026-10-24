@@ -19,6 +19,7 @@ const sources = import.meta.glob(
         '../pages/reports/Show.vue',
         '../pages/evaluation-sheets/Show.vue',
         '../pages/reports/class-documents/MeasuresMap.vue',
+        '../pages/results/Summary.vue',
         '../components/documents/PrintableDocument.vue',
     ],
     { query: '?raw', import: 'default', eager: true },
@@ -36,8 +37,8 @@ function printCss(source: string): string {
 }
 
 describe('CSS de impressão dos documentos', () => {
-    it('lê os quatro ficheiros', () => {
-        expect(Object.keys(sources)).toHaveLength(4);
+    it('lê os cinco ficheiros', () => {
+        expect(Object.keys(sources)).toHaveLength(5);
     });
 
     for (const [path, source] of Object.entries(sources)) {

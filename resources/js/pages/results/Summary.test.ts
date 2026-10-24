@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { Synopsis } from '@/lib/synopsis';
 import Summary from './Summary.vue';
@@ -165,6 +165,11 @@ function props(options: { decided?: boolean; canDecide?: boolean } = {}) {
         canExportToInovar: false,
         canViewStudentProgress: true,
         canDecideDomains: options.canDecide ?? true,
+        printDocument: {
+            identity: { name: 'Escola Teste', header_lines: ['Rua A'], footer_note: 'Nota da escola', is_configured: true, logo_url: null },
+            issued_at: '2026-10-23T18:30:00+01:00',
+            issued_label: 'Emitido a 23/10/2026, 18:30',
+        },
         progression: {
             periods: PERIODS,
             domains: DOMAINS,
@@ -706,5 +711,128 @@ describe('Summary — autoavaliação com critérios anteriores', () => {
         const wrapper = await domainsView();
 
         expect(wrapper.find('[data-test="self-assessment-legend"]').exists()).toBe(false);
+    });
+});
+
+describe('Quadro Síntese · imprimir / PDF', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        document.head.querySelectorAll('style[data-document-print-page]').forEach((element) => element.remove());
+    });
+
+    function pageRule(): string {
+        return document.head.querySelector('style[data-document-print-page]')?.textContent ?? '';
+    }
+
+    it('põe o botão ao lado de «Exportar Excel», fora do papel', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs }, attachTo: document.body });
+        const button = wrapper.get('[data-test="print-button"]');
+
+        expect(button.text()).toContain('Imprimir / PDF');
+        expect(button.element.previousElementSibling?.previousElementSibling?.textContent).toContain('Exportar Excel');
+        // Os controlos saem do papel: estão dentro do bloco `print:hidden`.
+        expect(button.element.closest('.print\\:hidden')).not.toBeNull();
+
+        wrapper.unmount();
+    });
+
+    it('imprime a própria página: horizontal, e o papel recomendado conforme a vista', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs }, attachTo: document.body });
+
+        // Sem momentos o quadro é estreito: A4. A vista «Por domínio» é larga: A3.
+        expect(pageRule()).toContain('size: A4 landscape');
+        expect(wrapper.get('[data-test="print-paper"]').text()).toContain('Automático (A4)');
+
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+        expect(pageRule()).toContain('size: A3 landscape');
+        expect(wrapper.get('[data-test="print-paper"]').text()).toContain('Automático (A3)');
+
+        wrapper.unmount();
+    });
+
+    it('o professor pode forçar o papel, e isso segue o @page', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs }, attachTo: document.body });
+
+        await wrapper.get('[data-test="print-paper"]').setValue('A3');
+        expect(pageRule()).toContain('size: A3 landscape');
+
+        await wrapper.get('[data-test="print-paper"]').setValue('A4');
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+        expect(pageRule()).toContain('size: A4 landscape');
+
+        wrapper.unmount();
+    });
+
+    it('o cabeçalho do papel traz escola, turma, ano, vista e emissão — e respeita as duas opções', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs } });
+        const header = () => wrapper.get('[data-test="print-header"]').text();
+
+        expect(header()).toContain('Escola Teste');
+        expect(header()).toContain('7.º A');
+        expect(header()).toContain('Português');
+        expect(header()).toContain('2025/2026');
+        expect(header()).toContain('Vista: Ao longo do ano');
+        expect(header()).toContain('Com valores quantitativos');
+        expect(header()).toContain('Emitido a 23/10/2026, 18:30');
+        expect(header()).not.toContain('desempenho acumulado');
+
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+        expect(header()).toContain('Vista: Por domínio');
+        expect(header()).toContain('Com desempenho acumulado');
+
+        await withoutAccumulated(wrapper);
+        await withoutQuantitative(wrapper);
+        expect(header()).toContain('Sem desempenho acumulado');
+        expect(header()).toContain('Sem valores quantitativos');
+        expect(wrapper.get('[data-test="print-footer"]').text()).toContain('Nota da escola');
+    });
+
+    it('antes de imprimir mede a tabela e põe a escala; depois limpa-a', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs }, attachTo: document.body });
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+        const table = wrapper.get('table[data-quadro-table]').element as HTMLElement;
+        Object.defineProperty(table, 'offsetWidth', { configurable: true, value: 3000 });
+
+        window.dispatchEvent(new Event('beforeprint'));
+
+        const root = wrapper.get('.quadro-print').element as HTMLElement;
+        const zoom = Number(root.style.getPropertyValue('--quadro-print-zoom'));
+
+        // A3 horizontal com 10 mm de margem: ~1512 px úteis para 3000 px de tabela.
+        expect(zoom).toBeGreaterThan(0.49);
+        expect(zoom).toBeLessThan(0.51);
+        expect(table.style.minWidth).toBe('');
+
+        window.dispatchEvent(new Event('afterprint'));
+        expect(root.style.getPropertyValue('--quadro-print-zoom')).toBe('');
+
+        wrapper.unmount();
+    });
+
+    it('uma tabela que não cabe com legibilidade avisa o professor no ecrã', async () => {
+        const wrapper = mount(Summary, { props: props(), global: { stubs }, attachTo: document.body });
+        await wrapper.findAll('button[role="tab"]')[1].trigger('click');
+
+        Object.defineProperty(wrapper.get('table[data-quadro-table]').element, 'offsetWidth', { configurable: true, value: 9000 });
+        window.dispatchEvent(new Event('beforeprint'));
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.get('[data-test="print-notice"]').text()).toContain('imprime-se a');
+
+        wrapper.unmount();
+    });
+
+    it('o botão abre o diálogo de impressão do browser', async () => {
+        const print = vi.fn();
+        vi.stubGlobal('print', print);
+        const wrapper = mount(Summary, { props: props(), global: { stubs } });
+
+        await wrapper.get('[data-test="print-button"]').trigger('click');
+        await wrapper.vm.$nextTick();
+
+        expect(print).toHaveBeenCalledTimes(1);
+        vi.unstubAllGlobals();
     });
 });

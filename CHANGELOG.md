@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.177.1] — 2026-10-23
+
+> **Quadro Síntese: Imprimir / PDF.** O Quadro Síntese ganha o botão «Imprimir /
+> PDF» ao lado de «Exportar Excel», nos planos Base e Pro. Imprime-se a própria
+> página — a vista («Ao longo do ano» ou «Por domínio»), os quantitativos e o
+> desempenho acumulado são exatamente os que o professor tem no ecrã, sem segunda
+> composição e sem tocar em cálculos. **Sem migrations; sem alterações às regras de
+> acesso; o backup não muda.**
+
+### Adicionado
+
+- **Imprimir / PDF no Quadro Síntese.** Papel A4 ou A3 sempre na horizontal, com
+  seletor «Papel»: «Automático» propõe o A3 para a vista «Por domínio» e para a vista
+  «Ao longo do ano» quando tem mais de 14 colunas, e o A4 caso contrário. O PDF é o
+  «Guardar como PDF» do diálogo de impressão. Cabeçalho com timbre da escola, turma,
+  disciplina, ano letivo, vista, opções ativas e data de emissão (prop nova e aditiva
+  `printDocument`); rodapé «Emitido a …» e «Página N / T».
+- **Colunas nunca cortadas.** Ao imprimir mede-se a tabela e aplica-se um `zoom`
+  só ao papel para caber na largura útil da folha; abaixo de 50 % o ecrã avisa que a
+  letra vai pequena e sugere desligar o acumulado ou os quantitativos. O nome do
+  aluno é a primeira coluna de cada linha, as linhas não se partem entre páginas e
+  os cabeçalhos repetem-se em todas.
+- `PrintableDocument` aceita a prop opcional `paper` (`'A4'` por omissão, `'A3'`):
+  os restantes documentos imprimem exatamente como antes.
+
 ## [0.177.0] — 2026-10-23
 
 > **Fatia D — Análise Avançada da Avaliação (Pro).** Uma página nova, «Análise da
