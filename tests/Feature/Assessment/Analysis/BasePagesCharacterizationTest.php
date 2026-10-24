@@ -55,7 +55,9 @@ class BasePagesCharacterizationTest extends TestCase
     {
         parent::setUp();
 
-        $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        // A fixed name: the factory's is random, and the organization's name (the floor of the document letterhead in
+        // `printDocument`) comes from it — a different one per process would be a difference that is not one.
+        $this->teacher = User::factory()->create(['name' => 'Ana Martins', 'email' => 'ana.martins@lapis.test']);
         $this->seed(DemoDataSeeder::class);
 
         // Inside the 1.º Semestre of the demo (14/09/2026 to 29/01/2027), frozen so the payload is.

@@ -13,6 +13,15 @@ decision.levels[].label
 decision.max_value
 decision.min_value
 interimAssessments = []
+printDocument.academic_year
+printDocument.identity.footer_note
+printDocument.identity.header_lines = []
+printDocument.identity.is_configured
+printDocument.identity.logo
+printDocument.identity.logo_url
+printDocument.identity.name
+printDocument.issued_at
+printDocument.issued_label
 schoolClass.has_profile
 schoolClass.label
 schoolClass.scale_name

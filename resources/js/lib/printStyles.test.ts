@@ -38,8 +38,8 @@ function printCss(source: string): string {
 }
 
 describe('CSS de impressão dos documentos', () => {
-    it('lê os cinco ficheiros', () => {
-        expect(Object.keys(sources)).toHaveLength(5);
+    it('lê os seis ficheiros', () => {
+        expect(Object.keys(sources)).toHaveLength(6);
     });
 
     for (const [path, source] of Object.entries(sources)) {
