@@ -337,4 +337,68 @@ class BrandingTest extends TestCase
             );
         }
     }
+
+    /**
+     * O slogan oficial é «A tecnologia apoia. O professor transforma.».
+     *
+     * O anterior, «Mais simples. Mais tempo.», não pode voltar a aparecer como
+     * assinatura da marca. Procura-se só a frase exata: «mais tempo para
+     * ensinar» (Sobre, CTA final) é copy de página, não assinatura, e fica.
+     * `CHANGELOG.md` está fora porque é registo histórico.
+     */
+    #[Test]
+    public function the_brand_signature_is_the_official_slogan(): void
+    {
+        $slogan = 'A tecnologia apoia. O professor transforma.';
+
+        foreach ([
+            'README.md',
+            'CLAUDE.md',
+            'resources/js/components/landing/LandingFooter.vue',
+        ] as $file) {
+            $this->assertStringContainsString(
+                $slogan,
+                (string) file_get_contents(base_path($file)),
+                "{$file} não traz o slogan oficial.",
+            );
+        }
+
+        // O AppLogo parte o slogan em duas frases (uma quebra de linha
+        // controlada), por isso procura-se cada frase.
+        $logo = (string) file_get_contents(base_path('resources/js/components/AppLogo.vue'));
+        $this->assertStringContainsString('A tecnologia apoia.', $logo);
+        $this->assertStringContainsString('O professor transforma.', $logo);
+
+        $offenders = [];
+
+        foreach ([
+            base_path('resources'),
+            base_path('app'),
+            base_path('README.md'),
+            base_path('CLAUDE.md'),
+        ] as $root) {
+            $files = is_file($root)
+                ? [new \SplFileInfo($root)]
+                : new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)
+                );
+
+            foreach ($files as $file) {
+                // Os testes Vitest citam o slogan antigo para provar que saiu.
+                if (str_ends_with($file->getFilename(), '.test.ts')) {
+                    continue;
+                }
+
+                if (! $file->isFile() || ! in_array($file->getExtension(), ['vue', 'ts', 'php', 'md', 'json', 'svg'], true)) {
+                    continue;
+                }
+
+                if (preg_match('/Mais simples\.\s*Mais tempo\./iu', (string) file_get_contents($file->getPathname()))) {
+                    $offenders[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+                }
+            }
+        }
+
+        $this->assertSame([], $offenders, "Slogan antigo em:\n".implode("\n", $offenders));
+    }
 }
