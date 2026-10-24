@@ -13,8 +13,16 @@ import AppLogoIcon from '@/components/AppLogoIcon.vue';
             class="truncate text-base leading-none font-semibold tracking-tight"
             >Lapispro</span
         >
-        <span class="truncate text-xs text-muted-foreground"
-            >Mais simples. Mais tempo.</span
+        <!-- The slogan is 38 characters: it does not fit one line in the
+             16rem sidebar, and truncating it would cut the very sentence the
+             brand stands for. Each sentence is an inline-block and the width is
+             capped, so it always breaks between them, never mid-sentence, and
+             never gets an ellipsis. -->
+        <span
+            class="mt-0.5 max-w-44 text-[0.6875rem] leading-snug text-pretty text-muted-foreground"
+            data-testid="brand-slogan"
+            ><span class="inline-block">A tecnologia apoia.</span>{{ ' '
+            }}<span class="inline-block">O professor transforma.</span></span
         >
     </div>
 </template>

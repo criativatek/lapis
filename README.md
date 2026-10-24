@@ -1,6 +1,6 @@
 # Lapispro
 
-*Mais simples. Mais tempo.*
+*A tecnologia apoia. O professor transforma.*
 
 App web modular para professores do básico e secundário em Portugal: perfis de
 avaliação, turmas, instrumentos, grelhas, propostas de classificação

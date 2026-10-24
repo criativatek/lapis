@@ -57,7 +57,7 @@ const entity = computed(() => usePage().props.legalEntity);
                         <span
                             class="mt-0.5 block text-[11px] leading-none"
                             :class="CHROME_MUTED"
-                            >Mais simples. Mais tempo.</span
+                            >A tecnologia apoia. O professor transforma.</span
                         >
                     </span>
                 </span>
