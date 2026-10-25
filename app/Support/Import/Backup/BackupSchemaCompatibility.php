@@ -7,7 +7,17 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (19) is what GenerateDataExport writes today. Version 19 adds the
+ * CURRENT (20) is what GenerateDataExport writes today. Version 20 adds the
+ * chain of rectifications of the classifications — a published decision that
+ * was corrected is not edited, a new row replaces it and the old one stays as
+ * history: `classifications[].rectifies_ulid` (the row this one replaces),
+ * `rectification_reason` (one of `RectificationReason`), `rectification_note`,
+ * `rectified_by_email` and `rectified_at`, alongside the `superseded_by_ulid`
+ * and `status = superseded` that were already there. The four facts come
+ * together or not at all; the chain is restored whole, from the oldest row to
+ * the newest, or not at all. Absent in a backup ≤19: no rectification, and the
+ * classifications are read exactly as before. A backup v20 is refused by earlier
+ * code (unsupported newer). Version 19 adds the
  * `timetable_activity_occurrences` collection — the teacher's own per-session
  * records of their «outras atividades» (`TimetableActivitySession` in the
  * database; named «occurrences» in the file because `SecretScanner` refuses any
@@ -106,7 +116,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 19;
+    public const int CURRENT = 20;
 
     public const int MINIMUM_SUPPORTED = 2;
 

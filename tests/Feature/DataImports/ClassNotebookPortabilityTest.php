@@ -312,8 +312,8 @@ class ClassNotebookPortabilityTest extends TestCase
 
         $backup = $this->backupJson($this->backupUpload($this->teacher, $organization));
 
-        $this->assertSame(19, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(19, $backup['schema_version']);
+        $this->assertSame(20, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(20, $backup['schema_version']);
         $this->assertContains('class_notebook_entries', $backup['capabilities']);
         $this->assertContains('results_analysis_notes', $backup['capabilities'], 'A coleção da v13 continua no backup.');
         $this->assertArrayHasKey('results_analysis_notes', $backup);

@@ -230,6 +230,11 @@ class ExecuteDataImport
                     'record_followup_confirmations',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
+                // Rectifications whose author could not be mapped: written in the
+                // name of the account that restored (the table requires an author).
+                'rectifications_in_restorer_name' => collect($rows['classifications'])
+                    ->filter(fn (array $row): bool => $row['classification'] === 'new' && ($row['rectifier_unresolved'] ?? false) === true)
+                    ->count(),
             ];
 
             $lockedImport->forceFill([

@@ -23,6 +23,7 @@ use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\ParticipationLevel;
 use App\Models\ProfileVersionStatus;
+use App\Models\RectificationReason;
 use App\Models\ReportScopeKind;
 use App\Models\ReportTone;
 use App\Models\ReportType;
@@ -77,6 +78,7 @@ class ValidateBackupPayload
     public function __construct(
         private readonly SecretScanner $secretScanner,
         private readonly ValidateRecordFollowupRows $followupRows,
+        private readonly ValidateClassificationChains $classificationChains,
     ) {}
 
     /**
@@ -182,6 +184,7 @@ class ValidateBackupPayload
                 'proposed_normalized_value', 'proposed_value', 'proposed_scale_level', 'final_value', 'final_scale_level',
                 'override_reason', 'overridden_by_email', 'overridden_at', 'confirmed_by_email', 'confirmed_at',
                 'published_at', 'superseded_by_ulid',
+                'rectifies_ulid', 'rectification_reason', 'rectification_note', 'rectified_by_email', 'rectified_at',
             ], function (array $row) use (&$rowIssues): ?array {
                 return $this->validClassificationRow($row, $rowIssues);
             }),
@@ -261,6 +264,11 @@ class ValidateBackupPayload
 
             'class_notebook_entries' => $this->validClassNotebookEntryRows($decoded, $rowIssues),
         ];
+
+        // Schema v20 — the chains of rectifications are judged as a whole, after
+        // every row is valid on its own: a row that points at another needs that
+        // other to be there, and a cell that cannot be trusted is not restored.
+        $canonical['classifications'] = $this->classificationChains->validate($canonical['classifications'], $rowIssues);
 
         // Schema v15 — the follow-up cases and the «Registado no Inovar»
         // declarations (ValidateRecordFollowupRows). Absent in a backup ≤14.
@@ -1107,6 +1115,35 @@ class ValidateBackupPayload
             return null;
         }
 
+        // Schema v20 — the four facts that say «this decision rectifies that
+        // one» come together or not at all, as the table demands. Absent in a
+        // backup ≤19: no rectification.
+        $reasonIn = $row['rectification_reason'] ?? null;
+        $reason = is_string($reasonIn) ? RectificationReason::tryFrom($reasonIn) : null;
+        $note = $this->nullableString($row['rectification_note'] ?? null);
+        $rectifies = $this->nullableUlid($row['rectifies_ulid'] ?? null);
+        $rectifiedBy = $this->nullableString($row['rectified_by_email'] ?? null);
+        $rectifiedAt = $this->nullableDateTime($row['rectified_at'] ?? null);
+        $issue = function (string $reason) use ($ulid, &$rowIssues): null {
+            $rowIssues[] = ['domain' => 'classifications', 'ulid' => $ulid, 'reason' => $this->t($reason)];
+
+            return null;
+        };
+
+        if ($reasonIn !== null && $reason === null) {
+            return $issue('O motivo da retificação não é um dos motivos conhecidos.');
+        }
+
+        $facts = [$rectifies !== null, $reason !== null, $rectifiedBy !== null, $rectifiedAt !== null];
+
+        if (count(array_unique($facts)) > 1 || ($note !== null && ! $facts[0])) {
+            return $issue('Os dados da retificação (classificação retificada, motivo, autor e data) têm de vir todos ou nenhum.');
+        }
+
+        if ($note !== null && mb_strlen($note) > 1000) {
+            return $issue('A nota da retificação excede os 1000 caracteres.');
+        }
+
         return [
             'ulid' => $ulid,
             'enrollment_ulid' => $enrollmentUlid,
@@ -1126,6 +1163,11 @@ class ValidateBackupPayload
             'confirmed_at' => $this->nullableDateTime($row['confirmed_at'] ?? null),
             'published_at' => $this->nullableDateTime($row['published_at'] ?? null),
             'superseded_by_ulid' => $this->nullableUlid($row['superseded_by_ulid'] ?? null),
+            'rectifies_ulid' => $rectifies,
+            'rectification_reason' => $reason?->value,
+            'rectification_note' => $note,
+            'rectified_by_email' => $rectifiedBy,
+            'rectified_at' => $rectifiedAt,
         ];
     }
 

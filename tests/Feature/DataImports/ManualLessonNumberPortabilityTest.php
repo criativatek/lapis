@@ -57,7 +57,7 @@ class ManualLessonNumberPortabilityTest extends TestCase
 
         $backup = $this->backupUpload();
         $json = $this->backupJson($backup);
-        $this->assertSame(19, $json['schema_version']);
+        $this->assertSame(20, $json['schema_version']);
 
         $rows = collect($json['lessons'])->keyBy('lesson_number');
         $this->assertSame(12, $rows[11]['lesson_number_end']);

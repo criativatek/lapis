@@ -157,6 +157,21 @@ trait ResolvesBackupReferences
     }
 
     /**
+     * The notice for a rectification whose author this import cannot map.
+     *
+     * Unlike every other author, this one cannot be left empty: a rectification
+     * without an author is not a rectification, and the table refuses it. The
+     * decision, its reason, its note and its date are restored in full; the
+     * author is the account that restores.
+     */
+    private function unresolvedRectifierNotice(): string
+    {
+        return $this->t(
+            'Esta classificação é uma retificação cujo autor não pôde ser associado. Fica registada em nome da conta que restaura — a data, o motivo e a nota mantêm-se.',
+        );
+    }
+
+    /**
      * The notice for a decision that arrives confirmed by an account this
      * import cannot resolve (§13.3, §3.3 — the teacher decides).
      *

@@ -244,6 +244,10 @@ class GenerateDataExport
         $classifications = Classification::query()
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
             ->with(['enrollment.student', 'academicPeriod', 'proposedScaleLevel', 'finalScaleLevel'])
+            // In creation order, so a chain of rectifications is written oldest
+            // first: the restore does not depend on it, and a file anyone reads
+            // is easier to follow when it does.
+            ->orderBy('id')
             ->get();
         $selfAssessments = SelfAssessment::query()
             ->whereHas('enrollment', fn ($query) => $query->whereIn('class_id', $classIds))
@@ -361,7 +365,12 @@ class GenerateDataExport
         try {
             $spreadsheet->removeSheetByIndex(0);
 
-            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $classifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries, count($followupSheetRows), $timetableActivitySessions->count());
+            // The readable files show a student's classification, not the history
+            // of how it got there: a rectified decision is one line, the live one.
+            // The backup keeps the whole chain.
+            $liveClassifications = $classifications->reject(fn (Classification $classification): bool => ! $classification->isLive())->values();
+
+            $this->addResumoSheet($spreadsheet, $organization, $user, $classes, $students, $instruments, $liveClassifications, $evidenceRecords, $reports, $resultsAnalysisNotes, $classNotebookEntries, count($followupSheetRows), $timetableActivitySessions->count());
 
             if ($classes->isNotEmpty()) {
                 $this->addTurmasSheet($spreadsheet, $classes);
@@ -391,8 +400,8 @@ class GenerateDataExport
                 $this->addOutrasAtividadesSheet($spreadsheet, $timetableActivitySessions);
             }
 
-            if ($classifications->isNotEmpty()) {
-                $this->addClassificacoesSheet($spreadsheet, $classifications, $classes, $progressionByClass);
+            if ($liveClassifications->isNotEmpty()) {
+                $this->addClassificacoesSheet($spreadsheet, $liveClassifications, $classes, $progressionByClass);
             }
 
             if ($selfAssessments->isNotEmpty()) {
@@ -1253,6 +1262,7 @@ class GenerateDataExport
             ->merge($itemScores->pluck('assessed_by'))
             ->merge($classifications->pluck('confirmed_by'))
             ->merge($classifications->pluck('overridden_by'))
+            ->merge($classifications->pluck('rectified_by'))
             ->merge($selfAssessments->pluck('reviewed_by'))
             ->merge($evidenceRecords->pluck('created_by'))
             ->merge($interventions->pluck('created_by'))
@@ -1894,6 +1904,16 @@ class GenerateDataExport
             'superseded_by_ulid' => $classification->superseded_by_id === null
                 ? null
                 : $refs['classificationsById']->get($classification->superseded_by_id)?->ulid,
+            // Schema v20 — the other end of the chain and the four facts of a
+            // rectification. The previous row is always among the exported ones:
+            // a cell's whole chain belongs to one class.
+            'rectifies_ulid' => $classification->rectifies_id === null
+                ? null
+                : $refs['classificationsById']->get($classification->rectifies_id)?->ulid,
+            'rectification_reason' => $classification->rectification_reason?->value,
+            'rectification_note' => $classification->rectification_note,
+            'rectified_by_email' => $this->authorEmail($classification->rectified_by, $refs),
+            'rectified_at' => $classification->rectified_at?->toIso8601String(),
         ];
     }
 

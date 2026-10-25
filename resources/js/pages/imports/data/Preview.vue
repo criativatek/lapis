@@ -259,6 +259,10 @@ const summaryGroups: {
                 key: 'classifications_left_unconfirmed',
                 label: 'Classificações que ficaram por confirmar',
             },
+            {
+                key: 'rectifications_in_restorer_name',
+                label: 'Retificações registadas em nome de quem restaurou',
+            },
         ],
     },
 ];
