@@ -6,7 +6,6 @@ use App\Models\AcademicPeriod;
 use App\Models\AcademicPeriodStatus;
 use App\Models\AcademicYear;
 use App\Models\Classification;
-use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\SchoolClass;
@@ -42,9 +41,8 @@ final class RectificationAccess
     {
         // Only the live, published row can be rectified; anything else is not a
         // question of rights, so there is nothing to explain to the user.
-        if ($classification->status !== ClassificationStatus::Published
-            || $classification->superseded_by_id !== null) {
-            return new self(false, false, false, null);
+        if (! RectificationContext::isRectifiable($classification)) {
+            return self::none();
         }
 
         // Organization is not tenant-scoped, so this works whatever tenant is resolved.
@@ -59,20 +57,46 @@ final class RectificationAccess
             ->findOrFail($enrollment->class_id);
         $period = AcademicPeriod::query()->withoutGlobalScope('organization')
             ->findOrFail($classification->academic_period_id);
+
+        return self::context($user, $organization, $class, $period)->accessFor($classification);
+    }
+
+    /**
+     * What is the same for every classification of one class and period, worked
+     * out once: a screen listing thirty students asks this a single time instead
+     * of five questions per row.
+     */
+    public static function context(User $user, Organization $organization, SchoolClass $class, AcademicPeriod $period): RectificationContext
+    {
         $year = AcademicYear::query()->withoutGlobalScope('organization')
             ->findOrFail($period->academic_year_id);
 
         $closed = ! $year->isEditable()
             || in_array($period->status, [AcademicPeriodStatus::Closed, AcademicPeriodStatus::Archived], true);
 
-        $teaches = $class->teachers()->whereKey($user->getKey())->exists();
+        return new RectificationContext(
+            $closed,
+            $class->teachers()->whereKey($user->getKey())->exists(),
+            $organization->isPersonal(),
+            $user->owns($organization),
+        );
+    }
 
-        if (! $closed || $organization->isPersonal()) {
+    /** Nothing to rectify, nothing to say. */
+    public static function none(): self
+    {
+        return new self(false, false, false, null);
+    }
+
+    /** The rule itself, on facts already established. */
+    public static function decide(bool $closed, bool $teaches, bool $personal, bool $owns): self
+    {
+        if (! $closed || $personal) {
             return new self($teaches, $teaches && $closed, $closed, null);
         }
 
         // Closed, in an institution: the head alone.
-        if ($user->owns($organization)) {
+        if ($owns) {
             return new self(true, true, true, null);
         }
 

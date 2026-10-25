@@ -982,6 +982,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // through the same service either way.
         Route::post('classes/{class}/classifications/{period}/{enrollment}/decide', [ClassificationController::class, 'decide'])
             ->name('classifications.decide');
+        // Correcting a decision that is already published. Not the class's
+        // `update` gate: the head of an institution rectifies once the period is
+        // closed even without teaching the class — the classification's policy decides.
+        Route::post('classes/{class}/classifications/{period}/{enrollment}/rectify', [ClassificationController::class, 'rectify'])
+            ->name('classifications.rectify');
+        // The dialog's history and external-communication warning, on demand.
+        Route::get('classes/{class}/classifications/{classification}/rectification', [ClassificationController::class, 'rectification'])
+            ->name('classifications.rectification');
     });
 
     // As URLs da pauta de classificações antiga (`pautas.*`), que a Pauta de

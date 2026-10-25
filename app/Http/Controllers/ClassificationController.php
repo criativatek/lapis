@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\RectifyClassificationRequest;
 use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
+use App\Models\RectificationReason;
 use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -14,14 +16,18 @@ use App\Services\Assessment\BuildResultsProgression;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Assessment\ConfirmClassification;
 use App\Services\Assessment\DecisionScaleReader;
+use App\Services\Assessment\ExternalCommunicationNotice;
 use App\Services\Assessment\OpenClassification;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
+use App\Services\Assessment\RectifyClassification;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\ClassificationDecisionException;
 use App\Support\Assessment\DecisionScale;
+use App\Support\Assessment\RectificationPayload;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -101,6 +107,9 @@ class ClassificationController extends Controller
         // itself. Shared with Resultados, which offers the same decision (§3).
         $decision = DecisionScale::for($scale);
 
+        // Rights for every row, worked out once (see RectificationPayload).
+        $rectification = $selected === null ? [] : RectificationPayload::for($this->user(), $class, $selected, $scope, $live);
+
         return Inertia::render('classifications/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -121,7 +130,7 @@ class ClassificationController extends Controller
                 'label' => $academicPeriod->label,
                 'selected' => $selected !== null && $academicPeriod->id === $selected->id,
             ]),
-            'rows' => $enrollments->map(function ($enrollment) use ($live, $scale, $roundingMode, $roundingScale, $alongside, $scope) {
+            'rows' => $enrollments->map(function ($enrollment) use ($live, $scale, $roundingMode, $roundingScale, $alongside, $scope, $rectification) {
                 /** @var Classification|null $classification */
                 $classification = $live->get($enrollment->id);
                 $beside = $alongside[$enrollment->id] ?? null;
@@ -164,6 +173,8 @@ class ClassificationController extends Controller
                         // …while «Alterar» stays available until publication.
                         'can_change' => $classification->status->allowsDecision(),
                         'is_published' => $classification->status->isPublished(),
+                        // «Retificar», for a published decision (the only one that can be).
+                        'rectification' => $rectification[(int) $enrollment->id] ?? null,
                     ],
                 ];
             })->values(),
@@ -352,6 +363,118 @@ class ClassificationController extends Controller
             : __('Classificação confirmada.')]);
 
         return back();
+    }
+
+    /**
+     * Correcting a decision that was already published.
+     *
+     * NOT `Gate::authorize('update', $class)`, unlike `decide`: once the period
+     * is closed in an institution, the head may rectify a class they do not
+     * teach, and the class policy would turn them away. The classification's own
+     * policy ability decides, from the classification's organization — see
+     * RectificationAccess.
+     */
+    public function rectify(RectifyClassificationRequest $request, SchoolClass $class, string $period, Enrollment $enrollment, RectifyClassification $rectifier): RedirectResponse
+    {
+        $selected = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
+            ->where('ulid', $period)->firstOrFail();
+
+        // Looked up THROUGH the class, so a URL cannot mix another class's
+        // student into this one.
+        abort_unless($class->enrollments()->whereKey($enrollment->getKey())->exists(), 404);
+
+        $scope = ClassificationScope::tryFrom((string) $request->input('scope')) ?? ClassificationScope::Period;
+
+        // Only the live, published row of the cell can be rectified; a proposal,
+        // a confirmation or an already superseded row is not found here.
+        $classification = Classification::query()
+            ->where('enrollment_id', $enrollment->getKey())
+            ->where('academic_period_id', $selected->getKey())
+            ->where('scope', $scope)
+            ->where('status', ClassificationStatus::Published)
+            ->whereNull('superseded_by_id')
+            ->firstOrFail();
+
+        Gate::authorize('rectify', $classification);
+
+        $validated = $request->validated();
+
+        try {
+            $rectifier->rectify(
+                $classification,
+                $this->user(),
+                RectificationReason::from($validated['reason']),
+                $validated['note'] ?? null,
+                isset($validated['final_scale_level_id']) ? (int) $validated['final_scale_level_id'] : null,
+                isset($validated['final_value']) ? (string) $validated['final_value'] : null,
+                (int) $validated['lock_version'],
+                $request->boolean('closed_confirmed'),
+            );
+        } catch (ClassificationDecisionException $exception) {
+            return back()->withErrors(['rectify' => $exception->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Classificação retificada.')]);
+
+        return back();
+    }
+
+    /**
+     * What the rectification dialog needs when it opens, asked for then and not
+     * sent with every row: the history of the cell and the warning about having
+     * communicated the grade elsewhere. Each costs queries per classification.
+     */
+    public function rectification(SchoolClass $class, Classification $classification, ExternalCommunicationNotice $notice): JsonResponse
+    {
+        abort_unless($class->enrollments()->whereKey($classification->enrollment_id)->exists(), 404);
+
+        // The cell, oldest to newest. A link to a row that has since been
+        // superseded still answers about the cell, as of now.
+        $cell = Classification::query()
+            ->with('finalScaleLevel')
+            ->where('enrollment_id', $classification->enrollment_id)
+            ->where('academic_period_id', $classification->academic_period_id)
+            ->where('scope', $classification->scope)
+            ->get()
+            ->keyBy('id');
+
+        $live = $cell->first(fn (Classification $row) => $row->superseded_by_id === null);
+        abort_if($live === null, 404);
+
+        Gate::authorize('viewHistory', $live);
+
+        // Walked from the live row back through `rectifies_id`: the chain is the
+        // history, and a row outside it (there should be none) is not shown.
+        $chain = [];
+
+        for ($row = $live; $row !== null; $row = $row->rectifies_id === null ? null : $cell->get($row->rectifies_id)) {
+            array_unshift($chain, $row);
+        }
+
+        $authors = User::query()
+            ->whereIn('id', collect($chain)->map(fn (Classification $row) => $row->rectified_by ?? $row->confirmed_by)->filter()->unique())
+            ->pluck('name', 'id');
+
+        $scale = $class->profileVersion?->scale()->with('levels')->first();
+
+        return response()->json([
+            'history' => collect($chain)->map(function (Classification $row) use ($authors, $scale) {
+                $by = $row->rectified_by ?? $row->confirmed_by;
+
+                return [
+                    'ulid' => $row->ulid,
+                    'status' => $row->status->value,
+                    'is_live' => $row->superseded_by_id === null,
+                    'final' => $this->decisionPayload($row, $scale),
+                    'decided_by' => $by === null ? null : $authors->get($by),
+                    'decided_at' => ($row->rectified_at ?? $row->confirmed_at)?->toIso8601String(),
+                    'reason' => $row->rectification_reason?->label(),
+                    'note' => $row->rectification_note,
+                    'rectified' => $row->rectifies_id !== null,
+                ];
+            })->values()->all(),
+            'notice' => $notice->for($live),
+        ]);
     }
 
     protected function user(): User
