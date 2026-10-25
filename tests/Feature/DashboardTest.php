@@ -50,4 +50,25 @@ class DashboardTest extends TestCase
                 ->where('classes.0.pending_publication', 0),
         );
     }
+
+    public function test_an_archived_class_with_old_proposals_no_longer_counts_on_the_dashboard(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $period = $class->academicYear->periods()->where('sequence', 1)->firstOrFail();
+            app(ProposeClassifications::class)->forPeriod($class, $period);
+            $class->update(['archived_at' => now()]);
+        });
+
+        $this->actingAs($teacher)->get(route('dashboard'))->assertInertia(
+            fn ($page) => $page
+                ->component('Dashboard')
+                ->where('totals.classes', 0)
+                ->where('totals.pending_confirmation', 0)
+                ->where('classes', []),
+        );
+    }
 }

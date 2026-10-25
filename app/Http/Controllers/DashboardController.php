@@ -59,7 +59,11 @@ class DashboardController extends Controller
             ->get()
             ->groupBy('class_id');
 
-        $classCards = $classes->map(function (SchoolClass $class) use ($counts) {
+        // Só as turmas que continuam nas listas entram nos cartões e nos totais:
+        // uma turma arquivada com propostas antigas por confirmar não é trabalho
+        // de hoje, e contá-la punha-a no «Agora» (0.179.0). A prontidão do ano,
+        // os primeiros passos e os alertas continuam a ler todas as turmas.
+        $classCards = $classes->filter(fn (SchoolClass $class): bool => ! $class->isArchived())->values()->map(function (SchoolClass $class) use ($counts) {
             // Keyed by the enum's string value — status is cast to an enum, so it
             // cannot be a pluck() array key directly.
             $byStatus = $counts->get($class->id, collect())
