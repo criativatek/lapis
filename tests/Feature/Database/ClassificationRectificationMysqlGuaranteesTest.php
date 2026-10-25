@@ -6,11 +6,10 @@ use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
-use PDO;
-use PDOException;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\Concerns\AssertsMysqlRejection;
+use Tests\Concerns\ConnectsToMysqlServer;
 use Tests\TestCase;
 use Throwable;
 
@@ -43,7 +42,7 @@ use Throwable;
  */
 class ClassificationRectificationMysqlGuaranteesTest extends TestCase
 {
-    use AssertsMysqlRejection;
+    use AssertsMysqlRejection, ConnectsToMysqlServer;
 
     private const DATABASE = 'lapis_rectification_scratch';
 
@@ -491,37 +490,6 @@ class ClassificationRectificationMysqlGuaranteesTest extends TestCase
     }
 
     // ------------------------------------------------------------- fixtures
-
-    private function host(): string
-    {
-        return (string) env('DB_HOST', '127.0.0.1');
-    }
-
-    private function port(): string
-    {
-        return (string) env('DB_PORT', '3306');
-    }
-
-    private function serverPdo(): PDO
-    {
-        return new PDO(
-            'mysql:host='.$this->host().';port='.$this->port(),
-            (string) env('DB_USERNAME', 'root'),
-            (string) env('DB_PASSWORD', ''),
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
-        );
-    }
-
-    private function mysqlIsListening(): bool
-    {
-        try {
-            $this->serverPdo();
-
-            return true;
-        } catch (PDOException) {
-            return false;
-        }
-    }
 
     private function configureScratchConnections(): void
     {
