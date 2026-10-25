@@ -26,13 +26,14 @@ class ClassificationDecisionException extends RuntimeException
     }
 
     /**
-     * Published is the closing act. Reopening one is a supersession, and that
-     * mechanism does not exist yet — so this says so, instead of editing the
-     * grade behind the back of everyone it was communicated to.
+     * Published is the closing act. Changing one is a rectification, which
+     * writes a new row and keeps the old one as history — so a plain edit is
+     * refused and points there, instead of editing the grade behind the back
+     * of everyone it was communicated to.
      */
     public static function alreadyPublished(): self
     {
-        return new self(__('Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no Lapispro.'));
+        return new self(__('Esta classificação já foi publicada. Para a alterar, use «Retificar».'));
     }
 
     public static function notChangeable(): self

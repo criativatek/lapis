@@ -696,7 +696,7 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                 O <strong>{{ decision.label }}</strong> é a decisão do professor e nunca é
                 preenchido pela proposta: clique na célula para atribuir ou alterar, ou use
                 «Usar proposta» para adotar a do Lapispro. Depois de <strong>publicada</strong>,
-                a classificação fica fechada — a publicação faz-se em «Gerir classificações».
+                só muda por retificação, com motivo e histórico — a publicação faz-se em «Gerir classificações».
                 A <strong>Autoavaliação</strong> é o valor que o próprio aluno propôs na
                 escala — a resposta à pergunta global, nunca a média do que disse sobre cada
                 domínio.

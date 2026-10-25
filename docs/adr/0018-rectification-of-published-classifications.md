@@ -1,0 +1,42 @@
+# ADR-0018 — Rectification of published classifications
+
+## Status
+
+Accepted — 2026-10-25. The backup authorship question below is open and will be closed before merge.
+
+## Context
+
+Publication closed a classification: `ClassificationStatus` said a published decision "only changes by being superseded", and nothing implemented that. A teacher who published a wrong grade had no way to fix it short of editing the database. The schema was ready (`superseded_by_id`, a unique index allowing one live row per cell), the behaviour was not.
+
+## Decision
+
+**A published classification is never edited; it is substituted.** `RectifyClassification` writes a NEW row, already published, and marks the old one `superseded`. The chain is `rectifies_id` (new → old) and `superseded_by_id` (old → new). The proposal and its snapshot are copied to the new row as they were; the reason (mandatory, a note when "Outro"), author and time are recorded on it, and an audit event is written. Only the decision changes: no score, instrument, scale, criterion or profile is touched, and the accumulated classification is not recalculated.
+
+**Order of the writes.** The table refuses both natural orders: marking the old row superseded first breaks the pointer CHECK (`superseded` requires a pointer), and inserting the new row first breaks the "one live row per cell" index. So, in one transaction: (a) the old row gets a TEMPORARY pointer to itself (satisfies the CHECK, leaves the index); (b) the new row is inserted; (c) the old row's pointer is moved to the new row. The self-pointer never outlives the transaction.
+
+**Transaction and lock.** The old row is read with `lockForUpdate` and everything is decided on it: status, `lock_version` against the one the screen showed, access, confirmation. Two people rectifying at once serialise, and the second finds the row already superseded and is told to reload. The service runs as the classification's own organization, whatever the current tenant is.
+
+**Who may rectify** depends on `Organization.type` of the organization the classification belongs to, never the user's current one:
+
+| | Open (draft/open year and period) | Closed (year or period closed/archived) |
+|---|---|---|
+| Personal | the teacher of the class | the teacher of the class, with extra confirmation |
+| Institutional | the teacher of the class | the head of the institution only, with extra confirmation (even if they do not teach the class) |
+
+Closed rectifications always require an extra confirmation. The server decides everything; the client never learns organization types, only `allowed`, `needs_confirmation` and a reason when blocked.
+
+**"Under review" does not block.** An element under review blocks publication, but rectifying is how a review ends in a different grade.
+
+**Backup v20** carries both rows of a chain (`rectifies_ulid`, `superseded_by_ulid`, reason, note, time). Restore validates chains as a whole, and the unit of refusal is the cell (student × period × scope): a chain missing a link, a cell with no live row or two, a cycle, a pointer outside the cell, or an unpublished rectification takes the whole cell out, each row named in "Pontos a rever". A chain is never partly restored. Restore then writes oldest to newest using the same (a)(b)(c) sequence. Historical authorship of restored rectifications is an open decision: the original author will never be attributed to the importer, and the exact design will be closed before merge.
+
+## Consequences
+
+- Every reader already looked at the live row (`whereNull('superseded_by_id')` or status not `superseded`); `RectifiedValueReadersTest` pins that each one returns the new value once.
+- The history of a cell is complete, and the replaced value is always recoverable.
+- Anything communicated outside Lapispro (Inovar, printed pautas, PDFs) is not corrected; the dialog and help warn the teacher to update those by hand.
+
+## Risks and what was left out
+
+- The self-pointer relies on the transaction; a crash mid-way rolls back, but code that reads outside transactions on MySQL must never see it (it cannot, under InnoDB isolation).
+- Closing a period does not freeze classifications, and there is no approval flow: a closed rectification needs only the confirmation (and, in an institution, the head).
+- **Known gap, undecided:** the head of an institution may rectify a closed period for a class they do not teach, but the screens that expose the button (classes, classifications, results) are not necessarily open to a head for classes they do not teach. Whether to open them is still to be decided.
