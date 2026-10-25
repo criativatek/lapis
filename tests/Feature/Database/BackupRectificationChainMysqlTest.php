@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Database;
 
+use App\Models\AuditEvent;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\DataImportStatus;
@@ -148,8 +149,29 @@ class BackupRectificationChainMysqlTest extends TestCase
             fn (array $row) => collect($row)->except(['rectified_by', 'confirmed_by'])->all()
         )->all())->all();
         $this->assertSame($strip($origin), $strip($restored));
-        $this->assertSame([null, $other->email, $other->email], array_column($restored['Ana'], 'rectified_by'));
-        $this->assertSame(3, $import->fresh()->summary['rectifications_in_restorer_name']);
+        // Nobody in the destination is the original author: the real CHECK accepts
+        // the rectification with the author empty, and NOTHING is in the name of
+        // the account that restored.
+        $this->assertSame([null, null, null], array_column($restored['Ana'], 'rectified_by'));
+        $this->assertSame([null, null], array_column($restored['Bruno'], 'rectified_by'));
+        $this->assertSame(
+            0,
+            (int) $this->scratch()->selectOne(
+                'select count(*) as total from classifications where organization_id = ? and (rectified_by = ? or confirmed_by = ? or overridden_by = ?)',
+                [$destination->id, $other->id, $other->id, $other->id],
+            )->total,
+        );
+        $this->assertSame(
+            0,
+            (int) $this->scratch()->selectOne(
+                'select count(*) as total from classifications where organization_id = ? and rectifies_id is not null and rectified_by is not null',
+                [$destination->id],
+            )->total,
+        );
+        $this->assertSame(3, $import->fresh()->summary['rectifications_without_original_author']);
+        $event = AuditEvent::withoutGlobalScopes()->where('event', 'data_import.completed')->latest('id')->firstOrFail();
+        $this->assertSame($other->id, $event->causer_id);
+        $this->assertSame(3, $event->properties['rectifications_without_original_author']);
     }
 
     #[Test]
@@ -165,7 +187,38 @@ class BackupRectificationChainMysqlTest extends TestCase
 
         $this->assertSame($origin, $this->chainsOf($destination));
         $this->assertSame(0, $this->selfPointers($destination));
-        $this->assertSame(0, $import->fresh()->summary['rectifications_in_restorer_name']);
+        $this->assertSame(0, $import->fresh()->summary['rectifications_without_original_author']);
+    }
+
+    #[Test]
+    public function a_chain_without_any_author_in_the_file_restores_with_the_real_checks_and_stays_without_one(): void
+    {
+        $this->chainWorld($this->teacher);
+        $file = $this->rewriteBackup(
+            $this->exportBackup($this->teacher, $this->teacher->personalOrganization()),
+            function (array $json): array {
+                $json['classifications'] = array_map(function (array $row): array {
+                    $row['rectified_by_email'] = null;
+
+                    return $row;
+                }, $json['classifications']);
+
+                return $json;
+            },
+        );
+
+        // Even the person who wrote them, restoring: the file names nobody, so
+        // nobody is named — the restore never fills the gap with the restorer.
+        $destination = Organization::factory()->withMember($this->teacher)->create(['owner_id' => $this->teacher->id, 'name' => 'Sem autor']);
+        $import = $this->uploadInto($file, $this->teacher, $destination);
+        $this->confirmImport($import, $this->teacher, $destination);
+
+        $restored = $this->chainsOf($destination);
+        $this->assertSame(DataImportStatus::Imported, $import->fresh()->status);
+        $this->assertSame([null, null, null], array_column($restored['Ana'], 'rectified_by'));
+        $this->assertSame([null, null], array_column($restored['Bruno'], 'rectified_by'));
+        $this->assertSame(3, $import->fresh()->summary['rectifications_without_original_author']);
+        $this->assertSame(0, $this->selfPointers($destination));
     }
 
     #[Test]

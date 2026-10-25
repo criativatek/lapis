@@ -65,6 +65,33 @@ class ClassificationRectificationSchemaTest extends TestCase
     }
 
     #[Test]
+    public function the_author_of_a_rectification_may_be_unknown_but_the_rest_of_the_history_is_kept(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $this->asTenant($teacher, function () {
+            $old = $this->aClassification();
+            $new = $old->replicate(['ulid', 'status_active_flag']);
+            $new->forceFill([
+                'status' => ClassificationStatus::Published,
+                'enrollment_id' => $old->enrollment_id,
+                'rectification_reason' => RectificationReason::EntryError,
+                'rectification_note' => 'Histórico de um restauro.',
+                'rectified_by' => null,
+                'rectified_at' => '2026-11-25 10:00:00',
+            ]);
+            $old->forceFill(['status' => ClassificationStatus::Superseded])->saveQuietly();
+            $new->forceFill(['rectifies_id' => $old->id])->save();
+            $old->forceFill(['superseded_by_id' => $new->id])->saveQuietly();
+
+            $fresh = $new->fresh();
+            $this->assertNull($fresh->rectified_by);
+            $this->assertSame($old->id, $fresh->rectifies_id);
+            $this->assertSame('Histórico de um restauro.', $fresh->rectification_note);
+        });
+    }
+
+    #[Test]
     public function the_reasons_have_labels_and_only_other_requires_a_note(): void
     {
         $labels = [

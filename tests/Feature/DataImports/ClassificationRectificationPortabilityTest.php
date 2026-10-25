@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\DataImports;
 
+use App\Models\AuditEvent;
 use App\Models\Classification;
 use App\Models\DataExport;
 use App\Models\DataImportStatus;
@@ -161,7 +162,7 @@ class ClassificationRectificationPortabilityTest extends TestCase
     // ------------------------------------------------------- the round trip
 
     #[Test]
-    public function a_chain_round_trips_into_another_account_with_the_restorer_as_author(): void
+    public function a_chain_round_trips_into_another_account_without_blaming_the_restorer(): void
     {
         $this->chainWorld($this->teacher);
         $origin = $this->chainsOf($this->teacher->personalOrganization());
@@ -188,9 +189,32 @@ class ClassificationRectificationPortabilityTest extends TestCase
         )->all())->all();
         $this->assertSame($strip($origin), $strip($restored));
 
-        // The author a rectification cannot do without is the account that restored.
-        $this->assertSame([null, $other->email, $other->email], array_column($restored['Ana'], 'rectified_by'));
-        $this->assertSame(3, $import->fresh()->summary['rectifications_in_restorer_name']);
+        // Nobody in this account is the original author: the column stays empty,
+        // and no row of any chain is given to the account that restored.
+        $this->assertSame([null, null, null], array_column($restored['Ana'], 'rectified_by'));
+        $this->assertSame([null, null], array_column($restored['Bruno'], 'rectified_by'));
+        $all = array_merge(...array_values($restored));
+        $this->assertNotContains($other->email, array_column($all, 'rectified_by'));
+        $this->assertNotContains($other->email, array_column($all, 'confirmed_by'));
+        $this->assertSame(
+            0,
+            $this->inTenant($destination, fn (): int => Classification::query()
+                ->where(fn ($query) => $query->where('rectified_by', $other->id)->orWhere('confirmed_by', $other->id)->orWhere('overridden_by', $other->id))
+                ->count()),
+        );
+        // The history itself is the original one: values, dates, reasons, notes.
+        foreach ($origin as $student => $rows) {
+            foreach ($rows as $position => $row) {
+                $this->assertSame(
+                    collect($row)->except(['rectified_by', 'confirmed_by'])->all(),
+                    collect($restored[$student][$position])->except(['rectified_by', 'confirmed_by'])->all(),
+                );
+            }
+        }
+        // Three rectifications (two of Ana's, one of Bruno's) have no author.
+        $summary = $import->fresh()->summary;
+        $this->assertSame(3, $summary['rectifications_without_original_author']);
+        $this->assertArrayNotHasKey('rectifications_in_restorer_name', $summary);
         $this->assertSame(DataImportStatus::Imported, $import->fresh()->status);
     }
 
@@ -211,7 +235,75 @@ class ClassificationRectificationPortabilityTest extends TestCase
         // lock versions — and the live row is the third.
         $this->assertSame($origin, $restored);
         $this->assertSame(0, $this->selfPointers($destination));
-        $this->assertSame(0, $import->fresh()->summary['rectifications_in_restorer_name']);
+        $this->assertSame(0, $import->fresh()->summary['rectifications_without_original_author']);
+    }
+
+    #[Test]
+    public function a_chain_restored_without_an_author_exports_and_restores_again_without_one(): void
+    {
+        $this->chainWorld($this->teacher);
+        $file = $this->exportBackup($this->teacher, $this->teacher->personalOrganization());
+
+        $second = User::factory()->create();
+        $secondOrganization = $second->personalOrganization();
+        $this->confirmImport($this->uploadInto($file, $second, $secondOrganization), $second, $secondOrganization);
+
+        // The second account exports what it has: the rectifications carry no
+        // author, and the file is still valid and whole.
+        $again = $this->exportBackup($second, $secondOrganization);
+        $rows = collect($this->backupJson($again)['classifications']);
+        $this->assertSame(3, $rows->whereNotNull('rectifies_ulid')->count());
+        $this->assertSame([], $rows->whereNotNull('rectifies_ulid')->whereNotNull('rectified_by_email')->all());
+        $this->assertSame([], collect($this->validated($this->backupJson($again))['rowIssues'])->where('domain', 'classifications')->all());
+
+        $third = User::factory()->create();
+        $thirdOrganization = $third->personalOrganization();
+        $import = $this->uploadInto($again, $third, $thirdOrganization);
+        $this->confirmImport($import, $third, $thirdOrganization);
+
+        $restored = $this->chainsOf($thirdOrganization);
+        $this->assertCount(3, $restored['Ana']);
+        $this->assertCount(2, $restored['Bruno']);
+        $this->assertSame([null, null, null], array_column($restored['Ana'], 'rectified_by'));
+        $this->assertSame(3, $import->fresh()->summary['rectifications_without_original_author']);
+        $this->assertSame(
+            $this->chainsOf($secondOrganization),
+            $restored,
+        );
+    }
+
+    #[Test]
+    public function the_preview_flags_the_rectifications_without_an_identified_author_and_the_audit_counts_them(): void
+    {
+        $this->chainWorld($this->teacher);
+        $file = $this->exportBackup($this->teacher, $this->teacher->personalOrganization());
+
+        $other = User::factory()->create();
+        $destination = $other->personalOrganization();
+        $import = $this->uploadInto($file, $other, $destination);
+
+        $plan = $this->inTenant($destination, fn (): array => app(BuildImportPlan::class)->build($import->canonical_snapshot ?? [], $destination, $other, []));
+        $rows = collect($plan['rows']['classifications']);
+        $this->assertSame(3, $rows->where('rectifier_unidentified', true)->count());
+        $this->assertSame(3, $rows->whereNotNull('rectifier_notice')->count());
+        $this->assertNull($rows->where('rectifier_unidentified', false)->first()['rectifier_notice']);
+        $notice = (string) $rows->firstWhere('rectifier_unidentified', true)['rectifier_notice'];
+        $this->assertStringContainsString('Autor original não identificado', $notice);
+        $this->assertStringContainsString('nenhuma é atribuída à conta que importa', $notice);
+        $this->assertStringNotContainsString($this->teacher->email, $notice);
+        $this->assertStringNotContainsString($other->email, $notice);
+
+        $this->confirmImport($import, $other, $destination);
+
+        $event = AuditEvent::withoutGlobalScopes()->where('event', 'data_import.completed')->latest('id')->first();
+        $this->assertNotNull($event);
+        $this->assertSame($other->id, $event->causer_id);
+        $this->assertSame(3, $event->properties['rectifications_without_original_author']);
+        $this->assertGreaterThanOrEqual(3, $event->properties['unresolved_author_count']);
+        $this->assertSame(
+            $import->fresh()->summary['records_without_original_author'] + $import->fresh()->summary['classifications_left_unconfirmed'] + 3,
+            $event->properties['unresolved_author_count'],
+        );
     }
 
     #[Test]
@@ -416,9 +508,9 @@ class ClassificationRectificationPortabilityTest extends TestCase
             'a rectification without its date' => [function (array $json, array $ana): array {
                 return self::edit($json, $ana[2]['ulid'], ['rectified_at' => null]);
             }, 'Ana', 1],
-            'a rectification without its author' => [function (array $json, array $ana): array {
-                return self::edit($json, $ana[1]['ulid'], ['rectified_by_email' => null]);
-            }, 'Ana', 1],
+            'an author on something that rectifies nothing' => [function (array $json, array $ana, array $bruno, array $carla): array {
+                return self::edit($json, $carla[0]['ulid'], ['rectified_by_email' => 'alguem@exemplo.test']);
+            }, 'Carla', 1],
             'a note on something that rectifies nothing' => [function (array $json, array $ana, array $bruno, array $carla): array {
                 return self::edit($json, $carla[0]['ulid'], ['rectification_note' => 'solta']);
             }, 'Carla', 1],

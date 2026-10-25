@@ -1115,9 +1115,11 @@ class ValidateBackupPayload
             return null;
         }
 
-        // Schema v20 — the four facts that say «this decision rectifies that
-        // one» come together or not at all, as the table demands. Absent in a
-        // backup ≤19: no rectification.
+        // Schema v20 — the three facts that say «this decision rectifies that
+        // one» (the pointer, the reason, the date) come together or not at all,
+        // as the table demands. The author is NOT one of them: a chain already
+        // restored without an identifiable author exports with an empty one, and
+        // must restore the same way. Absent in a backup ≤19: no rectification.
         $reasonIn = $row['rectification_reason'] ?? null;
         $reason = is_string($reasonIn) ? RectificationReason::tryFrom($reasonIn) : null;
         $note = $this->nullableString($row['rectification_note'] ?? null);
@@ -1134,10 +1136,10 @@ class ValidateBackupPayload
             return $issue('O motivo da retificação não é um dos motivos conhecidos.');
         }
 
-        $facts = [$rectifies !== null, $reason !== null, $rectifiedBy !== null, $rectifiedAt !== null];
+        $facts = [$rectifies !== null, $reason !== null, $rectifiedAt !== null];
 
-        if (count(array_unique($facts)) > 1 || ($note !== null && ! $facts[0])) {
-            return $issue('Os dados da retificação (classificação retificada, motivo, autor e data) têm de vir todos ou nenhum.');
+        if (count(array_unique($facts)) > 1 || (($note !== null || $rectifiedBy !== null) && ! $facts[0])) {
+            return $issue('Os dados da retificação (classificação retificada, motivo e data) têm de vir todos ou nenhum.');
         }
 
         if ($note !== null && mb_strlen($note) > 1000) {

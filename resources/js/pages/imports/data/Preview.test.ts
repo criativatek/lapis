@@ -149,6 +149,54 @@ function mountFollowupPreview(summary: Record<string, unknown> | null = null) {
     return wrapper;
 }
 
+describe('imports/data/Preview — retificações sem autor original', () => {
+    function mountRectifications(rows: { classification: 'new'; reason: null; rectifier_unidentified: boolean }[]) {
+        const wrapper = mount(Preview, {
+            props: {
+                dataImport: {
+                    ulid: '01J0000000000000000000000C',
+                    status: 'pending',
+                    status_label: 'Por confirmar',
+                    original_filename: 'backup.zip',
+                    source_schema_version: 20,
+                    source_app_version: '0.180.0',
+                    source_generated_at: null,
+                    source_organization: null,
+                    summary: null,
+                    failure_reason: null,
+                },
+                destination: { name: 'Org fictícia', type: 'personal' },
+                plan: {
+                    rows: { classifications: rows },
+                    counts: { classifications: tally({ new: rows.length }) },
+                    can_confirm: true,
+                },
+            },
+        });
+        wrappers.push(wrapper);
+
+        return wrapper;
+    }
+
+    it('diz quantas retificações ficam sem autor, sem nomear ninguém', () => {
+        const text = mountRectifications([
+            { classification: 'new', reason: null, rectifier_unidentified: true },
+            { classification: 'new', reason: null, rectifier_unidentified: true },
+            { classification: 'new', reason: null, rectifier_unidentified: false },
+        ]).text();
+
+        expect(text).toContain('2 retificações');
+        expect(text).toContain('ficam com «Autor original não identificado»');
+        expect(text).toContain('nenhuma é atribuída à conta que importa');
+    });
+
+    it('sem retificações anónimas não mostra o aviso', () => {
+        const text = mountRectifications([{ classification: 'new', reason: null, rectifier_unidentified: false }]).text();
+
+        expect(text).not.toContain('Autor original não identificado');
+    });
+});
+
 describe('imports/data/Preview — acompanhamento dos registos (v15)', () => {
     it('mostra os dois domínios, o conflito com a frase do plano e o restauro incompleto à parte da autoria', () => {
         const wrapper = mountFollowupPreview();

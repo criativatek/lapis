@@ -97,25 +97,27 @@ class ClassificationRectificationMysqlGuaranteesTest extends TestCase
     }
 
     #[Test]
-    public function the_four_rectification_fields_come_together_or_not_at_all(): void
+    public function the_rectification_facts_come_together_or_not_at_all_but_the_author_may_be_unknown(): void
     {
         $old = $this->seedPublished(1);
         $complete = [
             'rectifies_id' => $old,
             'rectification_reason' => 'entry_error',
-            'rectified_by' => 1,
             'rectified_at' => '2026-11-25 10:00:00',
         ];
 
-        // Cada um dos quatro em falta, um de cada vez, e cada um sozinho.
-        foreach (array_keys($complete) as $missing) {
-            $partial = $complete;
-            unset($partial[$missing]);
+        // Cada um dos três em falta, um de cada vez, e cada um sozinho — com ou
+        // sem autor: o autor não entra no grupo.
+        foreach ([null, 1] as $author) {
+            foreach (array_keys($complete) as $missing) {
+                $partial = $complete;
+                unset($partial[$missing]);
 
-            $this->assertRejected(
-                fn () => $this->insertClassification(['enrollment_id' => 9] + $partial),
-                "uma retificação sem {$missing}",
-            );
+                $this->assertRejected(
+                    fn () => $this->insertClassification(['enrollment_id' => 9, 'rectified_by' => $author] + $partial),
+                    "uma retificação sem {$missing} (autor ".($author === null ? 'nulo' : 'presente').')',
+                );
+            }
         }
 
         foreach ($complete as $column => $value) {
@@ -126,6 +128,14 @@ class ClassificationRectificationMysqlGuaranteesTest extends TestCase
         }
 
         $this->assertSame(0, $this->scratch()->table('classifications')->where('enrollment_id', 9)->count());
+
+        // Com os três e SEM autor (a autoria histórica não resolvida de um
+        // restauro) a CHECK aceita; a linha antiga sai do índice «uma só viva»
+        // primeiro, como no serviço.
+        $this->stepA($old);
+        $id = $this->insertClassification(['enrollment_id' => 1, 'rectified_by' => null] + $complete);
+        $this->assertNull($this->row($id)->rectified_by);
+        $this->assertSame($old, (int) $this->row($id)->rectifies_id);
     }
 
     // --------------------------------------- 2. a sequência (a)(b)(c) por inteiro
@@ -368,6 +378,14 @@ class ClassificationRectificationMysqlGuaranteesTest extends TestCase
 
         $this->assertSame($columns, $this->presentColumns($columns));
         $this->assertSame($checks, $this->presentChecks($checks));
+
+        // Depois de «up/down/up» a CHECK continua sem o autor.
+        $clause = (string) $this->scratch()->selectOne(
+            'select check_clause as clause from information_schema.check_constraints where constraint_schema = database() and constraint_name = ?',
+            ['classifications_rectification_complete_check'],
+        )->clause;
+        $this->assertStringNotContainsString('rectified_by', $clause);
+        $this->assertStringContainsString('rectified_at', $clause);
     }
 
     // --------------------------------------------------------------- a sequência

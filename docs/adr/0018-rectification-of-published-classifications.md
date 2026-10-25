@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-10-25. The backup authorship question below is open and will be closed before merge.
+Accepted — 2026-10-25. The backup authorship question is closed (see "Historical authorship in a restore").
 
 ## Context
 
@@ -27,7 +27,11 @@ Closed rectifications always require an extra confirmation. The server decides e
 
 **"Under review" does not block.** An element under review blocks publication, but rectifying is how a review ends in a different grade.
 
-**Backup v20** carries both rows of a chain (`rectifies_ulid`, `superseded_by_ulid`, reason, note, time). Restore validates chains as a whole, and the unit of refusal is the cell (student × period × scope): a chain missing a link, a cell with no live row or two, a cycle, a pointer outside the cell, or an unpublished rectification takes the whole cell out, each row named in "Pontos a rever". A chain is never partly restored. Restore then writes oldest to newest using the same (a)(b)(c) sequence. Historical authorship of restored rectifications is an open decision: the original author will never be attributed to the importer, and the exact design will be closed before merge.
+**Backup v20** carries both rows of a chain (`rectifies_ulid`, `superseded_by_ulid`, reason, note, time). Restore validates chains as a whole, and the unit of refusal is the cell (student × period × scope): a chain missing a link, a cell with no live row or two, a cycle, a pointer outside the cell, or an unpublished rectification takes the whole cell out, each row named in "Pontos a rever". A chain is never partly restored. Restore then writes oldest to newest using the same (a)(b)(c) sequence.
+
+**Historical authorship in a restore.** The `classifications_rectification_complete_check` requires `rectifies_id`, `rectification_reason` and `rectified_at` together or not at all, and does NOT require `rectified_by` (nullable, FK to users, restrict). `RectifyClassification` still requires an actor and always writes it as `rectified_by`; it never accepts a null one. A restore sets `rectified_by` to whatever the existing author rule resolves from the backup's email (the importer only if the email really is theirs) and otherwise leaves it NULL: the chain, values, dates, reasons and notes are preserved in full, and nothing is ever attributed to the account that imports, which did not rectify anything. `confirmed_by` and `overridden_by` of restored rows follow the same rule. The history shows "Autor original não identificado" for a rectification row with no author (it never falls back to the confirmer); the import preview says how many rectifications arrive that way without naming anyone; the `data_import.completed` audit event keeps the importer as `causer` and carries `rectifications_without_original_author`, which is also added to `unresolved_author_count`. The backup stays at version 20, with no new column.
+
+Alternatives rejected: attributing to the importer (falsifies the audit trail: the importer is recorded as having done what they did not do); a "system" user (a false authorship as well); refusing the chain or restoring only the live row (both lose history); a boolean `rectifier_unidentified` column (considered, rejected as unnecessary: a NULL author already says it). Future, cross-cutting improvement: associate the backup's authors with members of the destination organization by email, for every kind of record, not only rectifications.
 
 ## Consequences
 

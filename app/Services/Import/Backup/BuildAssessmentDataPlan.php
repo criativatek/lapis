@@ -438,19 +438,19 @@ class BuildAssessmentDataPlan
             $supersededByUlid = $row['superseded_by_ulid'];
             $supersedes = $supersededByUlid !== null ? $byUlidForSelfRef->get($supersededByUlid) : null;
 
-            // A rectification must name WHO rectified (the table refuses one
-            // without an author), and an account this import cannot map has no
-            // answer: the author is then the account that restores, and the row
-            // says so — the only honest value the column can hold. It is NOT
-            // `author_unresolved`: that one counts classifications left to
-            // confirm, and a rectification is published, not unconfirmed.
+            // WHO rectified follows the same rule as every other author: the
+            // account the backup's email maps to, or nobody. An author this
+            // import cannot map stays EMPTY and the chain is restored intact —
+            // it is never given to the account that restores, which did not
+            // rectify anything. It is NOT `author_unresolved`: that one counts
+            // classifications left to confirm, and a rectification is
+            // published, not unconfirmed.
             $rectifiedBy = null;
-            $rectifiedByRestorer = false;
+            $rectifierUnidentified = false;
 
             if ($row['rectifies_ulid'] !== null) {
                 $rectifiedBy = $this->resolveAuthor($row['rectified_by_email'], $actor);
-                $rectifiedByRestorer = $rectifiedBy === null;
-                $rectifiedBy ??= $actor->getKey();
+                $rectifierUnidentified = $rectifiedBy === null;
             }
 
             return [
@@ -466,13 +466,9 @@ class BuildAssessmentDataPlan
                 'rectifies_ulid' => $row['rectifies_ulid'], 'rectification_reason' => $row['rectification_reason'],
                 'rectification_note' => $row['rectification_note'], 'rectified_by' => $rectifiedBy, 'rectified_at' => $row['rectified_at'],
                 'author_unresolved' => $unconfirmable,
-                'rectifier_unresolved' => $rectifiedByRestorer,
-                'notice' => match (true) {
-                    $unconfirmable && $rectifiedByRestorer => $this->unconfirmableDecisionNotice().' '.$this->unresolvedRectifierNotice(),
-                    $unconfirmable => $this->unconfirmableDecisionNotice(),
-                    $rectifiedByRestorer => $this->unresolvedRectifierNotice(),
-                    default => null,
-                },
+                'rectifier_unidentified' => $rectifierUnidentified,
+                'rectifier_notice' => $rectifierUnidentified ? $this->unidentifiedRectifierNotice() : null,
+                'notice' => $unconfirmable ? $this->unconfirmableDecisionNotice() : null,
             ];
         })->values()->all();
 

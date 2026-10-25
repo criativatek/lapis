@@ -33,6 +33,11 @@ type PlanRow = {
      * from authorship, and never as a refusal.
      */
     warning?: string | null;
+    /**
+     * A rectification whose original author the import cannot map: it is
+     * restored with the author empty (never in the importer's name).
+     */
+    rectifier_unidentified?: boolean;
     label?: string;
     name?: string;
     title?: string;
@@ -260,8 +265,8 @@ const summaryGroups: {
                 label: 'Classificações que ficaram por confirmar',
             },
             {
-                key: 'rectifications_in_restorer_name',
-                label: 'Retificações registadas em nome de quem restaurou',
+                key: 'rectifications_without_original_author',
+                label: 'Retificações com «Autor original não identificado»',
             },
         ],
     },
@@ -444,6 +449,21 @@ const authorshipNotices = computed<{ notice: string; count: number }[]>(() => {
         notice,
         count,
     }));
+});
+
+/** Rectifications that will arrive without an identified original author. */
+const unidentifiedRectifiers = computed<number>(() => {
+    if (props.plan === null) {
+        return 0;
+    }
+
+    return Object.values(props.plan.rows)
+        .flat()
+        .filter(
+            (row) =>
+                row.classification === 'new' &&
+                row.rectifier_unidentified === true,
+        ).length;
 });
 
 /**
@@ -764,7 +784,7 @@ const needingReassignment = computed(() => {
             </div>
 
             <div
-                v-if="authorshipNotices.length > 0"
+                v-if="authorshipNotices.length > 0 || unidentifiedRectifiers > 0"
                 class="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900 dark:bg-blue-950"
             >
                 <h2 class="font-medium text-blue-900 dark:text-blue-200">
@@ -781,6 +801,12 @@ const needingReassignment = computed(() => {
                     <li v-for="entry in authorshipNotices" :key="entry.notice">
                         <strong>{{ entry.count }} registo(s)</strong> —
                         {{ entry.notice }}
+                    </li>
+                    <li v-if="unidentifiedRectifiers > 0">
+                        <strong>{{ unidentifiedRectifiers }} retificações</strong>
+                        ficam com «Autor original não identificado»: o
+                        histórico (valores, datas, motivos e notas) é
+                        preservado e nenhuma é atribuída à conta que importa.
                     </li>
                 </ul>
             </div>

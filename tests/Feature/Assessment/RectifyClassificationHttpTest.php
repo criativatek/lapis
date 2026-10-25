@@ -511,6 +511,33 @@ class RectifyClassificationHttpTest extends TestCase
     }
 
     #[Test]
+    public function a_rectification_without_an_author_says_so_and_never_borrows_the_confirmer(): void
+    {
+        $first = $this->carolina;
+        $second = $this->asTenant(fn () => app(RectifyClassification::class)->rectify(
+            $first, $this->ana, RectificationReason::EntryError, null, $this->levelId('3'), null, $first->lock_version, false,
+        ));
+        $third = $this->asTenant(fn () => app(RectifyClassification::class)->rectify(
+            $second, $this->ana, RectificationReason::Other, 'Conselho de turma.', $this->levelId('2'), null, $second->lock_version, false,
+        ));
+
+        // The restore of a chain whose author cannot be mapped: the second
+        // rectification has no author even though someone confirmed its row;
+        // the original decision has no confirmer either.
+        DB::table('classifications')->where('id', $second->id)->update(['rectified_by' => null, 'confirmed_by' => $this->ana->id]);
+        DB::table('classifications')->where('id', $first->id)->update(['confirmed_by' => null]);
+
+        $json = $this->acting($this->ana)->getJson($this->historyUrl($first))->assertOk()->json();
+
+        $this->assertSame([null, null, $this->ana->name], array_column($json['history'], 'decided_by'));
+        $this->assertSame([$first->ulid, $second->ulid, $third->ulid], array_column($json['history'], 'ulid'));
+        $this->assertSame(
+            ['ulid', 'status', 'is_live', 'final', 'decided_by', 'decided_at', 'reason', 'note', 'rectified'],
+            array_keys($json['history'][1]),
+        );
+    }
+
+    #[Test]
     public function the_dialog_endpoint_has_no_export_notice_without_an_export(): void
     {
         $json = $this->acting($this->ana)->getJson($this->historyUrl($this->carolina))->assertOk()->json();

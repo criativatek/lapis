@@ -17,8 +17,16 @@ use Illuminate\Support\Facades\Schema;
  *  - a row is `superseded` IF AND ONLY IF it has `superseded_by_id`. Until now
  *    the pointer was just a column nothing forced to be filled, and a superseded
  *    row without a successor is a decision that vanished without an heir;
- *  - the four rectification fields come together or not at all — a rectification
- *    without an author or a reason is not a rectification.
+ *  - the rectification facts come together or not at all: the pointer, the
+ *    reason and the date. A rectification without a reason or a date is not a
+ *    rectification.
+ *
+ * `rectified_by` is deliberately OUTSIDE that group. Who rectified is always
+ * written by the service that rectifies (the acting user, never null), but a
+ * RESTORE can bring a rectification whose original author cannot be mapped to
+ * an account of the destination. The project rule is that such an author stays
+ * empty (the record intact) and is never given to the account that imports,
+ * which did not do it. Forcing the column here would force exactly that lie.
  *
  * `<=>` (null-safe) instead of `=`: with `=` a comparison with NULL yields NULL
  * and the CHECK would never fail (see the migration that created the table).
@@ -59,8 +67,8 @@ return new class extends Migration
         $this->addCheck(
             'classifications',
             'classifications_rectification_complete_check',
-            '(rectifies_id IS NULL AND rectification_reason IS NULL AND rectified_by IS NULL AND rectified_at IS NULL) '
-            .'OR (rectifies_id IS NOT NULL AND rectification_reason IS NOT NULL AND rectified_by IS NOT NULL AND rectified_at IS NOT NULL)',
+            '(rectifies_id IS NULL AND rectification_reason IS NULL AND rectified_at IS NULL) '
+            .'OR (rectifies_id IS NOT NULL AND rectification_reason IS NOT NULL AND rectified_at IS NOT NULL)',
         );
     }
 

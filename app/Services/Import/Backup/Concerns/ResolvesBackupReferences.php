@@ -159,15 +159,15 @@ trait ResolvesBackupReferences
     /**
      * The notice for a rectification whose author this import cannot map.
      *
-     * Unlike every other author, this one cannot be left empty: a rectification
-     * without an author is not a rectification, and the table refuses it. The
-     * decision, its reason, its note and its date are restored in full; the
-     * author is the account that restores.
+     * The column stays empty, like every other unresolved author: the decision,
+     * its reason, its note and its date are restored in full, and nothing is
+     * attributed to the account that restores. The original author is neither
+     * named nor hinted at (§22.4).
      */
-    private function unresolvedRectifierNotice(): string
+    private function unidentifiedRectifierNotice(): string
     {
         return $this->t(
-            'Esta classificação é uma retificação cujo autor não pôde ser associado. Fica registada em nome da conta que restaura — a data, o motivo e a nota mantêm-se.',
+            'Fica com «Autor original não identificado»: o histórico (valores, datas, motivos e notas) é preservado e nenhuma é atribuída à conta que importa.',
         );
     }
 

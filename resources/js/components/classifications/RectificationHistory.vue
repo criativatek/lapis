@@ -87,7 +87,7 @@ async function show(): Promise<void> {
                         >Em vigor</span>
                     </div>
                     <p class="text-xs text-muted-foreground">
-                        {{ entry.decided_by ?? 'Autor desconhecido' }} · {{ rectificationDateTime(entry.decided_at) }}
+                        {{ entry.decided_by ?? 'Autor original não identificado' }} · {{ rectificationDateTime(entry.decided_at) }}
                     </p>
                     <p v-if="entry.reason" class="mt-1 text-xs"><span class="text-muted-foreground">Motivo:</span> {{ entry.reason }}</p>
                     <p v-if="entry.note" class="text-xs"><span class="text-muted-foreground">Nota:</span> {{ entry.note }}</p>

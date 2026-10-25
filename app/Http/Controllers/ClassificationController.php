@@ -460,7 +460,10 @@ class ClassificationController extends Controller
 
         return response()->json([
             'history' => collect($chain)->map(function (Classification $row) use ($authors, $scale) {
-                $by = $row->rectified_by ?? $row->confirmed_by;
+                // A rectification row names who rectified it, or nobody: it never
+                // falls back to who confirmed the decision it replaced. Only the
+                // original decision speaks of its confirmer.
+                $by = $row->rectifies_id !== null ? $row->rectified_by : $row->confirmed_by;
 
                 return [
                     'ulid' => $row->ulid,

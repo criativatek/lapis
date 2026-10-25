@@ -452,6 +452,32 @@ class RectifyClassificationTest extends TestCase
         $this->assertSame('published', $this->raw($new->id)->status);
     }
 
+    #[Test]
+    public function every_rectification_the_service_makes_is_in_the_name_of_its_actor_and_never_without_one(): void
+    {
+        $first = $this->rectify('3');
+        $second = $this->rectify('5', ['classification' => $first, 'expectedLockVersion' => $first->lock_version]);
+
+        $this->assertSame($this->ana->id, (int) $this->raw($first->id)->rectified_by);
+        $this->assertSame($this->ana->id, (int) $this->raw($second->id)->rectified_by);
+        $this->assertSame(
+            2,
+            DB::table('classifications')->whereNotNull('rectifies_id')->where('rectified_by', $this->ana->id)->count(),
+        );
+        $this->assertSame(0, DB::table('classifications')->whereNotNull('rectifies_id')->whereNull('rectified_by')->count());
+
+        // The service never takes an absent actor: the column stays empty only
+        // for a restore, never for a rectification made here.
+        $before = $this->snapshotCounts();
+
+        try {
+            $this->rectify('2', ['classification' => $second, 'expectedLockVersion' => $second->lock_version, 'actor' => null]);
+            $this->fail('um actor nulo devia ser recusado');
+        } catch (\TypeError) {
+            $this->assertSame($before, $this->snapshotCounts());
+        }
+    }
+
     /** @return array<string, int> */
     private function snapshotCounts(): array
     {

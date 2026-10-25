@@ -115,6 +115,26 @@ describe('RectificationHistory', () => {
         expect(items[2].find('[data-testid="rectification-live"]').exists()).toBe(true);
     });
 
+    it('diz «Autor original não identificado» só nas linhas sem autor', async () => {
+        vi.mocked(fetch).mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                history: [entry({ ulid: 'a' }), entry({ ulid: 'b', decided_by: null, rectified: true, is_live: true, status: 'published', reason: 'Outro' })],
+                notice: { generic: '', export: null },
+            }),
+        } as Response);
+        const wrapper = mountHistory(1);
+        await wrapper.get('[data-testid="rectified-marker"]').trigger('click');
+        await flushPromises();
+
+        const items = wrapper.findAll('[data-testid="rectification-entry"]');
+        expect(items[0].text()).toContain('Ana Martins');
+        expect(items[0].text()).not.toContain('Autor original não identificado');
+        expect(items[1].text()).toContain('Autor original não identificado');
+        expect(items[1].text()).not.toContain('Ana Martins');
+    });
+
     it('diz quando não consegue carregar', async () => {
         vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500, json: async () => ({}) } as Response);
         const wrapper = mountHistory(1);

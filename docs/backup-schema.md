@@ -688,8 +688,10 @@ qualquer plano. Cada linha recusada aparece em «Pontos a rever» com o motivo, 
 **leva consigo toda a célula**, porque uma cadeia restaurada com um elo a menos é
 uma história com um buraco, e uma célula sem a vigente é um aluno sem nota:
 
-- `rectifies_ulid`, `rectification_reason`, `rectified_by_email` e `rectified_at`
-  vêm todos ou nenhum (a nota só com eles);
+- `rectifies_ulid`, `rectification_reason` e `rectified_at` vêm todos ou nenhum
+  (a nota e o autor só com eles). O autor **não** faz parte do grupo: uma cadeia
+  restaurada sem autor identificado exporta-se com `rectified_by_email = null` e
+  tem de poder restaurar-se outra vez;
 - `status = superseded` se, e só se, há `superseded_by_ulid`;
 - os dois ponteiros apontam para linhas do mesmo ficheiro, da mesma célula, nunca
   para a própria linha; e concordam — se A diz «fui substituída por B», B diz
@@ -699,13 +701,26 @@ uma história com um buraco, e uma célula sem a vigente é um aluno sem nota:
 - uma retificação é sempre `published` (ou `superseded`, se foi retificada outra
   vez): é a única coisa que o serviço de retificação escreve.
 
-**Autor.** `rectified_by` não pode ficar vazio (`classifications_rectification_complete_check`),
-ao contrário de `confirmed_by`, que fica vazio quando o email não se resolve. É a
-única autoria em que a regra «nunca atribuir à conta que importa» não se pode
-cumprir sem perder a retificação inteira: quando o email é o da conta que
-restaura (o restauro do próprio backup), é ele; **quando não é, a retificação
-fica em nome da conta que restaura**, com um aviso na pré-visualização e contada
-em «autorias não transportadas». A data, o motivo e a nota mantêm-se.
+**Autor.** A autoria de uma retificação segue a regra de todas as outras (0.101.4):
+`rectified_by` é a conta a que o email do backup corresponde e, se nenhuma
+corresponder, **fica vazio** — o registo mantém-se intacto e nunca é atribuído à
+conta que importa, que não fez a retificação. O email do autor original só é
+resolvido quando é o da própria conta que restaura (o restauro do próprio
+backup). A CHECK `classifications_rectification_complete_check` exige a
+referência, o motivo e a data (`rectifies_id`, `rectification_reason`,
+`rectified_at`) todos ou nenhum, mas **não** o autor; já o serviço de retificação
+grava sempre o utilizador que retifica, nunca nulo. `confirmed_by` e
+`overridden_by` das linhas restauradas seguem a mesma regra (vazios quando o
+email não se resolve; uma linha `published` sem `confirmed_by` é válida). A
+cadeia, os valores, as datas, os motivos e as notas ficam integralmente
+preservados. Na pré-visualização aparece «N retificações ficam com «Autor
+original não identificado»…», sem nomear o autor nem o seu email (§22.4); o
+histórico de uma classificação mostra «Autor original não identificado» nessas
+linhas. No resumo, `rectifications_without_original_author` conta-as; o evento de
+auditoria `data_import.completed` mantém quem importou como `causer` e leva essa
+contagem (`rectifications_without_original_author`), somada também a
+`unresolved_author_count`. Associar os autores a outros membros da organização
+de destino pelo email é uma melhoria transversal separada, não prevista aqui.
 
 **Restauro** (`WriteClassifications`). As classificações sem cadeia escrevem-se
 como sempre. Cada cadeia escreve-se da mais antiga para a mais recente, pela
@@ -717,7 +732,7 @@ uma antes da outra):
 1. a mais antiga entra `published`, sozinha e viva, sem ponteiro;
 2. (a) passa a `superseded` com o ponteiro a apontar para **si própria** —
    temporário, satisfaz a CHECK e liberta o índice; (b) entra a seguinte, já com
-   `rectifies` e os quatro campos; (c) o ponteiro da anterior passa para a
+   `rectifies` e os restantes campos da retificação; (c) o ponteiro da anterior passa para a
    seguinte;
 3. repete-se ao longo da cadeia. Todas entram `published` menos a última, que
    entra com o estado que o backup lhe dava.
