@@ -78,7 +78,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   de outubro de 2026 (já em hora de inverno): um ficheiro por serviço, conta Pro e
   Base, fronteiras do dia à meia-noite de Lisboa, isolamento entre organizações,
   turma arquivada excluída, nenhuma aula materializada, e o orçamento de
-  consultas do compositor (44 fixas + 3 por turma; medido: 66 para oito turmas).
+  consultas do compositor (48 fixas + 4 por turma; medido com a fixture do
+  teste: 57 consultas para três turmas e 76 para oito — a referência para
+  futuras otimizações, três das quais por turma vivem em `ScheduleOccurrences`).
 
 ### Corrigido
 
