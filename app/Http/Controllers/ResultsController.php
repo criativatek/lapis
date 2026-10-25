@@ -6,6 +6,7 @@ use App\Models\AcademicPeriod;
 use App\Models\Classification;
 use App\Models\ClassificationScope;
 use App\Models\Domain;
+use App\Models\RectificationReason;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
@@ -63,6 +64,7 @@ class ResultsController extends Controller
 
         return Inertia::render('results/Show', [
             ...$this->withRectification($view, $class),
+            'rectificationReasons' => RectificationReason::options(),
             // WHETHER THE BUTTON MAY BE DRAWN, and — separately — whether
             // pressing it could produce anything. A school without the
             // capability is being offered an upgrade; a period with two

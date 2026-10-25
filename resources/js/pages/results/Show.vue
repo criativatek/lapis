@@ -4,6 +4,8 @@ import { Check, CircleAlert, Lock, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AiReadingPanel from '@/components/ai/AiReadingPanel.vue';
 import type { AiReadingSection } from '@/components/ai/AiReadingPanel.vue';
+import RectificationHistory from '@/components/classifications/RectificationHistory.vue';
+import RectifyDialog from '@/components/classifications/RectifyDialog.vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -11,6 +13,7 @@ import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { decidedScaleNote, decidedValueText } from '@/lib/decidedValue';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import type { RectificationReasonOption, RectificationState } from '@/lib/rectification';
 import { pct, TREND_SHAPE, trendArrow, trendClasses, trendTitle } from '@/lib/results';
 import type { Evolution } from '@/lib/results';
 import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
@@ -88,6 +91,8 @@ type Row = {
         /** The scale the value was decided on, when it is not the class's scale today. */
         final_value_scale?: string | null;
         differs_from_proposal: boolean;
+        /** Retificar uma publicada: o que o servidor permite e quantas vezes já aconteceu. */
+        rectification?: RectificationState | null;
     } | null;
 };
 
@@ -130,6 +135,7 @@ const props = defineProps<{
     };
     aiAnalysis: ResultsAnalysis | null;
     aiAnalysisError: { message: string } | null;
+    rectificationReasons?: RectificationReasonOption[];
 }>();
 
 /**
@@ -268,6 +274,30 @@ function valueDecisionTitle(row: Row): string {
     const note = decidedScaleNote(row.classification?.final_value_scale);
 
     return note === null ? 'Decisão do professor.' : `Decisão do professor. ${note}.`;
+}
+
+/** O valor vigente de uma publicada, como o diálogo de retificar o compara. */
+function rectifyCurrent(row: Row): { text: string; levelId: number | null; value: string | null } {
+    const final = row.classification?.final ?? null;
+
+    if (final !== null) {
+        return {
+            text: `${final.code} — ${final.label}`,
+            levelId: props.decision.levels.find((level) => level.code === final.code)?.id ?? null,
+            value: null,
+        };
+    }
+
+    return {
+        text: valueDecision(row) ?? '—',
+        levelId: null,
+        // Um valor decidido noutra escala não é um valor desta: não se compara.
+        value: row.classification?.final_value_scale ? null : (row.classification?.final_value ?? null),
+    };
+}
+
+function rectificationUrl(row: Row): string {
+    return `/classes/${props.schoolClass.ulid}/classifications/${row.classification?.ulid}/rectification`;
 }
 
 function openDecision(row: Row): void {
@@ -545,19 +575,40 @@ function post(row: Row, data: { final_scale_level_id: number | null; final_value
                                  longer be touched. -->
                             <span
                                 v-else-if="row.classification?.is_published && (row.classification.final || valueDecision(row))"
-                                class="inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold"
-                                :class="row.classification.final ? levelClasses(row.classification.final) : undefined"
-                                :title="
-                                    row.classification.final
-                                        ? `${row.classification.final.code} — ${row.classification.final.label}. Esta classificação já foi publicada.`
-                                        : `${valueDecisionTitle(row)} Esta classificação já foi publicada.`
-                                "
+                                class="inline-flex items-center justify-end gap-2"
                             >
-                                <!-- A decision written only as a value (a percentage, an
-                                     interval) takes the same place as a level, read on the
-                                     scale it was decided on: «65%», never a level 65. -->
-                                {{ row.classification.final?.code ?? valueDecision(row) }}
-                                <Lock class="size-3 font-normal opacity-60" />
+                                <span
+                                    class="inline-flex items-center gap-1 rounded px-2 py-0.5 font-bold"
+                                    :class="row.classification.final ? levelClasses(row.classification.final) : undefined"
+                                    :title="
+                                        row.classification.final
+                                            ? `${row.classification.final.code} — ${row.classification.final.label}. Esta classificação já foi publicada.`
+                                            : `${valueDecisionTitle(row)} Esta classificação já foi publicada.`
+                                    "
+                                >
+                                    <!-- A decision written only as a value (a percentage, an
+                                         interval) takes the same place as a level, read on the
+                                         scale it was decided on: «65%», never a level 65. -->
+                                    {{ row.classification.final?.code ?? valueDecision(row) }}
+                                    <Lock class="size-3 font-normal opacity-60" />
+                                </span>
+                                <RectificationHistory
+                                    v-if="row.classification.rectification"
+                                    :count="row.classification.rectification.count"
+                                    :history-url="rectificationUrl(row)"
+                                    :student-name="row.name"
+                                />
+                                <RectifyDialog
+                                    v-if="row.classification.rectification && selectedPeriod"
+                                    :rectification="row.classification.rectification"
+                                    :scale="decision"
+                                    compact
+                                    :reasons="rectificationReasons ?? []"
+                                    :current="rectifyCurrent(row)"
+                                    :student-name="row.name"
+                                    :submit-url="`/classes/${schoolClass.ulid}/classifications/${selectedPeriod.ulid}/${row.enrollment_ulid}/rectify`"
+                                    :details-url="rectificationUrl(row)"
+                                />
                             </span>
 
                             <!-- Decided and still open: the value, click to change. -->

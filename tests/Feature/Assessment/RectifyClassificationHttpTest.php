@@ -408,6 +408,23 @@ class RectifyClassificationHttpTest extends TestCase
 
     #[Test]
     #[DataProvider('screens')]
+    public function the_dialog_is_given_the_reasons_to_choose_from(string $screen): void
+    {
+        $url = $screen === 'classifications/Show'
+            ? $this->showUrl()
+            : "/classes/{$this->class->ulid}/results/{$this->period->ulid}";
+
+        $this->acting($this->ana)->get($url)->assertOk()->assertInertia(
+            fn (AssertableInertia $page) => $page->where('rectificationReasons', RectificationReason::options()),
+        );
+        $this->assertSame(
+            [['value' => 'other', 'label' => 'Outro', 'requires_note' => true]],
+            array_values(array_filter(RectificationReason::options(), fn (array $option) => $option['value'] === 'other')),
+        );
+    }
+
+    #[Test]
+    #[DataProvider('screens')]
     public function the_count_follows_the_chain(string $screen): void
     {
 

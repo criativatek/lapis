@@ -28,6 +28,20 @@ enum RectificationReason: string
         };
     }
 
+    /**
+     * The list the dialog offers, in the order of the cases.
+     *
+     * @return array<int, array{value: string, label: string, requires_note: bool}>
+     */
+    public static function options(): array
+    {
+        return array_map(fn (self $reason) => [
+            'value' => $reason->value,
+            'label' => $reason->label(),
+            'requires_note' => $reason->requiresNote(),
+        ], self::cases());
+    }
+
     /** Only «Outro» does not explain itself. */
     public function requiresNote(): bool
     {

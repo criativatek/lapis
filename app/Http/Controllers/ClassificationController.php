@@ -125,6 +125,7 @@ class ClassificationController extends Controller
                 'max_value' => $scale === null ? null : (string) $scale->max_value,
             ],
             'scope' => $scope->value,
+            'rectificationReasons' => RectificationReason::options(),
             'periods' => $periods->map(fn (AcademicPeriod $academicPeriod) => [
                 'ulid' => $academicPeriod->ulid,
                 'label' => $academicPeriod->label,
