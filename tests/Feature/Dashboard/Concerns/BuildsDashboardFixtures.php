@@ -164,12 +164,20 @@ trait BuildsDashboardFixtures
                     ->recycle([$this->organization, $this->schoolClass->academicYear, $this->schoolClass->subject])
                     ->create();
 
+            // Uma classificação confirmada ou publicada diz o que foi decidido:
+            // o CHECK `classifications_decided_has_decision_check` do MySQL
+            // exige `final_value` ou `final_scale_level_id` (o SQLite não o
+            // impõe, e a CI corre em MySQL).
+            $decided = ! in_array($status, [ClassificationStatus::Proposed, ClassificationStatus::Superseded], true);
+
             return Classification::create(array_merge([
                 'enrollment_id' => $enrollment->id,
                 'academic_period_id' => $this->firstPeriod->id,
                 'scope' => ClassificationScope::Period,
                 'assessment_profile_version_id' => $version->id,
                 'status' => $status,
+                'proposed_value' => '3.000',
+                'final_value' => $decided ? '3.000' : null,
             ], $attributes));
         });
     }
