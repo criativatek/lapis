@@ -53,6 +53,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $confirmed_at
  * @property Carbon|null $published_at
  * @property int|null $superseded_by_id
+ * @property int|null $rectifies_id
+ * @property RectificationReason|null $rectification_reason
+ * @property string|null $rectification_note
+ * @property int|null $rectified_by
+ * @property Carbon|null $rectified_at
  * @property int $lock_version
  */
 #[Fillable([
@@ -61,6 +66,7 @@ use Illuminate\Support\Carbon;
     'proposed_normalized_value', 'proposed_value', 'proposed_scale_level_id',
     'final_value', 'final_scale_level_id', 'override_reason', 'overridden_by', 'overridden_at',
     'confirmed_by', 'confirmed_at', 'published_at', 'superseded_by_id', 'lock_version',
+    'rectifies_id', 'rectification_reason', 'rectification_note', 'rectified_by', 'rectified_at',
 ])]
 class Classification extends Model
 {
@@ -90,6 +96,8 @@ class Classification extends Model
             'overridden_at' => 'datetime',
             'confirmed_at' => 'datetime',
             'published_at' => 'datetime',
+            'rectified_at' => 'datetime',
+            'rectification_reason' => RectificationReason::class,
         ];
     }
 
@@ -160,5 +168,31 @@ class Classification extends Model
     public function snapshot(): BelongsTo
     {
         return $this->belongsTo(CalculationSnapshot::class, 'calculation_snapshot_id');
+    }
+
+    /**
+     * The decision this one rectifies: the previous row of the chain, already superseded.
+     *
+     * @return BelongsTo<Classification, $this>
+     */
+    public function rectifies(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'rectifies_id');
+    }
+
+    /**
+     * The decision that took this one's place — null while this is the live one.
+     *
+     * @return BelongsTo<Classification, $this>
+     */
+    public function supersededBy(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'superseded_by_id');
+    }
+
+    /** The live row of the chain: the only one that counts as the student's classification. */
+    public function isLive(): bool
+    {
+        return $this->status !== ClassificationStatus::Superseded;
     }
 }
