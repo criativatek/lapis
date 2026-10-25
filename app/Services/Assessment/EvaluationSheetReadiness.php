@@ -3,7 +3,9 @@
 namespace App\Services\Assessment;
 
 use App\Models\AcademicPeriod;
+use App\Models\Classification;
 use App\Models\ClassificationScope;
+use App\Models\ClassificationStatus;
 use App\Models\EvaluationSheetExport;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
@@ -297,8 +299,9 @@ class EvaluationSheetReadiness
             $submittedSelfAssessments,
             $selfAssessmentUniverse,
             $emptyDomainIds,
-            $this->lastInovarExport($class, $period, $scope),
+            $lastInovar = $this->lastInovarExport($class, $period, $scope),
             $canPrepareInovarExport,
+            $lastInovar !== null && $this->rectifiedSince($class, $period, $scope, $lastInovar),
         );
 
         // O CONTADOR CONTA PENDÊNCIAS REAIS, E SÓ ELAS (§31).
@@ -375,6 +378,7 @@ class EvaluationSheetReadiness
         array $emptyDomainIds,
         ?EvaluationSheetExport $lastInovar,
         bool $canPrepareInovarExport,
+        bool $rectifiedSinceInovar = false,
     ): array {
         $items = [];
 
@@ -484,13 +488,19 @@ class EvaluationSheetReadiness
                 ];
             } else {
                 $withWarnings = $lastInovar->exported_with_warnings;
-                $items[] = [
-                    'key' => 'inovar',
-                    'state' => $withWarnings ? self::STATE_ATTENTION : self::STATE_OK,
-                    'label' => 'Última exportação Inovar a '.$lastInovar->exported_at->format('d/m/Y'),
-                    'detail' => $withWarnings
+                $details = array_filter([
+                    $withWarnings
                         ? 'Exportada com '.$lastInovar->warning_count.' '.($lastInovar->warning_count === 1 ? 'aviso' : 'avisos').'.'
                         : null,
+                    // The export is a photograph: a rectification made after it
+                    // means what Inovar holds no longer matches the pauta.
+                    $rectifiedSinceInovar ? 'Há classificações retificadas depois desta exportação.' : null,
+                ]);
+                $items[] = [
+                    'key' => 'inovar',
+                    'state' => $withWarnings || $rectifiedSinceInovar ? self::STATE_ATTENTION : self::STATE_OK,
+                    'label' => 'Última exportação Inovar a '.$lastInovar->exported_at->format('d/m/Y'),
+                    'detail' => $details === [] ? null : implode(' ', $details),
                     'action' => $canPrepareInovarExport ? 'inovar' : null,
                 ];
             }
@@ -619,6 +629,23 @@ class EvaluationSheetReadiness
         }
 
         return array_intersect_key($withoutValue, $flagged);
+    }
+
+    /**
+     * Whether a live rectified classification of this class, period and scope was
+     * rectified after the given export, i.e. the export no longer says what the
+     * pauta says. Superseded rows are ignored: only the live row speaks.
+     */
+    protected function rectifiedSince(SchoolClass $class, AcademicPeriod $period, ClassificationScope $scope, EvaluationSheetExport $export): bool
+    {
+        return Classification::query()
+            ->where('academic_period_id', $period->getKey())
+            ->where('scope', $scope)
+            ->where('status', '!=', ClassificationStatus::Superseded)
+            ->whereNotNull('rectified_at')
+            ->where('rectified_at', '>', $export->exported_at)
+            ->whereHas('enrollment', fn ($query) => $query->where('class_id', $class->getKey()))
+            ->exists();
     }
 
     /**
