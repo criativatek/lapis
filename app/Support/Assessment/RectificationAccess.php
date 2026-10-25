@@ -102,7 +102,7 @@ final class RectificationAccess
 
         // Only a teacher of the class is shown the reason; anyone else never sees the button.
         return new self(false, false, true, $teaches
-            ? __('O período está encerrado. Só o responsável da instituição pode retificar.')
+            ? (string) __('O período está encerrado. Só o responsável da instituição pode retificar.')
             : null);
     }
 }

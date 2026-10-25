@@ -201,7 +201,8 @@ class ResultsController extends Controller
     protected function withRectification(array $view, SchoolClass $class): array
     {
         $periodUlid = $this->selectedPeriodUlid($view);
-        $ulids = collect($view['rows'] ?? [])->pluck('classification.ulid')->filter()->values();
+        $rows = is_array($view['rows'] ?? null) ? $view['rows'] : [];
+        $ulids = collect($rows)->pluck('classification.ulid')->filter()->values();
 
         if ($periodUlid === null || $ulids->isEmpty()) {
             return $view;

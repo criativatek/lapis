@@ -65,7 +65,8 @@ class ExternalCommunicationNotice
             ->get();
 
         foreach ($candidates as $export) {
-            $holdsStudent = collect($export->payload['students'] ?? [])
+            $students = is_array($export->payload['students'] ?? null) ? $export->payload['students'] : [];
+            $holdsStudent = collect($students)
                 ->contains(fn ($student) => (int) ($student['enrollment_id'] ?? 0) === (int) $classification->enrollment_id);
 
             if ($holdsStudent) {
