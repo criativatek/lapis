@@ -5,6 +5,7 @@ import AppFooter from '@/components/AppFooter.vue';
 import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
+import MobileNav from '@/components/MobileNav.vue';
 import { Toaster } from '@/components/ui/sonner';
 import type { BreadcrumbItem } from '@/types';
 
@@ -27,14 +28,17 @@ withDefaults(defineProps<Props>(), {
                 <slot />
             </div>
             <AppFooter />
-            <!-- Reserva para o botão flutuante «Reportar problema» (IssueReporter, montado
-                 em AppLayout), em TODAS as larguras, para o fim de qualquer página
-                 rolar para fora de baixo dele. Abaixo de `sm`: 44px do botão + 16px
-                 de margem + a área segura do dispositivo, mais folga. De `sm` para
-                 cima: 32px do botão + 16px de margem (`h-14`), o que liberta a
-                 ligação «Novidades» do rodapé. -->
-            <div data-issue-reporter-clearance class="h-[calc(5rem+env(safe-area-inset-bottom))] shrink-0 sm:h-14 print:hidden" aria-hidden="true" />
+            <!-- Reserva para o que flutua por cima do fim da página, em TODAS
+                 as larguras. Abaixo de `md`: a navegação inferior (56px + área
+                 segura) e, por cima dela, o botão «Reportar problema»
+                 (IssueReporter, montado em AppLayout: 44px + 16px de margem),
+                 com folga. De `md` para cima só o botão: 36px + 16px (`h-14`),
+                 o que liberta a ligação «Novidades» do rodapé. -->
+            <div data-issue-reporter-clearance class="h-[calc(8.5rem+env(safe-area-inset-bottom))] shrink-0 md:h-14 print:hidden" aria-hidden="true" />
         </AppContent>
+        <!-- Dentro do AppShell, porque «Menu» abre a sidebar pelo contexto do
+             SidebarProvider; fixa ao fundo, por isso o sítio no DOM não conta. -->
+        <MobileNav />
         <Toaster />
     </AppShell>
 </template>

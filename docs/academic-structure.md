@@ -9,10 +9,19 @@ mudou nenhum domínio, rota ou policy por baixo.
 > **Topo (context bar)** = onde se escolhe o contexto de trabalho.
 
 Ano letivo e Disciplina são **entidades estruturais**: criam-se e editam-se em
-Configuração. Continuam a aparecer no topo — mas só para **selecionar**,
-nunca para criar. Turma continua a criar-se em Turmas e Alunos (decisão já
-tomada na Fatia 4, preservada aqui sem alteração — §50). Período configura-se
-dentro do seu ano letivo (ver "Períodos" abaixo).
+Configuração. O ano letivo continua a aparecer no topo — mas só para
+**selecionar**, nunca para criar. Turma continua a criar-se em Turmas e Alunos
+(decisão já tomada na Fatia 4, preservada aqui sem alteração — §50). Período
+configura-se dentro do seu ano letivo (ver "Períodos" abaixo).
+
+> **Desde a 0.181.0 (PR C)** o topo tem dois chips no máximo: o ano letivo e,
+> nas páginas de uma turma, a turma em vista — que abre a lista das outras
+> turmas do professor no mesmo ano e troca mantendo a página
+> (`App\Support\Navigation\ClassSwitcher`). A disciplina deixou de ter chip:
+> lê-se na turma e gere-se em «Estrutura do Ano Letivo» pela barra lateral. Os
+> chips desligados «Ano», «Turma —» e «Período» saíram com as chaves que os
+> alimentavam (`subject`, `hasSubjects`, `gradeLevel`, `period`); o prop
+> partilhado chama-se agora `workContext` (um `scope` de página escondia-o).
 
 ## O que já existia, e não foi tocado
 
@@ -31,7 +40,8 @@ rotas `/academic-years` e `/subjects`. Nada disto mudou nesta fatia:
   colapsa naturalmente.
 
 O que faltava era **descoberta**: estas páginas só eram alcançáveis a partir
-de um link no seletor de contexto do topo (`ContextBar.vue`), nunca a partir
+de um link no seletor de contexto do topo (`ContextBar.vue`; o atalho da
+disciplina saiu na 0.181.0, o do ano letivo mantém-se), nunca a partir
 da barra lateral. Um professor sem nenhum ano letivo ainda configurado não
 tinha onde ser guiado.
 
@@ -50,11 +60,12 @@ tinha onde ser guiado.
    existiam, para que mudar de uma para a outra pareça uma única área.
 
 3. **Cópia mais útil no seletor do topo** (`ContextBar.vue`): quando não
-   existe nenhum ano letivo ou nenhuma disciplina, mostra "Sem ano letivo
-   configurado" / "Sem disciplinas configuradas" em vez de um traço vazio —
-   o link para configurar já existia, só o texto ficou mais claro (§48-§49).
+   existe nenhum ano letivo, mostra "Sem anos letivos configurados" em vez
+   de um traço vazio — o link para configurar já existia, só o texto ficou
+   mais claro (§48-§49). (O chip da disciplina, e a sua cópia «Sem disciplinas
+   configuradas», saíram na 0.181.0.)
 
-4. **`scope.academicYear` deixou de estar sempre `null`.** O prop partilhado
+4. **`scope.academicYear` deixou de estar sempre `null`** (hoje `workContext.academicYear`). O prop partilhado
    já existia (`HandleInertiaRequests::share()`) mas estava fixo a `null`
    com um comentário "Empty until the academic model lands in Fase 1" —
    desatualizado, porque o modelo académico já existia. Passou a usar a

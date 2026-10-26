@@ -4,13 +4,14 @@ namespace App\Http\Middleware;
 
 use App\Models\AcademicYear;
 use App\Models\SchoolClass;
-use App\Models\Subject;
 use App\Models\SupportCategory;
 use App\Models\SupportRequest;
 use App\Models\SupportRequestStatus;
+use App\Models\User;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Legal\LegalDocuments;
 use App\Support\Legal\PrivacyVersion;
+use App\Support\Navigation\ClassSwitcher;
 use App\Support\Navigation\NavigationBuilder;
 use App\Support\Retention\ClosureStatusPresenter;
 use App\Support\Retention\ResolveSelectedAcademicYear;
@@ -160,15 +161,22 @@ class HandleInertiaRequests extends Middleware
             // right now" without ever asking about plans or subscriptions.
             'modules' => fn () => app(Entitlements::class)->modules(),
             'readOnlyModules' => fn () => app(Entitlements::class)->readOnlyModules(),
-            // The header context selectors. Academic year reads the same
-            // heuristic AcademicYearRetentionClassifier already uses and tests
-            // (single Active year, else most recent by starts_on) — never
-            // invented here. Subject/gradeLevel/class come from the route's
-            // own bound SchoolClass when the current route resolved one —
-            // real context the page already has, not a guess. `period` stays
-            // null: no route establishes a single canonical "current" period
-            // the way a class does, and guessing one would be exactly the
-            // kind of invented data this prop was built to avoid.
+            // The header context. Academic year reads the same heuristic
+            // AcademicYearRetentionClassifier already uses and tests (single
+            // Active year, else most recent by starts_on) — never invented
+            // here. `class` is the route's own bound SchoolClass when the
+            // current route resolved one — real context the page already
+            // has, not a guess — and `classes` are the turmas the chip lets
+            // the teacher switch to, each with its destination worked out
+            // by ClassSwitcher (same page on the other class, or the class
+            // page). No period, no loose subject or grade level: the chips
+            // that showed them were disabled placeholders and are gone.
+            //
+            // NAMED `workContext`, NOT `scope`, because a page prop with the
+            // same key replaces a shared prop — and the classifications page
+            // already sends its own `scope` (the period/accumulated toggle).
+            // Under the old name the header silently lost its context on
+            // exactly the page where switching class matters most.
             'selectableAcademicYears' => fn () => $hasOrganization
                 ? $academicYears
                     ->take(4)
@@ -179,13 +187,17 @@ class HandleInertiaRequests extends Middleware
                     ])
                     ->values()
                 : [],
-            'scope' => fn () => [
+            'workContext' => fn () => [
                 'academicYear' => $selectedAcademicYear?->label,
-                'subject' => $scopedClass?->subject->name,
-                'hasSubjects' => $hasOrganization && Subject::query()->exists(),
-                'gradeLevel' => $scopedClass?->grade_level,
-                'class' => $scopedClass?->label,
-                'period' => null,
+                'class' => $scopedClass === null ? null : [
+                    'ulid' => $scopedClass->ulid,
+                    'label' => $scopedClass->label,
+                    'subject' => $scopedClass->subject->name,
+                    'gradeLevel' => $scopedClass->grade_level,
+                ],
+                'classes' => $scopedClass === null || ! ($teacher = $request->user()) instanceof User
+                    ? []
+                    : app(ClassSwitcher::class)->optionsFor($request, $teacher, $scopedClass),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // A platform admin viewing the app as a teacher — drives the banner.

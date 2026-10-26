@@ -25,6 +25,84 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.181.0] — 2026-10-26
+
+> **Barra superior contextual e navegação inferior (PR C).** A terceira e
+> última PR do redesenho do Painel do Professor, e a única que toca na
+> estrutura raiz da interface: o cabeçalho de todas as páginas autenticadas e
+> o telemóvel. A barra deixa de prometer e passa a dizer: o ano letivo em
+> vigor e, nas páginas de uma turma, a turma em vista — com a troca para as
+> outras turmas do professor a manter a página. **Sem migrations; sem rotas
+> novas; sem políticas novas.** Nenhuma página perde nada: a disciplina
+> continua a gerir-se em «Estrutura do Ano Letivo», «Gerir anos letivos» fica
+> no menu do ano, e o menu lateral é o mesmo.
+
+### Adicionado
+
+- **Chip da turma** (`ContextBar`): nas rotas com `{class}` ligado, a turma
+  em vista («7.º A · Português») abre a lista das turmas do professor no
+  mesmo ano letivo — sem arquivadas (a atual entra sempre), sem turmas de
+  outro professor, pela mesma regra de `SchoolClassPolicy::view` — e «Todas as
+  turmas». **A troca mantém a rota** (`App\Support\Navigation\ClassSwitcher`):
+  das classificações do 7.º A vai-se às classificações do 7.º B, com o
+  período (que é do ano letivo) a viajar; quando a rota atual leva um aluno,
+  uma pauta guardada, uma avaliação intercalar ou outro parâmetro só desta
+  turma, o destino é a página da turma, nunca um 404.
+- **Atalhos à direita** (`HeaderActions`): pesquisar nos sumários (só com
+  `lessons` legível; abre `/lessons?view=semana&foco=pesquisa`, e a página
+  põe o cursor no campo), o sino do suporte com a contagem de
+  `supportAwaitingReply` no nome acessível e um ponto quando há resposta por
+  ler, e o menu da conta (`UserMenuContent`, o mesmo do fundo da sidebar).
+- **Navegação inferior no telemóvel** (`MobileNav`, abaixo de `md`): Painel ·
+  Aulas (ou Calendário, quando não há `lessons`) · Turmas · Grelhas · Menu,
+  construída a partir das mesmas secções que `NavigationBuilder` já filtrou —
+  uma posição sem entrada desaparece em vez de inventar um destino — e «Menu»
+  abre a sidebar. Alvos de 56px; área segura respeitada; `print:hidden`.
+
+### Alterado
+
+- **A barra superior** fica em 56px (`h-14`) e perde os chips desligados
+  «Ano», «Turma —» e «Período» e o atalho «Disciplina». O prop partilhado
+  `scope` passa a chamar-se **`workContext`** e a valer
+  `{ academicYear, class, classes }`: `class` é `null` numa página sem turma
+  em vista e `classes` é vazio sempre que `class` o é. As chaves `subject`,
+  `hasSubjects`, `gradeLevel` e `period` saíram — só a barra as lia
+  (confirmado por pesquisa no código e por teste).
+- **Defeito encontrado pelo caminho:** um prop de página com a mesma chave
+  substitui o partilhado, e a página das Classificações já enviava o seu
+  próprio `scope` (período/acumulado) — a barra antiga perdia o ano letivo e
+  a turma precisamente aí, sem erro nenhum. O nome novo resolve-o e o teste
+  da troca a partir das Classificações passa a prová-lo.
+- No telemóvel o gatilho da sidebar e os atalhos da barra têm 44px; de `md`
+  para cima encolhem para a medida anterior.
+- O botão flutuante «Reportar problema» sobe para cima da navegação inferior
+  abaixo de `md` (`4.5rem` + área segura) e a reserva no fim da página cresce
+  na mesma medida; de `md` para cima nada muda.
+- `docs/academic-structure.md`: a regra «Topo = onde se escolhe o contexto»
+  continua, mas a disciplina já não se escolhe no topo — lê-se na turma.
+
+### Verificado
+
+- `HandleInertiaRequestsScopeTest` reescrito para o `scope` novo: turma em
+  vista em duas rotas de módulos diferentes; `null` sem turma; sem as chaves
+  antigas; a lista do chip (mesmo ano, sem arquivadas, sem outro professor,
+  sem outro ano; a atual arquivada entra); a troca mantém Registos,
+  Classificações com período e Resultados, e cai para a página da turma a
+  partir do percurso de um aluno. `ShellNavigationTest`,
+  `ReadOnlyNavigationTest` e `AuthenticatedShellSharedPropsTest` inalterados.
+- Vitest: `ContextBar.test.ts` (três tipos de página, nenhum botão
+  `disabled`, troca de ano), `HeaderActions.test.ts`, `MobileNav.test.ts`,
+  e `AppLayout.ssr.test.ts` com o contrato novo do shell em Node.
+- QA no browser (Playwright, SQLite isolado): painel, turma, grelhas,
+  registos e aulas em 1280 e 390 px, claro e escuro.
+- `tests/Fixtures/AdvancedAnalysis/base-surfaces.json` regenerada de
+  propósito: a superfície «dashboard (props, com as partilhadas)» mudou porque
+  o prop partilhado `scope` passou a `workContext`; as outras superfícies
+  Base continuam com o mesmo hash. `AcademicYearContextTest` lê o nome novo.
+- O chip da turma custa UMA consulta por página de turma (`ClassSwitcher`,
+  disciplina por subconsulta), dentro dos tetos de consultas existentes
+  (`StudentProgressTest` §79).
+
 ## [0.180.0] — 2026-10-26
 
 > **O novo Painel do Professor (PR B).** A página de entrada passa a ser a
