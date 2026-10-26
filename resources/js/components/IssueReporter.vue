@@ -306,14 +306,17 @@ function submit(): void {
             size="sm"
             data-issue-launcher
             aria-label="Reportar problema"
-            class="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-40 h-11 w-11 px-0 shadow-lg print:hidden sm:bottom-4 sm:h-8 sm:w-auto sm:px-3 sm:has-[>svg]:px-3"
+            class="group fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 h-11 w-11 px-0 shadow-lg print:hidden has-[>svg]:px-0 sm:bottom-4 sm:h-9 sm:w-9 hover:sm:w-auto hover:sm:px-3 focus-visible:sm:w-auto focus-visible:sm:px-3"
             :disabled="capturing"
             @click="openReporter"
         >
             <!-- Abaixo de `sm` é só o ícone (alvo táctil de 44px, DESIGN.md); o texto
                  fica para o leitor de ecrã e volta a ver-se de `sm` para cima. -->
-            <Flag class="sm:hidden" aria-hidden="true" />
-            <span class="sr-only sm:not-sr-only">{{ capturing ? 'A capturar…' : 'Reportar problema' }}</span>
+            <!-- Um disco de 44 px no canto, em todos os tamanhos: não cobre
+                 ações nem texto. O rótulo abre-se ao passar ou ao focar; para o
+                 leitor de ecrã está sempre lá. -->
+            <Flag aria-hidden="true" />
+            <span class="sr-only group-focus-visible:sm:not-sr-only group-hover:sm:not-sr-only group-focus-visible:sm:ml-1.5 group-hover:sm:ml-1.5">{{ capturing ? 'A capturar…' : 'Reportar problema' }}</span>
         </Button>
 
         <Dialog v-model:open="open">

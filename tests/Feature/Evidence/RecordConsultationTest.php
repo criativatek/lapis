@@ -429,17 +429,17 @@ class RecordConsultationTest extends TestCase
     {
         $ana = $this->enroll('Ana Costa');
 
-        $this->asTeacher()->get('/dashboard')->assertInertia(fn (AssertableInertia $page) => $page->where('recordAlerts', null));
+        $this->asTeacher()->get('/dashboard')->assertInertia(fn (AssertableInertia $page) => $page->where('dashboard.pending.record_alerts', null));
 
         $this->record($ana, EvidenceKind::Homework, '2026-10-01', HomeworkStatus::NotDone);
         $this->record($ana, EvidenceKind::Homework, '2026-10-02', HomeworkStatus::NotDone);
         $this->saveHomework('2026-10-05', [$ana->id => 'not_done']);
 
         $this->asTeacher()->get('/dashboard')->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('recordAlerts.pending', 1));
+            ->where('dashboard.pending.record_alerts.count', 1));
 
         $this->inTenant($this->organization, fn () => EvidenceRecord::query()->whereDate('occurred_at', '2026-10-05')->first()?->delete());
 
-        $this->asTeacher()->get('/dashboard')->assertInertia(fn (AssertableInertia $page) => $page->where('recordAlerts', null));
+        $this->asTeacher()->get('/dashboard')->assertInertia(fn (AssertableInertia $page) => $page->where('dashboard.pending.record_alerts', null));
     }
 }

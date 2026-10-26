@@ -129,6 +129,8 @@ final class ClassOverview
                 'label' => $class->label,
                 'subject' => $class->subject?->name,
                 'students' => (int) ($students[$classId] ?? 0),
+                // Sem perfil de avaliação não há propostas: o cartão avisa, como o painel antigo avisava.
+                'has_profile' => $class->assessment_profile_version_id !== null,
                 'next_lesson' => $this->nextLesson($context, $class),
                 'absences_this_week' => $context->hasLessons ? (int) ($absences[$classId] ?? 0) : null,
                 'open_interventions' => $context->hasInterventions ? (int) ($openInterventions[$classId] ?? 0) : null,

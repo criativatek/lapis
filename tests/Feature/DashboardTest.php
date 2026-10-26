@@ -43,11 +43,12 @@ class DashboardTest extends TestCase
         $this->actingAs($teacher)->get(route('dashboard'))->assertInertia(
             fn ($page) => $page
                 ->component('Dashboard')
-                ->where('totals.classes', 1)
-                ->where('classes.0.label', '7.º A')
+                ->where('dashboard.context.class_count', 1)
+                ->where('dashboard.classes.0.label', '7.º A')
                 // Carolina, Ana, Bruno, Eva have computable results → proposals waiting.
-                ->where('classes.0.pending_confirmation', fn ($count) => $count > 0)
-                ->where('classes.0.pending_publication', 0),
+                ->where('dashboard.pending.classifications.0.proposed', fn ($count) => $count > 0)
+                ->where('dashboard.pending.classifications.0.confirmed', 0)
+                ->where('dashboard.classes.0.pending.classifications_proposed', fn ($count) => $count > 0),
         );
     }
 
@@ -66,9 +67,9 @@ class DashboardTest extends TestCase
         $this->actingAs($teacher)->get(route('dashboard'))->assertInertia(
             fn ($page) => $page
                 ->component('Dashboard')
-                ->where('totals.classes', 0)
-                ->where('totals.pending_confirmation', 0)
-                ->where('classes', []),
+                ->where('dashboard.context.class_count', 0)
+                ->where('dashboard.pending.counts.classifications_proposed', 0)
+                ->where('dashboard.classes', []),
         );
     }
 }

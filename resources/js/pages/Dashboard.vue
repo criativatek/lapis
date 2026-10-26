@@ -1,20 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowRight, BellRing, CalendarDays, CheckCircle2, Circle, FileText, NotebookPen, PenLine, Presentation, X } from '@lucide/vue';
+import { ArrowRight, CheckCircle2, Circle, X } from '@lucide/vue';
 import { computed } from 'vue';
+import ClassCards from '@/components/dashboard/ClassCards.vue';
+import DashboardHero from '@/components/dashboard/DashboardHero.vue';
+import DayRuler from '@/components/dashboard/DayRuler.vue';
+import DoneToday from '@/components/dashboard/DoneToday.vue';
+import PeriodRuler from '@/components/dashboard/PeriodRuler.vue';
+import WeekAgenda from '@/components/dashboard/WeekAgenda.vue';
+import WorkQueue from '@/components/dashboard/WorkQueue.vue';
 import { Button } from '@/components/ui/button';
-import { qualitativeToneClasses } from '@/lib/qualitativeTone';
-import { card } from '@/lib/surfaces';
-
-type ClassCard = {
-    ulid: string;
-    label: string;
-    subject: string;
-    academic_year: string;
-    has_profile: boolean;
-    pending_confirmation: number;
-    pending_publication: number;
-};
+import type { DashboardData } from '@/lib/dashboard';
+import { allDone, buildQueue, statusPhrase } from '@/lib/dashboard';
 
 type ReadinessItem = {
     id: string;
@@ -38,16 +35,11 @@ type FirstStepsItem = {
 
 const props = defineProps<{
     teacherName: string;
-    classes: ClassCard[];
     readiness: { is_ready: boolean; items: ReadinessItem[] };
     firstSteps: { dismissed: boolean; all_done: boolean; items: FirstStepsItem[] };
-    totals: { classes: number; pending_confirmation: number; pending_publication: number };
-    /** Accumulation alerts still «por tratar» this year; null when there are none. */
-    recordAlerts?: { pending: number; href: string } | null;
+    /** O que o DashboardComposer sabe do dia: só factos, já gated por módulo. */
+    dashboard: DashboardData;
 }>();
-
-// First name only — a warmer greeting than the full registered name.
-const firstName = computed(() => props.teacherName.split(' ')[0]);
 
 const page = usePage();
 
@@ -61,197 +53,86 @@ function canRead(module: string): boolean {
 }
 
 const canOpenAssessments = computed(() => canRead('assessments'));
-const canOpenReports = computed(() => canRead('reports'));
 const canOpenRecords = computed(() => canRead('records'));
-const canOpenCalendar = computed(() => canRead('calendar'));
 const canOpenOrganizationAudit = computed(() => canRead('audit_log'));
-// Write access, not read: «Aulas de hoje» invites registering a summary, which a
-// read-only organization cannot do. Same `modules` list the server enforces.
-// And only once there is a class: a brand-new account has no lesson for today,
-// and the first-steps checklist is the one thing that screen should ask for.
-const canRegisterLessons = computed(() => page.props.modules.includes('lessons') && props.classes.length > 0);
+// Write access, not read: a régua convida a registar um sumário, coisa que uma
+// organização só de leitura não pode fazer. E só com turmas: numa conta nova a
+// lista de primeiros passos é o que o ecrã deve pedir.
+const canRegisterLessons = computed(() => page.props.modules.includes('lessons') && props.dashboard.context.has_classes);
 
 // Never a modal, never blocking: an old, fully-adopted account already shows
 // nothing (all_done), the same way readiness() shows nothing once configured.
 const showFirstSteps = computed(() => !props.firstSteps.dismissed && !props.firstSteps.all_done);
 
 function dismissFirstSteps(): void {
-    // Never touches progress — there is none stored to touch. Only hides the
-    // card; findable again later from A2's Help Center (not built yet).
     router.post('/dashboard/onboarding-dismissal', {}, { preserveScroll: true });
 }
 
 /*
- * A HOME DE FECHO (DESIGN.md, variante C2 aprovada): a página não mostra a
- * ferramenta, mostra o dia — Agora → A seguir → Arrumado → «podes fechar».
- * Prosa antes de números; âmbar só no FEITO; nenhuma estimativa inventada
- * («nada inventado» — os minutos do mock ficaram no mock).
+ * A HOME DE FECHO (DESIGN.md, variante C2 — e agora a Proposta C refinada): a
+ * página não mostra a ferramenta, mostra o dia — Hoje → Agora → A seguir →
+ * Arrumado → «podes fechar». Prosa antes de números; âmbar só no FEITO; nada
+ * inventado: cada número vem do DashboardComposer.
  */
-const pendingOf = (schoolClass: ClassCard): number =>
-    schoolClass.pending_confirmation + schoolClass.pending_publication;
+const data = computed(() => props.dashboard);
+const today = computed(() => data.value.context.date);
+const queue = computed(() => buildQueue(data.value.pending, today.value));
+const phrase = computed(() => statusPhrase(data.value, queue.value));
+const done = computed(() => allDone(data.value, queue.value));
+const hasLessons = computed(() => data.value.context.modules.lessons);
 
-/** A tarefa mais pesada é o «Agora»; o resto espera em fila. */
-const byWeight = computed(() => [...props.classes].sort((a, b) => pendingOf(b) - pendingOf(a)));
+/** Os acontecimentos de hoje na agenda da semana — a Base mostra-os no lugar do horário. */
+const todayEvents = computed(() => data.value.week.days.find((day) => day.is_today)?.events ?? []);
 
-const agora = computed(() => (byWeight.value.length > 0 && pendingOf(byWeight.value[0]) > 0 ? byWeight.value[0] : null));
+/** «Amanhã: 9.º C às 10:20 e 8.º D às 11:00.» — só quando há mesmo aulas amanhã. */
+const tomorrowHint = computed<string | null>(() => {
+    const index = data.value.week.days.findIndex((day) => day.is_today);
+    const tomorrow = data.value.week.days[index + 1];
 
-const aSeguir = computed(() => byWeight.value.slice(1).filter((schoolClass) => pendingOf(schoolClass) > 0));
-
-const arrumado = computed(() => props.classes.filter((schoolClass) => pendingOf(schoolClass) === 0));
-
-// Só uma turma pendente: o cartão «Agora» fica sozinho e o resto do ecrã
-// esvazia-se. Dá-lhe corpo com ligações reais da própria turma — nenhum
-// número novo, só navegação que os cartões «Arrumado» já oferecem.
-const agoraSozinho = computed(() => agora.value !== null && aSeguir.value.length === 0);
-
-// «Atalhos»: só em contas pequenas (poucas turmas), onde a home cheia (Agora +
-// A seguir + Arrumado) nunca ocupa o ecrã. Navegação pura — sem estatística.
-const showAtalhos = computed(
-    () =>
-        props.classes.length > 0 &&
-        props.classes.length <= 2 &&
-        (canOpenAssessments.value || canOpenReports.value || canOpenRecords.value || canOpenCalendar.value),
-);
-
-/** Tudo em dia — a única condição em que a frase de fecho aparece. */
-const allDone = computed(
-    () => props.classes.length > 0 && props.totals.pending_confirmation === 0 && props.totals.pending_publication === 0,
-);
-
-/** Saudação pela hora de Lisboa — a app vive em Europe/Lisbon. */
-const greeting = computed(() => {
-    const hour = Number(
-        new Intl.DateTimeFormat('pt-PT', { hour: 'numeric', hour12: false, timeZone: 'Europe/Lisbon' }).format(new Date()),
-    );
-
-    if (hour < 6) {
-        return 'Boa noite';
+    if (index < 0 || !tomorrow || tomorrow.lessons.length === 0) {
+        return null;
     }
 
-    if (hour < 13) {
-        return 'Bom dia';
-    }
+    const first = tomorrow.lessons.slice(0, 2).map((lesson) => `${lesson.class.label} às ${lesson.start_time}`);
+    const rest = tomorrow.lessons.length - first.length;
 
-    if (hour < 20) {
-        return 'Boa tarde';
-    }
-
-    return 'Boa noite';
+    return `Amanhã: ${first.join(' e ')}${rest > 0 ? ` e mais ${rest}` : ''}. Podes preparar os sumários quando quiseres.`;
 });
 
-/** O estado do dia em PROSA, só com factos que a base sabe. */
-const statusPhrase = computed(() => {
-    const confirm = props.totals.pending_confirmation;
-    const publish = props.totals.pending_publication;
-
-    if (props.classes.length === 0) {
-        return 'Ainda sem turmas neste ano letivo.';
-    }
-
-    if (confirm === 0 && publish === 0) {
-        return 'Tudo em dia.';
-    }
-
+const periodSummary = computed<string | null>(() => {
+    const counts = data.value.pending.counts;
     const parts: string[] = [];
 
-    if (confirm > 0) {
-        parts.push(`${confirm} ${confirm === 1 ? 'classificação por confirmar' : 'classificações por confirmar'}`);
+    if (counts.corrections > 0) {
+        parts.push(`${counts.corrections} ${counts.corrections === 1 ? 'elemento' : 'elementos'} por corrigir`);
     }
 
-    if (publish > 0) {
-        parts.push(`${publish} por publicar`);
+    if (counts.classifications_proposed > 0) {
+        parts.push(`${counts.classifications_proposed} ${counts.classifications_proposed === 1 ? 'proposta' : 'propostas'} por confirmar`);
     }
 
-    return `Falta ${parts.join(' e ')}.`;
+    return parts.length > 0 ? parts.join(' · ') : null;
 });
-
-function pendingLabel(schoolClass: ClassCard): string {
-    const parts: string[] = [];
-
-    if (schoolClass.pending_confirmation > 0) {
-        parts.push(`${schoolClass.pending_confirmation} por confirmar`);
-    }
-
-    if (schoolClass.pending_publication > 0) {
-        parts.push(`${schoolClass.pending_publication} por publicar`);
-    }
-
-    return parts.join(' · ');
-}
 </script>
 
 <template>
     <Head title="Painel do Professor" />
 
-    <div class="space-y-6 p-4">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <!-- A VOZ HUMANA (DESIGN.md): saudação em serifa; o estado do
-                     dia em prosa, só com factos reais. -->
-                <h1 class="font-serif text-[1.75rem] leading-snug text-foreground">{{ greeting }}, {{ firstName }}.</h1>
-                <p class="mt-0.5 font-serif text-lg text-muted-foreground">{{ statusPhrase }}</p>
-            </div>
-            <!-- «Minha atividade» é de todos os planos. A auditoria transversal
-                 (audit_log) é do Institucional: sem ela o link não aparece, como
-                 no menu, e o servidor volta a verificar. -->
-            <div class="flex shrink-0 flex-col items-end gap-1 text-sm text-muted-foreground">
-                <Link href="/activity" class="hover:underline">Minha atividade</Link>
-                <Link v-if="canOpenOrganizationAudit" href="/activity/organization" class="hover:underline">Auditoria da organização</Link>
-            </div>
-        </div>
-
-        <!-- «AULAS DE HOJE» — o destino a que o professor volta todos os dias,
-             logo abaixo da saudação e sem scroll. `foco=hoje` pede à página
-             das aulas que posicione a vista Semana no dia de hoje — ou, sem
-             aulas hoje, no próximo dia com aula (lessons/Index.vue). Só com o módulo `lessons` com escrita: numa
-             organização em consulta não há sumário a registar, e o menu
-             continua a oferecer a leitura. É o único link para as aulas nesta
-             página — nada a duplicar. -->
-        <Link
-            v-if="canRegisterLessons"
-            href="/lessons?view=semana&foco=hoje"
-            :class="[
-                card('plain'),
-                'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-fit sm:min-w-80',
-            ]"
-            data-testid="lessons-today"
-        >
-            <Presentation class="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-            <span class="min-w-0 flex-1">
-                <span class="block font-medium">Aulas de hoje</span>
-                <span class="block text-sm text-muted-foreground">Sumários e assiduidade</span>
-            </span>
-            <ArrowRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        </Link>
-
-        <!-- ALERTAS DE ACUMULAÇÃO (0.164.0) — o aviso persistente do
-             acompanhamento dos registos: só os alertas que uma gravação fez
-             nascer e que continuam por tratar. Desaparece quando o professor
-             os marca como registados no Inovar ou quando uma correção desce a
-             contagem. -->
-        <Link
-            v-if="recordAlerts && canOpenRecords"
-            :href="recordAlerts.href"
-            :class="[
-                card('plain'),
-                'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:w-fit sm:min-w-80',
-            ]"
-            data-testid="record-alerts"
-        >
-            <BellRing class="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-            <span class="min-w-0 flex-1">
-                <span class="block font-medium">{{ recordAlerts.pending === 1 ? '1 alerta de registos por tratar' : `${recordAlerts.pending} alertas de registos por tratar` }}</span>
-                <span class="block text-sm text-muted-foreground">TPC, atrasos e faltas de material à 3.ª ocorrência</span>
-            </span>
-            <ArrowRight class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        </Link>
+    <div class="flex flex-col gap-6 p-4 sm:p-5 lg:px-6">
+        <DashboardHero
+            :teacher-name="teacherName"
+            :data="data"
+            :queue="queue"
+            :phrase="phrase"
+            :can-open-assessments="canOpenAssessments"
+            :can-open-records="canOpenRecords"
+            :can-register-lessons="canRegisterLessons"
+        />
 
         <!-- "Primeiros passos" (A1a) — a separate, dismissible adoption
              checklist. Never a modal, never blocks navigation, and shown
-             independently of the readiness checklist below: an account can be
-             fully configured and still not have used the app yet, or vice
-             versa. -->
-        <div v-if="showFirstSteps" class="mx-auto max-w-3xl rounded-xl border border-border p-4 sm:p-5">
+             independently of the readiness checklist below. -->
+        <div v-if="showFirstSteps" class="mx-auto w-full max-w-3xl rounded-xl border border-border p-4 sm:p-5">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h2 class="text-base font-semibold">Primeiros passos</h2>
@@ -263,11 +144,7 @@ function pendingLabel(schoolClass: ClassCard): string {
             </div>
 
             <ul class="mt-4 space-y-2" aria-label="Primeiros passos">
-                <li
-                    v-for="item in firstSteps.items"
-                    :key="item.id"
-                    class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-                >
+                <li v-for="item in firstSteps.items" :key="item.id" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
                     <div class="flex min-w-0 items-center gap-3">
                         <CheckCircle2 v-if="item.completed" class="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                         <Circle v-else class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -285,7 +162,7 @@ function pendingLabel(schoolClass: ClassCard): string {
             </ul>
         </div>
 
-        <div v-if="!readiness.is_ready" class="mx-auto max-w-3xl">
+        <div v-if="!readiness.is_ready" class="mx-auto w-full max-w-3xl">
             <div class="mb-5">
                 <h2 class="text-lg font-semibold">Prepare o ano letivo</h2>
                 <p class="mt-1 text-sm text-muted-foreground">Complete estes passos para começar a trabalhar com as suas turmas.</p>
@@ -305,9 +182,7 @@ function pendingLabel(schoolClass: ClassCard): string {
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <h3 class="font-medium">{{ item.name }}</h3>
-                                <span v-if="item.is_next" class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                                    Próximo passo
-                                </span>
+                                <span v-if="item.is_next" class="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">Próximo passo</span>
                                 <span class="sr-only">{{ item.completed ? 'Concluído' : 'Por fazer' }}</span>
                             </div>
                             <p class="mt-1 text-sm text-muted-foreground">{{ item.description }}</p>
@@ -327,103 +202,44 @@ function pendingLabel(schoolClass: ClassCard): string {
         </div>
 
         <template v-else>
-            <!-- AGORA — a tarefa mais pesada, uma só, com a acção à vista. -->
-            <section v-if="agora">
-                <h2 class="text-base font-semibold">Agora</h2>
-                <div class="mt-1 mb-3 h-0.5 w-12 rounded bg-(--brand-amber)" aria-hidden="true"></div>
-                <div :class="[card('plain'), 'card-soft p-5']">
-                    <div class="flex flex-wrap items-end justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-lg font-semibold">{{ agora.label }} — {{ agora.subject }}</p>
-                            <p class="mt-0.5 text-sm text-muted-foreground">{{ pendingLabel(agora) }}</p>
-                            <span v-if="!agora.has_profile" :class="['mt-2 inline-block rounded-full px-2 py-0.5 text-xs', qualitativeToneClasses.amber]">sem perfil de avaliação</span>
-                        </div>
-                        <Button as-child>
-                            <Link :href="`/classes/${agora.ulid}/classifications`">Continuar correção</Link>
-                        </Button>
-                    </div>
+            <!-- HOJE — a régua do dia (Pro, com horário) ou, na Base, o lugar é da
+                 régua do período com os acontecimentos de hoje: nada fica vazio. -->
+            <DayRuler v-if="data.day.available" :day="data.day" :now="data.context.now" :lessons-href="data.week.href" />
+            <PeriodRuler
+                v-else-if="data.period"
+                :ruler="data.period"
+                :today="today"
+                prominent
+                :today-events="todayEvents"
+                :upcoming="data.upcoming"
+                :summary="periodSummary"
+            />
 
-                    <!-- Turma sozinha no ecrã: ligações rápidas, mesmas que os
-                         cartões «Arrumado» oferecem — navegação, não números novos. -->
-                    <div v-if="agoraSozinho" class="mt-4 flex flex-wrap gap-4 border-t border-border pt-3 text-sm">
-                        <Link :href="`/classes/${agora.ulid}/classifications`" class="text-primary hover:underline">Classificações</Link>
-                        <Link :href="`/classes/${agora.ulid}/results/estatistica`" class="text-muted-foreground hover:underline">Acompanhamento</Link>
-                    </div>
+            <div class="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start">
+                <div class="flex min-w-0 flex-col gap-6">
+                    <WorkQueue :queue="queue" :has-classes="data.context.has_classes" :tomorrow-hint="tomorrowHint" />
+                    <DoneToday :items="data.done" />
+
+                    <!-- O FECHO — a frase-assinatura, só quando é verdade. -->
+                    <p v-if="done" class="border-t-2 border-emerald-700/60 pt-3 font-serif text-lg text-foreground italic dark:border-emerald-400/50" data-testid="closing-line">Tudo guardado — podes fechar.</p>
                 </div>
-            </section>
 
-            <!-- A SEGUIR — fila pautada, sem cartões: espera em silêncio. -->
-            <section v-if="aSeguir.length > 0">
-                <h2 class="text-base font-semibold">A seguir</h2>
-                <ul class="mt-2 divide-y divide-border border-y border-border">
-                    <li v-for="schoolClass in aSeguir" :key="schoolClass.ulid" class="flex flex-wrap items-center justify-between gap-3 py-3">
-                        <div class="min-w-0">
-                            <span class="font-semibold">{{ schoolClass.label }}</span>
-                            <span class="text-muted-foreground"> — {{ schoolClass.subject }}</span>
-                            <span class="ml-2 text-sm text-muted-foreground">{{ pendingLabel(schoolClass) }}</span>
-                        </div>
-                        <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="shrink-0 text-sm font-medium text-primary hover:underline">Continuar</Link>
-                    </li>
-                </ul>
-            </section>
-
-            <!-- ARRUMADO — o âmbar é do FEITO. Sem horas inventadas: a base
-                 não sabe «guardado às» por turma, e nada se inventa. -->
-            <section v-if="arrumado.length > 0">
-                <h2 class="text-base font-semibold">Arrumado</h2>
-                <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div v-for="schoolClass in arrumado" :key="schoolClass.ulid" :class="[card('plain'), 'p-4']">
-                        <div class="flex items-start gap-2">
-                            <CheckCircle2 class="mt-0.5 size-4 shrink-0 text-(--brand-amber)" aria-hidden="true" />
-                            <div class="min-w-0">
-                                <p class="truncate font-semibold">{{ schoolClass.label }} — {{ schoolClass.subject }}</p>
-                                <p class="text-sm text-muted-foreground">sem pendências</p>
-                            </div>
-                        </div>
-                        <div class="mt-3 flex gap-3 border-t border-border pt-2.5 text-sm">
-                            <Link :href="`/classes/${schoolClass.ulid}/classifications`" class="text-primary hover:underline">Classificações</Link>
-                            <Link :href="`/classes/${schoolClass.ulid}/results/estatistica`" class="text-muted-foreground hover:underline">Acompanhamento</Link>
-                        </div>
-                    </div>
+                <div class="flex min-w-0 flex-col gap-6">
+                    <WeekAgenda :week="data.week" :upcoming="data.upcoming" :today="today" :has-lessons-module="hasLessons" />
+                    <PeriodRuler v-if="data.day.available && data.period" :ruler="data.period" :today="today" :summary="periodSummary" />
                 </div>
-            </section>
-
-            <!-- ATALHOS — só em contas pequenas, onde a home cheia (Agora / A
-                 seguir / Arrumado) não chega a ocupar o ecrã. Navegação pura. -->
-            <section v-if="showAtalhos">
-                <h2 class="text-base font-semibold">Atalhos</h2>
-                <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <Link
-                        v-if="canOpenAssessments"
-                        href="/assessments"
-                        :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']"
-                    >
-                        <PenLine class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span class="font-medium">Grelhas de correção</span>
-                    </Link>
-                    <Link v-if="canOpenReports" href="/reports" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
-                        <FileText class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span class="font-medium">Relatórios</span>
-                    </Link>
-                    <Link v-if="canOpenRecords" href="/records" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
-                        <NotebookPen class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span class="font-medium">Registos</span>
-                    </Link>
-                    <Link v-if="canOpenCalendar" href="/calendar" :class="[card('plain'), 'flex items-center gap-3 p-4 hover:bg-muted/50']">
-                        <CalendarDays class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span class="font-medium">Calendário</span>
-                    </Link>
-                </div>
-            </section>
-
-            <!-- O FECHO — a frase-assinatura, só quando é verdade. -->
-            <div v-if="allDone" class="border-t-2 border-emerald-700/60 pt-3 dark:border-emerald-400/50">
-                <p class="font-serif text-lg italic text-foreground">Tudo guardado — podes fechar.</p>
             </div>
 
-            <p class="text-sm text-muted-foreground">
-                <Link href="/classes" class="text-primary hover:underline">Ver todas as turmas</Link>
-            </p>
+            <ClassCards v-if="data.classes.length > 0" :classes="data.classes" :today="today" :has-lessons-module="hasLessons" />
         </template>
+
+        <!-- «Minha atividade» é de todos os planos. A auditoria transversal
+             (audit_log) é do Institucional: sem ela o link não aparece, como
+             no menu, e o servidor volta a verificar. -->
+        <p class="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
+            <Link href="/activity" class="inline-flex min-h-11 items-center hover:underline sm:min-h-9">Minha atividade</Link>
+            <Link v-if="canOpenOrganizationAudit" href="/activity/organization" class="inline-flex min-h-11 items-center hover:underline sm:min-h-9">Auditoria da organização</Link>
+            <Link href="/classes" class="inline-flex min-h-11 items-center text-primary hover:underline sm:min-h-9">Ver todas as turmas</Link>
+        </p>
     </div>
 </template>
