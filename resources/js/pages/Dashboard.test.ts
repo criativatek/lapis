@@ -166,6 +166,24 @@ describe('Dashboard — a fila e o arrumado', () => {
         expect(wrapper.find('[data-testid="primary-action"]').attributes('href')).toBe('/lessons/l9');
     });
 
+    it('«A seguir» esconde do quinto item em diante no telemóvel até se pedir o resto', async () => {
+        const pending: PendingWork = {
+            ...emptyPending,
+            classifications: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((ulid) => ({ class: { ...turma, ulid, label: `Turma ${ulid}` }, proposed: 2, confirmed: 0, href: `/classes/${ulid}/classifications` })),
+        };
+        const wrapper = dashboard({ pending });
+        const section = wrapper.find('[data-testid="a-seguir"]');
+
+        expect(section.findAll('li')).toHaveLength(6);
+        expect(section.findAll('li[data-mobile-hidden="true"]')).toHaveLength(2);
+        expect(wrapper.text()).toContain('por onde começar');
+        expect(wrapper.text()).not.toContain('não deve esperar');
+
+        await section.find('[data-testid="a-seguir-toggle"]').trigger('click');
+
+        expect(section.findAll('li[data-mobile-hidden="true"]')).toHaveLength(0);
+    });
+
     it('«Arrumado hoje» mostra três linhas e abre o resto do dia', async () => {
         const done: DoneItem[] = ['17:48', '16:31', '12:03', '10:07', '09:58'].map((time, index) => ({
             at: `2026-10-26T${time}:00+00:00`, time, kind: 'lesson', title: `Coisa ${index + 1}`, class: turma, href: '/lessons/x', count: 1,

@@ -60,8 +60,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   baixo; cada dia é uma ligação (à semana das aulas, ou ao mês do calendário
   na Base). Na Base a semana mantém acontecimentos e datas de avaliação.
 - **Régua do período** (`PeriodRuler`): dia n de m, dias que faltam e as marcas
-  dos elementos com data no seu estado real. **Na Base ocupa o lugar do
-  horário**, com os acontecimentos de hoje e o que se aproxima: nada fica vazio.
+  dos elementos com data no seu estado real; por baixo, só os três elementos
+  por fechar mais próximos e «Ver todos» para o resto (nas grelhas). **Na Base
+  ocupa o lugar do horário**, com os acontecimentos de hoje e o que se
+  aproxima: nada fica vazio.
 - **As minhas turmas** (`ClassCards`): faixa na cor da turma, próxima aula
   (Pro) ou último registo (Base), três factos (faltas da semana · medidas em
   curso · a corrigir; na Base registos · medidas · autoavaliações), os elementos
@@ -82,6 +84,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - `ClassOverview` expõe `has_profile`, que o cartão mostra como «sem perfil de
   avaliação».
 - «Minha atividade» e «Auditoria da organização» passam para o fim da página.
+- No telemóvel, «A seguir» mostra quatro ações e abre o resto a pedido
+  («Mostrar mais n»); de `md` para cima a lista é inteira. A nota do «Agora»
+  diz «por onde começar», sem urgência artificial.
+- O botão flutuante «Reportar problema» (`IssueReporter`) passa a ser um disco
+  em todos os tamanhos — 44 px no telemóvel, 36 px a partir de `sm` — para não
+  cobrir ações nem texto; o rótulo abre-se ao passar ou ao focar e continua
+  sempre presente para o leitor de ecrã. A barra superior não muda (PR C).
 - `tests/Fixtures/AdvancedAnalysis/base-surfaces.json` regenerada de propósito: a
   superfície «dashboard (props)» mudou porque as props mudaram; as outras
   superfícies Base continuam com o mesmo hash.
