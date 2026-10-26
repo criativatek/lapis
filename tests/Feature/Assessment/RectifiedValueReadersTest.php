@@ -24,6 +24,8 @@ use App\Services\Assessment\Progress\BuildStudentProgress;
 use App\Services\Assessment\ProposeClassifications;
 use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\RectifyClassification;
+use App\Services\Dashboard\DashboardContextFactory;
+use App\Services\Dashboard\PendingWork;
 use App\Services\Reporting\Source\SchoolReportSource;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -226,18 +228,25 @@ class RectifiedValueReadersTest extends TestCase
     }
 
     #[Test]
-    public function the_dashboard_counts_the_cell_once_and_never_counts_the_replaced_row(): void
+    public function the_dashboard_never_counts_the_replaced_row_as_pending(): void
     {
         $this->rectifyTo('3');
 
-        $proposed = DB::table('classifications')->where('status', ClassificationStatus::Proposed->value)->count();
+        $pending = app(CurrentOrganization::class)->runFor($this->ana->personalOrganization(), fn (): array => app(PendingWork::class)->for(
+            app(DashboardContextFactory::class)->for($this->ana),
+        ));
 
-        $this->actingAs($this->ana)->get(route('dashboard'))->assertInertia(fn ($page) => $page
-            ->component('Dashboard')
-            ->where('classes.0.pending_confirmation', $proposed)
-            // The rectified row is published, and the replaced one is no longer «published».
-            ->where('classes.0.pending_publication', 0));
-
+        // Pending work is what is still proposed or confirmed. The rectified row is
+        // published and the row it replaced is superseded: neither is pending, and
+        // the numbers are the table's, not inflated by the extra row of the chain.
+        $this->assertSame(
+            DB::table('classifications')->where('status', ClassificationStatus::Proposed->value)->count(),
+            $pending['counts']['classifications_proposed'],
+        );
+        $this->assertSame(
+            DB::table('classifications')->where('status', ClassificationStatus::Confirmed->value)->count(),
+            $pending['counts']['classifications_confirmed'],
+        );
         $this->assertSame(1, DB::table('classifications')->where('status', ClassificationStatus::Superseded->value)->count());
     }
 
