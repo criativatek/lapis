@@ -88,9 +88,9 @@ class AcademicYearReadinessTest extends TestCase
                 ->where('readiness.items.2.completed', true)
                 ->where('readiness.items.3.completed', true)
                 ->where('readiness.items.4.completed', true)
-                ->where('totals.classes', 1)
-                ->where('classes.0.ulid', $context['class']->ulid)
-                ->where('classes.0.has_profile', true),
+                ->where('dashboard.context.class_count', 1)
+                ->where('dashboard.classes.0.class.ulid', $context['class']->ulid)
+                ->where('dashboard.classes.0.has_profile', true),
         );
     }
 
@@ -157,7 +157,7 @@ class AcademicYearReadinessTest extends TestCase
                 ->where('readiness.items.3.is_next', true)
                 ->where('readiness.items.4.completed', false)
                 ->where('readiness.items.4.cta', null)
-                ->where('totals.classes', 0),
+                ->where('dashboard.context.class_count', 0),
         );
     }
 
@@ -177,7 +177,7 @@ class AcademicYearReadinessTest extends TestCase
                 ->where('readiness.items.2.completed', false)
                 ->where('readiness.items.3.completed', false)
                 ->where('readiness.items.4.completed', false)
-                ->where('totals.classes', 0),
+                ->where('dashboard.context.class_count', 0),
         );
     }
 

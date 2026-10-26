@@ -25,6 +25,73 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.180.0] — 2026-10-26
+
+> **O novo Painel do Professor (PR B).** A página de entrada passa a ser a
+> Proposta C refinada, aprovada a 2026-10-25: o dia à frente, a fila ao lado,
+> as turmas à vista. Lê só o que o `DashboardComposer` da 0.179.0 prova — nada
+> inventado, nada calculado no ecrã além de ordenar e escrever em prosa. **Sem
+> migrations; sem rotas novas; sem alterações ao layout, à sidebar ou à barra
+> superior** (a barra contextual é a PR C). Base e Pro decidem-se pelos módulos
+> legíveis, nunca pelo nome do plano.
+
+### Adicionado
+
+- **Saudação e frase do dia** (`DashboardHero`): linha do dia (dia da semana,
+  período, semana n.ª do ano letivo), saudação em serifa pela hora de Lisboa,
+  o estado do dia em prosa só com factos, e uma ação primária — a aula a
+  decorrer ou a seguir (Pro) ou o primeiro item da fila — mais «Nova grelha» e
+  «Novo registo» pelos módulos.
+- **Régua do dia** (`DayRuler`, Pro): as ocorrências de hoje proporcionais ao
+  tempo, entre os limites reais do horário desta semana, na cor de identidade
+  de cada turma (`ClassIdentityTone`), com a hora atual, o feito em lavagem
+  âmbar com visto, e os estados por abrir / a decorrer / por registar. Abaixo
+  de 768 px é uma lista vertical com a cor na margem.
+- **A fila** (`WorkQueue`): «Agora» é um cartão com a única coisa que não deve
+  esperar e a ação à vista; «A seguir» é a lista pautada do resto, por peso
+  (sumários por registar, propostas por confirmar, alertas de acumulação,
+  medidas em atraso, elementos em correção, confirmadas por publicar, sumários
+  anteriores por registar com ligação para consulta). Vazio diz o próximo passo
+  (as aulas de amanhã) e nunca inventa.
+- **Arrumado hoje** (`DoneToday`): os factos de hoje com a hora em serifa
+  itálica, três à vista e «Mostrar o resto do dia».
+- **Esta semana** (`WeekAgenda`): segunda a sexta, aulas por dia na cor da
+  turma, testes e reuniões, dias não letivos, e os próximos acontecimentos por
+  baixo; cada dia é uma ligação (à semana das aulas, ou ao mês do calendário
+  na Base). Na Base a semana mantém acontecimentos e datas de avaliação.
+- **Régua do período** (`PeriodRuler`): dia n de m, dias que faltam e as marcas
+  dos elementos com data no seu estado real. **Na Base ocupa o lugar do
+  horário**, com os acontecimentos de hoje e o que se aproxima: nada fica vazio.
+- **As minhas turmas** (`ClassCards`): faixa na cor da turma, próxima aula
+  (Pro) ou último registo (Base), três factos (faltas da semana · medidas em
+  curso · a corrigir; na Base registos · medidas · autoavaliações), os elementos
+  do período em barras (corrigidos na cor da turma, em correção a âmbar,
+  aplicados a lápis, por aplicar a cinza) e as pendências em pílulas — «em
+  dia» a esmeralda, «sem perfil de avaliação» quando falta. Sem médias.
+- **O fecho** «Tudo guardado — podes fechar.» só quando há turmas, a fila está
+  vazia e nenhuma aula de hoje ficou por registar.
+- `resources/js/lib/dashboard.ts`: as regras de apresentação (saudação,
+  linha do dia, fila, frase, fecho, rótulos de data) em funções puras, com
+  testes.
+
+### Alterado
+
+- `DashboardController` entrega `dashboard` (o compositor) e deixa de calcular
+  contagens: saem as props `classes`, `totals` e `recordAlerts`. A prontidão do
+  ano e os «Primeiros passos» continuam iguais.
+- `ClassOverview` expõe `has_profile`, que o cartão mostra como «sem perfil de
+  avaliação».
+- «Minha atividade» e «Auditoria da organização» passam para o fim da página.
+- `tests/Fixtures/AdvancedAnalysis/base-surfaces.json` regenerada de propósito: a
+  superfície «dashboard (props)» mudou porque as props mudaram; as outras
+  superfícies Base continuam com o mesmo hash.
+
+### Verificado
+
+- Capturas reais em 1280, 1024, 768 e 390 px, tema claro e escuro, nas contas
+  Pro (com e sem pendências) e Base, sem deslocamento horizontal; axe (WCAG
+  2.0 A/AA) sem violações nos blocos novos — as duas restantes são do slogan
+  da sidebar, pré-existentes; alvos tácteis de 44 px nas ligações dos blocos.
 ## [0.179.0] — 2026-10-25
 
 > **Fundação de dados do novo Painel do Professor (PR A).** Serviços só de
