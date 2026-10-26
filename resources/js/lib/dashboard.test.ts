@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { allDone, buildQueue, dateLabel, eyebrowFor, greetingFor, minutesOf, statusPhrase, whenLabel } from './dashboard';
-import type { DashboardData, PendingWork } from './dashboard';
+import { allDone, buildQueue, dateLabel, eyebrowFor, greetingFor, heroCards, minutesOf, pendingLabel, whenLabel } from './dashboard';
+import type { DashboardData, PendingWork, QueueItem } from './dashboard';
 
 const turma = { ulid: 'c7a', label: '7.º A', subject: 'Português', tone: 'blue' };
 
@@ -79,14 +79,12 @@ describe('dashboard — a fila', () => {
         const queue = buildQueue(dashboard.pending, '2026-10-26');
 
         expect(queue).toEqual([]);
-        expect(statusPhrase(dashboard, queue)).toBe('Tudo em dia.');
         expect(allDone(dashboard, queue)).toBe(true);
     });
 
-    it('sem turmas não há fecho nem frase inventada', () => {
+    it('sem turmas não há fecho', () => {
         const dashboard = data({ context: { ...data().context, has_classes: false, class_count: 0 } });
 
-        expect(statusPhrase(dashboard, [])).toBe('Ainda sem turmas neste ano letivo.');
         expect(allDone(dashboard, [])).toBe(false);
     });
 
@@ -96,13 +94,144 @@ describe('dashboard — a fila', () => {
         });
 
         expect(allDone(dashboard, [])).toBe(false);
-        expect(statusPhrase(dashboard, [])).toBe('0 de 1 sumários de hoje registados. O resto está em dia.');
+    });
+});
+
+const item = (kind: QueueItem['kind'], key: string = kind): QueueItem => ({ key, kind, title: 't', detail: 'd', action: 'a', href: '/x', class: null, emphasis: 'ink', count: 1 });
+
+const lessonItem = (state: DashboardData['day']['items'][number]['state'], key: string): DashboardData['day']['items'][number] => ({
+    kind: 'lesson', key, starts_at: '2026-10-26T08:30:00+00:00', ends_at: null, start_time: '08:30', end_time: null, title: '7.º A', subtitle: null, class: turma, lesson: null, session: null, state, href: '/lessons/x',
+});
+
+const summaryOn = (date: string, ulid: string): PendingWork['summaries']['recent'][number] => ({ ulid, starts_at: `${date}T10:00:00+00:00`, date, start_time: '10:00', label: '7.º A', number: null, class: turma, attendance_recorded: true, href: '/lessons/x' });
+
+/** lessons = aulas de hoje; registered = sumários de hoje; pendingToday = aulas de hoje já passadas sem sumário; previous = atrasos anteriores a hoje. */
+function withDay(lessons: number, registered: number, pendingToday = 0, previous = 0, overrides: Partial<DashboardData> = {}): DashboardData {
+    const base = data();
+    const recent = Array.from({ length: Math.min(previous, 1) }, (_, index) => summaryOn('2026-10-23', `r${index}`));
+
+    return data({
+        day: {
+            ...base.day,
+            totals: { ...base.day.totals, lessons, summaries_registered: registered },
+            items: [...Array.from({ length: pendingToday }, (_, index) => lessonItem('pending', `p${index}`)), ...Array.from({ length: registered }, (_, index) => lessonItem('done', `d${index}`))],
+        },
+        pending: { ...emptyPending, summaries: { ...emptyPending.summaries, recent, older_count: Math.max(previous - recent.length, 0) } },
+        ...overrides,
+    });
+}
+
+describe('dashboard — rótulo das pendências', () => {
+    it('um só tipo diz o tipo, com singular e plural', () => {
+        expect(pendingLabel([item('correction')])).toBe('correção');
+        expect(pendingLabel([item('correction', 'a'), item('correction', 'b')])).toBe('correções');
+        expect(pendingLabel([item('summary'), item('summary', 'b')])).toBe('sumários');
+        expect(pendingLabel([item('review')])).toBe('medida em atraso');
+        expect(pendingLabel([item('review'), item('review', 'b')])).toBe('medidas em atraso');
+        expect(pendingLabel([item('alerts')])).toBe('alerta');
     });
 
-    it('a frase do dia conta o que falta', () => {
-        const dashboard = data({ pending: { ...emptyPending, classifications: [{ class: turma, proposed: 12, confirmed: 0, href: '/x' }], record_alerts: { count: 1, href: '/records' } } });
-        const queue = buildQueue(dashboard.pending, '2026-10-26');
+    it('tipos mistos ou sem nome próprio dizem «pendências»', () => {
+        expect(pendingLabel([item('summary'), item('correction')])).toBe('pendências');
+        expect(pendingLabel([item('classifications')])).toBe('pendência');
+        expect(pendingLabel([item('classifications'), item('classifications', 'b')])).toBe('pendências');
+        expect(pendingLabel([item('summaries_older')])).toBe('pendência');
+    });
+});
 
-        expect(statusPhrase(dashboard, queue)).toBe('2 coisas pedem a tua decisão; a primeira: confirmar 12 classificações — 7.º A.');
+describe('dashboard — os três cartões do cabeçalho', () => {
+    const find = (cards: ReturnType<typeof heroCards>, key: string) => cards?.find((card) => card.key === key);
+
+    it('sem turmas não há cartões', () => {
+        expect(heroCards(data({ context: { ...data().context, has_classes: false } }), [])).toBeNull();
+    });
+
+    it('Hoje, com horário: as aulas previstas, no singular e no plural', () => {
+        expect(find(heroCards(withDay(1, 1, 0), []), 'today')).toMatchObject({ tone: 'sky', value: 1, label: 'aula' });
+        expect(find(heroCards(withDay(3, 0, 0), []), 'today')).toMatchObject({ value: 3, label: 'aulas' });
+        expect(find(heroCards(withDay(0, 0, 0), []), 'today')).toMatchObject({ value: 0, label: 'aulas' });
+    });
+
+    it('Hoje, na Base (sem horário): os acontecimentos de hoje, nada inventado', () => {
+        const base = data();
+        const event = { kind: 'calendar' as const, type: 'meeting', type_label: 'Reunião', title: 'R', start_time: null, class_label: null, href: '/c' };
+        const day = { date: '2026-10-26', day: 26, weekday: 'Seg', is_today: true, is_past: false, non_teaching: null, lessons: [], events: [event, event] };
+        const noTimetable = { ...base.day, available: false };
+
+        expect(find(heroCards(data({ day: noTimetable, week: { ...base.week, days: [day] } }), []), 'today')).toMatchObject({ value: 2, label: 'acontecimentos' });
+        expect(find(heroCards(data({ day: noTimetable, week: { ...base.week, days: [{ ...day, events: [event] }] } }), []), 'today')).toMatchObject({ value: 1, label: 'acontecimento' });
+        expect(find(heroCards(data({ day: noTimetable }), []), 'today')).toMatchObject({ value: 0, label: 'acontecimentos' });
+    });
+
+    it('Sumários: 1/1 concluídos é verde e o aviso dos anteriores não toca na linha principal', () => {
+        const card = find(heroCards(withDay(1, 1, 0, 2), []), 'summaries');
+
+        expect(card).toMatchObject({ tone: 'mint', value: '1/1', label: 'concluídos', hint: null, warning: '2 sumários anteriores em falta' });
+        expect(`${card?.value} ${card?.label} ${card?.hint ?? ''}`).not.toMatch(/anterior/);
+    });
+
+    it('Sumários: sem atrasos anteriores não há aviso', () => {
+        expect(find(heroCards(withDay(1, 1), []), 'summaries')?.warning).toBeNull();
+    });
+
+    it('Sumários: 0/2 com aulas ainda por acontecer não é «em falta» (verde)', () => {
+        expect(find(heroCards(withDay(2, 0, 0), []), 'summaries')).toMatchObject({ tone: 'mint', value: '0/2', label: 'concluídos', hint: null, warning: null });
+    });
+
+    it('Sumários: um sumário de HOJE em falta é âmbar com a nota, e sem anteriores', () => {
+        expect(find(heroCards(withDay(2, 0, 1, 0), []), 'summaries')).toMatchObject({ tone: 'amber', value: '0/2', label: 'concluídos', hint: '1 de hoje em falta', warning: null });
+    });
+
+    it('Sumários: hoje e anteriores em falta convivem, cada um na sua linha', () => {
+        expect(find(heroCards(withDay(3, 1, 2, 3), []), 'summaries')).toMatchObject({ tone: 'amber', value: '1/3', hint: '2 de hoje em falta', warning: '3 sumários anteriores em falta' });
+    });
+
+    it('Sumários: os anteriores somam os recentes de antes de hoje e os antigos; os de hoje não contam', () => {
+        const base = withDay(1, 1);
+        base.pending = { ...emptyPending, summaries: { ...emptyPending.summaries, recent: [summaryOn('2026-10-26', 'hoje'), summaryOn('2026-10-24', 'a')], older_count: 4 } };
+
+        expect(find(heroCards(base, []), 'summaries')?.warning).toBe('5 sumários anteriores em falta');
+    });
+
+    it('Sumários: singular', () => {
+        expect(find(heroCards(withDay(1, 1, 0, 1), []), 'summaries')?.warning).toBe('1 sumário anterior em falta');
+    });
+
+    it('Sumários: sem aulas hoje, «—» verde e o aviso se houver anteriores', () => {
+        expect(find(heroCards(withDay(0, 0, 0, 3), []), 'summaries')).toMatchObject({ tone: 'mint', value: '—', label: 'sem aulas hoje', warning: '3 sumários anteriores em falta' });
+        expect(find(heroCards(withDay(0, 0), []), 'summaries')).toMatchObject({ tone: 'mint', value: '—', label: 'sem aulas hoje', warning: null });
+    });
+
+    it('Sumários: sem horário nunca inventa um rácio', () => {
+        const base = withDay(0, 0, 0, 2);
+        base.day = { ...base.day, available: false };
+
+        expect(find(heroCards(base, []), 'summaries')).toMatchObject({ tone: 'mint', value: '—', label: 'sem horário', warning: '2 sumários anteriores em falta' });
+        base.pending = emptyPending;
+        expect(find(heroCards(base, []), 'summaries')).toMatchObject({ value: '—', label: 'sem horário', warning: null });
+    });
+
+    it('sem o módulo das aulas não há cartão de Sumários: dois cartões', () => {
+        const base = withDay(0, 0, 0);
+        base.context.modules.lessons = false;
+        const cards = heroCards(base, []);
+
+        expect(cards?.map((card) => card.key)).toEqual(['today', 'pending']);
+    });
+
+    it('Pendentes: o número é o comprimento da lista e o rótulo diz o tipo', () => {
+        const queue = [item('correction', 'a'), item('correction', 'b'), item('correction', 'c')];
+
+        expect(find(heroCards(withDay(1, 1, 0), queue), 'pending')).toMatchObject({ tone: 'amber', value: 3, label: 'correções' });
+        expect(find(heroCards(withDay(1, 1, 0), [item('summary'), item('review')]), 'pending')).toMatchObject({ value: 2, label: 'pendências' });
+        expect(find(heroCards(withDay(1, 1, 0), [item('classifications')]), 'pending')).toMatchObject({ value: 1, label: 'pendência' });
+    });
+
+    it('Pendentes: zero pendências é «Tudo em dia», verde', () => {
+        expect(find(heroCards(withDay(1, 1, 0), []), 'pending')).toMatchObject({ tone: 'mint', value: 0, label: 'Tudo em dia' });
+    });
+
+    it('com módulo, horário e pendências saem os três, por esta ordem', () => {
+        expect(heroCards(withDay(1, 1, 0), [item('summary')])?.map((card) => card.key)).toEqual(['today', 'summaries', 'pending']);
     });
 });

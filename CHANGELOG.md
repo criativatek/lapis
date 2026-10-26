@@ -25,6 +25,37 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.183.0] — 2026-10-26
+
+> **Cabeçalho do Painel do Professor.** O cabeçalho passa a ter três cartões
+> compactos (Hoje, Sumários, Pendentes) e as pendências deixam de ser uma fila
+> «Agora / A seguir»: abrem-se, todas e sem prioridades, ao clicar em «Pendentes».
+> **Só front-end: sem alterações ao servidor, às props nem migrações; sem seeder.**
+
+### Adicionado
+
+- **Três cartões** (`HeroStat`, sobre as superfícies tintadas): **Hoje** (aulas
+  previstas; na Base sem horário, os acontecimentos de hoje), **Sumários**
+  (`registados/previstos concluídos` de hoje; âmbar com «N de hoje em falta» só
+  quando uma aula de hoje já passada ficou sem sumário; os atrasos anteriores a
+  hoje têm um aviso âmbar próprio, «N sumários anteriores em falta», que nunca
+  altera o estado de hoje; omitido sem o módulo das aulas) e **Pendentes** (o
+  número é exatamente o das linhas da lista; zero ⇒ «Tudo em dia», sem interação).
+- **Lista de pendências** (`PendingList`): plana, completa, com turma, atividade e
+  ação em cada linha (a linha inteira é a ligação). O estado aberto persiste na
+  sessão do browser (`sessionStorage`, opcional).
+- **Painel sempre fresco** (`useFreshDashboard`): ao montar e quando o separador
+  volta a ficar visível, se os dados têm mais de 30 s, revalida só `dashboard` com
+  uma visita síncrona (nunca `router.reload()`), para a lista refletir a tarefa
+  acabada de concluir. Um texto `aria-live` anuncia o novo número de pendências.
+
+### Removido
+
+- **«Agora / A seguir»** (`WorkQueue`) e o `tomorrowHint`.
+- **O «próximo passo recomendado»**: o botão de ação primária («Registar o
+  sumário…/Abrir a aula…») e a frase de estado por baixo da saudação
+  (`statusPhrase`). Mantêm-se «Nova grelha» e «Novo registo», atalhos fixos.
+
 ## [0.182.0] — 2026-10-26
 
 > **Retificar uma classificação publicada.** Uma classificação publicada deixa de

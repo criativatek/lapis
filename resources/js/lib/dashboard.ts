@@ -1,12 +1,14 @@
 /**
  * O Painel do Professor — as regras de apresentação que não são da base de
- * dados: a saudação pela hora de Lisboa, a frase do dia em prosa, a FILA
- * (Agora → A seguir) construída a partir das pendências que o servidor prova,
+ * dados: a saudação pela hora de Lisboa, os três cartões do cabeçalho, a lista
+ * de pendências construída a partir do que o servidor prova,
  * e a condição única em que a frase de fecho aparece.
  *
  * Tudo puro: recebe a prop `dashboard` (DashboardComposer) e devolve dados
  * para os blocos. Nada aqui inventa uma pendência — só ordena as que vêm.
  */
+
+import type { SurfaceTone } from '@/lib/surfaces';
 
 export type TurmaRef = { ulid: string; label: string; subject: string | null; tone: string | null };
 
@@ -217,10 +219,10 @@ export function dateLabel(date: string, today: string): string {
 }
 
 /**
- * A fila, por esta ordem de peso: sumários por registar (o mais antigo
+ * A lista de pendências, por esta ordem de peso: sumários por registar (o mais antigo
  * primeiro), classificações propostas, alertas de acumulação, medidas em
  * atraso, elementos em correção, e por fim a contagem dos sumários antigos.
- * O primeiro é o «Agora»; o resto é «A seguir».
+ * O painel mostra-a toda, na ordem em que vem.
  */
 export function buildQueue(pending: PendingWork, today: string): QueueItem[] {
     const queue: QueueItem[] = [];
@@ -330,45 +332,94 @@ export function buildQueue(pending: PendingWork, today: string): QueueItem[] {
     return queue;
 }
 
-/** O estado do dia em PROSA, só com factos que a base sabe. */
-export function statusPhrase(data: DashboardData, queue: QueueItem[]): string {
-    if (!data.context.has_classes) {
-        return 'Ainda sem turmas neste ano letivo.';
-    }
+/** Os três números do cabeçalho: o tom é o da superfície (`lib/surfaces.ts`), nunca uma cor nova. */
+export type HeroCard = {
+    key: 'today' | 'summaries' | 'pending';
+    tone: SurfaceTone;
+    title: string;
+    value: string | number;
+    label: string;
+    /** Uma segunda linha pequena sobre HOJE, só quando acrescenta um facto («1 de hoje em falta»). */
+    hint: string | null;
+    /** Aviso âmbar numa linha própria («2 sumários anteriores em falta»); nunca altera o tom nem a linha principal. */
+    warning: string | null;
+};
 
-    const day = data.day;
-    const parts: string[] = [];
+/** O rótulo do cartão «Pendentes»: o tipo, quando todas as linhas são do mesmo; senão «pendências». */
+export function pendingLabel(queue: QueueItem[]): string {
+    const count = queue.length;
+    const kinds = new Set(queue.map((item) => item.kind));
 
-    if (day.available && day.totals.lessons > 0) {
-        const lessons = plural(day.totals.lessons, 'aula', 'aulas');
-        const sessions = day.totals.sessions > 0 ? ` e ${plural(day.totals.sessions, 'outra atividade', 'outras atividades')}` : '';
-        const registered = day.totals.summaries_registered;
-
-        if (registered === 0 && day.items.every((item) => item.state === 'upcoming')) {
-            parts.push(`${lessons}${sessions} hoje; a primeira é às ${day.items[0]?.start_time}.`);
-        } else if (registered === day.totals.lessons) {
-            parts.push(`${lessons}${sessions} hoje, tudo sumariado.`);
-        } else {
-            parts.push(`${registered} de ${day.totals.lessons} sumários de hoje registados.`);
+    if (kinds.size === 1) {
+        switch (queue[0]?.kind) {
+            case 'correction':
+                return count === 1 ? 'correção' : 'correções';
+            case 'summary':
+                return count === 1 ? 'sumário' : 'sumários';
+            case 'review':
+                return count === 1 ? 'medida em atraso' : 'medidas em atraso';
+            case 'alerts':
+                return count === 1 ? 'alerta' : 'alertas';
         }
     }
 
-    if (queue.length === 0) {
-        parts.push(parts.length > 0 ? 'O resto está em dia.' : 'Tudo em dia.');
+    return count === 1 ? 'pendência' : 'pendências';
+}
 
-        return parts.join(' ');
+/**
+ * Os cartões do cabeçalho. `null` sem turmas (só saudação e botões). O número
+ * de «Pendentes» é o comprimento da lista que o painel abre: coincidem sempre.
+ */
+export function heroCards(data: DashboardData, queue: QueueItem[]): HeroCard[] | null {
+    if (!data.context.has_classes) {
+        return null;
     }
 
-    const first = queue[0];
-    const rest = queue.length - 1;
+    const cards: HeroCard[] = [];
+    const day = data.day;
 
-    parts.push(
-        rest === 0
-            ? `Falta ${first?.title.charAt(0).toLowerCase()}${first?.title.slice(1)}.`
-            : `${queue.length} coisas pedem a tua decisão; a primeira: ${first?.title.charAt(0).toLowerCase()}${first?.title.slice(1)}.`,
+    if (day.available) {
+        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: day.totals.lessons, label: day.totals.lessons === 1 ? 'aula' : 'aulas', hint: null, warning: null });
+    } else {
+        const events = data.week.days.find((item) => item.is_today)?.events.length ?? 0;
+
+        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: events, label: events === 1 ? 'acontecimento' : 'acontecimentos', hint: null, warning: null });
+    }
+
+    if (data.context.modules.lessons) {
+        const today = data.context.date;
+        const summaries = data.pending.summaries;
+        // Atrasos ANTERIORES a hoje: um aviso à parte, que nunca mexe no estado de hoje.
+        const previous = summaries.recent.filter((lesson) => lesson.date < today).length + summaries.older_count;
+        const warning = previous > 0 ? `${previous} ${previous === 1 ? 'sumário anterior' : 'sumários anteriores'} em falta` : null;
+        const lessons = day.totals.lessons;
+        const base = { key: 'summaries', title: 'Sumários', warning } as const;
+
+        if (!day.available) {
+            cards.push({ ...base, tone: 'mint', value: '—', label: 'sem horário', hint: null });
+        } else if (lessons === 0) {
+            cards.push({ ...base, tone: 'mint', value: '—', label: 'sem aulas hoje', hint: null });
+        } else {
+            // Em falta HOJE: aulas já passadas sem sumário. As que ainda vão acontecer não contam.
+            const missingToday = day.items.filter((item) => item.kind === 'lesson' && item.state === 'pending').length;
+
+            cards.push({
+                ...base,
+                tone: missingToday > 0 ? 'amber' : 'mint',
+                value: `${day.totals.summaries_registered}/${lessons}`,
+                label: 'concluídos',
+                hint: missingToday > 0 ? `${missingToday} de hoje em falta` : null,
+            });
+        }
+    }
+
+    cards.push(
+        queue.length === 0
+            ? { key: 'pending', tone: 'mint', title: 'Pendentes', value: 0, label: 'Tudo em dia', hint: null, warning: null }
+            : { key: 'pending', tone: 'amber', title: 'Pendentes', value: queue.length, label: pendingLabel(queue), hint: null, warning: null },
     );
 
-    return parts.join(' ');
+    return cards;
 }
 
 /**

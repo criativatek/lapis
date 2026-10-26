@@ -85,7 +85,8 @@
 
 - **Abordagem:** híbrida — grelha disciplinada nas listas e formulários;
   **entrada do dia editorial** (a home é «quanto falta», em prosa, antes de
-  qualquer número: Agora → A seguir → Arrumado hoje → «podes fechar»).
+  qualquer número: cabeçalho com três cartões → Pendências consultáveis →
+  Arrumado hoje → «podes fechar»).
 - **Grelhas de notas = registo pautado:** sem linhas verticais; fios
   horizontais 1px; nome do aluno fixo à esquerda (âncora humana, 500);
   cabeçalho sticky; lavagem âmbar té-nue na coluna activa; célula vazia =
