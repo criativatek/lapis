@@ -44,10 +44,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - **Lista de pendências** (`PendingList`): plana, completa, com turma, atividade e
   ação em cada linha (a linha inteira é a ligação). O estado aberto persiste na
   sessão do browser (`sessionStorage`, opcional).
-- **Painel sempre fresco** (`useFreshDashboard`): ao montar e quando o separador
-  volta a ficar visível, se os dados têm mais de 30 s, revalida só `dashboard` com
-  uma visita síncrona (nunca `router.reload()`), para a lista refletir a tarefa
-  acabada de concluir. Um texto `aria-live` anuncia o novo número de pendências.
+- **Painel sempre fresco** (`useFreshDashboard` + `lib/historyRestoration`): o
+  botão «Atrás» do Inertia repõe as props guardadas sem perguntar ao servidor, por
+  isso o critério é «a página foi reposta do histórico» (`popstate`, ou `pageshow`
+  do bfcache, registados desde o arranque da aplicação), e não a idade das
+  props: um painel → tarefa → «Atrás» de 1 s já não mostra o contador antigo.
+  Ao regressar, ou se os dados têm mais de 5 s ao montar ou ao voltar a ficar
+  visível o separador, revalida só `dashboard` com uma visita síncrona (nunca
+  `router.reload()`, `replace` e sem novas entradas no histórico), no máximo uma
+  por reposição. Uma primeira visita normal não faz pedidos extra. A lista aberta
+  e o scroll mantêm-se. Um texto `aria-live` anuncia o novo número de pendências.
 - **Acabamento do cabeçalho:** «Pendentes» passa a superfície neutra (`plain`) com
   um pequeno ponto âmbar junto ao título, só quando há pendências (o âmbar
   sinaliza o que pede atenção, não identifica um cartão); o aviso de sumários

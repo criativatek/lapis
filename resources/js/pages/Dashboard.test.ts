@@ -1,6 +1,8 @@
+import { router } from '@inertiajs/vue3';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData, DoneItem, PendingWork } from '@/lib/dashboard';
+import { resetHistoryRestorationForTests, startHistoryRestorationTracking } from '@/lib/historyRestoration';
 import Dashboard from './Dashboard.vue';
 
 const pageProps = { modules: [] as string[], readOnlyModules: [] as string[] };
@@ -183,6 +185,33 @@ describe('Dashboard — a fila e o arrumado', () => {
         expect(wrapper.find('[data-testid="closing-line"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="primary-action"]').exists()).toBe(false);
         expect(wrapper.text()).not.toMatch(/Agora|A seguir|Mais tarde|próximo passo/);
+    });
+
+    it('ao regressar do histórico revalida uma vez e a lista continua aberta com o número novo', async () => {
+        window.sessionStorage.clear();
+        vi.mocked(router.get).mockClear();
+        resetHistoryRestorationForTests();
+        startHistoryRestorationTracking();
+        const recent = (ulid: string) => ({ ulid, starts_at: '2026-10-23T10:00:00+00:00', date: '2026-10-23', start_time: '10:00', label: '7.º A', number: '12', class: turma, attendance_recorded: false, href: `/lessons/${ulid}` });
+        const withRecent = (items: ReturnType<typeof recent>[]): PendingWork => ({ ...emptyPending, summaries: { available: true, recent: items, recent_count: items.length, older_count: 0, older_href: null } });
+
+        const first = dashboard({ pending: withRecent([recent('l8'), recent('l9')]) });
+        await first.find('[data-testid="hero-pending"]').trigger('click');
+        expect(first.find('[data-testid="pending-panel"]').findAll('a')).toHaveLength(2);
+        first.unmount();
+        vi.mocked(router.get).mockClear();
+
+        // «Atrás»: o Inertia repõe a página e monta o painel outra vez, agora com a tarefa concluída.
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        const back = dashboard({ pending: withRecent([recent('l9')]) });
+
+        expect(router.get).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(router.get).mock.calls[0]![2]).toMatchObject({ only: ['dashboard'], preserveState: true, preserveScroll: true, replace: true });
+        expect(back.find('[data-testid="hero-pending"]').attributes('aria-expanded')).toBe('true');
+        expect(back.find('[data-testid="pending-panel"]').findAll('a')).toHaveLength(1);
+        expect(back.find('[data-testid="hero-pending"]').text()).toContain('1');
+        resetHistoryRestorationForTests();
+        back.unmount();
     });
 
     it('sem pendências não há painel nem botão', () => {
