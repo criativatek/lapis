@@ -25,7 +25,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.178.0] — 2026-10-25
+## [0.181.0] — 2026-10-26
 
 > **Retificar uma classificação publicada.** Uma classificação publicada deixa de
 > ficar fechada para sempre: o professor pode corrigi-la com «Retificar», com
@@ -94,6 +94,71 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   seguro: o código anterior ignora as colunas novas e lê só as linhas vivas.
   Reverter a migração depois de existirem retificações apaga o motivo, o autor e a
   data dessas retificações; não o faça sem o decidir.
+
+## [0.179.0] — 2026-10-25
+
+> **Fundação de dados do novo Painel do Professor (PR A).** Serviços só de
+> leitura em `app/Services/Dashboard/`, um por pergunta do painel — o dia, a
+> semana, o que se aproxima, o que falta fazer, o que ficou arrumado hoje, como
+> estão as turmas e onde estamos no período —, mais o compositor que decide,
+> pelos módulos que a organização pode consultar, que blocos existem. **Nenhum
+> ecrã novo ainda**: o painel atual continua igual; estes serviços alimentam a
+> PR seguinte. **Sem migrations.** Nada aqui materializa aulas: o dia e a semana
+> são uma projeção de leitura das ocorrências do horário (`ScheduleOccurrences`)
+> junta às aulas que já existem.
+
+### Adicionado
+
+- **`DashboardContext` / `DashboardContextFactory`.** O que todas as leituras
+  partilham, resolvido uma vez por pedido: ano letivo em curso (a heurística de
+  `AcademicYearRetentionClassifier`), turmas do professor neste ano e não
+  arquivadas, tons de identidade, período em curso, módulos legíveis, e a
+  projeção da semana de hoje só com o módulo `lessons`.
+- **`TeacherDayAgenda`.** As ocorrências de hoje, as aulas materializadas que lhes
+  correspondem (ou inseridas à mão) e as sessões das outras atividades, numa
+  lista cronológica com estado (`done`, `pending`, `current`, `upcoming`) e os
+  limites reais do horário desta semana, arredondados à hora.
+- **`TeacherWeekAgenda`.** Segunda a sexta (fim de semana só quando há algo): aulas
+  na cor da turma e com estado, acontecimentos do calendário do professor,
+  elementos de avaliação com data, sessões, dias não letivos. Sem `lessons`
+  mantém acontecimentos e datas de avaliação.
+- **`UpcomingEvents`.** Catorze dias a partir de amanhã, e o fim do período em curso
+  sempre, com os dias que faltam.
+- **`PendingWork`.** Só trabalho que a base prova que falta: sumários por registar
+  (aula terminada, sem sumário, desfecho nulo ou «lecionada», turma não
+  arquivada; os últimos 14 dias em lista, os anteriores numa contagem com
+  ligação, nunca escondidos), classificações propostas e confirmadas por turma,
+  elementos **em correção** com alunos por corrigir (um elemento apenas
+  preparado ou aplicado sem correção iniciada é contado à parte, como
+  informação, nunca como alerta), alertas de acumulação por tratar e medidas com
+  revisão em atraso. Devolve também as pendências por turma, para os cartões.
+- **`DoneToday`.** Os factos de hoje com hora, do mais recente para o mais antigo,
+  só do próprio professor onde a base diz quem foi; sumário e assiduidade da
+  mesma aula numa linha, classificações confirmadas ou publicadas por turma com
+  o número. Sem carimbo, não há linha.
+- **`ClassOverview`.** Por turma, uma consulta agrupada por facto: alunos ativos,
+  próxima aula desta semana e faltas da semana (Pro), medidas em curso,
+  elementos do período corrigidos / em correção / aplicados / por aplicar,
+  registos no período e último registo, autoavaliações respondidas. Sem médias.
+- **`PeriodRuler`.** Dia n de m do período em curso, dias que faltam, e as marcas
+  dos elementos com data com o seu estado real.
+- **`DashboardComposer`.** O ponto de entrada: descreve o contexto (data, dia da
+  semana, período, semana n do ano letivo, módulos) e entrega todos os blocos.
+- **Testes** em `tests/Feature/Dashboard/`, com o relógio parado numa segunda-feira
+  de outubro de 2026 (já em hora de inverno): um ficheiro por serviço, conta Pro e
+  Base, fronteiras do dia à meia-noite de Lisboa, isolamento entre organizações,
+  turma arquivada excluída, nenhuma aula materializada, e o orçamento de
+  consultas do compositor (48 fixas + 4 por turma; medido com a fixture do
+  teste: 57 consultas para três turmas e 76 para oito — a referência para
+  futuras otimizações, três das quais por turma vivem em `ScheduleOccurrences`).
+
+### Corrigido
+
+- **O painel atual deixa de contar turmas arquivadas.** Os cartões e os totais do
+  `DashboardController` filtram as turmas arquivadas: uma turma arquivada com
+  propostas antigas por confirmar já não aparece como «Agora». A prontidão do
+  ano, os primeiros passos e os alertas de registos continuam a ler todas as
+  turmas, como antes.
 
 ## [0.177.2] — 2026-10-23
 

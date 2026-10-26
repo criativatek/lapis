@@ -12,6 +12,19 @@ enum InstrumentStatus: string
     case Cancelled = 'cancelled';
     case Archived = 'archived';
 
+    /**
+     * Os estados que o Painel do Professor nunca mostra como elemento do
+     * período: um rascunho ainda não é um elemento, um anulado deixou de o
+     * ser, um arquivado já não é deste ano. Uma regra, lida pela semana, pelo
+     * que se aproxima e pela régua do período.
+     *
+     * @return list<string>
+     */
+    public static function hiddenFromDashboard(): array
+    {
+        return [self::Draft->value, self::Cancelled->value, self::Archived->value];
+    }
+
     public function label(): string
     {
         return match ($this) {

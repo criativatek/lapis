@@ -192,7 +192,7 @@ return [
                 // an orphaned class is a governance action, not something a
                 // regular member needs (or is authorized) to see.
                 ['key' => 'class-reassignment', 'label' => 'Turmas a Reatribuir', 'icon' => 'Shuffle', 'module' => 'institution_admin', 'owner_only' => true, 'phase' => 4, 'route' => 'classes.reassignment.index', 'built' => true, 'description' => 'Atribuir um novo professor a turmas que ficaram sem nenhum.'],
-                // 0.178.0. The head's own door to the published classifications of
+                // 0.181.0. The head's own door to the published classifications of
                 // classes they do not teach, closed periods only. Same gating as
                 // Equipa; the page's ability (viewRectifications) also demands an
                 // institutional organization, so this link and the 403 agree.
