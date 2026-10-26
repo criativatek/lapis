@@ -23,6 +23,7 @@ use App\Services\Assessment\PublishClassifications;
 use App\Services\Assessment\RectifyClassification;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Support\Assessment\ClassificationDecisionException;
+use App\Support\Assessment\DecisionPayload;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Assessment\RectificationPayload;
 use App\Support\Usage\UsageEventType;
@@ -190,36 +191,7 @@ class ClassificationController extends Controller
      */
     protected function decisionPayload(Classification $classification, ?Scale $currentScale): ?array
     {
-        $level = $classification->finalScaleLevel;
-
-        if ($level !== null) {
-            return [
-                'code' => (string) $level->code,
-                'label' => (string) $level->label,
-                'scale_level_id' => (int) $level->id,
-                // A level is read as the level it is, on whatever scale.
-                'is_percentage' => false,
-                'scale_name' => null,
-            ];
-        }
-
-        if ($classification->final_value === null) {
-            return null;
-        }
-
-        // An interval scale has no band to name: the number is the whole answer,
-        // on the scale the decision was TAKEN on — which after a profile
-        // migration is not necessarily the class's scale today.
-        $taken = $this->decisionScales->read($classification, $currentScale);
-
-        return [
-            'code' => (string) $classification->final_value,
-            'label' => null,
-            'scale_level_id' => null,
-            'is_percentage' => $taken['is_percentage'],
-            // Filled only when it differs from the class's scale now.
-            'scale_name' => $taken['foreign_scale'],
-        ];
+        return (new DecisionPayload($this->decisionScales))->for($classification, $currentScale);
     }
 
     /**

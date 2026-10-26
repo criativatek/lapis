@@ -3,7 +3,6 @@
 namespace App\Support\Assessment;
 
 use App\Models\AcademicPeriod;
-use App\Models\AcademicPeriodStatus;
 use App\Models\AcademicYear;
 use App\Models\Classification;
 use App\Models\Enrollment;
@@ -71,11 +70,8 @@ final class RectificationAccess
         $year = AcademicYear::query()->withoutGlobalScope('organization')
             ->findOrFail($period->academic_year_id);
 
-        $closed = ! $year->isEditable()
-            || in_array($period->status, [AcademicPeriodStatus::Closed, AcademicPeriodStatus::Archived], true);
-
         return new RectificationContext(
-            $closed,
+            RectificationContext::closed($year, $period),
             $class->teachers()->whereKey($user->getKey())->exists(),
             $organization->isPersonal(),
             $user->owns($organization),

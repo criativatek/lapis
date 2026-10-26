@@ -2,6 +2,9 @@
 
 namespace App\Support\Assessment;
 
+use App\Models\AcademicPeriod;
+use App\Models\AcademicPeriodStatus;
+use App\Models\AcademicYear;
 use App\Models\Classification;
 use App\Models\ClassificationStatus;
 
@@ -20,6 +23,17 @@ final class RectificationContext
         public readonly bool $personal,
         public readonly bool $owns,
     ) {}
+
+    /**
+     * THE ONE DEFINITION of «closed» (spec §3): the academic year closed or
+     * archived, OR the period closed or archived. Draft and open are both open.
+     * The rectification rule and the «Retificações» page both read it from here.
+     */
+    public static function closed(AcademicYear $year, AcademicPeriod $period): bool
+    {
+        return ! $year->isEditable()
+            || in_array($period->status, [AcademicPeriodStatus::Closed, AcademicPeriodStatus::Archived], true);
+    }
 
     public function accessFor(Classification $classification): RectificationAccess
     {

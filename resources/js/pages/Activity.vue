@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { CheckCircle2, FileDown, GitBranch, History, PencilLine, Send, ShieldCheck, SlidersHorizontal } from '@lucide/vue';
+import { CheckCircle2, Eye, FileDown, GitBranch, History, PencilLine, Send, ShieldCheck, SlidersHorizontal } from '@lucide/vue';
 import { computed } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
@@ -50,6 +50,7 @@ const icons: Record<string, unknown> = {
     'classification.overridden': PencilLine,
     'classification.published': Send,
     'classification.rectified': History,
+    'classification.rectifications_viewed': Eye,
     'class.profile_migrated': GitBranch,
     'profile_version.activated': SlidersHorizontal,
     'report.exported': FileDown,
