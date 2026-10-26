@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDone, buildQueue, dateLabel, eyebrowFor, greetingFor, heroCards, minutesOf, pendingLabel, whenLabel } from './dashboard';
+import { allDone, buildQueue, dateLabel, eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass, heroMinHeightClass, minutesOf, pendingLabel, whenLabel } from './dashboard';
 import type { DashboardData, PendingWork, QueueItem } from './dashboard';
 
 const turma = { ulid: 'c7a', label: '7.º A', subject: 'Português', tone: 'blue' };
@@ -233,5 +233,26 @@ describe('dashboard — os três cartões do cabeçalho', () => {
 
     it('com módulo, horário e pendências saem os três, por esta ordem', () => {
         expect(heroCards(withDay(1, 1, 0), [item('summary')])?.map((card) => card.key)).toEqual(['today', 'summaries', 'pending']);
+    });
+});
+
+describe('dashboard — altura uniforme dos cartões', () => {
+    const card = (hint: string | null, warning: string | null) => ({ hint, warning });
+
+    it('conta o máximo de linhas extra (0, 1 ou 2) entre os cartões', () => {
+        expect(heroExtraLines([card(null, null), card(null, null)])).toBe(0);
+        expect(heroExtraLines([card(null, null), card('1 de hoje em falta', null)])).toBe(1);
+        expect(heroExtraLines([card(null, 'aviso'), card(null, null)])).toBe(1);
+        expect(heroExtraLines([card(null, null), card('nota', 'aviso')])).toBe(2);
+    });
+
+    it('cada nível tem uma classe de altura mínima própria e crescente', () => {
+        expect([0, 1, 2].map((n) => heroMinHeightClass(n as 0 | 1 | 2))).toEqual(['min-h-[76px]', 'min-h-[94px]', 'min-h-[112px]']);
+    });
+
+    it('a grelha usa container queries: 3 colunas só com ~190 px por cartão, 2 com 2 cartões', () => {
+        expect(heroGridClass(3)).toContain('@min-[37.5rem]:grid-cols-3');
+        expect(heroGridClass(2)).toContain('@min-[24.5rem]:grid-cols-2');
+        expect(heroGridClass(3)).toContain('grid-cols-1');
     });
 });

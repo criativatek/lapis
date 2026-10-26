@@ -2,7 +2,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import { onBeforeUnmount, onMounted } from 'vue';
 
 /** Acima disto, os dados do painel consideram-se antigos. */
-export const STALE_AFTER_MS = 30_000;
+export const STALE_AFTER_MS = 5_000;
 
 /**
  * Mantém o painel fresco ao voltar de uma tarefa. O Inertia repõe as props de
@@ -10,7 +10,7 @@ export const STALE_AFTER_MS = 30_000;
  * volta a ficar visível pode mostrar um painel de há horas.
  *
  * Ao montar e quando o separador volta a ficar visível, se `now` (o relógio do
- * servidor na altura em que as props foram feitas) tem mais de 30 s, pede
+ * servidor na altura em que as props foram feitas) tem mais de 5 s, pede
  * `dashboard` outra vez com uma visita SÍNCRONA ao próprio URL. Nunca
  * `router.reload()`: é assíncrono e pode repor props e URL antigos (memória
  * «Inertia: histórico e reload assíncrono»).

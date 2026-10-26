@@ -7,7 +7,7 @@ import HeroStat from '@/components/dashboard/HeroStat.vue';
 import PendingList from '@/components/dashboard/PendingList.vue';
 import { Button } from '@/components/ui/button';
 import type { DashboardData, HeroCard, QueueItem } from '@/lib/dashboard';
-import { eyebrowFor, greetingFor, heroCards } from '@/lib/dashboard';
+import { eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass } from '@/lib/dashboard';
 
 const props = defineProps<{
     teacherName: string;
@@ -25,6 +25,8 @@ const firstName = computed(() => props.teacherName.split(' ')[0]);
 const greeting = computed(() => greetingFor(props.data.context.now));
 const eyebrow = computed(() => eyebrowFor(props.data.context));
 const cards = computed(() => heroCards(props.data, props.queue));
+// Todos os cartões partilham a mesma altura mínima (a do que tem mais linhas).
+const extraLines = computed(() => (cards.value ? heroExtraLines(cards.value) : 0));
 
 const ICONS: Record<HeroCard['key'], Component> = { today: CalendarDays, summaries: ClipboardCheck, pending: ListChecks };
 
@@ -70,10 +72,10 @@ const announcement = computed(() => `${props.queue.length} ${props.queue.length 
 
                 <!-- Atalhos fixos, não recomendações: ficam discretos ao lado da saudação. -->
                 <div v-if="canOpenAssessments || canOpenRecords" class="flex w-full flex-wrap gap-2 sm:w-auto" aria-label="Ações rápidas">
-                    <Button v-if="canOpenAssessments" as-child variant="outline" class="flex-1 sm:flex-none">
+                    <Button v-if="canOpenAssessments" as-child variant="outline" class="min-h-11 flex-1 sm:min-h-9 sm:flex-none">
                         <Link href="/assessments"><PenLine class="size-4" aria-hidden="true" />Nova grelha</Link>
                     </Button>
-                    <Button v-if="canOpenRecords" as-child variant="outline" class="flex-1 sm:flex-none">
+                    <Button v-if="canOpenRecords" as-child variant="outline" class="min-h-11 flex-1 sm:min-h-9 sm:flex-none">
                         <Link href="/records"><NotebookPen class="size-4" aria-hidden="true" />Novo registo</Link>
                     </Button>
                 </div>
@@ -85,23 +87,28 @@ const announcement = computed(() => `${props.queue.length} ${props.queue.length 
                 Ainda sem turmas neste ano letivo. <Link href="/classes" class="font-medium text-primary hover:underline">Crie a primeira turma</Link> para o painel começar a trabalhar por si.
             </p>
 
-            <div v-if="cards" :class="['grid grid-cols-1 gap-3', cards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3']" data-testid="hero-cards">
-                <HeroStat
-                    v-for="item in cards"
-                    :key="item.key"
-                    :title="item.title"
-                    :value="item.value"
-                    :label="item.label"
-                    :hint="item.hint"
-                    :warning="item.warning"
-                    :tone="item.tone"
-                    :icon="ICONS[item.key]"
-                    :clickable="item.key === 'pending' && queue.length > 0"
-                    :expanded="open"
-                    :controls="PANEL_ID"
-                    :data-testid="`hero-${item.key}`"
-                    @click="open = !open"
-                />
+            <!-- Container queries: o número de colunas depende da largura do INVÓLUCRO
+                 (com a barra lateral aberta o conteúdo é bem mais estreito que o ecrã). -->
+            <div v-if="cards" class="@container">
+                <div :class="heroGridClass(cards.length)" data-testid="hero-cards">
+                    <HeroStat
+                        v-for="item in cards"
+                        :key="item.key"
+                        :title="item.title"
+                        :value="item.value"
+                        :label="item.label"
+                        :hint="item.hint"
+                        :warning="item.warning"
+                        :tone="item.tone"
+                        :icon="ICONS[item.key]"
+                        :clickable="item.key === 'pending' && queue.length > 0"
+                        :expanded="open"
+                        :controls="PANEL_ID"
+                        :extra-lines="extraLines"
+                        :data-testid="`hero-${item.key}`"
+                        @click="open = !open"
+                    />
+                </div>
             </div>
 
             <p v-if="cards" class="sr-only" aria-live="polite" data-testid="pending-live">{{ announcement }}</p>

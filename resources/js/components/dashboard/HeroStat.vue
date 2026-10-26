@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ChevronDown } from '@lucide/vue';
 import type { Component } from 'vue';
+import type { ExtraLines } from '@/lib/dashboard';
+import { heroMinHeightClass } from '@/lib/dashboard';
 import type { SurfaceTone } from '@/lib/surfaces';
 import { card } from '@/lib/surfaces';
 
@@ -25,8 +27,10 @@ const props = withDefaults(
         clickable?: boolean;
         expanded?: boolean;
         controls?: string;
+        /** Linhas extra (nota, aviso) que QUALQUER cartão do grupo tem: todos partilham a mesma altura mínima. */
+        extraLines?: ExtraLines;
     }>(),
-    { tone: 'plain', hint: null, warning: null, clickable: false, expanded: false },
+    { tone: 'plain', hint: null, warning: null, clickable: false, expanded: false, extraLines: 0 },
 );
 
 defineEmits<{ click: [] }>();
@@ -42,7 +46,8 @@ const surface = `${card(props.tone)} card-soft`;
         :aria-controls="clickable ? controls : undefined"
         :class="[
             surface,
-            'flex min-h-26 w-full items-center gap-3 px-4 py-3 text-left',
+            heroMinHeightClass(extraLines),
+            'flex w-full items-center gap-3 px-4 py-3 text-left',
             clickable ? 'cursor-pointer transition-colors hover:brightness-[.98] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:hover:brightness-110' : '',
         ]"
         @click="clickable && $emit('click')"
@@ -51,11 +56,11 @@ const surface = `${card(props.tone)} card-soft`;
             <component :is="icon" class="size-[18px]" />
         </span>
 
-        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span class="text-xs font-semibold tracking-[.08em] text-muted-foreground uppercase">{{ title }}</span>
-            <span class="flex items-baseline gap-1.5">
+        <span class="flex min-w-0 flex-1 flex-col gap-0.5 break-words">
+            <span class="text-xs font-semibold tracking-[.08em] break-words text-muted-foreground uppercase">{{ title }}</span>
+            <span class="flex flex-wrap items-baseline gap-x-1.5">
                 <span class="text-2xl leading-8 font-semibold tabular-nums" data-testid="hero-stat-value">{{ value }}</span>
-                <span class="min-w-0 truncate text-sm text-muted-foreground" data-testid="hero-stat-label">{{ label }}</span>
+                <span class="min-w-0 text-sm break-words text-muted-foreground" data-testid="hero-stat-label">{{ label }}</span>
             </span>
             <span v-if="hint" class="text-xs text-muted-foreground" data-testid="hero-stat-hint">{{ hint }}</span>
             <span v-if="warning" class="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-200" data-testid="hero-stat-warning">

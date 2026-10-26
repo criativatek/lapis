@@ -168,7 +168,42 @@ describe('DashboardHero', () => {
         const wrapper = mountHero({ d });
 
         expect(wrapper.find('[data-testid="hero-summaries"]').exists()).toBe(false);
-        expect(wrapper.find('[data-testid="hero-cards"]').classes()).toContain('sm:grid-cols-2');
+        const grid = wrapper.find('[data-testid="hero-cards"]');
+        expect(grid.classes()).toContain('@min-[24.5rem]:grid-cols-2');
+        expect(grid.classes().join(' ')).not.toContain('sm:grid-cols');
+    });
+
+    it('três cartões: colunas por largura do invólucro (container query), nunca do ecrã', () => {
+        const wrapper = mountHero({ queue });
+        const grid = wrapper.get('[data-testid="hero-cards"]');
+
+        expect(grid.element.parentElement?.classList.contains('@container')).toBe(true);
+        expect(grid.classes()).toEqual(expect.arrayContaining(['grid-cols-1', 'auto-rows-fr', '@min-[37.5rem]:grid-cols-3']));
+        expect(grid.classes().join(' ')).not.toMatch(/(^| )(sm|md|lg):/);
+    });
+
+    it('os cartões não cortam texto com reticências e partilham a mesma altura mínima', () => {
+        const d = data();
+        d.pending.summaries.older_count = 2;
+        const wrapper = mountHero({ d, queue });
+
+        for (const key of ['today', 'summaries', 'pending']) {
+            const html = wrapper.get(`[data-testid="hero-${key}"]`).html();
+            expect(html).not.toContain('truncate');
+            expect(html).not.toContain('text-ellipsis');
+        }
+
+        const mins = ['today', 'summaries', 'pending'].map((key) => wrapper.get(`[data-testid="hero-${key}"]`).classes().filter((c) => c.startsWith('min-h-')));
+        expect(new Set(mins.map((m) => m.join())).size).toBe(1);
+        expect(mins[0]).toHaveLength(1);
+    });
+
+    it('«Nova grelha» e «Novo registo» têm alvo táctil de 44 px em ecrã pequeno', () => {
+        const wrapper = mountHero();
+
+        for (const href of ['/assessments', '/records']) {
+            expect(wrapper.get(`a[href="${href}"]`).classes()).toEqual(expect.arrayContaining(['min-h-11', 'sm:min-h-9']));
+        }
     });
 
     it('«Nova grelha» e «Novo registo» respeitam as permissões', () => {

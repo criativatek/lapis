@@ -345,6 +345,33 @@ export type HeroCard = {
     warning: string | null;
 };
 
+/** Linhas extra (nota, aviso) que um cartão pode ter além do título e do número. */
+export type ExtraLines = 0 | 1 | 2;
+
+/** O máximo de linhas extra entre os cartões: todos recebem a MESMA altura mínima. */
+export function heroExtraLines(cards: Pick<HeroCard, 'hint' | 'warning'>[]): ExtraLines {
+    const most = Math.max(0, ...cards.map((item) => (item.hint ? 1 : 0) + (item.warning ? 1 : 0)));
+
+    return Math.min(most, 2) as ExtraLines;
+}
+
+/** Classes literais (o Tailwind só gera as que lê): 0, 1 ou 2 linhas extra. */
+const HERO_MIN_HEIGHT: Record<ExtraLines, string> = { 0: 'min-h-[76px]', 1: 'min-h-[94px]', 2: 'min-h-[112px]' };
+
+export function heroMinHeightClass(extra: ExtraLines): string {
+    return HERO_MIN_HEIGHT[extra];
+}
+
+/**
+ * A grelha dos cartões responde à largura do INVÓLUCRO (`@container`), não à do
+ * ecrã: com a barra lateral aberta o conteúdo é muito mais estreito. Só passa a
+ * colunas quando cada cartão fica com largura para o texto mais comprido sem
+ * cortar; abaixo disso empilham. `auto-rows-fr` iguala as alturas empilhadas.
+ */
+export function heroGridClass(count: number): string {
+    return count === 2 ? 'grid grid-cols-1 auto-rows-fr gap-3 @min-[24.5rem]:grid-cols-2' : 'grid grid-cols-1 auto-rows-fr gap-3 @min-[37.5rem]:grid-cols-3';
+}
+
 /** O rótulo do cartão «Pendentes»: o tipo, quando todas as linhas são do mesmo; senão «pendências». */
 export function pendingLabel(queue: QueueItem[]): string {
     const count = queue.length;

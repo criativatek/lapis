@@ -46,11 +46,14 @@ describe('useFreshDashboard', () => {
         vi.useRealTimers();
     });
 
-    it('não pede nada quando os dados são recentes', () => {
-        vi.setSystemTime(new Date('2026-10-26T12:00:20+00:00'));
+    it('não pede nada aos 4 s e revalida aos 6 s (limiar de 5 s)', () => {
+        vi.setSystemTime(new Date('2026-10-26T12:00:04+00:00'));
         host(NOW);
-
         expect(get).not.toHaveBeenCalled();
+
+        vi.setSystemTime(new Date('2026-10-26T12:00:06+00:00'));
+        host(NOW);
+        expect(get).toHaveBeenCalledTimes(1);
     });
 
     it('ao montar com dados antigos faz uma visita síncrona ao próprio URL, só com `dashboard`', () => {
@@ -63,7 +66,7 @@ describe('useFreshDashboard', () => {
     });
 
     it('volta a revalidar quando o separador fica visível, mas não em cima de uma visita em curso', () => {
-        vi.setSystemTime(new Date('2026-10-26T12:00:10+00:00'));
+        vi.setSystemTime(new Date('2026-10-26T12:00:03+00:00'));
         host(NOW);
         vi.setSystemTime(new Date('2026-10-26T12:10:00+00:00'));
 
@@ -78,7 +81,7 @@ describe('useFreshDashboard', () => {
     });
 
     it('deixa de ouvir ao desmontar', () => {
-        vi.setSystemTime(new Date('2026-10-26T12:00:10+00:00'));
+        vi.setSystemTime(new Date('2026-10-26T12:00:03+00:00'));
         const wrapper = host(NOW);
         wrapper.unmount();
         vi.setSystemTime(new Date('2026-10-26T12:10:00+00:00'));
