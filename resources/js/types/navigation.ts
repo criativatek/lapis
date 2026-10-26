@@ -43,20 +43,30 @@ export type SharedNav = {
     footer: SharedNavItem[];
 };
 
+/** The class a `{class}`-bound route put in view — the one its controller already authorised. */
+export type ScopeClass = {
+    ulid: string;
+    label: string;
+    subject: string;
+    gradeLevel: string | null;
+};
+
+/** A class the header chip can switch to, with the destination the server worked out (ClassSwitcher). */
+export type ScopeClassOption = ScopeClass & {
+    href: string;
+    is_current: boolean;
+};
+
 /**
- * The header context selectors. `academicYear` reflects the organization's
- * resolved academic year once one exists (session selection with the
- * AcademicYearRetentionClassifier fallback);
- * the rest stay null until there is a canonical "current" one to read
- * instead of inventing one.
+ * The header context. `academicYear` reflects the organization's resolved
+ * academic year once one exists (session selection with the
+ * AcademicYearRetentionClassifier fallback); `class` is the turma in view, or
+ * null on a page without one; `classes` is empty whenever `class` is.
  */
 export type WorkScope = {
     academicYear: string | null;
-    subject: string | null;
-    hasSubjects: boolean;
-    gradeLevel: string | null;
-    class: string | null;
-    period: string | null;
+    class: ScopeClass | null;
+    classes: ScopeClassOption[];
 };
 
 export type SelectableAcademicYear = {

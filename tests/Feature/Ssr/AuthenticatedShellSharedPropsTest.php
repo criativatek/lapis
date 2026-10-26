@@ -11,8 +11,8 @@ use Tests\TestCase;
 /**
  * The shared props the authenticated shell reads without asking.
  *
- * AppSidebar reads `nav.sections` and `nav.footer`; ContextBar reads `scope`
- * and `selectableAcademicYears`; the header and footer read `auth.user` and
+ * AppSidebar reads `nav.sections` and `nav.footer`; ContextBar reads
+ * `workContext` and `selectableAcademicYears`; the header and footer read `auth.user` and
  * `appVersion`. None of those components checks first — they are the shell,
  * and the contract is that `HandleInertiaRequests` puts all of it on every
  * page that has the shell. A page object without them is what produced
@@ -30,7 +30,7 @@ class AuthenticatedShellSharedPropsTest extends TestCase
         return $page
             ->has('nav.sections')
             ->has('nav.footer')
-            ->has('scope')
+            ->has('workContext')
             ->has('selectableAcademicYears')
             ->has('auth.user')
             ->has('appVersion');

@@ -42,8 +42,10 @@ declare module '@inertiajs/core' {
             modules: string[];
             /** Module keys that may be consulted but not changed (suspended subscription). */
             readOnlyModules: string[];
-            scope: WorkScope;
+            workContext: WorkScope;
             selectableAcademicYears: SelectableAcademicYear[];
+            /** Pedidos de suporte do próprio utilizador com resposta por ler (contagem). */
+            supportAwaitingReply: number;
             sidebarOpen: boolean;
             accountClosure: ClosureStatus | null;
             organizationClosure: OrganizationClosureStatus | null;
