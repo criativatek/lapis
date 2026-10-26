@@ -55,7 +55,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 async function mountDialog(
     rectification: RectificationState,
-    options: { byLevel?: boolean; notice?: RectificationDetails } = {},
+    options: { byLevel?: boolean; notice?: RectificationDetails; compact?: boolean } = {},
 ): Promise<VueWrapper> {
     vi.mocked(fetch).mockResolvedValue(jsonResponse(options.notice ?? details()));
 
@@ -69,6 +69,7 @@ async function mountDialog(
             studentName: 'Carolina Nunes',
             submitUrl: '/classes/c1/classifications/p1/e1/rectify',
             detailsUrl: '/classes/c1/classifications/cla-1/rectification',
+            compact: options.compact ?? false,
         },
         attachTo: document.body,
     });
@@ -111,6 +112,44 @@ describe('RectifyDialog — o botão', () => {
         expect(button.attributes('disabled')).toBeDefined();
         expect(button.attributes('title')).toBe(reason);
         expect(wrapper.get('[data-testid="rectify-blocked-reason"]').text()).toBe(reason);
+    });
+
+    it('cumpre o alvo táctil do DESIGN.md (44px em mobile) em todas as formas', async () => {
+        const reason = 'Período encerrado. Só o responsável da instituição pode retificar.';
+        const forms: Array<[string, RectificationState, boolean]> = [
+            ['normal', state(), false],
+            ['compacto', state(), true],
+            ['normal desativado', state({ allowed: false, blocked_reason: reason }), false],
+            ['compacto desativado', state({ allowed: false, blocked_reason: reason }), true],
+        ];
+
+        for (const [label, rectification, compact] of forms) {
+            const wrapper = await mountDialog(rectification, { compact });
+            const classes = wrapper.get('[data-testid="rectify-button"]').classes();
+
+            expect(classes, label).toContain('min-h-11');
+            expect(classes, label).toContain('md:min-h-9');
+            expect(classes, label).toContain('whitespace-nowrap');
+
+            if (compact) {
+                expect(classes, label).toContain('min-w-11');
+                expect(classes, label).toContain('md:min-w-9');
+            }
+        }
+    });
+
+    it('o motivo do bloqueio tem largura própria em mobile, para não ficar espremido sob o botão', async () => {
+        const wrapper = await mountDialog(state({ allowed: false, blocked_reason: 'Período encerrado.' }));
+
+        expect(wrapper.get('[data-testid="rectify-blocked-reason"]').classes()).toEqual(expect.arrayContaining(['w-44', 'md:w-auto', 'md:max-w-56']));
+    });
+
+    it('os botões do diálogo também cumprem o alvo táctil', async () => {
+        const wrapper = await mountDialog(state());
+        await open(wrapper);
+
+        expect(wrapper.get('[data-testid="rectify-submit"]').classes()).toContain('min-h-11');
+        expect(wrapper.get('[data-testid="rectify-cancel"]').classes()).toContain('min-h-11');
     });
 
     it('não desenha nada quando não é permitido e não há motivo', async () => {

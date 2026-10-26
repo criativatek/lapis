@@ -54,6 +54,11 @@ const levelId = ref<number | null>(null);
 // Um <input type="number"> entrega um número ao v-model: lê-se sempre como texto.
 const value = ref<string | number>('');
 const typedValue = computed(() => String(value.value ?? '').trim());
+
+// DESIGN.md: touch targets are at least 44px. The repo's convention is 44px
+// below `md` (fingers) and 36px from `md` up (pointer), for text and icon-only
+// buttons alike; the compact icon-only form needs the width too.
+const triggerSize = computed(() => (props.compact ? 'min-h-11 min-w-11 md:min-h-9 md:min-w-9' : 'min-h-11 px-2.5 md:min-h-9'));
 const reason = ref<string>('');
 const note = ref<string>('');
 const confirmed = ref(false);
@@ -151,28 +156,28 @@ const valueError = computed(() => errors.value.final_value ?? errors.value.final
     <button
         v-if="rectification.allowed"
         type="button"
-        class="rounded-md border border-border text-xs hover:bg-muted/40"
-        :class="compact ? 'p-1.5' : 'px-2.5 py-2'"
+        class="inline-flex items-center justify-center whitespace-nowrap rounded-md border border-border text-xs hover:bg-muted/40"
+        :class="triggerSize"
         :title="compact ? 'Retificar classificação' : undefined"
         data-testid="rectify-button"
         @click="open = true"
     >
-        <PencilLine class="inline size-3" :class="{ 'mr-1': !compact }" /><span :class="{ 'sr-only': compact }">Retificar</span>
+        <PencilLine class="size-3.5 shrink-0" :class="{ 'mr-1': !compact }" /><span :class="{ 'sr-only': compact }">Retificar</span>
     </button>
     <span v-else-if="rectification.blocked_reason" class="inline-flex flex-col items-end gap-0.5">
         <button
             type="button"
-            class="cursor-not-allowed rounded-md border border-border text-xs opacity-50"
-            :class="compact ? 'p-1.5' : 'px-2.5 py-2'"
+            class="inline-flex cursor-not-allowed items-center justify-center whitespace-nowrap rounded-md border border-border text-xs opacity-50"
+            :class="triggerSize"
             disabled
             :title="rectification.blocked_reason"
             data-testid="rectify-button"
         >
-            <PencilLine class="inline size-3" :class="{ 'mr-1': !compact }" /><span :class="{ 'sr-only': compact }">Retificar</span>
+            <PencilLine class="size-3.5 shrink-0" :class="{ 'mr-1': !compact }" /><span :class="{ 'sr-only': compact }">Retificar</span>
         </button>
         <span
-            class="max-w-56 text-right text-xs text-muted-foreground"
-            :class="{ 'sr-only': compact }"
+            class="text-right text-xs text-muted-foreground md:max-w-56"
+            :class="compact ? 'sr-only' : 'w-44 md:w-auto'"
             data-testid="rectify-blocked-reason"
         >{{ rectification.blocked_reason }}</span>
     </span>
@@ -272,7 +277,7 @@ const valueError = computed(() => errors.value.final_value ?? errors.value.final
                 <DialogFooter>
                     <button
                         type="button"
-                        class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                        class="min-h-11 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40 md:min-h-9"
                         data-testid="rectify-cancel"
                         @click="open = false"
                     >
@@ -280,7 +285,7 @@ const valueError = computed(() => errors.value.final_value ?? errors.value.final
                     </button>
                     <button
                         type="submit"
-                        class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                        class="min-h-11 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 md:min-h-9"
                         :disabled="!canSubmit"
                         data-testid="rectify-submit"
                     >
