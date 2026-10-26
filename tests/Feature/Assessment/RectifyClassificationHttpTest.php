@@ -261,7 +261,7 @@ class RectifyClassificationHttpTest extends TestCase
     {
         $head = $this->institution();
         $colleague = $this->member(User::factory()->create());
-        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$colleague->getKey() => ['role' => 'collaborator']]));
+        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$colleague->getKey() => ['role' => 'co_teacher']]));
         $this->setStates('closed', 'open');
 
         // A teacher who is not the owner of the school.
@@ -388,7 +388,7 @@ class RectifyClassificationHttpTest extends TestCase
 
         $head = $this->institution();
         $colleague = $this->member(User::factory()->create());
-        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$colleague->getKey() => ['role' => 'collaborator']]));
+        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$colleague->getKey() => ['role' => 'co_teacher']]));
         $this->setStates('closed', 'open');
 
         // Institution, closed, teacher who is not the head: told why.
@@ -399,7 +399,7 @@ class RectifyClassificationHttpTest extends TestCase
 
         // Institution, closed, the head (who has to teach the class to OPEN these screens,
         // which belong to the class policy): allowed, with confirmation.
-        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$head->getKey() => ['role' => 'collaborator']]));
+        $this->asTenant(fn () => $this->class->teachers()->syncWithoutDetaching([$head->getKey() => ['role' => 'co_teacher']]));
         $this->assertSame(
             ['allowed' => true, 'needs_confirmation' => true, 'blocked_reason' => null, 'lock_version' => $lock, 'count' => 0],
             $this->rectificationOn($screen, $head),

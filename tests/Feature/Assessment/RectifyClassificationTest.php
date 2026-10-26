@@ -496,7 +496,7 @@ class RectifyClassificationTest extends TestCase
         $affected = DB::table('student_item_scores')
             ->where('enrollment_id', $this->carolina->enrollment_id)
             ->limit(1)
-            ->update(['result_state' => ResultState::UnderReview->value]);
+            ->update(['result_state' => ResultState::UnderReview->value, 'points_earned' => null]);
         $this->assertSame(1, $affected, 'o aluno precisa de um score para o cenário fazer sentido');
 
         $new = $this->rectify('3');

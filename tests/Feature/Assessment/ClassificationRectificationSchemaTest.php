@@ -80,8 +80,10 @@ class ClassificationRectificationSchemaTest extends TestCase
                 'rectified_by' => null,
                 'rectified_at' => '2026-11-25 10:00:00',
             ]);
-            $old->forceFill(['status' => ClassificationStatus::Superseded])->saveQuietly();
-            $new->forceFill(['rectifies_id' => $old->id])->save();
+            // Sequência do serviço, que as CHECK do MySQL impõem: ponteiro
+            // provisório para si própria, linha nova (com decisão), ponteiro real.
+            $old->forceFill(['status' => ClassificationStatus::Superseded, 'superseded_by_id' => $old->id])->saveQuietly();
+            $new->forceFill(['rectifies_id' => $old->id, 'final_value' => '3'])->save();
             $old->forceFill(['superseded_by_id' => $new->id])->saveQuietly();
 
             $fresh = $new->fresh();
@@ -132,8 +134,10 @@ class ClassificationRectificationSchemaTest extends TestCase
             ]);
 
             // A antiga sai do índice «uma só viva» antes de a nova entrar.
-            $old->forceFill(['status' => ClassificationStatus::Superseded])->saveQuietly();
-            $new->forceFill(['rectifies_id' => $old->id])->save();
+            // Sequência do serviço, que as CHECK do MySQL impõem: ponteiro
+            // provisório para si própria, linha nova (com decisão), ponteiro real.
+            $old->forceFill(['status' => ClassificationStatus::Superseded, 'superseded_by_id' => $old->id])->saveQuietly();
+            $new->forceFill(['rectifies_id' => $old->id, 'final_value' => '3'])->save();
             $old->forceFill(['superseded_by_id' => $new->id])->saveQuietly();
 
             $new = $new->fresh();

@@ -64,7 +64,7 @@ class RectificationAccessTest extends TestCase
 
         // The fixture row is made live and published by hand: the access rule is
         // what is under test, not the confirmation/publication flow.
-        $this->setClassification(['status' => ClassificationStatus::Published->value, 'superseded_by_id' => null]);
+        $this->setClassification(['status' => ClassificationStatus::Published->value, 'superseded_by_id' => null, 'final_value' => '3']);
         $this->setStates('active', 'open');
     }
 
@@ -95,7 +95,7 @@ class RectificationAccessTest extends TestCase
         $organization = Organization::query()->findOrFail($this->classification->organization_id);
 
         app(CurrentOrganization::class)->runFor($organization, function () use ($user): void {
-            $this->class->teachers()->syncWithoutDetaching([$user->getKey() => ['role' => 'collaborator']]);
+            $this->class->teachers()->syncWithoutDetaching([$user->getKey() => ['role' => 'co_teacher']]);
         });
     }
 
@@ -167,7 +167,11 @@ class RectificationAccessTest extends TestCase
     public function a_classification_that_is_not_the_live_published_one_is_never_rectifiable(): void
     {
         foreach ([ClassificationStatus::Proposed, ClassificationStatus::Confirmed] as $status) {
-            $this->setClassification(['status' => $status->value]);
+            // «Confirmada» exige autor (CHECK confirmed_has_author).
+            $this->setClassification([
+                'status' => $status->value,
+                'confirmed_by' => $status === ClassificationStatus::Confirmed ? $this->ana->getKey() : null,
+            ]);
             $this->assertFalse(RectificationAccess::for($this->ana, $this->classification)->allowed, $status->value);
         }
 
