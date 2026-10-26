@@ -1439,12 +1439,28 @@ const todayNotice = ref<TodayNotice | null>(null);
 /** As semanas por onde o atalho já passou — cada salto tem de avançar. */
 const todayVisited = new Set<string>();
 
-function wantsTodayFocus(): boolean {
+function focusParameter(): string | null {
     const query = page.url.includes('?')
         ? page.url.slice(page.url.indexOf('?') + 1).split('#')[0]
         : '';
 
-    return new URLSearchParams(query).get('foco') === 'hoje';
+    return new URLSearchParams(query).get('foco');
+}
+
+function wantsTodayFocus(): boolean {
+    return focusParameter() === 'hoje';
+}
+
+// `foco=pesquisa` é o atalho da barra superior: a página abre com o cursor no
+// campo «Pesquisar nos sumários…». Consome o parâmetro como `foco=hoje`, para
+// recarregar não voltar a roubar o foco.
+function focusSearchIfAsked(): void {
+    if (focusParameter() !== 'pesquisa') {
+        return;
+    }
+
+    clearTodayFocus();
+    nextTick(() => searchField.value?.focus());
 }
 
 /** Retira `foco` do URL, para que recarregar não volte a saltar. */
@@ -1887,6 +1903,7 @@ function continueMount(): void {
     }
 
     restoreFromLesson();
+    focusSearchIfAsked();
     void positionToday();
 }
 

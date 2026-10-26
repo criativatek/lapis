@@ -32,7 +32,7 @@ class AcademicYearContextTest extends TestCase
         foreach ([route('dashboard'), route('subjects.index')] as $pageUrl) {
             $this->get($pageUrl)->assertInertia(
                 fn (Assert $page) => $page
-                    ->where('scope.academicYear', $selectedYear->label)
+                    ->where('workContext.academicYear', $selectedYear->label)
                     ->has('selectableAcademicYears', 2)
                     ->where('selectableAcademicYears.0.is_current', false)
                     ->where('selectableAcademicYears.1.ulid', $selectedYear->ulid)
@@ -60,23 +60,19 @@ class AcademicYearContextTest extends TestCase
 
         $this->actingAs($user)->get(route('dashboard'))->assertInertia(
             fn (Assert $page) => $page
-                ->where('scope.academicYear', null)
+                ->where('workContext.academicYear', null)
                 ->where('selectableAcademicYears', []),
         );
     }
 
+    /**
+     * 0.181.0: o chip «Disciplina» saiu da barra, e com ele `hasSubjects` — a
+     * única coisa que o lia. A disciplina lê-se na turma e gere-se em
+     * «Estrutura do Ano Letivo»; o contexto partilhado não a relata, com ou
+     * sem disciplinas configuradas.
+     */
     #[Test]
-    public function scope_reports_that_no_subjects_exist(): void
-    {
-        $user = User::factory()->create();
-
-        $this->actingAs($user)->get(route('dashboard'))->assertInertia(
-            fn (Assert $page) => $page->where('scope.hasSubjects', false),
-        );
-    }
-
-    #[Test]
-    public function scope_reports_that_subjects_exist_in_the_current_organization(): void
+    public function the_context_no_longer_reports_whether_subjects_exist(): void
     {
         $user = User::factory()->create();
         $this->forTenant(
@@ -85,7 +81,7 @@ class AcademicYearContextTest extends TestCase
         );
 
         $this->actingAs($user)->get(route('dashboard'))->assertInertia(
-            fn (Assert $page) => $page->where('scope.hasSubjects', true),
+            fn (Assert $page) => $page->missing('workContext.hasSubjects')->missing('scope'),
         );
     }
 
@@ -128,7 +124,7 @@ class AcademicYearContextTest extends TestCase
 
         $this->get(route('dashboard'))->assertInertia(
             fn (Assert $page) => $page
-                ->where('scope.academicYear', $olderYear->label)
+                ->where('workContext.academicYear', $olderYear->label)
                 ->has('selectableAcademicYears', 2)
                 ->where('selectableAcademicYears.0.ulid', $currentYear->ulid)
                 ->where('selectableAcademicYears.0.is_current', false)
@@ -150,7 +146,7 @@ class AcademicYearContextTest extends TestCase
         // must still show up so the teacher can switch into it to prepare it.
         $this->actingAs($user)->get(route('dashboard'))->assertInertia(
             fn (Assert $page) => $page
-                ->where('scope.academicYear', '2025/2026')
+                ->where('workContext.academicYear', '2025/2026')
                 ->has('selectableAcademicYears', 2)
                 ->where('selectableAcademicYears.0.ulid', $draftYear->ulid)
                 ->where('selectableAcademicYears.0.is_current', false),
@@ -161,7 +157,7 @@ class AcademicYearContextTest extends TestCase
             ->assertRedirect(route('dashboard'));
 
         $this->get(route('dashboard'))->assertInertia(
-            fn (Assert $page) => $page->where('scope.academicYear', $draftYear->label),
+            fn (Assert $page) => $page->where('workContext.academicYear', $draftYear->label),
         );
     }
 

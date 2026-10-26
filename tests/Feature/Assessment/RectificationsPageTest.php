@@ -468,7 +468,7 @@ class RectificationsPageTest extends TestCase
         $shared = [
             'accountClosure', 'appVersion', 'auth', 'errors', 'flash', 'impersonating', 'legalEntity', 'locale', 'modules',
             'name', 'nav', 'organization', 'organizationClosure', 'organizations', 'readOnlyModules', 'scope',
-            'selectableAcademicYears', 'sidebarOpen', 'supportAwaitingReply', 'supportCategories',
+            'selectableAcademicYears', 'sidebarOpen', 'supportAwaitingReply', 'supportCategories', 'workContext',
         ];
 
         $this->assertSame(['classes'], array_values(array_diff(self::keysOf($index), $shared)));
@@ -504,6 +504,25 @@ class RectificationsPageTest extends TestCase
 
         foreach ([$index, $show] as $props) {
             $this->assertSame([], array_values(array_intersect(self::allKeys(array_diff_key($props, array_flip($shared))), $forbidden)));
+        }
+    }
+
+    #[Test]
+    public function the_top_bar_context_leaks_no_class_the_head_does_not_teach(): void
+    {
+        $head = $this->institution();
+        $this->close();
+
+        foreach ([
+            $this->propsOf($head, $this->indexUrl(), 'classifications/rectifications/Index'),
+            $this->propsOf($head, $this->showUrl(), 'classifications/rectifications/Show'),
+        ] as $props) {
+            // The bar names a class only for a user who teaches it, and its class switcher offers
+            // only the classes the user teaches. The head teaches none of this institution's
+            // classes, so on both pages the bar is empty: no class is named and no list of the
+            // school's classes goes out through the shared prop.
+            $this->assertNull($props['workContext']['class']);
+            $this->assertSame([], $props['workContext']['classes']);
         }
     }
 

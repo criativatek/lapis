@@ -85,7 +85,7 @@ function sharedProps(overrides: SharedProps = {}): SharedProps {
         modules: [],
         readOnlyModules: [],
         selectableAcademicYears: [{ ulid: '01JAY', label: '2025/2026', is_current: true }],
-        scope: { academicYear: '2025/2026', subject: null, hasSubjects: false, gradeLevel: null, class: null, period: null },
+        workContext: { academicYear: '2025/2026', class: null, classes: [] },
         sidebarOpen: true,
         supportAwaitingReply: 0,
         impersonating: null,
@@ -142,9 +142,57 @@ describe('AppLayout under SSR, with the shared props the shell is promised', () 
     });
 
     it('renders with no academic years configured', async () => {
-        const html = await render(sharedProps({ selectableAcademicYears: [], scope: { academicYear: null, subject: null, hasSubjects: false, gradeLevel: null, class: null, period: null } }));
+        const html = await render(sharedProps({ selectableAcademicYears: [], workContext: { academicYear: null, class: null, classes: [] } }));
 
         expect(html).toContain('Sem anos letivos configurados');
+    });
+});
+
+describe('the contextual header and the mobile navigation (0.181.0)', () => {
+    it('renders the class chip and its switch targets when a class is in view', async () => {
+        const html = await render(sharedProps({
+            workContext: {
+                academicYear: '2025/2026',
+                class: { ulid: '01JA', label: '7.º A', subject: 'Português', gradeLevel: '7.º' },
+                classes: [
+                    { ulid: '01JA', label: '7.º A', subject: 'Português', gradeLevel: '7.º', href: '/classes/01JA/records', is_current: true },
+                    { ulid: '01JB', label: '7.º B', subject: 'Português', gradeLevel: '7.º', href: '/classes/01JB/records', is_current: false },
+                ],
+            },
+        }));
+
+        const header = html.slice(html.indexOf('data-app-header'), html.indexOf('</header>'));
+
+        expect(header).toContain('data-testid="class-chip"');
+        expect(header).toContain('7.º A');
+        // A lista para trocar vive no menu, que fechado não chega ao HTML: ContextBar.test.ts cobre-a.
+        // Nenhum chip desligado: a barra só tem o que se pode escolher.
+        expect(header).not.toMatch(/<button[^>]*\sdisabled[\s>]/);
+    });
+
+    it('renders the header shortcuts: search only with readable lessons, support with its count, the account menu', async () => {
+        const base = await render(sharedProps({ modules: ['classes'], supportAwaitingReply: 2 }));
+
+        expect(base).not.toContain('data-testid="header-search"');
+        expect(base).toContain('aria-label="Suporte: 2 respostas por ler"');
+        expect(base).toContain('data-testid="header-account"');
+
+        const pro = await render(sharedProps({ modules: ['classes', 'lessons'] }));
+
+        expect(pro).toContain('href="/lessons?view=semana&amp;foco=pesquisa"');
+    });
+
+    it('renders the bottom navigation from the menu, hidden from `md` up, and the header stays 56px', async () => {
+        const html = await render(sharedProps());
+        const nav = html.match(/<nav[^>]*data-mobile-nav[^>]*>/)?.[0] ?? '';
+        const header = html.match(/<header[^>]*data-app-header[^>]*>/)?.[0] ?? '';
+
+        expect(nav).toMatch(/\bmd:hidden\b/);
+        expect(nav).toContain('pb-[env(safe-area-inset-bottom)]');
+        expect(html).toContain('data-nav-key="dashboard"');
+        expect(html).toContain('data-nav-key="classes"');
+        expect(html).toContain('data-testid="mobile-nav-menu"');
+        expect(header).toMatch(/\bh-14\b/);
     });
 });
 
@@ -163,8 +211,10 @@ describe('the floating «Reportar problema» button on small screens (#47)', () 
         expect(launcher).toMatch(/\bhover:sm:w-auto\b/);
         expect(launcher).toMatch(/\bfocus-visible:sm:w-auto\b/);
         expect(launcher).not.toMatch(/\ssm:w-auto\b/);
-        expect(launcher).toContain('bottom-[calc(1rem+env(safe-area-inset-bottom))]');
-        expect(launcher).toContain('sm:bottom-4');
+        // Abaixo de `md` o botão fica por cima da navegação inferior (56px + 16px).
+        expect(launcher).toContain('bottom-[calc(4.5rem+env(safe-area-inset-bottom))]');
+        expect(launcher).toContain('md:bottom-4');
+        expect(launcher).not.toContain('sm:bottom-4');
     });
 
     it('keeps the text for assistive tech at every size and reveals it on hover or focus from `sm` up', async () => {
@@ -180,9 +230,10 @@ describe('the floating «Reportar problema» button on small screens (#47)', () 
         const html = await render(sharedProps());
         const spacer = html.match(/<div[^>]*data-issue-reporter-clearance[^>]*>/)?.[0] ?? '';
 
-        expect(spacer).toContain('h-[calc(5rem+env(safe-area-inset-bottom))]');
-        expect(spacer).toContain('sm:h-14');
-        expect(spacer).not.toContain('sm:hidden');
+        // Navegação inferior (56px) + botão (44px) + margens, abaixo de `md`.
+        expect(spacer).toContain('h-[calc(8.5rem+env(safe-area-inset-bottom))]');
+        expect(spacer).toContain('md:h-14');
+        expect(spacer).not.toContain('md:hidden');
         expect(spacer).toContain('aria-hidden="true"');
     });
 });

@@ -812,16 +812,22 @@ class ShellNavigationTest extends TestCase
         });
     }
 
+    /**
+     * Sem ano letivo configurado e sem turma em vista, o `scope` partilhado
+     * diz exatamente isso — nada é inventado para a barra ter o que mostrar
+     * (0.181.0: já não há `period`, que só alimentava um chip desligado).
+     */
     #[Test]
-    public function the_scope_selectors_are_shared_but_empty_until_the_academic_model_exists(): void
+    public function the_scope_is_shared_but_empty_until_the_academic_model_exists(): void
     {
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/dashboard')->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->where('scope.academicYear', null)
-                ->where('scope.class', null)
-                ->where('scope.period', null)
+                ->where('workContext.academicYear', null)
+                ->where('workContext.class', null)
+                ->where('workContext.classes', [])
+                ->missing('workContext.period')
         );
     }
 }
