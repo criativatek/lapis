@@ -8,10 +8,10 @@ import DayRuler from '@/components/dashboard/DayRuler.vue';
 import DoneToday from '@/components/dashboard/DoneToday.vue';
 import PeriodRuler from '@/components/dashboard/PeriodRuler.vue';
 import WeekAgenda from '@/components/dashboard/WeekAgenda.vue';
-import WorkQueue from '@/components/dashboard/WorkQueue.vue';
 import { Button } from '@/components/ui/button';
+import { useFreshDashboard } from '@/composables/useFreshDashboard';
 import type { DashboardData } from '@/lib/dashboard';
-import { allDone, buildQueue, statusPhrase } from '@/lib/dashboard';
+import { allDone, buildQueue } from '@/lib/dashboard';
 
 type ReadinessItem = {
     id: string;
@@ -55,11 +55,6 @@ function canRead(module: string): boolean {
 const canOpenAssessments = computed(() => canRead('assessments'));
 const canOpenRecords = computed(() => canRead('records'));
 const canOpenOrganizationAudit = computed(() => canRead('audit_log'));
-// Write access, not read: a régua convida a registar um sumário, coisa que uma
-// organização só de leitura não pode fazer. E só com turmas: numa conta nova a
-// lista de primeiros passos é o que o ecrã deve pedir.
-const canRegisterLessons = computed(() => page.props.modules.includes('lessons') && props.dashboard.context.has_classes);
-
 // Never a modal, never blocking: an old, fully-adopted account already shows
 // nothing (all_done), the same way readiness() shows nothing once configured.
 const showFirstSteps = computed(() => !props.firstSteps.dismissed && !props.firstSteps.all_done);
@@ -70,34 +65,21 @@ function dismissFirstSteps(): void {
 
 /*
  * A HOME DE FECHO (DESIGN.md, variante C2 — e agora a Proposta C refinada): a
- * página não mostra a ferramenta, mostra o dia — Hoje → Agora → A seguir →
+ * página não mostra a ferramenta, mostra o dia — Hoje → Pendências →
  * Arrumado → «podes fechar». Prosa antes de números; âmbar só no FEITO; nada
  * inventado: cada número vem do DashboardComposer.
  */
 const data = computed(() => props.dashboard);
 const today = computed(() => data.value.context.date);
 const queue = computed(() => buildQueue(data.value.pending, today.value));
-const phrase = computed(() => statusPhrase(data.value, queue.value));
 const done = computed(() => allDone(data.value, queue.value));
 const hasLessons = computed(() => data.value.context.modules.lessons);
 
+// Ao voltar de uma tarefa o painel não pode mostrar números de há horas.
+useFreshDashboard(() => props.dashboard.context.now);
+
 /** Os acontecimentos de hoje na agenda da semana — a Base mostra-os no lugar do horário. */
 const todayEvents = computed(() => data.value.week.days.find((day) => day.is_today)?.events ?? []);
-
-/** «Amanhã: 9.º C às 10:20 e 8.º D às 11:00.» — só quando há mesmo aulas amanhã. */
-const tomorrowHint = computed<string | null>(() => {
-    const index = data.value.week.days.findIndex((day) => day.is_today);
-    const tomorrow = data.value.week.days[index + 1];
-
-    if (index < 0 || !tomorrow || tomorrow.lessons.length === 0) {
-        return null;
-    }
-
-    const first = tomorrow.lessons.slice(0, 2).map((lesson) => `${lesson.class.label} às ${lesson.start_time}`);
-    const rest = tomorrow.lessons.length - first.length;
-
-    return `Amanhã: ${first.join(' e ')}${rest > 0 ? ` e mais ${rest}` : ''}. Podes preparar os sumários quando quiseres.`;
-});
 
 const periodSummary = computed<string | null>(() => {
     const counts = data.value.pending.counts;
@@ -123,10 +105,8 @@ const periodSummary = computed<string | null>(() => {
             :teacher-name="teacherName"
             :data="data"
             :queue="queue"
-            :phrase="phrase"
             :can-open-assessments="canOpenAssessments"
             :can-open-records="canOpenRecords"
-            :can-register-lessons="canRegisterLessons"
         />
 
         <!-- "Primeiros passos" (A1a) — a separate, dismissible adoption
@@ -217,7 +197,6 @@ const periodSummary = computed<string | null>(() => {
 
             <div class="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start">
                 <div class="flex min-w-0 flex-col gap-6">
-                    <WorkQueue :queue="queue" :has-classes="data.context.has_classes" :tomorrow-hint="tomorrowHint" />
                     <DoneToday :items="data.done" />
 
                     <!-- O FECHO — a frase-assinatura, só quando é verdade. -->

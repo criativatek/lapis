@@ -3,6 +3,7 @@ import { initializeTheme } from '@/composables/useAppearance';
 import { formatTitle, resolveLayout } from '@/inertia';
 import { startDiagnostics } from '@/lib/diagnostics';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { startHistoryRestorationTracking } from '@/lib/historyRestoration';
 
 createInertiaApp({
     // Shared with ssr.ts — see resources/js/inertia.ts for the reasoning.
@@ -24,3 +25,7 @@ initializeFlashToast();
 // ligado a partir do clique chega sempre tarde. Nada disto sai sozinho.
 // Deliberadamente fora do ssr.ts, onde nao ha window.
 startDiagnostics();
+
+// Regista as reposições do histórico («Atrás», bfcache) desde o arranque, mesmo que o
+// chunk da página só chegue depois: o painel usa-o para revalidar as pendências.
+startHistoryRestorationTracking();

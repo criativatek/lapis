@@ -1,6 +1,8 @@
+import { router } from '@inertiajs/vue3';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData, DoneItem, PendingWork } from '@/lib/dashboard';
+import { resetHistoryRestorationForTests, startHistoryRestorationTracking } from '@/lib/historyRestoration';
 import Dashboard from './Dashboard.vue';
 
 const pageProps = { modules: [] as string[], readOnlyModules: [] as string[] };
@@ -17,8 +19,8 @@ vi.mock('@inertiajs/vue3', async () => {
                 () =>
                     h('a', { href: props.href }, slots.default?.()),
         }),
-        router: { post: vi.fn(), visit: vi.fn() },
-        usePage: () => ({ props: pageProps }),
+        router: { post: vi.fn(), visit: vi.fn(), get: vi.fn() },
+        usePage: () => ({ props: pageProps, url: '/dashboard' }),
     };
 });
 
@@ -105,6 +107,7 @@ describe('Dashboard — atividade', () => {
 
 describe('Dashboard — Hoje', () => {
     beforeEach(() => {
+        window.sessionStorage.clear();
         pageProps.modules = ['lessons', 'assessments', 'records'];
         pageProps.readOnlyModules = [];
     });
@@ -136,12 +139,26 @@ describe('Dashboard — Hoje', () => {
         expect(wrapper.find('[data-testid="class-cards"]').text()).toContain('registos');
     });
 
-    it('a saudação e a frase do dia vêm dos factos', () => {
+    it('a saudação e os três cartões vêm dos factos, sem frase de estado', () => {
         const wrapper = dashboard();
 
         expect(wrapper.find('h1').text()).toBe('Boa tarde, Ana.');
-        expect(wrapper.find('[data-testid="status-phrase"]').text()).toBe('1 aula hoje, tudo sumariado. O resto está em dia.');
+        expect(wrapper.find('[data-testid="status-phrase"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="hero-today"]').text()).toBe('Hoje1aula');
+        expect(wrapper.find('[data-testid="hero-summaries"]').text()).toContain('1/1');
+        expect(wrapper.find('[data-testid="hero-pending"]').text()).toContain('Tudo em dia');
         expect(wrapper.find('[data-testid="closing-line"]').exists()).toBe(true);
+    });
+
+    it('Base sem horário: o cartão Hoje conta os acontecimentos e não há cartão de Sumários', () => {
+        pageProps.modules = ['assessments', 'records'];
+        const base = data();
+        base.context.modules.lessons = false;
+        base.day = { available: false, date: '2026-10-26', bounds: null, items: [], totals: { lessons: 0, summaries_registered: 0, sessions: 0, sessions_done: 0, absences_recorded: 0 } };
+        const wrapper = dashboard(base);
+
+        expect(wrapper.find('[data-testid="hero-today"]').text()).toBe('Hoje1acontecimento');
+        expect(wrapper.find('[data-testid="hero-summaries"]').exists()).toBe(false);
     });
 });
 
@@ -151,7 +168,7 @@ describe('Dashboard — a fila e o arrumado', () => {
         pageProps.readOnlyModules = [];
     });
 
-    it('a primeira pendência é o «Agora» com a ação à vista e o resto espera em «A seguir»', () => {
+    it('as pendências abrem-se por baixo dos cartões, planas e na ordem, sem «Agora»/«A seguir»/ação primária', async () => {
         const pending: PendingWork = {
             ...emptyPending,
             summaries: { available: true, recent: [{ ulid: 'l9', starts_at: '2026-10-23T10:00:00+00:00', date: '2026-10-23', start_time: '10:00', label: '7.º A', number: '12', class: turma, attendance_recorded: false, href: '/lessons/l9' }], recent_count: 1, older_count: 0, older_href: null },
@@ -159,29 +176,49 @@ describe('Dashboard — a fila e o arrumado', () => {
         };
         const wrapper = dashboard({ pending });
 
-        expect(wrapper.find('[data-testid="agora"]').text()).toContain('Registar o sumário — 7.º A');
-        expect(wrapper.find('[data-testid="agora"] a').attributes('href')).toBe('/lessons/l9');
-        expect(wrapper.find('[data-testid="a-seguir"]').text()).toContain('Confirmar 12 classificações — 7.º A');
+        expect(wrapper.find('[data-testid="hero-pending"]').text()).toContain('2');
+        expect(wrapper.find('[data-testid="pending-panel"]').exists()).toBe(false);
+        await wrapper.find('[data-testid="hero-pending"]').trigger('click');
+
+        const links = wrapper.find('[data-testid="pending-panel"]').findAll('a');
+        expect(links.map((link) => link.attributes('href'))).toEqual(['/lessons/l9', '/classes/c7a/classifications']);
         expect(wrapper.find('[data-testid="closing-line"]').exists()).toBe(false);
-        expect(wrapper.find('[data-testid="primary-action"]').attributes('href')).toBe('/lessons/l9');
+        expect(wrapper.find('[data-testid="primary-action"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toMatch(/Agora|A seguir|Mais tarde|próximo passo/);
     });
 
-    it('«A seguir» esconde do quinto item em diante no telemóvel até se pedir o resto', async () => {
-        const pending: PendingWork = {
-            ...emptyPending,
-            classifications: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((ulid) => ({ class: { ...turma, ulid, label: `Turma ${ulid}` }, proposed: 2, confirmed: 0, href: `/classes/${ulid}/classifications` })),
-        };
-        const wrapper = dashboard({ pending });
-        const section = wrapper.find('[data-testid="a-seguir"]');
+    it('ao regressar do histórico revalida uma vez e a lista continua aberta com o número novo', async () => {
+        window.sessionStorage.clear();
+        vi.mocked(router.get).mockClear();
+        resetHistoryRestorationForTests();
+        startHistoryRestorationTracking();
+        const recent = (ulid: string) => ({ ulid, starts_at: '2026-10-23T10:00:00+00:00', date: '2026-10-23', start_time: '10:00', label: '7.º A', number: '12', class: turma, attendance_recorded: false, href: `/lessons/${ulid}` });
+        const withRecent = (items: ReturnType<typeof recent>[]): PendingWork => ({ ...emptyPending, summaries: { available: true, recent: items, recent_count: items.length, older_count: 0, older_href: null } });
 
-        expect(section.findAll('li')).toHaveLength(6);
-        expect(section.findAll('li[data-mobile-hidden="true"]')).toHaveLength(2);
-        expect(wrapper.text()).toContain('por onde começar');
-        expect(wrapper.text()).not.toContain('não deve esperar');
+        const first = dashboard({ pending: withRecent([recent('l8'), recent('l9')]) });
+        await first.find('[data-testid="hero-pending"]').trigger('click');
+        expect(first.find('[data-testid="pending-panel"]').findAll('a')).toHaveLength(2);
+        first.unmount();
+        vi.mocked(router.get).mockClear();
 
-        await section.find('[data-testid="a-seguir-toggle"]').trigger('click');
+        // «Atrás»: o Inertia repõe a página e monta o painel outra vez, agora com a tarefa concluída.
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        const back = dashboard({ pending: withRecent([recent('l9')]) });
 
-        expect(section.findAll('li[data-mobile-hidden="true"]')).toHaveLength(0);
+        expect(router.get).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(router.get).mock.calls[0]![2]).toMatchObject({ only: ['dashboard'], preserveState: true, preserveScroll: true, replace: true });
+        expect(back.find('[data-testid="hero-pending"]').attributes('aria-expanded')).toBe('true');
+        expect(back.find('[data-testid="pending-panel"]').findAll('a')).toHaveLength(1);
+        expect(back.find('[data-testid="hero-pending"]').text()).toContain('1');
+        resetHistoryRestorationForTests();
+        back.unmount();
+    });
+
+    it('sem pendências não há painel nem botão', () => {
+        const wrapper = dashboard();
+
+        expect(wrapper.find('[data-testid="pending-panel"]').exists()).toBe(false);
+        expect(wrapper.find('button[aria-expanded]').exists()).toBe(false);
     });
 
     it('«Arrumado hoje» mostra três linhas e abre o resto do dia', async () => {
@@ -200,14 +237,15 @@ describe('Dashboard — a fila e o arrumado', () => {
         expect(section.text()).toContain('Mostrar só as mais recentes');
     });
 
-    it('sem turmas nada se inventa: o vazio diz o próximo passo e não há fecho', () => {
+    it('sem turmas nada se inventa: sem cartões, sem fecho', () => {
         const empty = data({ classes: [], done: [] });
         empty.context.has_classes = false;
         empty.context.class_count = 0;
         empty.day = { available: true, date: '2026-10-26', bounds: null, items: [], totals: { lessons: 0, summaries_registered: 0, sessions: 0, sessions_done: 0, absences_recorded: 0 } };
         const wrapper = dashboard(empty);
 
-        expect(wrapper.find('[data-testid="agora-empty"]').text()).toContain('Ainda sem turmas');
+        expect(wrapper.find('[data-testid="hero-cards"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="no-classes"]').exists()).toBe(true);
         expect(wrapper.find('[data-testid="closing-line"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="class-cards"]').exists()).toBe(false);
     });
@@ -217,6 +255,7 @@ describe('Dashboard — a fila e o arrumado', () => {
 
         expect(wrapper.text()).toContain('Prepare o ano letivo');
         expect(wrapper.find('[data-testid="day-ruler"]').exists()).toBe(false);
-        expect(wrapper.find('[data-testid="agora"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="hero-cards"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="done-today"]').exists()).toBe(false);
     });
 });

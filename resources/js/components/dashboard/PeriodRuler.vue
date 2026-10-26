@@ -76,7 +76,7 @@ const nextItems = computed(() => (props.upcoming ?? []).slice(0, 3));
         </div>
         <div class="mt-2 flex justify-between text-xs text-muted-foreground tabular-nums">
             <span>{{ ruler.period.starts_on.slice(8, 10) }}/{{ ruler.period.starts_on.slice(5, 7) }}</span>
-            <!-- O resumo só cabe na variante larga (Base); na compacta repetiria o «Agora». -->
+            <!-- O resumo só cabe na variante larga (Base); na compacta repetiria as pendências do cabeçalho. -->
             <span v-if="summary && prominent" class="hidden truncate px-2 sm:inline">{{ summary }}</span>
             <span class="whitespace-nowrap">{{ ruler.period.ends_on.slice(8, 10) }}/{{ ruler.period.ends_on.slice(5, 7) }} · faltam {{ ruler.period.days_left }} dias</span>
         </div>
