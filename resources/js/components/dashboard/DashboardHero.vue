@@ -79,6 +79,12 @@ const announcement = computed(() => `${props.queue.length} ${props.queue.length 
                 </div>
             </div>
 
+            <!-- Sem turmas não há cartões (nada para contar), mas a orientação que o
+                 painel já dava não se perde: uma linha, sem cartão. -->
+            <p v-if="!data.context.has_classes" class="text-sm text-muted-foreground" data-testid="no-classes">
+                Ainda sem turmas neste ano letivo. <Link href="/classes" class="font-medium text-primary hover:underline">Crie a primeira turma</Link> para o painel começar a trabalhar por si.
+            </p>
+
             <div v-if="cards" :class="['grid grid-cols-1 gap-3', cards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3']" data-testid="hero-cards">
                 <HeroStat
                     v-for="item in cards"

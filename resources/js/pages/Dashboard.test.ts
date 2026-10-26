@@ -216,6 +216,7 @@ describe('Dashboard — a fila e o arrumado', () => {
         const wrapper = dashboard(empty);
 
         expect(wrapper.find('[data-testid="hero-cards"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="no-classes"]').exists()).toBe(true);
         expect(wrapper.find('[data-testid="closing-line"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="class-cards"]').exists()).toBe(false);
     });

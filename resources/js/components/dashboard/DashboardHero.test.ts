@@ -153,6 +153,13 @@ describe('DashboardHero', () => {
         expect(wrapper.find('[data-testid="hero-cards"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="pending-live"]').exists()).toBe(false);
         expect(wrapper.find('a[href="/assessments"]').exists()).toBe(true);
+        // a orientação do painel anterior mantém-se, numa linha e sem cartão
+        expect(wrapper.get('[data-testid="no-classes"]').text()).toContain('Ainda sem turmas neste ano letivo.');
+        expect(wrapper.get('[data-testid="no-classes"] a').attributes('href')).toBe('/classes');
+    });
+
+    it('com turmas não há a linha de «sem turmas»', () => {
+        expect(mountHero({ queue }).find('[data-testid="no-classes"]').exists()).toBe(false);
     });
 
     it('sem o módulo das aulas há dois cartões em duas colunas', () => {
