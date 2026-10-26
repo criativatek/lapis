@@ -83,6 +83,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   retificada): passa de 16 a 44 px abaixo de `md` e 36 px a partir de `md`, sem
   mudar o ícone nem a altura da linha. Aplica-se a Classificações, Resultados e à
   página nova.
+- `tests/Feature/Dashboard/PendingWorkTest.php` (do painel, 0.179.0): a fixture da classificação «Substituída»
+  passa a ter sucessora, porque a base de dados agora recusa uma «Substituída» sem ela.
 - `tests/Fixtures/AdvancedAnalysis/base-surfaces.json`: três superfícies de
   «resultados» mudam de hash porque a página passa a levar a prop `rectification`.
 

@@ -82,7 +82,11 @@ class PendingWorkTest extends TestCase
         $this->classificationFor($ana, ClassificationStatus::Proposed);
         $this->classificationFor($rui, ClassificationStatus::Proposed, ['scope' => 'accumulated']);
         $this->classificationFor($rui, ClassificationStatus::Confirmed, ['confirmed_by' => $this->teacher->id, 'confirmed_at' => '2026-10-20 10:00:00']);
-        $this->classificationFor($ana, ClassificationStatus::Superseded, ['scope' => 'accumulated']);
+        // A superseded row always points at its successor (the table enforces it), so the
+        // fixture gives it one: a published accumulated classification, which this panel
+        // does not count as pending.
+        $successor = $this->classificationFor($ana, ClassificationStatus::Published, ['scope' => 'accumulated']);
+        $this->classificationFor($ana, ClassificationStatus::Superseded, ['scope' => 'accumulated', 'superseded_by_id' => $successor->id]);
 
         $pending = $this->within(fn () => app(PendingWork::class)->for($this->context()));
 
