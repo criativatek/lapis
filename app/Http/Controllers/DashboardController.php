@@ -5,31 +5,27 @@ namespace App\Http\Controllers;
 use App\Models\AcademicYear;
 use App\Models\AcademicYearStatus;
 use App\Models\AssessmentProfile;
-use App\Models\Classification;
-use App\Models\ClassificationStatus;
 use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
 use App\Models\User;
-use App\Services\Evidence\Followup\AssessmentPeriodTimeline;
-use App\Services\Evidence\Followup\RecordFollowupCaseBook;
-use App\Support\Entitlements\Entitlements;
+use App\Services\Dashboard\DashboardComposer;
 use App\Support\Retention\AcademicYearRetentionClassifier;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * The teacher's home (§23.2): their classes, and what still needs a decision —
- * how many proposals are waiting to be confirmed and how many confirmed grades
- * are waiting to be published. It only surfaces work already created elsewhere;
+ * The teacher's home (§23.2): the day, what still needs a decision, what got
+ * done, how the classes are — everything read by DashboardComposer, plus the
+ * two adoption checklists. It only surfaces work already created elsewhere;
  * it decides nothing.
  */
 class DashboardController extends Controller
 {
-    public function __invoke(AcademicYearRetentionClassifier $retentionClassifier, RecordFollowupCaseBook $followupCases, Entitlements $entitlements): Response
+    public function __invoke(AcademicYearRetentionClassifier $retentionClassifier, DashboardComposer $composer): Response
     {
         $teacher = $this->user();
 
@@ -37,6 +33,9 @@ class DashboardController extends Controller
         $currentAcademicYear = $retentionClassifier->currentYearFor($academicYears);
         $hasSubjects = Subject::query()->exists();
 
+        // A prontidão do ano e os primeiros passos leem TODAS as turmas do
+        // professor (uma turma arquivada já foi criada); o painel do dia lê
+        // as não arquivadas, no DashboardComposer.
         $classes = SchoolClass::query()
             ->whereHas('teachers', fn ($query) => $query->whereKey($teacher->getKey()))
             ->with(['subject', 'academicYear'])
@@ -47,42 +46,8 @@ class DashboardController extends Controller
             ? collect()
             : $classes->where('academic_year_id', $currentAcademicYear->id)->values();
 
-        // Live classifications per (class, status) in one grouped query — the
-        // enrollment join keeps it scoped to the teacher's classes; the global
-        // scope keeps it scoped to the organization.
-        $counts = Classification::query()
-            ->join('enrollments', 'classifications.enrollment_id', '=', 'enrollments.id')
-            ->whereIn('enrollments.class_id', $classes->pluck('id'))
-            ->whereNot('classifications.status', ClassificationStatus::Superseded->value)
-            ->selectRaw('enrollments.class_id, classifications.status, count(*) as total')
-            ->groupBy('enrollments.class_id', 'classifications.status')
-            ->get()
-            ->groupBy('class_id');
-
-        // Só as turmas que continuam nas listas entram nos cartões e nos totais:
-        // uma turma arquivada com propostas antigas por confirmar não é trabalho
-        // de hoje, e contá-la punha-a no «Agora» (0.179.0). A prontidão do ano,
-        // os primeiros passos e os alertas continuam a ler todas as turmas.
-        $classCards = $classes->filter(fn (SchoolClass $class): bool => ! $class->isArchived())->values()->map(function (SchoolClass $class) use ($counts) {
-            // Keyed by the enum's string value — status is cast to an enum, so it
-            // cannot be a pluck() array key directly.
-            $byStatus = $counts->get($class->id, collect())
-                ->mapWithKeys(fn ($row) => [$row->status->value => (int) $row->total]);
-
-            return [
-                'ulid' => $class->ulid,
-                'label' => $class->label,
-                'subject' => $class->subject->name,
-                'academic_year' => $class->academicYear->label,
-                'has_profile' => $class->assessment_profile_version_id !== null,
-                'pending_confirmation' => (int) $byStatus->get(ClassificationStatus::Proposed->value, 0),
-                'pending_publication' => (int) $byStatus->get(ClassificationStatus::Confirmed->value, 0),
-            ];
-        });
-
         return Inertia::render('Dashboard', [
             'teacherName' => $teacher->name,
-            'classes' => $classCards,
             'readiness' => $this->readiness(
                 $academicYears,
                 $currentAcademicYear,
@@ -90,37 +55,10 @@ class DashboardController extends Controller
                 $hasSubjects,
             ),
             'firstSteps' => $this->firstSteps($teacher, $currentAcademicYearClasses, $academicYears->isNotEmpty(), $hasSubjects),
-            'recordAlerts' => $this->recordAlerts($followupCases, $entitlements, $currentAcademicYear, $currentAcademicYearClasses),
-            'totals' => [
-                'classes' => $classCards->count(),
-                'pending_confirmation' => $classCards->sum('pending_confirmation'),
-                'pending_publication' => $classCards->sum('pending_publication'),
-            ],
+            // O dia, a semana, a fila, o arrumado, as turmas e o período — só
+            // factos, já gated pelos módulos legíveis (0.180.0).
+            'dashboard' => $composer->compose($teacher),
         ]);
-    }
-
-    /**
-     * The accumulation alerts still «por tratar» in this year's classes — the
-     * persistent notice of the logbook follow-up (spec 2026-10-12). Only the
-     * alerts an operation actually raised: cases that predate alerts are found
-     * in Registos, never pushed here.
-     *
-     * @param  Collection<int, SchoolClass>  $currentAcademicYearClasses
-     * @return array{pending: int, href: string}|null
-     */
-    private function recordAlerts(RecordFollowupCaseBook $followupCases, Entitlements $entitlements, ?AcademicYear $currentAcademicYear, Collection $currentAcademicYearClasses): ?array
-    {
-        if ($currentAcademicYear === null || $currentAcademicYearClasses->isEmpty() || ! $entitlements->canRead('records')) {
-            return null;
-        }
-
-        $pending = $followupCases->pendingAlerts(
-            array_values($currentAcademicYearClasses->map(fn (SchoolClass $class): int => $class->id)->all()),
-            AssessmentPeriodTimeline::forYear($currentAcademicYear->id),
-            withDetails: false,
-        )->count();
-
-        return $pending === 0 ? null : ['pending' => $pending, 'href' => '/records?year='.$currentAcademicYear->ulid];
     }
 
     /**

@@ -149,7 +149,7 @@ describe('AppLayout under SSR, with the shared props the shell is promised', () 
 });
 
 describe('the floating «Reportar problema» button on small screens (#47)', () => {
-    it('is a 44px touch target below `sm`, with the accessible name kept and the safe-area inset respected', async () => {
+    it('is a 44px touch target below `sm` and a 36px disc from `sm` up, with the accessible name kept and the safe-area inset respected', async () => {
         const html = await render(sharedProps());
         const launcher = html.match(/<button[^>]*data-issue-launcher[^>]*>/)?.[0] ?? '';
 
@@ -157,16 +157,23 @@ describe('the floating «Reportar problema» button on small screens (#47)', () 
         // Repeating the `sm:` prefix is what lets these win over Button's size="sm" (`h-8`, `px-3`) under tailwind-merge.
         expect(launcher).toMatch(/\bh-11\b/);
         expect(launcher).toMatch(/\bw-11\b/);
-        expect(launcher).toMatch(/\bsm:h-8\b/);
-        expect(launcher).toMatch(/\bsm:w-auto\b/);
+        expect(launcher).toMatch(/\bsm:h-9\b/);
+        expect(launcher).toMatch(/\bsm:w-9\b/);
+        // A disc never covers the page's own actions; the label only opens on hover or focus.
+        expect(launcher).toMatch(/\bhover:sm:w-auto\b/);
+        expect(launcher).toMatch(/\bfocus-visible:sm:w-auto\b/);
+        expect(launcher).not.toMatch(/\ssm:w-auto\b/);
         expect(launcher).toContain('bottom-[calc(1rem+env(safe-area-inset-bottom))]');
         expect(launcher).toContain('sm:bottom-4');
     });
 
-    it('keeps the text for assistive tech on mobile and shows it from `sm` up', async () => {
+    it('keeps the text for assistive tech at every size and reveals it on hover or focus from `sm` up', async () => {
         const html = await render(sharedProps());
+        const label = html.match(/<span class="sr-only[^"]*">Reportar problema<\/span>/)?.[0] ?? '';
 
-        expect(html).toContain('<span class="sr-only sm:not-sr-only">Reportar problema</span>');
+        expect(label).toMatch(/\bgroup-hover:sm:not-sr-only\b/);
+        expect(label).toMatch(/\bgroup-focus-visible:sm:not-sr-only\b/);
+        expect(label).not.toMatch(/\ssm:not-sr-only\b/);
     });
 
     it('makes the layout reserve room under the page so its end scrolls clear of the button', async () => {
