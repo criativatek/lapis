@@ -2,12 +2,15 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { CircleAlert, Lock, PencilLine, RefreshCw, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import RectificationHistory from '@/components/classifications/RectificationHistory.vue';
+import RectifyDialog from '@/components/classifications/RectifyDialog.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { decidedScaleNote } from '@/lib/decidedValue';
 import { ACCUMULATED, ACCUMULATED_EXPLANATION, ACCUMULATED_LONG } from '@/lib/readings';
+import type { RectificationReasonOption, RectificationScale, RectificationState } from '@/lib/rectification';
 import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import { statusToneClasses } from '@/lib/statusTone';
@@ -44,6 +47,8 @@ type Classification = {
     /** «Alterar» — true until the classification is published. */
     can_change: boolean;
     is_published: boolean;
+    /** Retificar uma publicada: o que o servidor permite e quantas vezes já aconteceu. */
+    rectification?: RectificationState | null;
 };
 type Row = {
     enrollment_ulid: string;
@@ -71,6 +76,7 @@ const props = defineProps<{
     };
     periods: { ulid: string; label: string; selected: boolean }[];
     rows: Row[];
+    rectificationReasons?: RectificationReasonOption[];
 }>();
 
 const page = usePage();
@@ -128,6 +134,32 @@ function proposalLabel(proposal: Proposal): string {
     }
 
     return proposal.is_percentage ? `${proposal.value}%` : proposal.value;
+}
+
+/** A escala em que se retifica é a mesma em que se decide. */
+const rectifyScale = computed<RectificationScale>(() => ({
+    label: props.schoolClass.decision_label,
+    classifies_by_level: props.schoolClass.classifies_by_level,
+    levels: props.schoolClass.levels,
+    min_value: props.schoolClass.min_value,
+    max_value: props.schoolClass.max_value,
+}));
+
+function rectifyCurrent(decision: Decision): { text: string; levelId: number | null; value: string | null } {
+    return {
+        text: decisionTitle(decision),
+        levelId: decision.scale_level_id,
+        // Um valor decidido noutra escala não é um valor desta: não se compara.
+        value: decision.scale_level_id === null && !decision.scale_name ? decision.code : null,
+    };
+}
+
+function rectifySubmitUrl(row: Row): string {
+    return `${basePath()}/${row.enrollment_ulid}/rectify`;
+}
+
+function rectificationUrl(classification: Classification): string {
+    return `/classes/${props.schoolClass.ulid}/classifications/${classification.ulid}/rectification`;
 }
 
 function selectPeriod(ulid: string): void {
@@ -427,6 +459,12 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                         />
                                     </template>
                                     <span v-else class="text-muted-foreground">—</span>
+                                    <RectificationHistory
+                                        v-if="row.classification?.rectification"
+                                        :count="row.classification.rectification.count"
+                                        :history-url="rectificationUrl(row.classification)"
+                                        :student-name="row.name"
+                                    />
                                 </td>
                                 <td class="px-3 py-2 text-right">
                                     <!-- Until it is published, the decision is
@@ -456,13 +494,24 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                                             Usar proposta
                                         </button>
                                     </div>
-                                    <span
-                                        v-else-if="row.classification?.is_published"
-                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground"
-                                        title="Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no Lapispro."
-                                    >
-                                        <Lock class="size-3" />Publicada
-                                    </span>
+                                    <div v-else-if="row.classification?.is_published" class="flex items-center justify-end gap-2">
+                                        <span
+                                            class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                                            title="Esta classificação já foi publicada. Só muda por retificação, que fica registada."
+                                        >
+                                            <Lock class="size-3" />Publicada
+                                        </span>
+                                        <RectifyDialog
+                                            v-if="row.classification.rectification && row.classification.decision"
+                                            :rectification="row.classification.rectification"
+                                            :scale="rectifyScale"
+                                            :reasons="rectificationReasons ?? []"
+                                            :current="rectifyCurrent(row.classification.decision)"
+                                            :student-name="row.name"
+                                            :submit-url="rectifySubmitUrl(row)"
+                                            :details-url="rectificationUrl(row.classification)"
+                                        />
+                                    </div>
                                     <span v-else-if="row.classification" class="text-xs text-muted-foreground">✓</span>
                                 </td>
                             </tr>
@@ -544,7 +593,7 @@ const errorFor = computed(() => (page.props.errors as Record<string, string>)?.f
                 a proposta, «Alterar» atribui outra. Atribuir diferente da proposta não exige justificação; a
                 observação é opcional e fica registada, tal como a proposta original, o autor e a data.
                 Uma classificação <strong>confirmada continua a poder ser alterada</strong> até ser publicada;
-                depois de <strong>publicada</strong> fica fechada. A confirmação congela um registo de como o
+                depois de <strong>publicada</strong> só muda por <strong>retificação</strong>, com motivo e histórico. A confirmação congela um registo de como o
                 valor foi obtido. A <strong>Autoavaliação</strong> é a resposta do aluno e é independente das
                 duas. "—" significa sem elementos, nunca zero.
             </span>

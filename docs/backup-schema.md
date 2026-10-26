@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 19 (atual) | `Supported` | Como a v18, acrescentando `timetable_activity_occurrences` (0.170.0): o **registo por sessão** das outras atividades (o sumário de cada apoio, reunião, clube…), mais `numbering_enabled` e `numbering_start` em `timetable_activities` (ausentes ⇒ `false` e `1`) e o tipo `club`. Só saem as do exportador e só se restauram na conta do próprio autor; uma sessão cuja atividade não se restaura volta como órfã, identificada pela cópia que leva. Ausente num backup v≤18 ⇒ zero linhas, nunca um erro. Um backup v19 é recusado por código anterior (`UnsupportedNewer`). Ver [Outras atividades e as suas sessões (schema v19)](#outras-atividades-e-as-suas-sessões-schema-v19) |
+| 20 (atual) | `Supported` | Como a v19, acrescentando a **cadeia de retificações** das classificações: `classifications[].rectifies_ulid`, `rectification_reason`, `rectification_note`, `rectified_by_email` e `rectified_at`. Uma decisão publicada que foi corrigida não se edita — outra linha substitui-a e a antiga fica como história (`status = superseded`, com `superseded_by_ulid`). Restaura-se a cadeia **inteira**, da mais antiga à mais recente, ou nenhuma linha dela. Ausentes num backup v≤19 ⇒ nenhuma retificação, e as classificações leem-se exatamente como antes. Um backup v20 é recusado por código anterior (`UnsupportedNewer`). Ver [Retificações de classificações (schema v20)](#retificações-de-classificações-schema-v20) |
+| 19 | `LegacyCompatible` | Como a v18, acrescentando `timetable_activity_occurrences` (0.170.0): o **registo por sessão** das outras atividades (o sumário de cada apoio, reunião, clube…), mais `numbering_enabled` e `numbering_start` em `timetable_activities` (ausentes ⇒ `false` e `1`) e o tipo `club`. Só saem as do exportador e só se restauram na conta do próprio autor; uma sessão cuja atividade não se restaura volta como órfã, identificada pela cópia que leva. Ausente num backup v≤18 ⇒ zero linhas, nunca um erro. Um backup v19 é recusado por código anterior (`UnsupportedNewer`). Ver [Outras atividades e as suas sessões (schema v19)](#outras-atividades-e-as-suas-sessões-schema-v19) |
 | 18 | `LegacyCompatible` | Como a v17, acrescentando `lessons[].lesson_number_end` e `lessons[].lesson_number_manual` (0.169.0): o professor pode indicar o número de uma aula (e um intervalo, «11–12», quando a aula corresponde a várias lições). `lesson_number_manual = true` marca o número como indicado à mão — nunca é recalculado, e o `lesson_number_end` (inteiro posterior ao início, só com início) é o fim do intervalo, `null` quando a aula é uma só lição. Ausentes num backup v≤17 ⇒ `null` e `false` (nada muda). Copiados tal como estão no restauro, nunca renumerados; um fim que não seja um inteiro posterior ao início, ou uma marca que não seja um booleano, deixa a linha como `invalid`. Os limites são os do formulário: início de 1 a 9999 quando manual e no máximo 10 lições por aula (`lesson_number_end ≤ lesson_number + 9`), senão a linha é `invalid`. Dois intervalos manuais da mesma turma que se sobrepõem (as aulas da mesma lição de grupo partilham o intervalo) deixam as linhas da unidade **posterior** (por `starts_at`) `invalid` — dentro do ficheiro; Contra as aulas que o destino JÁ TEM na mesma turma a regra é outra e **bloqueia o restauro inteiro**: uma aula `new` do ficheiro cujo intervalo FIXO (número indicado à mão, ou aula fechada com número — lecionada ou atividade da turma) coincide ou se sobrepõe ao intervalo fixo de outra lição do destino impede o restauro — a pré-visualização mostra as colisões (só datas, números e rótulo da turma) e não deixa confirmar, e a confirmação recusa antes de gravar o que quer que seja, sem marcar a importação como falhada (continua confirmável depois de o professor corrigir o destino). A mesma `lesson_unit_key` com o mesmo intervalo é a mesma lição e passa; as aulas livres (abertas e não manuais) não contam, o número delas é uma sugestão. Não é uma linha `conflict`: essa seria saltada e deixaria a aula, o sumário, o plano e as faltas de fora — um restauro parcial. Numa ausência do professor ambos são forçados a `null`/`false`, como `lesson_number` |
 | 17 | `LegacyCompatible` | Como a v16, acrescentando `timetable_activities` (0.168.0): as **outras atividades** do horário do professor (então ditas «atividades não letivas»: direção de turma, apoio a alunos, reuniões, coordenação). Só saem as de quem exporta, e só se restauram na conta do próprio autor. Ausente num backup v≤16 ⇒ zero linhas, nunca um erro, e nada no destino é tocado. Ver [Outras atividades (schema v17)](#outras-atividades-schema-v17) |
 | 16 | `LegacyCompatible` | Como a v15, acrescentando `self_assessment_responses[].numeric_value` (0.167.0): o número que o aluno escreveu numa escala **sem níveis** (0 a 20, percentagem, escala própria da organização), como cadeia decimal (`DECIMAL(6,3)` na base) — `null` quando a resposta é um nível ou um texto. É um valor de uma resposta, nunca uma média nem um cálculo. Ausente num backup v≤15 ⇒ `null` (todas as respostas anteriores são por nível ou por texto); nada mais muda. No restauro, um valor que não seja uma cadeia decimal com até 3 inteiros e 3 casas deixa a linha como inválida, em vez de a gravar como outra coisa; e um número que a pergunta não aceita (escala de níveis, fora dos limites da escala, ou ao lado de um nível) não é escrito — o formulário nunca o teria gravado |
@@ -43,10 +44,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 19 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 20 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 19`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 20`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -101,7 +102,7 @@ aqui em vez de repetidos em cada linha da tabela:
 | `instrument_groups` | `ulid` | |
 | `instrument_items` (+ `item_domain_allocations`) | `ulid` / linha filha | Cada item pode ter a sua própria escala (`scale_id` nulo herda a da versão do perfil) |
 | `student_item_scores` | Linha filha, chave `(item, enrollment)` | **Vazio não é zero** (§12.4): uma pontuação sem `result_state = assessed` nunca transporta `points_earned` |
-| `classifications` | `ulid` | Transporta a **decisão já tomada** (`final_value`, `final_scale_level`, `status`, `confirmed_by`/`confirmed_at`) como facto — nunca a recalcula. `calculation_snapshot_id` fica sempre nulo no restauro: o histórico de auditoria de uma execução de cálculo específica não é reconstruído, só a decisão final |
+| `classifications` | `ulid` | Transporta a **decisão já tomada** (`final_value`, `final_scale_level`, `status`, `confirmed_by`/`confirmed_at`) como facto — nunca a recalcula. Desde a v20 leva também as **retificações** (a cadeia de linhas substituídas, ver [Retificações de classificações](#retificações-de-classificações-schema-v20)). `calculation_snapshot_id` fica sempre nulo no restauro: o histórico de auditoria de uma execução de cálculo específica não é reconstruído, só a decisão final |
 | `self_assessment_templates`, `self_assessment_questions`, `self_assessments`, `self_assessment_responses` | `ulid` / linha filha | Uma pergunta sem `ulid` próprio é indexada por `(modelo, role)` quando tem `role`, senão por `(modelo, sequence)` — cobre tanto perguntas novas como perguntas de um modelo já existente. Desde a v16, uma resposta de escala traz `scale_level` **ou** `numeric_value` (nunca os dois); uma turma pode ter várias gerações de modelo (um retirado, com as respostas dadas com os critérios anteriores, e o atual), todas exportadas e restauradas tal como estão |
 
 ## Acompanhamento
@@ -659,6 +660,95 @@ sessão volta como órfã com a cópia que leva.
 
 **Ordem.** As sessões escrevem-se depois das atividades. Um backup v≤18, com
 atividades e sem esta coleção, continua a restaurar sem tocar em nada.
+
+## Retificações de classificações (schema v20)
+
+Uma classificação **publicada** não se edita: quando é corrigida, uma linha nova
+substitui-a e a antiga fica como história. O par fica ligado nos dois sentidos —
+a antiga tem `status = superseded` e `superseded_by`, a nova tem `rectifies` — e
+a **vigente** de uma célula (aluno × período × âmbito) é a que não está
+substituída. Todos os leitores olham só para essa.
+
+Cada linha de `classifications` ganha cinco chaves, todas `null` quando a linha
+não é uma retificação:
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `rectifies_ulid` | ULID ou `null` | a linha que esta substitui; tem de constar do mesmo ficheiro |
+| `rectification_reason` | `entry_error`, `calculation_error`, `review_or_complaint`, `council_decision`, `other` | outro valor ⇒ a linha é recusada |
+| `rectification_note` | texto até 1000 caracteres, ou `null` | só existe com os outros quatro |
+| `rectified_by_email` | email | o autor, pela mesma convenção de `confirmed_by_email` |
+| `rectified_at` | ISO 8601 | quando |
+
+`superseded_by_ulid` já existia e passa a ser usado: é o outro sentido do par.
+
+**Validação** (`ValidateClassificationChains`). O que a base de dados recusa em
+MySQL — e a suite, que corre em SQLite, não — recusa-se no ficheiro, antes de
+qualquer plano. Cada linha recusada aparece em «Pontos a rever» com o motivo, e
+**leva consigo toda a célula**, porque uma cadeia restaurada com um elo a menos é
+uma história com um buraco, e uma célula sem a vigente é um aluno sem nota:
+
+- `rectifies_ulid`, `rectification_reason` e `rectified_at` vêm todos ou nenhum
+  (a nota e o autor só com eles). O autor **não** faz parte do grupo: uma cadeia
+  restaurada sem autor identificado exporta-se com `rectified_by_email = null` e
+  tem de poder restaurar-se outra vez;
+- `status = superseded` se, e só se, há `superseded_by_ulid`;
+- os dois ponteiros apontam para linhas do mesmo ficheiro, da mesma célula, nunca
+  para a própria linha; e concordam — se A diz «fui substituída por B», B diz
+  «retifico A», e vice-versa. É isto que torna a cadeia **linear** (um
+  antecessor, um sucessor);
+- sem ciclos; no máximo **uma** linha vigente por célula;
+- uma retificação é sempre `published` (ou `superseded`, se foi retificada outra
+  vez): é a única coisa que o serviço de retificação escreve.
+
+**Autor.** A autoria de uma retificação segue a regra de todas as outras (0.101.4):
+`rectified_by` é a conta a que o email do backup corresponde e, se nenhuma
+corresponder, **fica vazio** — o registo mantém-se intacto e nunca é atribuído à
+conta que importa, que não fez a retificação. O email do autor original só é
+resolvido quando é o da própria conta que restaura (o restauro do próprio
+backup). A CHECK `classifications_rectification_complete_check` exige a
+referência, o motivo e a data (`rectifies_id`, `rectification_reason`,
+`rectified_at`) todos ou nenhum, mas **não** o autor; já o serviço de retificação
+grava sempre o utilizador que retifica, nunca nulo. `confirmed_by` e
+`overridden_by` das linhas restauradas seguem a mesma regra (vazios quando o
+email não se resolve; uma linha `published` sem `confirmed_by` é válida). A
+cadeia, os valores, as datas, os motivos e as notas ficam integralmente
+preservados. Na pré-visualização aparece «N retificações ficam com «Autor
+original não identificado»…», sem nomear o autor nem o seu email (§22.4); o
+histórico de uma classificação mostra «Autor original não identificado» nessas
+linhas. No resumo, `rectifications_without_original_author` conta-as; o evento de
+auditoria `data_import.completed` mantém quem importou como `causer` e leva essa
+contagem (`rectifications_without_original_author`), somada também a
+`unresolved_author_count`. Associar os autores a outros membros da organização
+de destino pelo email é uma melhoria transversal separada, não prevista aqui.
+
+**Restauro** (`WriteClassifications`). As classificações sem cadeia escrevem-se
+como sempre. Cada cadeia escreve-se da mais antiga para a mais recente, pela
+mesma sequência de `RectifyClassification`, porque a tabela recusa as outras
+(uma `superseded` não entra sem sucessora, a sucessora não entra enquanto a
+anterior está viva — `classifications_one_live_unique` —, e as duas não entram
+uma antes da outra):
+
+1. a mais antiga entra `published`, sozinha e viva, sem ponteiro;
+2. (a) passa a `superseded` com o ponteiro a apontar para **si própria** —
+   temporário, satisfaz a CHECK e liberta o índice; (b) entra a seguinte, já com
+   `rectifies` e os restantes campos da retificação; (c) o ponteiro da anterior passa para a
+   seguinte;
+3. repete-se ao longo da cadeia. Todas entram `published` menos a última, que
+   entra com o estado que o backup lhe dava.
+
+No fim confirma-se que nenhuma linha aponta para si própria e que sobra uma só
+vigente; se não, a transação inteira desfaz-se (o restauro corre numa).
+
+**Plano.** Uma cadeia só tem lugar se **todas** as linhas forem `new` e o destino
+não tiver já uma vigente nessa célula. Senão as linhas `new` passam a `conflict`
+(as que já lá estão ficam `existing`): nunca meia cadeia. Reimportar o mesmo
+backup não duplica nada.
+
+**O que não muda.** A retenção não apaga classificações (as chaves estrangeiras
+são todas `RESTRICT`), e os ecrãs, relatórios e a Folha de Avaliação já leem só a
+vigente. Os ficheiros legíveis (Excel) levam a classificação vigente, uma linha
+por célula; o histórico só vive no backup.
 
 ## Dívida futura (fora do âmbito desta fatia, de propósito)
 

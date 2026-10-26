@@ -378,7 +378,7 @@ class BuildAssessmentDataPlan
         $byBusinessKey = $enrollmentIds->isEmpty() ? collect() : Classification::query()->where('organization_id', $destination->getKey())->whereIn('enrollment_id', $enrollmentIds)->whereNull('superseded_by_id')->get()
             ->keyBy(fn (Classification $classification): string => "{$classification->enrollment_id}:".($classification->academic_period_id ?? 'null').":{$classification->scope->value}");
 
-        return collect($classificationsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scaleResolution, $actor, $lookups, $byUlidForSelfRef, $byBusinessKey): array {
+        $planned = collect($classificationsIn)->map(function (array $row) use ($enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scaleResolution, $actor, $lookups, $byUlidForSelfRef, $byBusinessKey): array {
             // THE CONFIRMER DECIDES THE STATUS THIS IMPORT MAY WRITE, and it
             // is settled here, before any comparison, because everything
             // downstream must agree on ONE status.
@@ -438,6 +438,21 @@ class BuildAssessmentDataPlan
             $supersededByUlid = $row['superseded_by_ulid'];
             $supersedes = $supersededByUlid !== null ? $byUlidForSelfRef->get($supersededByUlid) : null;
 
+            // WHO rectified follows the same rule as every other author: the
+            // account the backup's email maps to, or nobody. An author this
+            // import cannot map stays EMPTY and the chain is restored intact —
+            // it is never given to the account that restores, which did not
+            // rectify anything. It is NOT `author_unresolved`: that one counts
+            // classifications left to confirm, and a rectification is
+            // published, not unconfirmed.
+            $rectifiedBy = null;
+            $rectifierUnidentified = false;
+
+            if ($row['rectifies_ulid'] !== null) {
+                $rectifiedBy = $this->resolveAuthor($row['rectified_by_email'], $actor);
+                $rectifierUnidentified = $rectifiedBy === null;
+            }
+
             return [
                 'ulid' => $row['ulid'], 'classification' => 'new', 'reason' => null, 'preserve_ulid' => ! $lookups['elsewhere']->has($row['ulid']),
                 'enrollment_ulid' => $row['enrollment_ulid'], 'academic_period_ulid' => $row['academic_period_ulid'],
@@ -448,10 +463,81 @@ class BuildAssessmentDataPlan
                 'overridden_by' => $this->resolveAuthor($row['overridden_by_email'], $actor), 'overridden_at' => $row['overridden_at'],
                 'confirmed_by' => $confirmedBy, 'confirmed_at' => $unconfirmable ? null : $row['confirmed_at'],
                 'published_at' => $row['published_at'], 'superseded_by_ulid' => $supersedes !== null ? $supersededByUlid : null,
+                'rectifies_ulid' => $row['rectifies_ulid'], 'rectification_reason' => $row['rectification_reason'],
+                'rectification_note' => $row['rectification_note'], 'rectified_by' => $rectifiedBy, 'rectified_at' => $row['rectified_at'],
                 'author_unresolved' => $unconfirmable,
+                'rectifier_unidentified' => $rectifierUnidentified,
+                'rectifier_notice' => $rectifierUnidentified ? $this->unidentifiedRectifierNotice() : null,
                 'notice' => $unconfirmable ? $this->unconfirmableDecisionNotice() : null,
             ];
         })->values()->all();
+
+        return $this->keepChainsWhole($planned, $classificationsIn, $enrollmentsByUlid, $periodsByUlid, $byBusinessKey);
+    }
+
+    /**
+     * A chain of rectifications is restored whole or not at all.
+     *
+     * Its rows can only be written together (the live one of a cell goes in
+     * after the one it replaces, in one sequence), so a chain only has a place
+     * when every row of it is new AND the destination has no live row of its own
+     * in that cell — it would be a second one, which the table refuses. Anything
+     * else (a row already there, a row that cannot be restored, a cell the
+     * destination already decided) leaves the rows that WERE new as conflicts:
+     * the ones already there stay as they are, and nothing is half-written.
+     *
+     * @param  array<int, array<string, mixed>>  $planned
+     * @param  array<int, array<string, mixed>>  $classificationsIn
+     * @param  Collection<string, array<string, mixed>>  $enrollmentsByUlid
+     * @param  Collection<string, array<string, mixed>>  $periodsByUlid
+     * @param  Collection<string, Classification>  $byBusinessKey
+     * @return array<int, array<string, mixed>>
+     */
+    private function keepChainsWhole(array $planned, array $classificationsIn, Collection $enrollmentsByUlid, Collection $periodsByUlid, Collection $byBusinessKey): array
+    {
+        /** @var array<string, list<array<string, mixed>>> $chains */
+        $chains = [];
+
+        foreach ($classificationsIn as $row) {
+            if ($row['superseded_by_ulid'] !== null || $row['rectifies_ulid'] !== null) {
+                $chains[$row['enrollment_ulid'].'|'.($row['academic_period_ulid'] ?? '').'|'.$row['scope']][] = $row;
+            }
+        }
+
+        if ($chains === []) {
+            return $planned;
+        }
+
+        $verdicts = collect($planned)->keyBy('ulid');
+
+        foreach ($chains as $members) {
+            $states = collect($members)->map(fn (array $member): string => (string) ($verdicts->get($member['ulid'])['classification'] ?? 'invalid'));
+            $head = $members[0];
+
+            if ($states->every(fn (string $state): bool => $state === 'new')) {
+                $enrollment = $enrollmentsByUlid->get($head['enrollment_ulid']);
+                $period = $head['academic_period_ulid'] !== null ? $periodsByUlid->get($head['academic_period_ulid']) : null;
+                $taken = $enrollment !== null && isset($enrollment['existing_id'])
+                    && $byBusinessKey->has("{$enrollment['existing_id']}:".($period['existing_id'] ?? 'null').":{$head['scope']}");
+
+                if (! $taken) {
+                    continue;
+                }
+            } elseif ($states->every(fn (string $state): bool => $state === 'existing')) {
+                continue;
+            }
+
+            foreach ($members as $member) {
+                if ($verdicts->get($member['ulid'])['classification'] === 'new') {
+                    $verdicts->put($member['ulid'], [
+                        'ulid' => $member['ulid'], 'classification' => 'conflict',
+                        'reason' => $this->t('A cadeia de retificações desta classificação não cabe no que a conta já tem para o mesmo aluno e período.'),
+                    ]);
+                }
+            }
+        }
+
+        return $verdicts->values()->all();
     }
 
     /**

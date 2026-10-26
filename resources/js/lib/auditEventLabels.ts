@@ -10,6 +10,8 @@ const labels: Record<string, string> = {
     'classification.overridden': 'Classificação alterada',
     'classification.redecided': 'Classificação revista',
     'classification.published': 'Classificações publicadas',
+    'classification.rectified': 'Classificação retificada',
+    'classification.rectifications_viewed': 'Retificações consultadas',
     'domain-appreciation.decided': 'Apreciação por domínio decidida',
     'domain-appreciation.redecided': 'Apreciação por domínio revista',
     'domain-appreciation.cleared':

@@ -157,6 +157,21 @@ trait ResolvesBackupReferences
     }
 
     /**
+     * The notice for a rectification whose author this import cannot map.
+     *
+     * The column stays empty, like every other unresolved author: the decision,
+     * its reason, its note and its date are restored in full, and nothing is
+     * attributed to the account that restores. The original author is neither
+     * named nor hinted at (§22.4).
+     */
+    private function unidentifiedRectifierNotice(): string
+    {
+        return $this->t(
+            'Fica com «Autor original não identificado»: o histórico (valores, datas, motivos e notas) é preservado e nenhuma é atribuída à conta que importa.',
+        );
+    }
+
+    /**
      * The notice for a decision that arrives confirmed by an account this
      * import cannot resolve (§13.3, §3.3 — the teacher decides).
      *

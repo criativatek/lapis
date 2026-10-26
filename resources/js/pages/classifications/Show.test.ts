@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
+import type { RectificationState } from '@/lib/rectification';
 import type { SelfAssessmentReading } from '@/lib/selfAssessmentReading';
 import Show from './Show.vue';
 
@@ -172,5 +173,62 @@ describe('classifications/Show — autoavaliação com critérios anteriores', (
 
         expect(wrapper.get('[data-test="self-assessment-value"]').text()).toBe('4');
         expect(wrapper.find('[data-test="self-assessment-legend"]').exists()).toBe(false);
+    });
+});
+
+describe('classifications/Show — retificar uma classificação publicada', () => {
+    function mountPublished(rectification: RectificationState | null, rectificationReasons = [{ value: 'entry_error', label: 'Erro de lançamento', requires_note: false }]) {
+        return mount(Show, {
+            props: {
+                schoolClass: { ulid: 'cls-1', label: '7.º A', subject: 'Português', has_profile: true, scale_name: 'Escala 1 a 5', decision_label: 'Nível atribuído', classifies_by_level: true, levels: [{ id: 4, code: '4', label: 'Bom' }], min_value: null, max_value: null },
+                periods: [{ ulid: 'per-1', label: '1.º Semestre', selected: true }],
+                rectificationReasons,
+                rows: [
+                    {
+                        enrollment_ulid: 'enr-1',
+                        name: 'Carolina Nunes',
+                        photo_url: null,
+                        class_number: 1,
+                        weighted_average: '78.000000',
+                        self_assessment: null,
+                        classification: {
+                            ulid: 'cla-1',
+                            status: 'published',
+                            status_label: 'Publicada',
+                            proposal: { value: '4', state: 'resolved', is_percentage: false },
+                            proposed_scale_level_id: 4,
+                            decision: { code: '4', label: 'Bom', scale_level_id: 4, is_percentage: false, scale_name: null },
+                            overridden: false,
+                            observation: null,
+                            can_confirm: false,
+                            can_change: false,
+                            is_published: true,
+                            rectification,
+                        },
+                    },
+                ],
+            },
+        });
+    }
+
+    const allowed = { allowed: true, needs_confirmation: false, blocked_reason: null, lock_version: 3, count: 0 };
+
+    it('mostra «Retificar» numa linha publicada que o servidor permite', () => {
+        const wrapper = mountPublished(allowed);
+
+        expect(wrapper.get('[data-testid="rectify-button"]').text()).toContain('Retificar');
+        expect(wrapper.find('[data-testid="rectified-marker"]').exists()).toBe(false);
+    });
+
+    it('com retificações mostra o marcador, e sem permissão nem motivo não há botão', () => {
+        const wrapper = mountPublished({ ...allowed, allowed: false, count: 2 });
+
+        expect(wrapper.find('[data-testid="rectify-button"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="rectified-marker"]').attributes('aria-label')).toBe('Classificação retificada');
+        expect(wrapper.html()).not.toContain('esponsável');
+    });
+
+    it('um payload sem «rectification» (servidor antigo) não desenha o botão', () => {
+        expect(mountPublished(null).find('[data-testid="rectify-button"]').exists()).toBe(false);
     });
 });

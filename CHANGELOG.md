@@ -25,6 +25,78 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.182.0] — 2026-10-26
+
+> **Retificar uma classificação publicada.** Uma classificação publicada deixa de
+> ficar fechada para sempre: o professor pode corrigi-la com «Retificar», com
+> motivo obrigatório. Não se edita a linha publicada: cria-se uma nova, já
+> publicada, e a anterior passa a «Substituída», ficando no histórico com valor,
+> autor, data, motivo e nota. **Há migração (uma coluna de retificação e duas
+> CHECKs em `classifications`) e o backup sobe para a versão 20; sem seeder.**
+
+### Adicionado
+
+- **«Retificar» em Classificações e em Resultados.** Diálogo com o novo valor
+  (mesmo controlo de «Alterar»), motivo (erro de lançamento, erro de cálculo ou de
+  dados, revisão ou reclamação, decisão do conselho, outro com nota obrigatória) e
+  avisos: o genérico de que registos fora do Lapispro têm de ser atualizados e, se
+  houver uma exportação posterior à publicação, a data e o adaptador (Inovar).
+  Retificações sucessivas são permitidas; um marcador na célula abre o histórico.
+- **Autorização pela organização da classificação.** Período aberto: quem leciona
+  a turma. Ano ou período encerrado ou arquivado: numa conta pessoal, quem leciona,
+  com confirmação adicional; numa instituição, só o responsável (mesmo que não
+  lecione a turma), com confirmação adicional. Lê sempre o tipo da organização a
+  que a classificação pertence, nunca a organização selecionada. A interface só
+  mostra o que o servidor permite.
+- **Auditoria** `classification.rectified` (valor anterior, novo, motivo, nota e
+  se o período estava encerrado). A retificação não toca em instrumentos,
+  pontuações, escala, critérios nem perfil, e um elemento em revisão não a bloqueia.
+- **Pauta de avaliação.** A linha «Última exportação Inovar» assinala quando há
+  classificações retificadas depois dessa exportação.
+- **Ajuda** «Retificar uma classificação publicada» e ADR 0018.
+- **Página «Retificações» do responsável da instituição.** Entrada de menu
+  «Retificações» (grupo «Instituição», só para o responsável de uma organização
+  institucional) e duas páginas próprias e mínimas: a lista das turmas com
+  classificações publicadas em períodos **encerrados** (com os professores e
+  «N publicadas · M retificadas» por período) e a tabela de cada período, com
+  número, nome, classificação publicada, data de publicação, o histórico e
+  «Retificar». O responsável retifica assim turmas que não leciona **sem que se
+  alargue o acesso às turmas** (`SchoolClassPolicy::view` não muda): a página só
+  mostra o que está publicado, nunca médias, propostas, autoavaliação, elementos,
+  pontuações, observações, assiduidade ou fotografias. Períodos abertos não
+  aparecem (404 se forem pedidos). Cada abertura da tabela de uma turma que não
+  leciona fica registada na auditoria (`classification.rectifications_viewed`).
+  Ajuda «Retificações: a página do responsável da instituição».
+
+### Alterado
+
+- **Backup v20.** A cadeia de retificações viaja inteira (`rectifies_ulid`,
+  motivo, nota, data e autor) e restaura-se por ordem, da mais antiga para a mais
+  recente. A autoria original só é associada pelas regras existentes; se não puder
+  ser identificada fica vazia e o histórico mostra «Autor original não
+  identificado» — nunca é atribuída a quem restaura. A auditoria do restauro regista
+  o importador e conta as retificações sem autor original. Backups v19 e anteriores
+  continuam a importar-se. O Excel legível exporta só as classificações vigentes.
+- **Textos** que diziam que a classificação publicada fica fechada ou que a
+  substituição ainda não existia.
+- **Alvo táctil do marcador de histórico** (o lápis ao lado da classificação
+  retificada): passa de 16 a 44 px abaixo de `md` e 36 px a partir de `md`, sem
+  mudar o ícone nem a altura da linha. Aplica-se a Classificações, Resultados e à
+  página nova.
+- `tests/Feature/Dashboard/PendingWorkTest.php` (do painel, 0.179.0): a fixture da classificação «Substituída»
+  passa a ter sucessora, porque a base de dados agora recusa uma «Substituída» sem ela.
+- `tests/Fixtures/AdvancedAnalysis/base-surfaces.json`: três superfícies de
+  «resultados» mudam de hash porque a página passa a levar a prop `rectification`.
+
+### Notas de instalação
+
+- A migração `2026_11_25_000100` acrescenta cinco colunas e duas CHECKs; antes de
+  as criar verifica que nenhuma classificação está «Substituída» sem sucessora
+  (esperado: 0). Provada em MySQL 8.0.43 e 9.7.1. O rollback só de código é
+  seguro: o código anterior ignora as colunas novas e lê só as linhas vivas.
+  Reverter a migração depois de existirem retificações apaga o motivo, o autor e a
+  data dessas retificações; não o faça sem o decidir.
+
 ## [0.181.0] — 2026-10-26
 
 > **Barra superior contextual e navegação inferior (PR C).** A terceira e
@@ -179,6 +251,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   Pro (com e sem pendências) e Base, sem deslocamento horizontal; axe (WCAG
   2.0 A/AA) sem violações nos blocos novos — as duas restantes são do slogan
   da sidebar, pré-existentes; alvos tácteis de 44 px nas ligações dos blocos.
+
 ## [0.179.0] — 2026-10-25
 
 > **Fundação de dados do novo Painel do Professor (PR A).** Serviços só de
@@ -243,6 +316,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   propostas antigas por confirmar já não aparece como «Agora». A prontidão do
   ano, os primeiros passos e os alertas de registos continuam a ler todas as
   turmas, como antes.
+
 ## [0.177.2] — 2026-10-23
 
 > **Acompanhamento da Turma (Estatística): Imprimir / PDF.** A página ganha o

@@ -2,6 +2,8 @@
 
 namespace App\Policies;
 
+use App\Models\Organization;
+use App\Models\OrganizationType;
 use App\Models\SchoolClass;
 use App\Models\User;
 
@@ -19,6 +21,21 @@ class SchoolClassPolicy
     public function view(User $user, SchoolClass $class): bool
     {
         return $this->teaches($user, $class);
+    }
+
+    /**
+     * The «Retificações» page of one class: the head of the INSTITUTION that owns
+     * the class, whether or not they teach it. Read from the class's own
+     * organization, never the user's current one; a personal account has no head.
+     * Deliberately not `view`, which stays «only my classes». What may then be
+     * rectified is still the classification's policy (RectificationAccess).
+     */
+    public function reviewRectifications(User $user, SchoolClass $class): bool
+    {
+        $organization = Organization::query()->findOrFail($class->organization_id);
+
+        return $organization->type === OrganizationType::Institutional
+            && $user->owns($organization);
     }
 
     public function create(User $user): bool

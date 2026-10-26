@@ -26,13 +26,14 @@ class ClassificationDecisionException extends RuntimeException
     }
 
     /**
-     * Published is the closing act. Reopening one is a supersession, and that
-     * mechanism does not exist yet — so this says so, instead of editing the
-     * grade behind the back of everyone it was communicated to.
+     * Published is the closing act. Changing one is a rectification, which
+     * writes a new row and keeps the old one as history — so a plain edit is
+     * refused and points there, instead of editing the grade behind the back
+     * of everyone it was communicated to.
      */
     public static function alreadyPublished(): self
     {
-        return new self(__('Esta classificação já foi publicada. Uma decisão publicada só muda por substituição, e esse mecanismo ainda não existe no Lapispro.'));
+        return new self(__('Esta classificação já foi publicada. Para a alterar, use «Retificar».'));
     }
 
     public static function notChangeable(): self
@@ -68,5 +69,41 @@ class ClassificationDecisionException extends RuntimeException
     public static function withoutScale(): self
     {
         return new self(__('Esta turma não tem escala de classificação definida no perfil de avaliação.'));
+    }
+
+    /** Only a published, live classification can be rectified; anything else is changed some other way. */
+    public static function notPublished(): self
+    {
+        return new self(__('Só uma classificação publicada pode ser retificada.'));
+    }
+
+    /**
+     * The row moved on between the click and the write: someone else rectified
+     * it first, or its version is not the one the screen showed.
+     */
+    public static function alreadyRectified(): self
+    {
+        return new self(__('Esta classificação já foi retificada. Recarregue a página para ver o valor atual.'));
+    }
+
+    /** A rectification that changes nothing is not one. */
+    public static function unchangedValue(): self
+    {
+        return new self(__('O valor indicado é igual ao atual. Indique o novo valor da classificação.'));
+    }
+
+    public static function rectificationNotAllowed(): self
+    {
+        return new self(__('Não tem permissão para retificar esta classificação.'));
+    }
+
+    public static function closedNeedsConfirmation(): self
+    {
+        return new self(__('O período está encerrado. Confirme que pretende retificar uma classificação já fechada.'));
+    }
+
+    public static function noteRequired(): self
+    {
+        return new self(__('Explique o motivo da retificação: «Outro» exige uma nota.'));
     }
 }

@@ -12,10 +12,11 @@ namespace App\Models;
  * protects against is the PROPOSAL step overwriting a decision, which is what
  * `isFrozen()` answers; it was never meant to lock the teacher out of their own.
  *
- * Publication is the closing act. From there a decision only changes by being
- * superseded — a mechanism the schema is ready for (`superseded_by_id`, the
- * one-live unique index) and that nothing implements yet, so a published
- * classification is refused rather than quietly edited.
+ * Publication is the closing act. From there a decision is never edited: it
+ * only changes by being superseded, through `RectifyClassification`, which
+ * writes a NEW published row (with a reason, and the history kept) and marks
+ * this one `superseded` (`superseded_by_id`, the one-live unique index). Any
+ * other attempt to change a published classification is refused.
  */
 enum ClassificationStatus: string
 {
@@ -51,7 +52,7 @@ enum ClassificationStatus: string
         return $this === self::Proposed || $this === self::Confirmed;
     }
 
-    /** Communicated. Only a supersession changes it now — and there is none yet. */
+    /** Communicated. From here it only changes by rectification (a supersession). */
     public function isPublished(): bool
     {
         return $this === self::Published;

@@ -3,7 +3,6 @@
 namespace App\Actions\DataImports;
 
 use App\Actions\DataImports\Concerns\ResolvesWrittenReferences;
-use App\Models\Classification;
 use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
@@ -33,6 +32,8 @@ use App\Support\Assessment\SelfAssessmentAnswerScale;
 class WriteAssessmentData
 {
     use ResolvesWrittenReferences;
+
+    public function __construct(private readonly WriteClassifications $classifications) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $instrumentRows
@@ -81,7 +82,7 @@ class WriteAssessmentData
         ['byUlid' => $itemsByUlid, 'created' => $itemsCreated] = $this->writeInstrumentItems($instrumentItemRows, $instrumentsByUlid, $groupsByUlid, $scalesByRef);
         $allocationsCreated = $this->writeItemDomainAllocations($itemDomainAllocationRows, $itemsByUlid, $domainsByUlid);
         $scoresCreated = $this->writeStudentItemScores($studentItemScoreRows, $organization, $itemsByUlid, $enrollmentsByUlid, $scalesByRef, $scaleLevelsByRef);
-        $classificationsCreated = $this->writeClassifications($classificationRows, $enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scalesByRef, $scaleLevelsByRef);
+        $classificationsCreated = $this->classifications->write($classificationRows, $enrollmentsByUlid, $periodsByUlid, $profileVersionsByUlid, $scalesByRef, $scaleLevelsByRef);
         ['byUlid' => $templatesByUlid, 'created' => $templatesCreated] = $this->writeSelfAssessmentTemplates($selfAssessmentTemplateRows, $profileVersionsByUlid, $classesByUlid);
         $questionsByKey = $this->writeSelfAssessmentQuestions($selfAssessmentQuestionRows, $templatesByUlid, $domainsByUlid, $scalesByRef);
         ['byUlid' => $selfAssessmentsByUlid, 'created' => $selfAssessmentsCreated] = $this->writeSelfAssessments($selfAssessmentRows, $enrollmentsByUlid, $periodsByUlid, $templatesByUlid);
@@ -282,68 +283,6 @@ class WriteAssessmentData
             ]);
             $score->save();
             $created++;
-        }
-
-        return $created;
-    }
-
-    /**
-     * `superseded_by_id` wires up in a second pass, only when the target
-     * classification also resolved to a real destination row in this same
-     * run — never invented, never left dangling.
-     *
-     * @param  array<int, array<string, mixed>>  $rows
-     * @param  array<string, int>  $enrollmentsByUlid
-     * @param  array<string, int>  $periodsByUlid
-     * @param  array<string, int>  $profileVersionsByUlid
-     * @param  array<string, int>  $scalesByRef
-     * @param  array<string, int>  $scaleLevelsByRef
-     */
-    private function writeClassifications(array $rows, array $enrollmentsByUlid, array $periodsByUlid, array $profileVersionsByUlid, array $scalesByRef, array $scaleLevelsByRef): int
-    {
-        $created = 0;
-        /** @var array<string, int> $byUlid */
-        $byUlid = [];
-        /** @var array<string, string> $pendingSupersedes */
-        $pendingSupersedes = [];
-
-        foreach ($rows as $row) {
-            if ($row['classification'] !== 'new') {
-                continue;
-            }
-
-            $enrollmentId = $this->resolveId($row['enrollment_ulid'], $enrollmentsByUlid);
-
-            if ($enrollmentId === null) {
-                continue;
-            }
-
-            $classification = new Classification;
-            $classification->forceFill([
-                'ulid' => $this->writableUlid($row), 'enrollment_id' => $enrollmentId,
-                'academic_period_id' => $this->resolveId($row['academic_period_ulid'], $periodsByUlid),
-                'scope' => $row['scope'], 'assessment_profile_version_id' => $this->resolveId($row['assessment_profile_version_ulid'], $profileVersionsByUlid),
-                'status' => $row['status'], 'proposed_normalized_value' => $row['proposed_normalized_value'],
-                'proposed_value' => $row['proposed_value'], 'proposed_scale_level_id' => $this->resolveScaleLevelId($row['proposed_scale_level'], $scalesByRef, $scaleLevelsByRef),
-                'final_value' => $row['final_value'], 'final_scale_level_id' => $this->resolveScaleLevelId($row['final_scale_level'], $scalesByRef, $scaleLevelsByRef),
-                'override_reason' => $row['override_reason'], 'overridden_by' => $row['overridden_by'], 'overridden_at' => $row['overridden_at'],
-                'confirmed_by' => $row['confirmed_by'], 'confirmed_at' => $row['confirmed_at'], 'published_at' => $row['published_at'],
-            ]);
-            $classification->save();
-            $byUlid[$row['ulid']] = $classification->getKey();
-            $created++;
-
-            if ($row['superseded_by_ulid'] !== null) {
-                $pendingSupersedes[$row['ulid']] = $row['superseded_by_ulid'];
-            }
-        }
-
-        foreach ($pendingSupersedes as $ulid => $supersededByUlid) {
-            $targetId = $byUlid[$supersededByUlid] ?? null;
-
-            if ($targetId !== null) {
-                Classification::query()->whereKey($byUlid[$ulid])->update(['superseded_by_id' => $targetId]);
-            }
         }
 
         return $created;

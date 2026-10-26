@@ -230,6 +230,11 @@ class ExecuteDataImport
                     'record_followup_confirmations',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),
+                // Rectifications whose author could not be mapped: restored with
+                // an empty author, never in the name of the account that imports.
+                'rectifications_without_original_author' => collect($rows['classifications'])
+                    ->filter(fn (array $row): bool => $row['classification'] === 'new' && ($row['rectifier_unidentified'] ?? false) === true)
+                    ->count(),
             ];
 
             $lockedImport->forceFill([
@@ -250,7 +255,8 @@ class ExecuteDataImport
                     'created_count' => $summary['classes']['created'] + $summary['students']['created'] + $summary['enrollments']['created'],
                     'skipped_count' => $summary['classes']['skipped'] + $summary['students']['skipped'] + $summary['enrollments']['skipped'],
                     'conflict_count' => ($plan['counts']['classes']['conflict'] ?? 0) + ($plan['counts']['students']['conflict'] ?? 0) + ($plan['counts']['enrollments']['conflict'] ?? 0),
-                    'unresolved_author_count' => $summary['records_without_original_author'] + $summary['classifications_left_unconfirmed'],
+                    'rectifications_without_original_author' => $summary['rectifications_without_original_author'],
+                    'unresolved_author_count' => $summary['records_without_original_author'] + $summary['classifications_left_unconfirmed'] + $summary['rectifications_without_original_author'],
                 ],
             ));
 

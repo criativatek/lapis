@@ -23,6 +23,12 @@ class OrganizationMembershipPolicy
         return $this->manages($user, $organization);
     }
 
+    /** The «Retificações» list: the head of the institution the user is working in. */
+    public function viewRectifications(User $user, Organization $organization): bool
+    {
+        return $this->manages($user, $organization);
+    }
+
     public function requestClosure(User $user, Organization $organization): bool
     {
         return $this->manages($user, $organization);

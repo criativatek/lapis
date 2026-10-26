@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\AcademicPeriod;
+use App\Models\Classification;
+use App\Models\ClassificationScope;
 use App\Models\Domain;
+use App\Models\RectificationReason;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Ai\AiRequestFailed;
@@ -17,6 +20,7 @@ use App\Services\Assessment\CoverageExplanation;
 use App\Services\Assessment\ScaleProposalResolver;
 use App\Services\Documents\DocumentIdentity;
 use App\Support\Assessment\DecisionScale;
+use App\Support\Assessment\RectificationPayload;
 use App\Support\Entitlements\Entitlements;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -59,7 +63,8 @@ class ResultsController extends Controller
         $view = $this->periodView($class, $period);
 
         return Inertia::render('results/Show', [
-            ...$view,
+            ...$this->withRectification($view, $class),
+            'rectificationReasons' => RectificationReason::options(),
             // WHETHER THE BUTTON MAY BE DRAWN, and — separately — whether
             // pressing it could produce anything. A school without the
             // capability is being offered an upgrade; a period with two
@@ -179,6 +184,46 @@ class ResultsController extends Controller
             'off' => 'A análise da avaliação com IA não está ativada nesta instalação.',
             default => 'A análise da avaliação com IA não está configurada nesta instalação.',
         };
+    }
+
+    /**
+     * Adds «Retificar» to each row's classification, for the screen only.
+     *
+     * KEPT OUT OF `periodView()` on purpose: that array is also what the AI
+     * reading is made from, and who may rectify what has no place in it. The
+     * rights come from the same presenter Classificações uses, so the two
+     * screens cannot disagree; the rows are matched by the classification's ulid,
+     * which the progression read already carries.
+     *
+     * @param  array<string, mixed>  $view
+     * @return array<string, mixed>
+     */
+    protected function withRectification(array $view, SchoolClass $class): array
+    {
+        $periodUlid = $this->selectedPeriodUlid($view);
+        $rows = is_array($view['rows'] ?? null) ? $view['rows'] : [];
+        $ulids = collect($rows)->pluck('classification.ulid')->filter()->values();
+
+        if ($periodUlid === null || $ulids->isEmpty()) {
+            return $view;
+        }
+
+        $period = AcademicPeriod::where('academic_year_id', $class->academic_year_id)
+            ->where('ulid', $periodUlid)->firstOrFail();
+
+        $live = Classification::query()->whereIn('ulid', $ulids)->get();
+        $rectification = RectificationPayload::for($this->user(), $class, $period, ClassificationScope::Period, $live);
+        $byUlid = $live->mapWithKeys(fn (Classification $row) => [$row->ulid => $rectification[(int) $row->enrollment_id] ?? null]);
+
+        $view['rows'] = array_map(function (array $row) use ($byUlid): array {
+            if (is_array($row['classification'] ?? null)) {
+                $row['classification']['rectification'] = $byUlid->get($row['classification']['ulid']);
+            }
+
+            return $row;
+        }, $view['rows']);
+
+        return $view;
     }
 
     /**
