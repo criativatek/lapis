@@ -95,6 +95,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   e `AppLayout.ssr.test.ts` com o contrato novo do shell em Node.
 - QA no browser (Playwright, SQLite isolado): painel, turma, grelhas,
   registos e aulas em 1280 e 390 px, claro e escuro.
+- `tests/Fixtures/AdvancedAnalysis/base-surfaces.json` regenerada de
+  propósito: a superfície «dashboard (props, com as partilhadas)» mudou porque
+  o prop partilhado `scope` passou a `workContext`; as outras superfícies
+  Base continuam com o mesmo hash. `AcademicYearContextTest` lê o nome novo.
+- O chip da turma custa UMA consulta por página de turma (`ClassSwitcher`,
+  disciplina por subconsulta), dentro dos tetos de consultas existentes
+  (`StudentProgressTest` §79).
 
 ## [0.180.0] — 2026-10-26
 

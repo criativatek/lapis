@@ -3,6 +3,7 @@
 namespace App\Support\Navigation;
 
 use App\Models\SchoolClass;
+use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as MatchedRoute;
@@ -34,11 +35,19 @@ class ClassSwitcher
      */
     public function optionsFor(Request $request, User $teacher, SchoolClass $current): array
     {
+        // UMA consulta, não duas: o nome da disciplina vem por subconsulta em
+        // vez de um eager load, porque isto corre em TODAS as páginas de turma
+        // e cada uma tem o seu teto de consultas (§79).
+        $table = $current->getTable();
+
         $classes = SchoolClass::query()
             ->taughtBy($teacher)
             ->where('academic_year_id', $current->academic_year_id)
             ->where(fn ($query) => $query->whereNull('archived_at')->orWhere($current->getKeyName(), $current->getKey()))
-            ->with('subject')
+            ->addSelect([
+                $table.'.*',
+                'subject_name' => Subject::query()->select('name')->whereColumn('subjects.id', $table.'.subject_id')->limit(1),
+            ])
             ->orderBy('label')
             ->orderBy('id')
             ->get();
@@ -46,7 +55,7 @@ class ClassSwitcher
         return array_values($classes->map(fn (SchoolClass $class): array => [
             'ulid' => $class->ulid,
             'label' => $class->label,
-            'subject' => $class->subject->name,
+            'subject' => (string) $class->getAttribute('subject_name'),
             'gradeLevel' => $class->grade_level,
             'href' => $this->destinationFor($request, $class),
             'is_current' => $class->is($current),
