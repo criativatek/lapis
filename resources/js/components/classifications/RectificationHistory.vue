@@ -17,6 +17,10 @@ import type { RectificationHistoryEntry } from '@/lib/rectification';
  * Só aparece quando há retificações, e aparece a quem apenas lê: ver o que
  * mudou não depende de poder retificar. O histórico não vem com a página (custa
  * consultas por linha); pede-se ao abrir.
+ *
+ * O ícone é pequeno de propósito (discreto), mas o ALVO não: 44px abaixo de `md`
+ * e 36px a partir daí (DESIGN.md e convenção do repositório). As margens
+ * negativas devolvem à linha o espaço que o alvo ocupa, para a célula não crescer.
  */
 const props = defineProps<{
     /** Quantas retificações a célula já teve; sem nenhuma, nada se desenha. */
@@ -50,7 +54,7 @@ async function show(): Promise<void> {
     <button
         v-if="count > 0"
         type="button"
-        class="ml-1 inline-flex items-center rounded p-0.5 align-middle text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        class="-my-3 -ml-2 -mr-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded align-middle text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:-my-2 md:-ml-1.5 md:-mr-2 md:min-h-9 md:min-w-9"
         title="Classificação retificada"
         aria-label="Classificação retificada"
         data-testid="rectified-marker"

@@ -43,4 +43,16 @@ Alternatives rejected: attributing to the importer (falsifies the audit trail: t
 
 - The self-pointer relies on the transaction; a crash mid-way rolls back, but code that reads outside transactions on MySQL must never see it (it cannot, under InnoDB isolation).
 - Closing a period does not freeze classifications, and there is no approval flow: a closed rectification needs only the confirmation (and, in an institution, the head).
-- **Known gap, undecided:** the head of an institution may rectify a closed period for a class they do not teach, but the screens that expose the button (classes, classifications, results) are not necessarily open to a head for classes they do not teach. Whether to open them is still to be decided.
+- **The former gap is closed** (see the addendum): the head of an institution reaches the classifications of a class they do not teach through their own page, not through the teacher's screens, which stay closed to them.
+
+## Addendum — the head's «Retificações» page
+
+The head of an institution may rectify a closed period for a class they do not teach; to make that usable the product owner approved a **dedicated, minimal page** rather than opening the teacher's screens.
+
+- **What it is.** `GET /retificacoes` lists the classes that have published classifications in a *closed* period (per period: published and rectified counts); `GET /classes/{class}/retificacoes/{period}` shows the table. A menu entry «Retificações» (group «Instituição», `institution_admin` plus `owner_only`) leads there. The abilities are `viewRectifications` (organization: institutional and owned by the user) and `SchoolClassPolicy::reviewRectifications` (class).
+- **`view` was not widened.** `SchoolClassPolicy::view` is still «only my classes». Nothing a head could not already reach became reachable; the page has its own controller and its own props.
+- **Allowlist.** The server sends, per student: class number, name, the live published decision with its publication date, and the rectification state (`allowed`, `needs_confirmation`, `blocked_reason`, `lock_version`, `count`). No averages, proposals, self-assessment, instruments, scores, observations, attendance or photographs; a test walks the Inertia props and fails on any other key. Rectifying and the history keep using `classifications.rectify` and `classifications.rectification`, whose policies are unchanged.
+- **Closed only.** An open period is the teacher's: it is absent from the list and its page answers 404, without a hint that anything exists. «Closed» is decided in one place (`RectificationContext::closed`), shared with the rectification policy.
+- **Audit.** Opening the table of a class the viewer does not teach records `classification.rectifications_viewed` (user, class, period). A head who teaches the class, a partial reload and a prefetch record nothing.
+- **A class without a teacher and with an open period** cannot be rectified by the head: the period is still the (absent) teacher's. The way out is to assign a teacher («Turmas a Reatribuir»), not a new exception.
+- **What stayed out:** the gap noted above no longer exists. Still out: an approval flow, opening any other teacher-only screen to the head, and rectifying an open period.

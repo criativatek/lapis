@@ -53,9 +53,9 @@ class RectificationsPageTest extends TestCase
     {
         parent::setUp();
 
-        // The Vue pages belong to the next change; only the server's props are under test.
+        // The pages exist now (the component check is on); only the server's
+        // props are under test, so the Vite manifest is not needed.
         $this->withoutVite();
-        config(['inertia.testing.ensure_pages_exist' => false]);
 
         $this->ana = User::factory()->create(['email' => 'ana.martins@lapis.test']);
         $this->seed(DemoDataSeeder::class);

@@ -54,6 +54,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - **Pauta de avaliação.** A linha «Última exportação Inovar» assinala quando há
   classificações retificadas depois dessa exportação.
 - **Ajuda** «Retificar uma classificação publicada» e ADR 0018.
+- **Página «Retificações» do responsável da instituição.** Entrada de menu
+  «Retificações» (grupo «Instituição», só para o responsável de uma organização
+  institucional) e duas páginas próprias e mínimas: a lista das turmas com
+  classificações publicadas em períodos **encerrados** (com os professores e
+  «N publicadas · M retificadas» por período) e a tabela de cada período, com
+  número, nome, classificação publicada, data de publicação, o histórico e
+  «Retificar». O responsável retifica assim turmas que não leciona **sem que se
+  alargue o acesso às turmas** (`SchoolClassPolicy::view` não muda): a página só
+  mostra o que está publicado, nunca médias, propostas, autoavaliação, elementos,
+  pontuações, observações, assiduidade ou fotografias. Períodos abertos não
+  aparecem (404 se forem pedidos). Cada abertura da tabela de uma turma que não
+  leciona fica registada na auditoria (`classification.rectifications_viewed`).
+  Ajuda «Retificações: a página do responsável da instituição».
 
 ### Alterado
 
@@ -66,6 +79,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   continuam a importar-se. O Excel legível exporta só as classificações vigentes.
 - **Textos** que diziam que a classificação publicada fica fechada ou que a
   substituição ainda não existia.
+- **Alvo táctil do marcador de histórico** (o lápis ao lado da classificação
+  retificada): passa de 16 a 44 px abaixo de `md` e 36 px a partir de `md`, sem
+  mudar o ícone nem a altura da linha. Aplica-se a Classificações, Resultados e à
+  página nova.
 - `tests/Fixtures/AdvancedAnalysis/base-surfaces.json`: três superfícies de
   «resultados» mudam de hash porque a página passa a levar a prop `rectification`.
 
@@ -77,9 +94,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   seguro: o código anterior ignora as colunas novas e lê só as linhas vivas.
   Reverter a migração depois de existirem retificações apaga o motivo, o autor e a
   data dessas retificações; não o faça sem o decidir.
-- Limitação conhecida: o responsável de uma instituição que não leciona a turma
-  consegue retificar e ver o histórico, mas ainda não abre os ecrãs de turmas que
-  não leciona; fica por decidir noutra frente.
 
 ## [0.177.2] — 2026-10-23
 

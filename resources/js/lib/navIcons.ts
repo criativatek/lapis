@@ -8,6 +8,7 @@ import {
     CircleHelp,
     ClipboardList,
     Download,
+    FilePenLine,
     FileText,
     Footprints,
     GraduationCap,
@@ -54,6 +55,8 @@ const icons: Record<string, LucideIcon> = {
     TrendingUp,
     PieChart,
     FileText,
+    // «Retificações»: a document being corrected, not the pencil of «Classificações».
+    FilePenLine,
     CalendarDays,
     CalendarRange,
     // A clock inside the calendar: «Horário do Professor» is about the hours

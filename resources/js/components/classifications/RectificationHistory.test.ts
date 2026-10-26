@@ -89,6 +89,15 @@ describe('RectificationHistory', () => {
         expect(marked.attributes('title')).toBe('Classificação retificada');
     });
 
+    it('o alvo táctil é de 44px (36px a partir de md) e o ícone continua pequeno', () => {
+        const marker = mountHistory(1).get('[data-testid="rectified-marker"]');
+
+        expect(marker.classes()).toEqual(expect.arrayContaining(['min-h-11', 'min-w-11', 'md:min-h-9', 'md:min-w-9']));
+        // Margens negativas: o alvo cresce sem crescer a linha da tabela.
+        expect(marker.classes()).toEqual(expect.arrayContaining(['-my-3', 'md:-my-2']));
+        expect(marker.get('svg').classes()).toContain('size-3');
+    });
+
     it('não pede nada até ser aberto', () => {
         mountHistory(1);
 

@@ -172,10 +172,12 @@ class OrganizationInvitationTest extends TestCase
 
         $ownerNav = $this->asMemberOf($organization, $owner)->get('/dashboard');
         $ownerNav->assertInertia(fn ($page) => $page
-            ->where('nav.sections', fn ($sections) => $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('team')));
+            ->where('nav.sections', fn ($sections) => $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('team'))
+            ->where('nav.sections', fn ($sections) => $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('rectifications')));
 
         $memberNav = $this->asMemberOf($organization, $member)->get('/dashboard');
         $memberNav->assertInertia(fn ($page) => $page
-            ->where('nav.sections', fn ($sections) => ! $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('team')));
+            ->where('nav.sections', fn ($sections) => ! $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('team'))
+            ->where('nav.sections', fn ($sections) => ! $sections->flatMap(fn ($s) => $s['items'])->pluck('key')->contains('rectifications')));
     }
 }
