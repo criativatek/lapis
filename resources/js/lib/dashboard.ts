@@ -341,8 +341,10 @@ export type HeroCard = {
     label: string;
     /** Uma segunda linha pequena sobre HOJE, só quando acrescenta um facto («1 de hoje em falta»). */
     hint: string | null;
-    /** Aviso âmbar numa linha própria («2 sumários anteriores em falta»); nunca altera o tom nem a linha principal. */
+    /** Aviso (relógio + texto âmbar) numa linha própria («2 sumários anteriores em falta»); nunca altera o tom nem a linha principal. */
     warning: string | null;
+    /** Verdadeiro só quando há pendências: o cartão fica neutro e o âmbar reduz-se a um pequeno indicador junto ao título. */
+    attention: boolean;
 };
 
 /** Linhas extra (nota, aviso) que um cartão pode ter além do título e do número. */
@@ -355,21 +357,30 @@ export function heroExtraLines(cards: Pick<HeroCard, 'hint' | 'warning'>[]): Ext
     return Math.min(most, 2) as ExtraLines;
 }
 
-/** Classes literais (o Tailwind só gera as que lê): 0, 1 ou 2 linhas extra. */
-const HERO_MIN_HEIGHT: Record<ExtraLines, string> = { 0: 'min-h-[76px]', 1: 'min-h-[94px]', 2: 'min-h-[112px]' };
+/**
+ * Altura mínima só quando os cartões estão em colunas (aí têm de igualar-se);
+ * empilhados cada um tem a altura do seu conteúdo, sem espaço desperdiçado.
+ * Classes literais (o Tailwind só gera as que lê): 0, 1 ou 2 linhas extra.
+ */
+const HERO_MIN_HEIGHT: Record<'three' | 'two', Record<ExtraLines, string>> = {
+    three: { 0: '@min-[40.5rem]:min-h-[76px]', 1: '@min-[40.5rem]:min-h-[94px]', 2: '@min-[40.5rem]:min-h-[112px]' },
+    two: { 0: '@min-[26.5rem]:min-h-[76px]', 1: '@min-[26.5rem]:min-h-[94px]', 2: '@min-[26.5rem]:min-h-[112px]' },
+};
 
-export function heroMinHeightClass(extra: ExtraLines): string {
-    return HERO_MIN_HEIGHT[extra];
+export function heroMinHeightClass(extra: ExtraLines, count = 3): string {
+    return HERO_MIN_HEIGHT[count === 2 ? 'two' : 'three'][extra];
 }
 
 /**
  * A grelha dos cartões responde à largura do INVÓLUCRO (`@container`), não à do
  * ecrã: com a barra lateral aberta o conteúdo é muito mais estreito. Só passa a
  * colunas quando cada cartão fica com largura para o texto mais comprido sem
- * cortar; abaixo disso empilham. `auto-rows-fr` iguala as alturas empilhadas.
+ * cortar; abaixo disso empilham. `auto-rows-fr` iguala as alturas em colunas.
  */
 export function heroGridClass(count: number): string {
-    return count === 2 ? 'grid grid-cols-1 auto-rows-fr gap-3 @min-[24.5rem]:grid-cols-2' : 'grid grid-cols-1 auto-rows-fr gap-3 @min-[37.5rem]:grid-cols-3';
+    return count === 2
+        ? 'grid grid-cols-1 gap-2 @min-[26.5rem]:auto-rows-fr @min-[26.5rem]:grid-cols-2 @min-[26.5rem]:gap-3'
+        : 'grid grid-cols-1 gap-2 @min-[26.5rem]:gap-3 @min-[40.5rem]:auto-rows-fr @min-[40.5rem]:grid-cols-3';
 }
 
 /** O rótulo do cartão «Pendentes»: o tipo, quando todas as linhas são do mesmo; senão «pendências». */
@@ -406,11 +417,11 @@ export function heroCards(data: DashboardData, queue: QueueItem[]): HeroCard[] |
     const day = data.day;
 
     if (day.available) {
-        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: day.totals.lessons, label: day.totals.lessons === 1 ? 'aula' : 'aulas', hint: null, warning: null });
+        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: day.totals.lessons, label: day.totals.lessons === 1 ? 'aula' : 'aulas', hint: null, warning: null, attention: false });
     } else {
         const events = data.week.days.find((item) => item.is_today)?.events.length ?? 0;
 
-        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: events, label: events === 1 ? 'acontecimento' : 'acontecimentos', hint: null, warning: null });
+        cards.push({ key: 'today', tone: 'sky', title: 'Hoje', value: events, label: events === 1 ? 'acontecimento' : 'acontecimentos', hint: null, warning: null, attention: false });
     }
 
     if (data.context.modules.lessons) {
@@ -420,7 +431,7 @@ export function heroCards(data: DashboardData, queue: QueueItem[]): HeroCard[] |
         const previous = summaries.recent.filter((lesson) => lesson.date < today).length + summaries.older_count;
         const warning = previous > 0 ? `${previous} ${previous === 1 ? 'sumário anterior' : 'sumários anteriores'} em falta` : null;
         const lessons = day.totals.lessons;
-        const base = { key: 'summaries', title: 'Sumários', warning } as const;
+        const base = { key: 'summaries', title: 'Sumários', warning, attention: false } as const;
 
         if (!day.available) {
             cards.push({ ...base, tone: 'mint', value: '—', label: 'sem horário', hint: null });
@@ -442,8 +453,8 @@ export function heroCards(data: DashboardData, queue: QueueItem[]): HeroCard[] |
 
     cards.push(
         queue.length === 0
-            ? { key: 'pending', tone: 'mint', title: 'Pendentes', value: 0, label: 'Tudo em dia', hint: null, warning: null }
-            : { key: 'pending', tone: 'amber', title: 'Pendentes', value: queue.length, label: pendingLabel(queue), hint: null, warning: null },
+            ? { key: 'pending', tone: 'mint', title: 'Pendentes', value: 0, label: 'Tudo em dia', hint: null, warning: null, attention: false }
+            : { key: 'pending', tone: 'plain', title: 'Pendentes', value: queue.length, label: pendingLabel(queue), hint: null, warning: null, attention: true },
     );
 
     return cards;

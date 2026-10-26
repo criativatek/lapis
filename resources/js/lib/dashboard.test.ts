@@ -222,13 +222,13 @@ describe('dashboard — os três cartões do cabeçalho', () => {
     it('Pendentes: o número é o comprimento da lista e o rótulo diz o tipo', () => {
         const queue = [item('correction', 'a'), item('correction', 'b'), item('correction', 'c')];
 
-        expect(find(heroCards(withDay(1, 1, 0), queue), 'pending')).toMatchObject({ tone: 'amber', value: 3, label: 'correções' });
+        expect(find(heroCards(withDay(1, 1, 0), queue), 'pending')).toMatchObject({ tone: 'plain', attention: true, value: 3, label: 'correções' });
         expect(find(heroCards(withDay(1, 1, 0), [item('summary'), item('review')]), 'pending')).toMatchObject({ value: 2, label: 'pendências' });
         expect(find(heroCards(withDay(1, 1, 0), [item('classifications')]), 'pending')).toMatchObject({ value: 1, label: 'pendência' });
     });
 
     it('Pendentes: zero pendências é «Tudo em dia», verde', () => {
-        expect(find(heroCards(withDay(1, 1, 0), []), 'pending')).toMatchObject({ tone: 'mint', value: 0, label: 'Tudo em dia' });
+        expect(find(heroCards(withDay(1, 1, 0), []), 'pending')).toMatchObject({ tone: 'mint', attention: false, value: 0, label: 'Tudo em dia', hint: null, warning: null });
     });
 
     it('com módulo, horário e pendências saem os três, por esta ordem', () => {
@@ -246,13 +246,18 @@ describe('dashboard — altura uniforme dos cartões', () => {
         expect(heroExtraLines([card(null, null), card('nota', 'aviso')])).toBe(2);
     });
 
-    it('cada nível tem uma classe de altura mínima própria e crescente', () => {
-        expect([0, 1, 2].map((n) => heroMinHeightClass(n as 0 | 1 | 2))).toEqual(['min-h-[76px]', 'min-h-[94px]', 'min-h-[112px]']);
+    it('cada nível tem uma classe de altura mínima própria e crescente, só quando os cartões estão em colunas', () => {
+        expect([0, 1, 2].map((n) => heroMinHeightClass(n as 0 | 1 | 2))).toEqual(['@min-[40.5rem]:min-h-[76px]', '@min-[40.5rem]:min-h-[94px]', '@min-[40.5rem]:min-h-[112px]']);
+        expect([0, 1, 2].map((n) => heroMinHeightClass(n as 0 | 1 | 2, 2))).toEqual(['@min-[26.5rem]:min-h-[76px]', '@min-[26.5rem]:min-h-[94px]', '@min-[26.5rem]:min-h-[112px]']);
     });
 
-    it('a grelha usa container queries: 3 colunas só com ~190 px por cartão, 2 com 2 cartões', () => {
-        expect(heroGridClass(3)).toContain('@min-[37.5rem]:grid-cols-3');
-        expect(heroGridClass(2)).toContain('@min-[24.5rem]:grid-cols-2');
+    it('a grelha usa container queries: 3 colunas só com ~205 px por cartão, 2 com 2 cartões', () => {
+        expect(heroGridClass(3)).toContain('@min-[40.5rem]:grid-cols-3');
+        expect(heroGridClass(2)).toContain('@min-[26.5rem]:grid-cols-2');
         expect(heroGridClass(3)).toContain('grid-cols-1');
+        // empilhados não se igualam (sem espaço desperdiçado): as alturas só se igualam em colunas
+        expect(heroGridClass(3)).toContain('@min-[40.5rem]:auto-rows-fr');
+        expect(heroGridClass(3).split(' ')).not.toContain('auto-rows-fr');
+        expect(heroGridClass(2).split(' ')).not.toContain('auto-rows-fr');
     });
 });

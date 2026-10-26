@@ -74,7 +74,10 @@ describe('DashboardHero', () => {
         expect(wrapper.find('[data-testid="hero-summaries"]').classes().join(' ')).toContain('bg-emerald-50/60');
         const pending = wrapper.find('[data-testid="hero-pending"]');
         expect(pending.element.tagName).toBe('BUTTON');
-        expect(pending.classes().join(' ')).toContain('bg-amber-50/70');
+        // neutro: o âmbar é só o pequeno indicador junto ao título
+        expect(pending.classes().join(' ')).toContain('bg-card');
+        expect(pending.classes().join(' ')).not.toContain('bg-amber');
+        expect(pending.find('[data-testid="hero-stat-attention"]').exists()).toBe(true);
         expect(pending.text()).toContain('3');
         expect(pending.text()).toContain('pendências');
     });
@@ -86,6 +89,7 @@ describe('DashboardHero', () => {
         expect(pending.element.tagName).toBe('DIV');
         expect(pending.text()).toContain('Tudo em dia');
         expect(pending.classes().join(' ')).toContain('bg-emerald-50/60');
+        expect(pending.find('[data-testid="hero-stat-attention"]').exists()).toBe(false);
         expect(wrapper.find('button[aria-expanded]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="pending-panel"]').exists()).toBe(false);
     });
@@ -169,7 +173,7 @@ describe('DashboardHero', () => {
 
         expect(wrapper.find('[data-testid="hero-summaries"]').exists()).toBe(false);
         const grid = wrapper.find('[data-testid="hero-cards"]');
-        expect(grid.classes()).toContain('@min-[24.5rem]:grid-cols-2');
+        expect(grid.classes()).toContain('@min-[26.5rem]:grid-cols-2');
         expect(grid.classes().join(' ')).not.toContain('sm:grid-cols');
     });
 
@@ -178,7 +182,7 @@ describe('DashboardHero', () => {
         const grid = wrapper.get('[data-testid="hero-cards"]');
 
         expect(grid.element.parentElement?.classList.contains('@container')).toBe(true);
-        expect(grid.classes()).toEqual(expect.arrayContaining(['grid-cols-1', 'auto-rows-fr', '@min-[37.5rem]:grid-cols-3']));
+        expect(grid.classes()).toEqual(expect.arrayContaining(['grid-cols-1', '@min-[40.5rem]:auto-rows-fr', '@min-[40.5rem]:grid-cols-3']));
         expect(grid.classes().join(' ')).not.toMatch(/(^| )(sm|md|lg):/);
     });
 
@@ -193,7 +197,7 @@ describe('DashboardHero', () => {
             expect(html).not.toContain('text-ellipsis');
         }
 
-        const mins = ['today', 'summaries', 'pending'].map((key) => wrapper.get(`[data-testid="hero-${key}"]`).classes().filter((c) => c.startsWith('min-h-')));
+        const mins = ['today', 'summaries', 'pending'].map((key) => wrapper.get(`[data-testid="hero-${key}"]`).classes().filter((c) => c.includes('min-h-')));
         expect(new Set(mins.map((m) => m.join())).size).toBe(1);
         expect(mins[0]).toHaveLength(1);
     });

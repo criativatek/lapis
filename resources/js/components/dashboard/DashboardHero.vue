@@ -7,7 +7,7 @@ import HeroStat from '@/components/dashboard/HeroStat.vue';
 import PendingList from '@/components/dashboard/PendingList.vue';
 import { Button } from '@/components/ui/button';
 import type { DashboardData, HeroCard, QueueItem } from '@/lib/dashboard';
-import { eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass } from '@/lib/dashboard';
+import { eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass, heroMinHeightClass } from '@/lib/dashboard';
 
 const props = defineProps<{
     teacherName: string;
@@ -25,8 +25,8 @@ const firstName = computed(() => props.teacherName.split(' ')[0]);
 const greeting = computed(() => greetingFor(props.data.context.now));
 const eyebrow = computed(() => eyebrowFor(props.data.context));
 const cards = computed(() => heroCards(props.data, props.queue));
-// Todos os cartões partilham a mesma altura mínima (a do que tem mais linhas).
-const extraLines = computed(() => (cards.value ? heroExtraLines(cards.value) : 0));
+// Em colunas todos os cartões partilham a mesma altura mínima (a do que tem mais linhas); empilhados, cada um tem a do seu conteúdo.
+const minHeight = computed(() => (cards.value ? heroMinHeightClass(heroExtraLines(cards.value), cards.value.length) : ''));
 
 const ICONS: Record<HeroCard['key'], Component> = { today: CalendarDays, summaries: ClipboardCheck, pending: ListChecks };
 
@@ -63,11 +63,11 @@ const announcement = computed(() => `${props.queue.length} ${props.queue.length 
              trabalho arrumado». Decorativa, invisível ao leitor de ecrã. -->
         <div class="pointer-events-none absolute -inset-x-4 -top-4 -z-0 h-40 bg-[radial-gradient(640px_200px_at_88%_-10%,hsl(38_92%_88%/.55),transparent_70%)] dark:bg-[radial-gradient(640px_200px_at_88%_-10%,hsl(38_60%_30%/.35),transparent_70%)]" aria-hidden="true"></div>
 
-        <div class="relative flex flex-col gap-5">
-            <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+        <div class="relative flex flex-col gap-3 sm:gap-5">
+            <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:gap-y-4">
                 <div class="min-w-0">
-                    <p class="mb-1 text-xs font-semibold tracking-[.08em] text-muted-foreground uppercase">{{ eyebrow }}</p>
-                    <h1 id="dash-greeting" class="font-serif text-[32px] leading-[38px] font-medium tracking-tight">{{ greeting }}, {{ firstName }}.</h1>
+                    <p class="mb-0.5 text-xs font-semibold tracking-[.08em] text-muted-foreground uppercase">{{ eyebrow }}</p>
+                    <h1 id="dash-greeting" class="font-serif text-[28px] leading-9 font-medium tracking-tight sm:text-[32px] sm:leading-[38px]">{{ greeting }}, {{ firstName }}.</h1>
                 </div>
 
                 <!-- Atalhos fixos, não recomendações: ficam discretos ao lado da saudação. -->
@@ -99,12 +99,13 @@ const announcement = computed(() => `${props.queue.length} ${props.queue.length 
                         :label="item.label"
                         :hint="item.hint"
                         :warning="item.warning"
+                        :attention="item.attention"
                         :tone="item.tone"
                         :icon="ICONS[item.key]"
                         :clickable="item.key === 'pending' && queue.length > 0"
                         :expanded="open"
                         :controls="PANEL_ID"
-                        :extra-lines="extraLines"
+                        :min-height="minHeight"
                         :data-testid="`hero-${item.key}`"
                         @click="open = !open"
                     />

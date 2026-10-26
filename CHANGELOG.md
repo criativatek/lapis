@@ -48,6 +48,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   volta a ficar visível, se os dados têm mais de 30 s, revalida só `dashboard` com
   uma visita síncrona (nunca `router.reload()`), para a lista refletir a tarefa
   acabada de concluir. Um texto `aria-live` anuncia o novo número de pendências.
+- **Acabamento do cabeçalho:** «Pendentes» passa a superfície neutra (`plain`) com
+  um pequeno ponto âmbar junto ao título, só quando há pendências (o âmbar
+  sinaliza o que pede atenção, não identifica um cartão); o aviso de sumários
+  anteriores troca o ponto por um ícone de relógio; no telemóvel os cartões
+  empilhados ficam compactos (altura do conteúdo, sem alturas iguais forçadas).
 
 ### Removido
 
