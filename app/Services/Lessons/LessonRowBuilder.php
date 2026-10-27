@@ -76,6 +76,12 @@ final class LessonRowBuilder
             // faltas é sempre pedido junto com a própria linha (`withCount`),
             // e nunca lido por aula à parte.
             ->withCount(['attendances as absent_count' => fn ($query) => $query->where('status', 'absent')])
+            // Quem faltou, na mesma passagem: os números da turma dos alunos
+            // ausentes (e não ids internos) vêm numa só consulta para a lista
+            // inteira, e nunca uma por aula.
+            ->with(['absentAttendances' => fn (Relation $query) => $query
+                ->select(['id', 'lesson_id', 'enrollment_id', 'status'])
+                ->with('enrollment:id,class_number')])
             // `plan_count` e `attendances_count` — TODAS as linhas de
             // assiduidade, e não só as faltas — existem para uma pergunta
             // só: esta aula tem trabalho pedagógico agarrado a ela? É o
@@ -178,10 +184,52 @@ final class LessonRowBuilder
                 // contagem definitiva seria confundir um rascunho com um
                 // registo.
                 'absent_count' => $lesson->attendanceRecorded() ? (int) $lesson->absent_count : null,
+                // Os números dos alunos em falta, por ordem crescente — e só
+                // com a assiduidade consolidada, como a contagem. Um aluno
+                // sem número na turma não entra na lista: conta-se à parte.
+                'absent_numbers' => $lesson->attendanceRecorded() ? $this->absentNumbers($lesson) : [],
+                'absent_unnumbered' => $lesson->attendanceRecorded() ? $this->absentUnnumbered($lesson) : 0,
                 // A cor que ESTE professor deu à turma (ClassTeacher).
                 'identity_tone' => $tones[$lesson->class_id] ?? null,
                 'day_events' => $dayEvents[(int) $lesson->getKey()] ?? [],
             ];
         })->all());
+    }
+
+    /**
+     * Os números da turma dos alunos que faltaram, por ordem crescente e sem
+     * repetições: é uma lista de ALUNOS ausentes, não de registos. A chave
+     * (aula, inscrição) já é única na base de dados, mas o `unique()` mantém a
+     * garantia no sítio onde a lista se lê.
+     *
+     * @return list<int>
+     */
+    private function absentNumbers(Lesson $lesson): array
+    {
+        $numbers = [];
+
+        foreach ($lesson->absentAttendances as $attendance) {
+            $number = $attendance->enrollment?->class_number;
+
+            if ($number !== null) {
+                $numbers[$number] = $number;
+            }
+        }
+
+        sort($numbers);
+
+        return $numbers;
+    }
+
+    /**
+     * Alunos em falta que não têm número na turma (`class_number` é opcional).
+     * Ficam de fora da lista, mas o ecrã não os esconde.
+     */
+    private function absentUnnumbered(Lesson $lesson): int
+    {
+        return $lesson->absentAttendances
+            ->filter(fn ($attendance): bool => $attendance->enrollment?->class_number === null)
+            ->unique('enrollment_id')
+            ->count();
     }
 }

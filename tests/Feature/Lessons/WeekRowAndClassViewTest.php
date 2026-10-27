@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\CalendarEvent;
 use App\Models\CalendarEventType;
 use App\Models\Lesson;
+use App\Models\LessonAttendance;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
 use App\Models\Module;
@@ -35,7 +36,7 @@ class WeekRowAndClassViewTest extends TestCase
     use BuildsLessonFixtures, RefreshDatabase;
 
     private const ROW_KEYS = [
-        'absent_count', 'attendance_recorded', 'can_clear_summary', 'can_delete', 'class_group_id', 'class_group_label',
+        'absent_count', 'absent_numbers', 'absent_unnumbered', 'attendance_recorded', 'can_clear_summary', 'can_delete', 'class_group_id', 'class_group_label',
         'context_label', 'day_events', 'ends_at', 'has_summary', 'identity_tone', 'lesson_number', 'lesson_number_end',
         'lesson_number_manual', 'numbering_frozen', 'outcome',
         'outcome_label', 'school_class', 'starts_at', 'status', 'status_label', 'subject', 'summary',
@@ -51,6 +52,60 @@ class WeekRowAndClassViewTest extends TestCase
     }
 
     // ------------------------------------------------------------ linha da semana
+
+    #[Test]
+    public function the_week_row_names_the_absent_students_by_their_class_numbers_in_ascending_order(): void
+    {
+        $nineteen = $this->enroll('Aluno 19', ['class_number' => 19]);
+        $four = $this->enroll('Aluno 4', ['class_number' => 4]);
+        $twelve = $this->enroll('Aluno 12', ['class_number' => 12]);
+        $present = $this->enroll('Aluno 5', ['class_number' => 5]);
+        $unnumbered = $this->enroll('Sem número', ['class_number' => null]);
+
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-08 09:30:00', 'status' => LessonStatus::Taught]);
+        $this->inTenant($this->organization, function () use ($lesson, $nineteen, $four, $twelve, $present, $unnumbered): void {
+            foreach ([[$nineteen, 'absent'], [$four, 'absent'], [$twelve, 'absent'], [$present, 'present'], [$unnumbered, 'absent']] as [$enrollment, $status]) {
+                LessonAttendance::create([
+                    'lesson_id' => $lesson->id,
+                    'enrollment_id' => $enrollment->id,
+                    'student_id' => $enrollment->student_id,
+                    'status' => $status,
+                ]);
+            }
+            $lesson->forceFill(['attendance_recorded_at' => '2026-10-08 11:00:00'])->save();
+        });
+
+        $row = $this->week('2026-10-05')['lessons'][0];
+
+        $this->assertSame(4, $row['absent_count']);
+        $this->assertSame([4, 12, 19], $row['absent_numbers']);
+        $this->assertSame(1, $row['absent_unnumbered']);
+    }
+
+    #[Test]
+    public function an_unconsolidated_attendance_draft_names_nobody_and_a_clean_class_names_nobody_either(): void
+    {
+        $student = $this->enroll('Aluno 7', ['class_number' => 7]);
+
+        $draft = $this->makeLesson(['starts_at' => '2026-10-08 09:30:00', 'status' => LessonStatus::Taught]);
+        $clean = $this->makeLesson(['starts_at' => '2026-10-09 09:30:00', 'status' => LessonStatus::Taught]);
+        $this->inTenant($this->organization, function () use ($draft, $clean, $student): void {
+            LessonAttendance::create([
+                'lesson_id' => $draft->id,
+                'enrollment_id' => $student->id,
+                'student_id' => $student->student_id,
+                'status' => 'absent',
+            ]);
+            $clean->forceFill(['attendance_recorded_at' => '2026-10-09 11:00:00'])->save();
+        });
+
+        $rows = collect($this->week('2026-10-05')['lessons'])->keyBy('ulid');
+
+        $this->assertNull($rows[$draft->ulid]['absent_count']);
+        $this->assertSame([], $rows[$draft->ulid]['absent_numbers']);
+        $this->assertSame(0, $rows[$clean->ulid]['absent_count']);
+        $this->assertSame([], $rows[$clean->ulid]['absent_numbers']);
+    }
 
     #[Test]
     public function the_week_row_has_exactly_the_agreed_keys_and_values(): void
