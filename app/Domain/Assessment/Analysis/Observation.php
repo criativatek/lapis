@@ -11,6 +11,11 @@ namespace App\Domain\Assessment\Analysis;
  * 6 decimals) and is only non-null when `status` is `classified`. `partial`
  * marks a classified observation that still has items excluded as
  * pending/under_review — it is classified, but not yet complete.
+ *
+ * `pointsEarned` / `pointsPossible` are the engine's own domain totals (the
+ * numerator and the denominator the percentage came from), carried for readers
+ * that show «18/25» next to «72 %». They are NEVER recomputed from the
+ * percentage; null on the global dimension and on any non-classified one.
  */
 final readonly class Observation
 {
@@ -19,5 +24,7 @@ final readonly class Observation
         public ObservationStatus $status,
         public ?string $exact,
         public bool $partial = false,
+        public ?string $pointsEarned = null,
+        public ?string $pointsPossible = null,
     ) {}
 }

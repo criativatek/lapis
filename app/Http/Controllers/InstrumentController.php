@@ -20,6 +20,7 @@ use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
 use App\Services\Assessment\InstrumentEligibility;
 use App\Services\Assessment\RecordScores;
+use App\Services\Assessment\WriteInstrumentResults;
 use App\Services\Audit\AuditLog;
 use App\Services\Import\Correction\WriteLapisGrid;
 use App\Support\Assessment\CorrectionWorkflowException;
@@ -187,6 +188,24 @@ class InstrumentController extends Controller
 
         // Removed as soon as it has been sent: it holds the class's names, and
         // a temporary directory is not where those live.
+        return response()->download($path, $writer->filename($instrument))->deleteFileAfterSend(true);
+    }
+
+    /**
+     * The corrected grid as a spreadsheet: the marks each student was given and
+     * the domain and final results the screen shows. The counterpart of
+     * downloadGrid(), which is the blank form; this one is never imported.
+     * Same authorisation as the grid on screen, because it contains exactly it.
+     */
+    public function downloadResults(Instrument $instrument, WriteInstrumentResults $writer): BinaryFileResponse
+    {
+        Gate::authorize('view', $instrument->schoolClass);
+        abort_if($instrument->status === InstrumentStatus::Draft, 409, 'A grelha de correção ainda está em preparação.');
+        abort_if($instrument->status === InstrumentStatus::Cancelled, 409, 'Este elemento de avaliação foi anulado: não tem resultados.');
+
+        $path = (string) tempnam(sys_get_temp_dir(), 'lapis-results-');
+        $writer->write($instrument, $path);
+
         return response()->download($path, $writer->filename($instrument))->deleteFileAfterSend(true);
     }
 

@@ -342,7 +342,14 @@ class InstrumentResultsContext implements ResultsContext
         $excluded = $domainExplanation['excluded'] ?? [];
 
         if ($domainOutcome->normalizedValue !== null) {
-            return new Observation($key, ObservationStatus::Classified, $domainOutcome->normalizedValue, $this->isPartial($excluded));
+            return new Observation(
+                $key,
+                ObservationStatus::Classified,
+                $domainOutcome->normalizedValue,
+                $this->isPartial($excluded),
+                $domainOutcome->pointsEarned,
+                $domainOutcome->pointsPossible,
+            );
         }
 
         [$status] = $this->deriveStatus($excluded);

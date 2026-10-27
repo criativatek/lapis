@@ -350,6 +350,8 @@ class BuildResultsAnalysis
             'band' => $exactBand === null ? null : $this->bandPayload($exactBand),
             'below_threshold' => $belowThresholdExact,
             'is_partial' => $observation->partial,
+            'points_earned' => $observation->pointsEarned,
+            'points_possible' => $observation->pointsPossible,
         ];
     }
 

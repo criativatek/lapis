@@ -743,6 +743,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // the instrument: it is generated FROM one, and there is nothing to ask
         // when the answer is the evaluation already on screen (§11).
         Route::get('instruments/{instrument}/grelha', [InstrumentController::class, 'downloadGrid'])->name('instruments.grid');
+        // The corrected grid as a spreadsheet — the results, not the blank form.
+        Route::get('instruments/{instrument}/grelha/resultados', [InstrumentController::class, 'downloadResults'])->name('instruments.grid.results');
         Route::get('instruments/{instrument}/edit', [InstrumentController::class, 'edit'])->name('instruments.edit');
         Route::put('instruments/{instrument}', [InstrumentController::class, 'update'])->name('instruments.update');
         Route::post('instruments/{instrument}/cancel', [InstrumentController::class, 'cancel'])->name('instruments.cancel');
