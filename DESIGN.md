@@ -90,8 +90,9 @@
 - **Painel do Professor — blocos:** cabeçalho e régua «Hoje» fixos; por baixo,
   quatro blocos (Esta semana, Arrumado hoje, Progresso do período, As minhas
   turmas) numa **grelha por linhas** (container query a 56 rem, uma coluna
-  abaixo), na ordem que o professor escolhe em «Organizar painel» (botões
-  Subir/Descer, sem arrastar; só `localStorage`). Largos ocupam a linha, meios
+  abaixo), na ordem que o professor escolhe em «Organizar painel» (diálogo com
+  botões Subir/Descer, sem arrastar; pré-visualização na própria página; só
+  `localStorage`). Largos ocupam a linha, meios
   emparelham, um meio sem par ocupa a linha toda; **ordem do DOM = ordem visual
   = ordem do teclado, sem `dense` nem alturas artificiais**. Um bloco curto
   (Arrumado hoje vazio) é uma linha, não um cartão; um bloco alto sozinho

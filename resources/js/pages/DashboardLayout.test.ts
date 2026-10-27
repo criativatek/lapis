@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData, DoneItem, PendingWork } from '@/lib/dashboard';
 import { layoutStorageKey } from '@/lib/dashboardLayout';
 import Dashboard from './Dashboard.vue';
@@ -73,8 +73,10 @@ function data(overrides: Partial<DashboardData> = {}): DashboardData {
 
 const doneItems = (count: number): DoneItem[] => Array.from({ length: count }, (_, index) => ({ at: `2026-10-26T1${index}:00:00+00:00`, time: `1${index}:00`, kind: 'lesson', title: `Sumário — 7.º A (${index + 1})`, class: turma, href: '/lessons/x', count: 1 }));
 
+const mounted: VueWrapper[] = [];
+
 function mountDashboard(overrides: Partial<DashboardData> = {}): VueWrapper {
-    return mount(Dashboard, {
+    const wrapper = mount(Dashboard, {
         attachTo: document.body,
         props: {
             teacherName: 'Ana Teste',
@@ -83,7 +85,37 @@ function mountDashboard(overrides: Partial<DashboardData> = {}): VueWrapper {
             dashboard: data(overrides),
         },
     });
+
+    mounted.push(wrapper);
+
+    return wrapper;
 }
+
+// O diálogo teleporta para o <body>: lê-se de lá, como o faz o utilizador.
+const q = (selector: string) => document.body.querySelector<HTMLElement>(selector);
+const dialog = () => q('[role="dialog"]');
+const live = () => q('[data-testid="layout-live"]')?.textContent ?? '';
+
+async function click(selector: string): Promise<void> {
+    q(selector)?.click();
+    await flushPromises();
+}
+
+async function escape(): Promise<void> {
+    q('[role="dialog"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flushPromises();
+}
+
+async function openOrganise(wrapper: VueWrapper): Promise<void> {
+    await wrapper.find('[data-testid="layout-open"]').trigger('click');
+    await flushPromises();
+}
+
+afterEach(() => {
+    mounted.splice(0).forEach((wrapper) => wrapper.unmount());
+    document.body.innerHTML = '';
+    document.body.removeAttribute('style');
+});
 
 const key = (user = 7, org = 'org-a') => layoutStorageKey(user, org);
 const order = (wrapper: VueWrapper) => wrapper.findAll('[data-block]').map((node) => node.attributes('data-block'));
@@ -151,7 +183,7 @@ describe('Dashboard — disposição padrão', () => {
     });
 });
 
-describe('Dashboard — Organizar painel', () => {
+describe('Dashboard — Organizar painel (diálogo)', () => {
     beforeEach(() => {
         window.localStorage.clear();
         pageProps.auth = { user: { id: 7 }, organization: { ulid: 'org-a' } };
@@ -159,14 +191,14 @@ describe('Dashboard — Organizar painel', () => {
         document.body.innerHTML = '';
     });
 
-    it('o botão vive no rodapé de ligações, fechado por omissão e com aria-expanded', () => {
+    it('o botão vive no rodapé de ligações e abre um diálogo; antes não há diálogo', () => {
         const wrapper = mountDashboard();
         const button = wrapper.find('[data-testid="layout-open"]');
 
         expect(button.exists()).toBe(true);
         expect(button.element.closest('p')?.textContent).toContain('Minha atividade');
-        expect(button.attributes('aria-expanded')).toBe('false');
-        expect(wrapper.find('[data-testid="layout-editor"]').exists()).toBe(false);
+        expect(button.attributes('aria-haspopup')).toBe('dialog');
+        expect(dialog()).toBeNull();
     });
 
     it('não aparece enquanto o ano está por preparar', () => {
@@ -175,68 +207,124 @@ describe('Dashboard — Organizar painel', () => {
         });
 
         expect(wrapper.find('[data-testid="layout-open"]').exists()).toBe(false);
+        wrapper.unmount();
     });
 
-    it('a lista tem os quatro blocos e nunca «Hoje»', async () => {
+    it('abre com role=dialog, aria-modal, título e instrução, e a lista dos quatro blocos (nunca «Hoje»)', async () => {
         const wrapper = mountDashboard();
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
+        await openOrganise(wrapper);
 
-        const items = wrapper.find('[data-testid="layout-editor"]').findAll('ol > li').map((li) => li.text());
+        const box = dialog();
+
+        expect(box).not.toBeNull();
+        expect(box?.getAttribute('aria-modal') ?? 'true').toBe('true');
+        expect(box?.getAttribute('aria-labelledby')).toBeTruthy();
+        expect(document.getElementById(box?.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('Organizar painel');
+        expect(box?.textContent).toContain('Escolha a ordem dos blocos do seu painel.');
+
+        const items = Array.from(box?.querySelectorAll('ol > li') ?? []).map((li) => li.textContent ?? '');
 
         expect(items).toHaveLength(4);
         expect(items.join(' ')).toContain('Esta semana');
         expect(items.join(' ')).not.toMatch(/Hoje/);
-        expect(wrapper.find('[data-testid="layout-open"]').attributes('aria-expanded')).toBe('true');
+        expect(q('[data-testid="layout-save"]')?.textContent).toContain('Guardar');
+        expect(q('[data-testid="layout-reset"]')?.textContent).toContain('Repor disposição original');
+        expect(q('[data-testid="layout-cancel"]')?.textContent).toContain('Cancelar');
     });
 
-    it('mover mostra a pré-visualização na hora mas só «Guardar» persiste', async () => {
+    it('o foco inicial vai para o primeiro controlo da lista e o fundo fica isolado', async () => {
+        const wrapper = mountDashboard();
+        await openOrganise(wrapper);
+
+        expect(document.activeElement?.getAttribute('data-move')).toBe('week:1');
+        // o fundo (a página) deixa de ser lido e de receber toques: as ligações de trás ficam sob aria-hidden e o <body> sem eventos de ponteiro
+        const behind = wrapper.find('a[href="/activity"]').element;
+
+        expect(behind.closest('[aria-hidden="true"]')).not.toBeNull();
+        expect(document.body.style.pointerEvents).toBe('none');
+        expect(dialog()?.closest('[aria-hidden="true"]')).toBeNull();
+    });
+
+    it('mover mostra a pré-visualização na página e na lista, mas só «Guardar» persiste', async () => {
         const wrapper = mountDashboard({ done: doneItems(2) });
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-move="classes:-1"]').trigger('click');
-        await wrapper.find('[data-move="classes:-1"]').trigger('click');
-        await wrapper.find('[data-move="classes:-1"]').trigger('click');
+        await openOrganise(wrapper);
+        await click('[data-move="classes:-1"]');
+        await click('[data-move="classes:-1"]');
+        await click('[data-move="classes:-1"]');
 
         expect(order(wrapper)).toEqual(['classes', 'week', 'done', 'period']);
+        expect(Array.from(dialog()?.querySelectorAll('ol > li') ?? []).map((li) => li.textContent)).toEqual([
+            expect.stringContaining('As minhas turmas'),
+            expect.stringContaining('Esta semana'),
+            expect.stringContaining('Arrumado hoje'),
+            expect.stringContaining('Progresso do período'),
+        ]);
         expect(window.localStorage.getItem(key())).toBeNull();
-        expect(wrapper.find('[data-testid="layout-live"]').text()).toContain('As minhas turmas: posição 1 de 4');
+        expect(live()).toContain('As minhas turmas: posição 1 de 4');
 
-        await wrapper.find('[data-testid="layout-save"]').trigger('click');
+        await click('[data-testid="layout-save"]');
 
-        expect(wrapper.find('[data-testid="layout-editor"]').exists()).toBe(false);
+        expect(dialog()).toBeNull();
         expect(JSON.parse(window.localStorage.getItem(key()) ?? 'null')).toEqual(['classes', 'week', 'done', 'period']);
         expect(order(wrapper)).toEqual(['classes', 'week', 'done', 'period']);
     });
 
-    it('«Cancelar» restaura o que estava guardado', async () => {
+    it('Guardar persiste e sobrevive a uma nova montagem (recarregar)', async () => {
+        const first = mountDashboard({ done: doneItems(2) });
+        await openOrganise(first);
+        await click('[data-move="done:-1"]');
+        await click('[data-testid="layout-save"]');
+        first.unmount();
+
+        expect(order(mountDashboard({ done: doneItems(2) }))).toEqual(['done', 'week', 'period', 'classes']);
+    });
+
+    it.each([
+        ['Cancelar', async () => click('[data-testid="layout-cancel"]')],
+        ['o botão Fechar', async () => click('[data-testid="layout-close"]')],
+        ['Escape', async () => escape()],
+    ])('%s descarta, restaura a última ordem guardada, fecha e devolve o foco ao botão', async (_name, close) => {
         window.localStorage.setItem(key(), JSON.stringify(['period', 'week', 'done', 'classes']));
         const wrapper = mountDashboard({ done: doneItems(2) });
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-move="classes:-1"]').trigger('click');
+        await openOrganise(wrapper);
+        await click('[data-move="classes:-1"]');
 
         expect(order(wrapper)).toEqual(['period', 'week', 'classes', 'done']);
 
-        await wrapper.find('[data-testid="layout-cancel"]').trigger('click');
+        await close();
+        await flushPromises();
 
+        expect(dialog()).toBeNull();
         expect(order(wrapper)).toEqual(['period', 'week', 'done', 'classes']);
         expect(JSON.parse(window.localStorage.getItem(key()) ?? 'null')).toEqual(['period', 'week', 'done', 'classes']);
+        expect(document.activeElement).toBe(wrapper.find('[data-testid="layout-open"]').element);
+    });
+
+    it('Guardar devolve o foco ao botão que abriu o diálogo', async () => {
+        const wrapper = mountDashboard();
+        await openOrganise(wrapper);
+        await click('[data-testid="layout-save"]');
+        await flushPromises();
+
+        expect(document.activeElement).toBe(wrapper.find('[data-testid="layout-open"]').element);
     });
 
     it('«Repor disposição original» só muda a pré-visualização; persiste depois de «Guardar»', async () => {
         window.localStorage.setItem(key(), JSON.stringify(['classes', 'week', 'done', 'period']));
         const wrapper = mountDashboard({ done: doneItems(2) });
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-testid="layout-reset"]').trigger('click');
+        await openOrganise(wrapper);
+        await click('[data-testid="layout-reset"]');
 
         expect(order(wrapper)).toEqual(['week', 'done', 'period', 'classes']);
         expect(JSON.parse(window.localStorage.getItem(key()) ?? 'null')).toEqual(['classes', 'week', 'done', 'period']);
 
-        await wrapper.find('[data-testid="layout-cancel"]').trigger('click');
+        await click('[data-testid="layout-cancel"]');
 
         expect(order(wrapper)).toEqual(['classes', 'week', 'done', 'period']);
 
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-testid="layout-reset"]').trigger('click');
-        await wrapper.find('[data-testid="layout-save"]').trigger('click');
+        await openOrganise(wrapper);
+        await click('[data-testid="layout-reset"]');
+        await click('[data-testid="layout-save"]');
 
         expect(JSON.parse(window.localStorage.getItem(key()) ?? 'null')).toEqual(['week', 'done', 'period', 'classes']);
     });
@@ -252,7 +340,6 @@ describe('Dashboard — Organizar painel', () => {
         const wrapper = mountDashboard({ done: doneItems(2) });
 
         expect(order(wrapper)).toEqual(['classes', 'period', 'week', 'done']);
-        // período e arrumado ficam separados pela semana: cada um, sozinho, ocupa a linha toda
         expect(spans(wrapper)).toEqual(['wide', 'wide', 'wide', 'wide']);
     });
 
@@ -283,11 +370,13 @@ describe('Dashboard — Organizar painel', () => {
 
         expect(order(base)).toEqual(['classes', 'week', 'done']);
 
-        await base.find('[data-testid="layout-open"]').trigger('click');
-        await base.find('[data-move="week:-1"]').trigger('click');
-        await base.find('[data-testid="layout-save"]').trigger('click');
+        await openOrganise(base);
 
-        // «period» não estava à vista: continua no 2.º lugar; os visíveis ocupam os outros
+        expect(dialog()?.querySelectorAll('ol > li')).toHaveLength(3);
+
+        await click('[data-move="week:-1"]');
+        await click('[data-testid="layout-save"]');
+
         expect(JSON.parse(window.localStorage.getItem(key()) ?? 'null')).toEqual(['week', 'period', 'classes', 'done']);
 
         pageProps.modules = ['lessons', 'assessments', 'records'];
@@ -295,7 +384,7 @@ describe('Dashboard — Organizar painel', () => {
         expect(order(mountDashboard({ done: doneItems(2) }))).toEqual(['week', 'period', 'classes', 'done']);
     });
 
-    it('com o storage bloqueado a interface continua a funcionar na sessão', async () => {
+    it('com o storage bloqueado o diálogo continua a funcionar na sessão', async () => {
         const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
             throw new Error('blocked');
         });
@@ -306,37 +395,36 @@ describe('Dashboard — Organizar painel', () => {
 
         expect(order(wrapper)).toEqual(['week', 'done', 'period', 'classes']);
 
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-move="classes:-1"]').trigger('click');
-        await wrapper.find('[data-testid="layout-save"]').trigger('click');
+        await openOrganise(wrapper);
+        await click('[data-move="classes:-1"]');
+        await click('[data-testid="layout-save"]');
 
+        expect(dialog()).toBeNull();
         expect(order(wrapper)).toEqual(['week', 'done', 'classes', 'period']);
 
         getItem.mockRestore();
         setItem.mockRestore();
     });
 
-    it('«Escape» cancela e o foco volta ao botão do rodapé', async () => {
-        const wrapper = mountDashboard();
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await flushPromises();
-
-        expect(document.activeElement?.id).toBe('organizar-painel');
-
-        await wrapper.find('[data-testid="layout-editor"]').trigger('keydown', { key: 'Escape' });
-        await flushPromises();
-
-        expect(wrapper.find('[data-testid="layout-editor"]').exists()).toBe(false);
-        expect(document.activeElement).toBe(wrapper.find('[data-testid="layout-open"]').element);
-    });
-
     it('depois de mover o foco fica no mesmo botão, ou no oposto se este se desativou', async () => {
         const wrapper = mountDashboard({ done: doneItems(2) });
-        await wrapper.find('[data-testid="layout-open"]').trigger('click');
-        await wrapper.find('[data-move="done:-1"]').trigger('click');
-        await flushPromises();
+        await openOrganise(wrapper);
+        await click('[data-move="done:-1"]');
 
         // «done» já é o 1.º: o «Subir» ficou desativado, o foco passa ao «Descer»
-        expect((document.activeElement as HTMLElement).getAttribute('data-move')).toBe('done:1');
+        expect(document.activeElement?.getAttribute('data-move')).toBe('done:1');
+
+        await click('[data-move="done:1"]');
+
+        expect(document.activeElement?.getAttribute('data-move')).toBe('done:1');
+    });
+
+    it('o foco fica contido: tentar focar a página por trás devolve-o ao diálogo', async () => {
+        const wrapper = mountDashboard();
+        await openOrganise(wrapper);
+        (wrapper.find('a[href="/activity"]').element as HTMLElement).focus();
+        await flushPromises();
+
+        expect(dialog()?.contains(document.activeElement)).toBe(true);
     });
 });

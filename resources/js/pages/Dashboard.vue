@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ArrowRight, CheckCircle2, Circle, LayoutList, X } from '@lucide/vue';
-import { computed, nextTick, ref } from 'vue';
+import { computed, ref } from 'vue';
 import ClassCards from '@/components/dashboard/ClassCards.vue';
 import DashboardHero from '@/components/dashboard/DashboardHero.vue';
 import DashboardLayoutEditor from '@/components/dashboard/DashboardLayoutEditor.vue';
@@ -114,22 +114,6 @@ const blockWidths = computed<Record<BlockId, BlockWidth>>(() => ({ ...BLOCK_WIDT
 const storageKey = computed(() => layoutStorageKey(page.props.auth.user?.id, page.props.auth.organization?.ulid));
 const layout = useDashboardLayout({ storageKey, available: availableBlocks, widths: blockWidths });
 const organiseButton = ref<HTMLButtonElement | null>(null);
-
-function toggleOrganise(): void {
-    if (layout.editing.value) {
-        closeOrganise(layout.cancel);
-
-        return;
-    }
-
-    layout.start();
-}
-
-// Ao fechar o painel o foco volta ao botão que o abriu.
-function closeOrganise(action: () => void): void {
-    action();
-    void nextTick(() => organiseButton.value?.focus());
-}
 </script>
 
 <template>
@@ -253,14 +237,16 @@ function closeOrganise(action: () => void): void {
                 </div>
             </div>
 
+            <!-- «Organizar painel»: diálogo; a pré-visualização é a própria página, por trás. -->
             <DashboardLayoutEditor
-                v-if="layout.editing.value"
+                :open="layout.editing.value"
                 :order="layout.order.value"
                 :announcement="layout.announcement.value"
                 @move="layout.move"
-                @save="closeOrganise(layout.save)"
+                @save="layout.save"
                 @reset="layout.reset"
-                @cancel="closeOrganise(layout.cancel)"
+                @cancel="layout.cancel"
+                @closed="organiseButton?.focus()"
             />
         </template>
 
@@ -276,10 +262,9 @@ function closeOrganise(action: () => void): void {
                 ref="organiseButton"
                 type="button"
                 class="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:ml-auto sm:min-h-9"
-                :aria-expanded="layout.editing.value"
-                aria-controls="organizar-painel"
+                aria-haspopup="dialog"
                 data-testid="layout-open"
-                @click="toggleOrganise"
+                @click="layout.start"
             >
                 <LayoutList class="size-4" aria-hidden="true" />Organizar painel
             </button>

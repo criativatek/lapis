@@ -35,12 +35,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Adicionado
 
-- **«Organizar painel»**, no rodapé de ligações do painel: uma lista dos quatro
-  blocos (Esta semana, Arrumado hoje, Progresso do período, As minhas turmas)
-  com «Subir» e «Descer», pré-visualização na própria página, «Guardar»,
-  «Cancelar» (repõe o que estava guardado) e «Repor disposição original» (só
-  altera a pré-visualização até se guardar). Teclado completo, região `aria-live`
-  e alvos de 44 px em ecrãs pequenos; sem arrastar nem escolha de tamanhos.
+- **«Organizar painel»**, no rodapé de ligações do painel: abre um diálogo (o
+  mesmo componente dos restantes) com a lista numerada dos quatro blocos (Esta
+  semana, Arrumado hoje, Progresso do período, As minhas turmas), «Subir» e
+  «Descer» por bloco, «Guardar», «Cancelar» (também Escape e «Fechar»: repõe o
+  que estava guardado) e «Repor disposição original» (só altera a pré-visualização
+  até se guardar). A pré-visualização é a própria página, por trás de um fundo
+  leve. Foco contido e devolvido ao botão, região `aria-live` e alvos de 44 px em
+  ecrãs pequenos; sem arrastar nem escolha de tamanhos.
 - **A ordem guarda-se só no browser** (`localStorage`, chave
   `lapis.dashboard.layout.v1:{utilizador}:{organização}`), por pessoa e por
   organização; ids fora da lista dos quatro e duplicados são descartados, ids
