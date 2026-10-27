@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allDone, buildQueue, dateLabel, eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass, heroMinHeightClass, minutesOf, pendingLabel, whenLabel } from './dashboard';
+import { allDone, buildQueue, dateLabel, doneClassHint, eyebrowFor, greetingFor, heroCards, heroExtraLines, heroGridClass, heroMinHeightClass, minutesOf, pendingLabel, whenLabel } from './dashboard';
 import type { DashboardData, PendingWork, QueueItem } from './dashboard';
 
 const turma = { ulid: 'c7a', label: '7.º A', subject: 'Português', tone: 'blue' };
@@ -259,5 +259,23 @@ describe('dashboard — altura uniforme dos cartões', () => {
         expect(heroGridClass(3)).toContain('@min-[40.5rem]:auto-rows-fr');
         expect(heroGridClass(3).split(' ')).not.toContain('auto-rows-fr');
         expect(heroGridClass(2).split(' ')).not.toContain('auto-rows-fr');
+    });
+});
+
+describe('dashboard — a turma de uma linha de «Arrumado hoje»', () => {
+    // O servidor (DashboardDoneToday::item) escreve a turma no título das aulas,
+    // classificações, alertas e medidas; só as sessões de outras atividades a trazem à parte.
+    it('não repete a turma quando o título já a diz (aulas, grupos, classificações)', () => {
+        expect(doneClassHint({ title: 'Sumário — 7.º A', class: turma })).toBeNull();
+        expect(doneClassHint({ title: 'Sumário e assiduidade — 7.º A · T1', class: turma })).toBeNull();
+        expect(doneClassHint({ title: '3 classificações confirmadas — 7.º A', class: turma })).toBeNull();
+    });
+
+    it('mostra a turma quando o título não a diz (sessões das outras atividades)', () => {
+        expect(doneClassHint({ title: 'Realizada — Clube de Leitura', class: turma })).toBe('7.º A');
+    });
+
+    it('sem turma não há nada a mostrar', () => {
+        expect(doneClassHint({ title: 'Realizada — Clube de Leitura', class: null })).toBeNull();
     });
 });

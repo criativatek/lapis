@@ -5,7 +5,11 @@ import type { DashboardData, DoneItem, PendingWork } from '@/lib/dashboard';
 import { resetHistoryRestorationForTests, startHistoryRestorationTracking } from '@/lib/historyRestoration';
 import Dashboard from './Dashboard.vue';
 
-const pageProps = { modules: [] as string[], readOnlyModules: [] as string[] };
+const pageProps = {
+    modules: [] as string[],
+    readOnlyModules: [] as string[],
+    auth: { user: { id: 7 } as { id: number } | null, organization: { ulid: 'org-a' } as { ulid: string } | null },
+};
 
 vi.mock('@inertiajs/vue3', async () => {
     const { defineComponent, h } = await import('vue');
@@ -218,7 +222,7 @@ describe('Dashboard — a fila e o arrumado', () => {
         const wrapper = dashboard();
 
         expect(wrapper.find('[data-testid="pending-panel"]').exists()).toBe(false);
-        expect(wrapper.find('button[aria-expanded]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="hero-pending"]').attributes('aria-expanded')).toBeUndefined();
     });
 
     it('«Arrumado hoje» mostra três linhas e abre o resto do dia', async () => {
