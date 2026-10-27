@@ -477,3 +477,18 @@ export function minutesOf(time: string): number {
 
     return (hours ?? 0) * 60 + (minutes ?? 0);
 }
+
+/**
+ * A turma de uma linha de «Arrumado hoje», só quando o título ainda não a diz.
+ * O servidor (`DoneToday::item`) escreve a turma no título das aulas
+ * («Sumário — 8.º F · T1»), das classificações, dos alertas e das medidas; só
+ * as sessões das outras atividades («Realizada — Clube de Leitura») trazem a
+ * turma à parte, em `class`. Repetir a turma onde já está seria ruído.
+ */
+export function doneClassHint(item: Pick<DoneItem, 'title' | 'class'>): string | null {
+    if (item.class === null || item.title.includes(item.class.label)) {
+        return null;
+    }
+
+    return item.class.label;
+}
