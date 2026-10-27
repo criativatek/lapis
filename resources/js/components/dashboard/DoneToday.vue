@@ -4,6 +4,7 @@ import { Check, ChevronDown } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import SectionHeading from '@/components/dashboard/SectionHeading.vue';
 import type { DoneItem } from '@/lib/dashboard';
+import { doneClassHint } from '@/lib/dashboard';
 
 const props = defineProps<{ items: DoneItem[] }>();
 
@@ -16,10 +17,10 @@ const note = computed(() => {
     const total = props.items.length;
 
     if (total === 0) {
-        return 'ainda nada';
+        return '0 atividades';
     }
 
-    return total <= SHOWN ? `${total} ${total === 1 ? 'coisa' : 'coisas'}` : `${total} coisas · ${expanded.value ? 'o dia inteiro' : 'as 3 mais recentes'}`;
+    return total <= SHOWN ? `${total} ${total === 1 ? 'atividade' : 'atividades'}` : `${total} atividades · ${expanded.value ? 'o dia inteiro' : 'as 3 mais recentes'}`;
 });
 </script>
 
@@ -27,7 +28,8 @@ const note = computed(() => {
     <section class="flex flex-col gap-2" aria-labelledby="dash-done" data-testid="done-today">
         <SectionHeading id="dash-done" title="Arrumado hoje" :note="note" />
 
-        <p v-if="items.length === 0" class="rounded-xl border border-dashed border-border px-4 py-4 text-center text-sm text-muted-foreground">Ainda nada — o que registares hoje fica aqui, com a hora.</p>
+        <!-- Vazio é só uma linha: sem cartão nem espaço reservado, para o bloco ocupar a sua própria linha curta. -->
+        <p v-if="items.length === 0" class="text-sm text-muted-foreground">Ainda nada registado hoje.</p>
 
         <template v-else>
             <ol class="divide-y divide-border border-y border-border">
@@ -35,7 +37,7 @@ const note = computed(() => {
                     <Link :href="item.href" class="grid grid-cols-[22px_1fr_auto] items-center gap-2.5 py-2 pr-1 hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                         <!-- O ÂMBAR É DO FEITO: o visto leva a cor da marca. -->
                         <span class="grid size-[22px] place-items-center rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" aria-hidden="true"><Check class="size-3" /></span>
-                        <span class="min-w-0 truncate text-sm">{{ item.title }}</span>
+                        <span class="min-w-0 truncate text-sm">{{ item.title }}<span v-if="doneClassHint(item)" class="text-muted-foreground"> · {{ doneClassHint(item) }}</span></span>
                         <span class="font-serif text-[13.5px] text-muted-foreground italic tabular-nums">às {{ item.time }}</span>
                     </Link>
                 </li>

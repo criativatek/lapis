@@ -1,17 +1,21 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ArrowRight, CheckCircle2, Circle, X } from '@lucide/vue';
-import { computed } from 'vue';
+import { ArrowRight, CheckCircle2, Circle, LayoutList, X } from '@lucide/vue';
+import { computed, nextTick, ref } from 'vue';
 import ClassCards from '@/components/dashboard/ClassCards.vue';
 import DashboardHero from '@/components/dashboard/DashboardHero.vue';
+import DashboardLayoutEditor from '@/components/dashboard/DashboardLayoutEditor.vue';
 import DayRuler from '@/components/dashboard/DayRuler.vue';
 import DoneToday from '@/components/dashboard/DoneToday.vue';
 import PeriodRuler from '@/components/dashboard/PeriodRuler.vue';
 import WeekAgenda from '@/components/dashboard/WeekAgenda.vue';
 import { Button } from '@/components/ui/button';
+import { useDashboardLayout } from '@/composables/useDashboardLayout';
 import { useFreshDashboard } from '@/composables/useFreshDashboard';
 import type { DashboardData } from '@/lib/dashboard';
 import { allDone, buildQueue } from '@/lib/dashboard';
+import type { BlockId, BlockWidth } from '@/lib/dashboardLayout';
+import { BLOCK_WIDTH, DEFAULT_ORDER, layoutStorageKey } from '@/lib/dashboardLayout';
 
 type ReadinessItem = {
     id: string;
@@ -95,6 +99,37 @@ const periodSummary = computed<string | null>(() => {
 
     return parts.length > 0 ? parts.join(' · ') : null;
 });
+
+/*
+ * A DISPOSIÇÃO: o cabeçalho e a régua «Hoje» são fixos; os quatro blocos de
+ * baixo seguem a ordem do professor (guardada só no browser, por utilizador e
+ * organização). Os que não existem para esta conta (período sem horário, turmas
+ * sem turmas) não aparecem nem se ordenam. Ver `lib/dashboardLayout.ts`.
+ */
+const availableBlocks = computed<BlockId[]>(() =>
+    DEFAULT_ORDER.filter((id) => (id === 'period' ? data.value.day.available && data.value.period !== null : id === 'classes' ? data.value.classes.length > 0 : true)),
+);
+// Um «Arrumado hoje» vazio é uma linha curta: ocupa a sua própria linha em vez de ficar ao lado de um bloco alto.
+const blockWidths = computed<Record<BlockId, BlockWidth>>(() => ({ ...BLOCK_WIDTH, done: data.value.done.length === 0 ? 'wide' : 'half' }));
+const storageKey = computed(() => layoutStorageKey(page.props.auth.user?.id, page.props.auth.organization?.ulid));
+const layout = useDashboardLayout({ storageKey, available: availableBlocks, widths: blockWidths });
+const organiseButton = ref<HTMLButtonElement | null>(null);
+
+function toggleOrganise(): void {
+    if (layout.editing.value) {
+        closeOrganise(layout.cancel);
+
+        return;
+    }
+
+    layout.start();
+}
+
+// Ao fechar o painel o foco volta ao botão que o abriu.
+function closeOrganise(action: () => void): void {
+    action();
+    void nextTick(() => organiseButton.value?.focus());
+}
 </script>
 
 <template>
@@ -195,21 +230,38 @@ const periodSummary = computed<string | null>(() => {
                 :summary="periodSummary"
             />
 
-            <div class="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start">
-                <div class="flex min-w-0 flex-col gap-6">
-                    <DoneToday :items="data.done" />
+            <!-- OS BLOCOS, pela ordem do professor. Grelha por linhas (sem `dense`): a
+                 ordem do DOM é a ordem visual e a do teclado. Os largos ocupam a
+                 linha; os meios emparelham e, sem par, passam a largos — nunca
+                 metade de linha vazia. Abaixo de 56 rem, uma coluna. -->
+            <div class="@container" data-testid="dashboard-blocks">
+                <div class="grid grid-cols-1 gap-6 @min-[56rem]:grid-cols-2 @min-[56rem]:items-start">
+                    <div v-for="block in layout.blocks.value" :key="block.id" class="min-w-0" :class="block.span === 'wide' ? '@min-[56rem]:col-span-2' : ''" :data-block="block.id">
+                        <WeekAgenda v-if="block.id === 'week'" :week="data.week" :upcoming="data.upcoming" :today="today" :has-lessons-module="hasLessons" />
 
-                    <!-- O FECHO — a frase-assinatura, só quando é verdade. -->
-                    <p v-if="done" class="border-t-2 border-emerald-700/60 pt-3 font-serif text-lg text-foreground italic dark:border-emerald-400/50" data-testid="closing-line">Tudo guardado — podes fechar.</p>
-                </div>
+                        <div v-else-if="block.id === 'done'" class="flex flex-col gap-6">
+                            <DoneToday :items="data.done" />
 
-                <div class="flex min-w-0 flex-col gap-6">
-                    <WeekAgenda :week="data.week" :upcoming="data.upcoming" :today="today" :has-lessons-module="hasLessons" />
-                    <PeriodRuler v-if="data.day.available && data.period" :ruler="data.period" :today="today" :summary="periodSummary" />
+                            <!-- O FECHO — a frase-assinatura, só quando é verdade. -->
+                            <p v-if="done" class="border-t-2 border-emerald-700/60 pt-3 font-serif text-lg text-foreground italic dark:border-emerald-400/50" data-testid="closing-line">Tudo guardado — podes fechar.</p>
+                        </div>
+
+                        <PeriodRuler v-else-if="block.id === 'period' && data.period" :ruler="data.period" :today="today" :summary="periodSummary" :wide="block.span === 'wide'" />
+
+                        <ClassCards v-else-if="block.id === 'classes'" :classes="data.classes" :today="today" :has-lessons-module="hasLessons" />
+                    </div>
                 </div>
             </div>
 
-            <ClassCards v-if="data.classes.length > 0" :classes="data.classes" :today="today" :has-lessons-module="hasLessons" />
+            <DashboardLayoutEditor
+                v-if="layout.editing.value"
+                :order="layout.order.value"
+                :announcement="layout.announcement.value"
+                @move="layout.move"
+                @save="closeOrganise(layout.save)"
+                @reset="layout.reset"
+                @cancel="closeOrganise(layout.cancel)"
+            />
         </template>
 
         <!-- «Minha atividade» é de todos os planos. A auditoria transversal
@@ -219,6 +271,18 @@ const periodSummary = computed<string | null>(() => {
             <Link href="/activity" class="inline-flex min-h-11 items-center hover:underline sm:min-h-9">Minha atividade</Link>
             <Link v-if="canOpenOrganizationAudit" href="/activity/organization" class="inline-flex min-h-11 items-center hover:underline sm:min-h-9">Auditoria da organização</Link>
             <Link href="/classes" class="inline-flex min-h-11 items-center text-primary hover:underline sm:min-h-9">Ver todas as turmas</Link>
+            <button
+                v-if="readiness.is_ready && layout.canOrganise.value"
+                ref="organiseButton"
+                type="button"
+                class="inline-flex min-h-11 items-center gap-1.5 rounded-md px-1 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:ml-auto sm:min-h-9"
+                :aria-expanded="layout.editing.value"
+                aria-controls="organizar-painel"
+                data-testid="layout-open"
+                @click="toggleOrganise"
+            >
+                <LayoutList class="size-4" aria-hidden="true" />Organizar painel
+            </button>
         </p>
     </div>
 </template>
