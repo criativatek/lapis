@@ -87,6 +87,15 @@
   **entrada do dia editorial** (a home é «quanto falta», em prosa, antes de
   qualquer número: cabeçalho com três cartões → Pendências consultáveis →
   Arrumado hoje → «podes fechar»).
+- **Painel do Professor — blocos:** cabeçalho e régua «Hoje» fixos; por baixo,
+  quatro blocos (Esta semana, Arrumado hoje, Progresso do período, As minhas
+  turmas) numa **grelha por linhas** (container query a 56 rem, uma coluna
+  abaixo), na ordem que o professor escolhe em «Organizar painel» (botões
+  Subir/Descer, sem arrastar; só `localStorage`). Largos ocupam a linha, meios
+  emparelham, um meio sem par ocupa a linha toda; **ordem do DOM = ordem visual
+  = ordem do teclado, sem `dense` nem alturas artificiais**. Um bloco curto
+  (Arrumado hoje vazio) é uma linha, não um cartão; um bloco alto sozinho
+  divide-se em dois painéis em vez de esticar.
 - **Grelhas de notas = registo pautado:** sem linhas verticais; fios
   horizontais 1px; nome do aluno fixo à esquerda (âncora humana, 500);
   cabeçalho sticky; lavagem âmbar té-nue na coluna activa; célula vazia =

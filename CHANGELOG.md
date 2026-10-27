@@ -25,6 +25,46 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.184.0] — 2026-10-27
+
+> **Disposição do Painel do Professor.** Os blocos de baixo deixam de ser duas
+> colunas independentes (a mais curta ficava a meio da página, com um vazio de
+> centenas de píxeis ao lado da mais alta) e passam a uma grelha por linhas que
+> preenche a largura; o professor pode escolher a ordem em «Organizar painel».
+> **Só front-end: sem alterações ao servidor, às props nem migrações; sem seeder.**
+
+### Adicionado
+
+- **«Organizar painel»**, no rodapé de ligações do painel: uma lista dos quatro
+  blocos (Esta semana, Arrumado hoje, Progresso do período, As minhas turmas)
+  com «Subir» e «Descer», pré-visualização na própria página, «Guardar»,
+  «Cancelar» (repõe o que estava guardado) e «Repor disposição original» (só
+  altera a pré-visualização até se guardar). Teclado completo, região `aria-live`
+  e alvos de 44 px em ecrãs pequenos; sem arrastar nem escolha de tamanhos.
+- **A ordem guarda-se só no browser** (`localStorage`, chave
+  `lapis.dashboard.layout.v1:{utilizador}:{organização}`), por pessoa e por
+  organização; ids fora da lista dos quatro e duplicados são descartados, ids
+  novos entram no fim, JSON inválido volta à ordem original e um bloco ausente
+  (sem horário, sem turmas) mantém o lugar guardado para quando voltar. Sem
+  storage a página funciona na mesma, só não se lembra.
+
+### Alterado
+
+- **Grelha por linhas** (container query a 56 rem; uma coluna abaixo): «Esta
+  semana» e «As minhas turmas» ocupam a linha; «Arrumado hoje» e «Progresso do
+  período» emparelham; um bloco sem par ocupa a linha toda, em qualquer ordem. A
+  ordem do DOM é a ordem visual e a do teclado (sem `dense`).
+- **Cabeçalho e régua «Hoje» não mudam nem se reordenam.**
+- **«Esta semana»** com largura mostra os dias à esquerda e «a aproximar-se» à
+  direita, e as células dos dias têm a mesma altura.
+- **«Arrumado hoje»** sem atividades é só uma linha («0 atividades» · «Ainda nada
+  registado hoje.»), sem cartão nem espaço reservado; com atividades diz quantas
+  (e as três mais recentes). A turma só aparece à parte quando o título não a
+  diz (as sessões das outras atividades): nas aulas, classificações, alertas e
+  medidas o servidor já a escreve no título.
+- **«Progresso do período»** a toda a largura divide-se em dois painéis (barra e
+  datas · elementos por fechar), com metade da altura.
+
 ## [0.183.0] — 2026-10-26
 
 > **Cabeçalho do Painel do Professor.** O cabeçalho passa a ter três cartões
