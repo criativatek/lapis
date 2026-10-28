@@ -140,9 +140,26 @@ const attendanceLabel = computed(() => {
         return null;
     }
 
-    return props.lesson.absent_count === 0
-        ? 'Sem faltas'
-        : `${props.lesson.absent_count} falta${props.lesson.absent_count === 1 ? '' : 's'}`;
+    if (props.lesson.absent_count === 0) {
+        return 'Sem faltas';
+    }
+
+    const count = `${props.lesson.absent_count} falta${props.lesson.absent_count === 1 ? '' : 's'}`;
+    const numbers = props.lesson.absent_numbers ?? [];
+    const unnumbered = props.lesson.absent_unnumbered ?? 0;
+    const parts: string[] = [];
+
+    if (numbers.length > 0) {
+        parts.push(
+            `N.º ${numbers.length === 1 ? numbers[0] : `${numbers.slice(0, -1).join(', ')} e ${numbers[numbers.length - 1]}`}`,
+        );
+    }
+
+    if (unnumbered > 0) {
+        parts.push(`${unnumbered} sem número`);
+    }
+
+    return parts.length === 0 ? count : `${count} — ${parts.join(' · ')}`;
 });
 
 // «Mostrar tudo» só aparece quando o texto foi MESMO recortado no modo compacto.
@@ -294,9 +311,10 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
             </p>
             <p
                 v-if="attendanceLabel"
-                class="flex items-center gap-1.5 text-[13px] text-muted-foreground"
+                class="flex items-start gap-1.5 text-[13px] text-muted-foreground"
+                data-testid="lesson-attendance-label"
             >
-                <ClipboardList class="size-3.5" aria-hidden="true" />{{
+                <ClipboardList class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />{{
                     attendanceLabel
                 }}
             </p>

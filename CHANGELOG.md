@@ -25,6 +25,45 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.185.0] — 2026-10-28
+
+> **Resultados de uma correção, em Excel, e faltas com número.** A grelha de
+> correção mostra os pontos de cada domínio ao lado da percentagem; há uma
+> exportação nova com o que cada aluno obteve; e «Aulas e Sumários» diz *quem*
+> faltou, e não só quantos. **Sem migrations, sem seeder, sem alterações ao
+> motor de cálculo, às ponderações, às classificações nem ao contrato de
+> importação.**
+
+### Adicionado
+
+- **«Exportar resultados (Excel)»**, ao lado de «Descarregar grelha»
+  (`GET /instruments/{instrumento}/grelha/resultados`): uma folha «Resultados»
+  com o número e o nome de cada aluno, a pontuação máxima de cada questão, os
+  pontos atribuídos por aluno e por questão, os pontos obtidos e possíveis e a
+  percentagem de cada domínio, o resultado global e a classificação da escala
+  aplicável. O cabeçalho da classificação diz «provisória» ou «oficial»
+  consoante a correção esteja em curso ou concluída. Os valores vêm das mesmas
+  células que a grelha mostra (`BuildResultsAnalysis::officialCells()`) e vão
+  escritos como valores, nunca como fórmulas. Zero atribuído é `0`; questão por
+  corrigir fica vazia; «Ausente», «Dispensado» e os restantes estados sem valor
+  aparecem pelo seu nome. Rascunhos e instrumentos cancelados recusam (409).
+  Autorização igual à da própria grelha (acesso à turma); sem restrição de plano.
+- **Pontos por domínio na grelha**, antes da percentagem: `14/15 · 93,3 %`. O
+  motor já os calculava; só não chegavam ao ecrã (`Observation` e
+  `BuildResultsAnalysis` passam `points_earned` e `points_possible`).
+- **Faltas com número em «Aulas e Sumários»**: `3 faltas — N.º 4, 12 e 19`, em
+  ordem crescente, sem repetições e com o número real do aluno na turma. Só com
+  a assiduidade consolidada, como a contagem. Um aluno sem número na turma
+  conta-se à parte (`1 sem número`). Só leitura dos registos existentes
+  (`Lesson::absentAttendances()`, carregada na mesma consulta da semana).
+
+### Inalterado
+
+- A grelha em branco («Descarregar grelha») continua a ser o modelo de
+  preenchimento offline e o contrato da importação, com as células de resultado
+  vazias de propósito.
+- «Aulas e Sumários» continua a ser um módulo do plano Pro.
+
 ## [0.184.0] — 2026-10-27
 
 > **Disposição do Painel do Professor.** Os blocos de baixo deixam de ser duas

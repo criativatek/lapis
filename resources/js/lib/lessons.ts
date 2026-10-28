@@ -66,6 +66,10 @@ export type WeekLesson = {
     attendance_recorded: boolean;
     /** Null enquanto não está consolidada (o que existe até lá é só rascunho). */
     absent_count: number | null;
+    /** Números da turma dos alunos em falta, por ordem crescente (vazio até a assiduidade estar consolidada). */
+    absent_numbers?: number[];
+    /** Alunos em falta sem número na turma — não entram em `absent_numbers`. */
+    absent_unnumbered?: number;
 };
 
 /**

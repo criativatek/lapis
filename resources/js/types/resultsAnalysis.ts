@@ -25,6 +25,9 @@ export type Cell = {
     band: Band | null;
     below_threshold: boolean | null;
     is_partial: boolean;
+    /** Totais do domínio no motor (numerador/denominador da percentagem). Só nas células de domínio com valor. */
+    points_earned?: string | null;
+    points_possible?: string | null;
 };
 
 export type Count = {

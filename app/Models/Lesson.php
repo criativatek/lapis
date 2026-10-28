@@ -179,6 +179,17 @@ class Lesson extends Model
     }
 
     /**
+     * Só as linhas de falta — para a vista da semana dizer QUEM faltou, e não
+     * apenas quantos. Leitura: nunca se grava através desta relação.
+     *
+     * @return HasMany<LessonAttendance, $this>
+     */
+    public function absentAttendances(): HasMany
+    {
+        return $this->attendances()->where('status', AttendanceStatus::Absent->value);
+    }
+
+    /**
      * Se a assiduidade desta aula já está CONSOLIDADA — um instantâneo
      * fechado, e não mais um rascunho. `attendance_recorded_at` é a única
      * fonte desta resposta: nunca se infere pela presença de linhas, porque

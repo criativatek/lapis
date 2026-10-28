@@ -485,6 +485,17 @@ function officialCellDisplay(cell: OfficialCell): string {
     return `${Number(raw).toFixed(decimals).replace('.', ',')} %`;
 }
 
+/** «18/25» — os pontos do domínio tal como o motor os somou; null quando o servidor não os enviou. */
+function officialPointsDisplay(cell: OfficialCell): string | null {
+    if (cell.points_earned == null || cell.points_possible == null) {
+        return null;
+    }
+
+    const format = (value: string) => String(Number(value)).replace('.', ',');
+
+    return `${format(cell.points_earned)}/${format(cell.points_possible)}`;
+}
+
 function officialToneClass(cell: OfficialCell): string {
     if (cell.band === null) {
         return qualitativeToneClasses.neutral;
@@ -975,6 +986,16 @@ function revertCancellation(): void {
                     >
                         Descarregar grelha
                     </a>
+                    <!-- A folha com as classificações atribuídas e os totais por
+                         domínio — não a grelha em branco acima, que se preenche offline. -->
+                    <a
+                        v-if="instrument.status !== 'draft'"
+                        :href="`/instruments/${instrument.ulid}/grelha/resultados`"
+                        class="text-sm text-muted-foreground hover:underline"
+                        data-testid="download-results"
+                    >
+                        Exportar resultados (Excel)
+                    </a>
                     <Link :href="`/instruments/${instrument.ulid}/edit`" class="text-sm text-muted-foreground hover:underline">
                         Editar elemento de avaliação
                     </Link>
@@ -1309,7 +1330,14 @@ function revertCancellation(): void {
                                 <div v-for="domain in official.domains" :key="domain.key" class="flex flex-wrap items-center gap-1.5">
                                     <span class="w-16 shrink-0 truncate text-xs text-muted-foreground" :title="domain.name">{{ domain.name }}</span>
                                     <template v-if="officialFor(student)?.domains[domain.key]">
-                                        <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                        <span class="flex items-center gap-1.5 whitespace-nowrap">
+                                            <span
+                                                v-if="officialPointsDisplay(officialFor(student)!.domains[domain.key]!)"
+                                                class="text-xs font-medium tabular-nums"
+                                                :data-testid="`domain-points-${domain.key}`"
+                                            >{{ officialPointsDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                            <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                        </span>
                                         <Badge
                                             v-if="officialFor(student)!.domains[domain.key]!.band"
                                             :class="officialToneClass(officialFor(student)!.domains[domain.key]!)"
