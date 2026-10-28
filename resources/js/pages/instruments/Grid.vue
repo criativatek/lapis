@@ -1330,12 +1330,14 @@ function revertCancellation(): void {
                                 <div v-for="domain in official.domains" :key="domain.key" class="flex flex-wrap items-center gap-1.5">
                                     <span class="w-16 shrink-0 truncate text-xs text-muted-foreground" :title="domain.name">{{ domain.name }}</span>
                                     <template v-if="officialFor(student)?.domains[domain.key]">
-                                        <span
-                                            v-if="officialPointsDisplay(officialFor(student)!.domains[domain.key]!)"
-                                            class="text-xs font-medium tabular-nums"
-                                            :data-testid="`domain-points-${domain.key}`"
-                                        >{{ officialPointsDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
-                                        <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                        <span class="flex items-center gap-1.5 whitespace-nowrap">
+                                            <span
+                                                v-if="officialPointsDisplay(officialFor(student)!.domains[domain.key]!)"
+                                                class="text-xs font-medium tabular-nums"
+                                                :data-testid="`domain-points-${domain.key}`"
+                                            >{{ officialPointsDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                            <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                        </span>
                                         <Badge
                                             v-if="officialFor(student)!.domains[domain.key]!.band"
                                             :class="officialToneClass(officialFor(student)!.domains[domain.key]!)"
