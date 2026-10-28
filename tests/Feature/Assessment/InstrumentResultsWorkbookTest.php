@@ -7,10 +7,14 @@ use App\Models\Domain;
 use App\Models\Instrument;
 use App\Models\InstrumentType;
 use App\Models\Organization;
+use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\ResultState;
 use App\Models\Scale;
 use App\Models\SchoolClass;
+use App\Models\StudentItemScore;
 use App\Models\Subject;
+use App\Models\SubscriptionStatus;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
 use App\Services\Assessment\CompleteCorrection;
@@ -18,6 +22,7 @@ use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\RecordScores;
 use App\Services\StudentEnrollmentService;
+use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\InstrumentTypesSeeder;
 use Database\Seeders\SystemScalesSeeder;
@@ -338,6 +343,60 @@ class InstrumentResultsWorkbookTest extends TestCase
                 $this->assertSame($global['band']['label'] ?? '—', $classification);
             }
         }
+    }
+
+    #[Test]
+    public function every_mark_in_the_workbook_is_the_one_stored_for_that_student_and_question(): void
+    {
+        $instrument = $this->instrument();
+        $book = $this->workbook($instrument);
+
+        $stored = $this->asTenant(fn () => StudentItemScore::query()
+            ->whereIn('instrument_item_id', $instrument->items()->pluck('id'))
+            ->get());
+        $enrollments = $instrument->schoolClass->enrollments()->get();
+        $items = $instrument->items()->orderBy('sequence')->get();
+
+        foreach ($enrollments as $enrollment) {
+            $row = $this->row($book, (int) $enrollment->class_number);
+
+            foreach ($items as $item) {
+                $cell = $row[$this->key($row, $item->code)];
+                $score = $stored->first(fn ($s): bool => $s->enrollment_id === $enrollment->id && $s->instrument_item_id === $item->id);
+
+                if ($score === null) {
+                    $this->assertNull($cell, "{$item->code} #{$enrollment->class_number}: no stored row, so the cell stays empty");
+                } elseif ($score->result_state === ResultState::Assessed) {
+                    $this->assertEqualsWithDelta((float) $score->points_earned, (float) $cell, 0.00001);
+                } else {
+                    $this->assertSame($score->result_state->label(), $cell);
+                }
+            }
+        }
+    }
+
+    #[Test]
+    public function a_base_account_reaches_the_grid_with_domain_points_and_the_same_export_as_pro(): void
+    {
+        $instrument = $this->instrument();
+        $pro = $this->workbook($instrument)->getActiveSheet()->toArray(null, true, false, false);
+
+        OrganizationSubscription::withoutGlobalScope('organization')->updateOrCreate(
+            ['organization_id' => $this->organization->id],
+            ['plan_id' => Plan::where('key', 'base')->firstOrFail()->id, 'status' => SubscriptionStatus::Active, 'starts_at' => '2026-01-01 00:00:00', 'ends_at' => null],
+        );
+        app(Entitlements::class)->flush();
+
+        $official = $this->officialProps($instrument);
+        $enrollment = $instrument->schoolClass->enrollments()->where('class_number', 3)->firstOrFail();
+        $leitura = collect($official['domains'])->firstWhere('name', 'Leitura');
+        $cell = $official['students'][$enrollment->id]['domains'][$leitura['key']];
+
+        $this->assertNotNull($cell['points_earned']);
+        $this->assertNotNull($cell['points_possible']);
+
+        $base = $this->workbook($instrument)->getActiveSheet()->toArray(null, true, false, false);
+        $this->assertSame($pro, $base, 'the plan changes nothing about the results export');
     }
 
     #[Test]

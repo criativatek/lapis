@@ -12,6 +12,7 @@ use App\Models\LessonSummary;
 use App\Models\Module;
 use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
+use App\Models\Plan;
 use App\Models\SchoolClass;
 use App\Models\SubscriptionStatus;
 use App\Models\User;
@@ -80,6 +81,32 @@ class WeekRowAndClassViewTest extends TestCase
         $this->assertSame(4, $row['absent_count']);
         $this->assertSame([4, 12, 19], $row['absent_numbers']);
         $this->assertSame(1, $row['absent_unnumbered']);
+    }
+
+    #[Test]
+    public function the_lessons_module_stays_pro_only_so_a_base_account_is_still_turned_away(): void
+    {
+        $enrollment = $this->enroll('Aluno 4', ['class_number' => 4]);
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-08 09:30:00', 'status' => LessonStatus::Taught]);
+        $this->inTenant($this->organization, function () use ($lesson, $enrollment): void {
+            LessonAttendance::create([
+                'lesson_id' => $lesson->id,
+                'enrollment_id' => $enrollment->id,
+                'student_id' => $enrollment->student_id,
+                'status' => 'absent',
+            ]);
+            $lesson->forceFill(['attendance_recorded_at' => '2026-10-08 11:00:00'])->save();
+        });
+
+        $this->assertSame([4], $this->week('2026-10-05')['lessons'][0]['absent_numbers']);
+
+        OrganizationSubscription::withoutGlobalScope('organization')->updateOrCreate(
+            ['organization_id' => $this->organization->id],
+            ['plan_id' => Plan::where('key', 'base')->firstOrFail()->id, 'status' => SubscriptionStatus::Active, 'starts_at' => '2026-01-01 00:00:00', 'ends_at' => null],
+        );
+        app(Entitlements::class)->flush();
+
+        $this->asTeacher()->get('/lessons?week=2026-10-05')->assertForbidden();
     }
 
     #[Test]
