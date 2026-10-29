@@ -238,7 +238,7 @@ class ReportController extends Controller
                 ->all(),
             'enrollments' => $class->activeEnrollments()
                 ->with('student.identity')
-                ->orderBy('class_number')
+                ->inClassOrder()
                 ->get()
                 ->map(fn ($enrollment) => [
                     'id' => $enrollment->id,
@@ -945,7 +945,7 @@ class ReportController extends Controller
 
         return array_values($class->activeEnrollments()
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get()
             ->map(fn (Enrollment $enrollment) => [
                 'id' => $enrollment->id,

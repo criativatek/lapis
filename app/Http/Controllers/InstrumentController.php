@@ -407,7 +407,7 @@ class InstrumentController extends Controller
         $enrollments = Enrollment::query()
             ->whereIn('id', $enrollmentIds)
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         $names = [];
@@ -514,7 +514,7 @@ class InstrumentController extends Controller
 
         $enrollments = $instrument->schoolClass->enrollments()
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         // Only the cells that exist — an absent row means "por avaliar" and the

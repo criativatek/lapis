@@ -148,7 +148,7 @@ class StudentProgressController extends Controller
         $enrollments = Enrollment::query()
             ->where('class_id', $class->getKey())
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         return Inertia::render('student-progress/Class', [

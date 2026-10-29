@@ -67,7 +67,7 @@ class SelfAssessmentController extends Controller
 
         // Asking a student who has left the class to self-assess would be asking
         // the wrong person; their earlier answers are untouched (§17).
-        $enrollments = $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get();
+        $enrollments = $class->activeEnrollments()->with('student.identity')->inClassOrder()->get();
 
         // Oldest round first, so keyBy() keeps the student's current
         // self-assessment: the row reads the status of the most recent round.
@@ -243,7 +243,7 @@ class SelfAssessmentController extends Controller
 
         // Asking a student who has left the class to self-assess would be asking
         // the wrong person; their earlier answers are untouched (§17).
-        $enrollments = $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get();
+        $enrollments = $class->activeEnrollments()->with('student.identity')->inClassOrder()->get();
 
         $filled = SelfAssessment::query()
             ->where('academic_period_id', $selected->id)

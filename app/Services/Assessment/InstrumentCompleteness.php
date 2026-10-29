@@ -96,7 +96,7 @@ class InstrumentCompleteness
 
         $enrollments = Enrollment::query()
             ->where('class_id', $instrument->class_id)
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get(['id', 'class_id', 'class_number', 'enrolled_on', 'left_on']);
 
         $pending = [];

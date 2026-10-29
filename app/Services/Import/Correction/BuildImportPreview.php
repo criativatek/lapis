@@ -12,12 +12,15 @@ use App\Domain\Import\Correction\IssueCode;
 use App\Domain\Import\Correction\IssueSeverity;
 use App\Domain\Import\Correction\OverallResultItem;
 use App\Models\CorrectionImport;
+use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\InstrumentStatus;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
+use App\Services\Assessment\ClassCohort;
 use App\Services\Assessment\InstrumentCompleteness;
 use App\Services\Assessment\InstrumentEligibility;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 
 /**
@@ -519,7 +522,7 @@ class BuildImportPreview
             $issues[] = $issue;
         }
 
-        foreach ($this->missingFromFile($students, $class) as $issue) {
+        foreach ($this->missingFromFile($students, $class, $mapping, $instrument) as $issue) {
             $issues[] = $issue;
         }
 
@@ -768,13 +771,7 @@ class BuildImportPreview
      */
     protected function applicabilityIssues(CanonicalCorrectionGrid $grid, ImportMapping $mapping, SchoolClass $class, ?Instrument $instrument): array
     {
-        // An existing instrument states its own date; a new one only has the one
-        // the teacher has typed so far, which may still be empty.
-        $chosenDate = $mapping->instrumentAttributes['applied_on'] ?? null;
-
-        $appliedOn = $instrument !== null
-            ? $instrument->applied_on
-            : (is_string($chosenDate) && $chosenDate !== '' ? Carbon::parse($chosenDate) : null);
+        $appliedOn = $this->appliedOn($mapping, $instrument);
 
         if ($appliedOn === null) {
             return [];
@@ -818,16 +815,64 @@ class BuildImportPreview
     }
 
     /**
-     * Students of the class with no row in the file. Informative only: they stay
-     * unassessed, which is not a zero and not an absence (§21).
+     * The date the grid refers to: an existing instrument states its own; a new
+     * one only has the one the teacher has typed so far, which may still be
+     * empty (null).
+     */
+    protected function appliedOn(ImportMapping $mapping, ?Instrument $instrument): ?CarbonInterface
+    {
+        if ($instrument !== null) {
+            return $instrument->applied_on;
+        }
+
+        $chosenDate = $mapping->instrumentAttributes['applied_on'] ?? null;
+
+        return is_string($chosenDate) && $chosenDate !== '' ? Carbon::parse($chosenDate) : null;
+    }
+
+    /**
+     * How many students of the class have results in the file and how many do
+     * not. Informative only: the ones without stay unassessed — the grid belongs
+     * to the class and the instrument, not to the file, so the teacher fills
+     * them in there. Never a zero, never an absence (§21).
+     *
+     * The universe is the students the instrument APPLIES to on its date: the
+     * attending cohort on that date (the same one MatchSourceStudents pairs
+     * against) and inside the enrolment window (InstrumentCompleteness::
+     * isApplicable). Someone who left before the date, or arrived after it, was
+     * never expected to have a result and is not «sem resultados».
+     *
+     * Without a known date (no instrument chosen and no date typed yet) the
+     * universe is the whole class — the same fallback MatchSourceStudents uses
+     * (`all()`), so the two always count the same students.
      *
      * @param  list<array<string, mixed>>  $students
      * @return list<array<string, mixed>>
      */
-    protected function missingFromFile(array $students, SchoolClass $class): array
+    protected function missingFromFile(array $students, SchoolClass $class, ImportMapping $mapping, ?Instrument $instrument): array
     {
-        $mapped = array_filter(array_column($students, 'enrollment_id'), fn (?int $id): bool => $id !== null);
-        $missing = $class->enrollments()->count() - count(array_unique($mapped));
+        $appliedOn = $this->appliedOn($mapping, $instrument);
+
+        $cohort = ClassCohort::for($class, $appliedOn?->toDateString());
+
+        $applicable = ($appliedOn === null ? $cohort->all() : $cohort->attending())
+            ->filter(fn (Enrollment $enrollment): bool => $appliedOn === null || InstrumentCompleteness::isApplicable($enrollment, $appliedOn))
+            ->map(fn (Enrollment $enrollment): int => (int) $enrollment->getKey())
+            ->all();
+
+        // Rows the teacher ignored have no enrolment and so never count.
+        $paired = [];
+
+        foreach ($students as $row) {
+            $enrollmentId = $row['enrollment_id'] ?? null;
+
+            if ($enrollmentId !== null && in_array((int) $enrollmentId, $applicable, true)) {
+                $paired[(int) $enrollmentId] = true;
+            }
+        }
+
+        $withResults = count($paired);
+        $missing = count($applicable) - $withResults;
 
         if ($missing <= 0) {
             return [];
@@ -835,8 +880,14 @@ class BuildImportPreview
 
         return [ImportIssue::make(
             IssueCode::StudentMissingFromSource,
-            'Alunos da turma que não constam do ficheiro. Ficam por avaliar — não recebem zero nem falta.',
-            ['students' => $missing],
+            sprintf(
+                '%d %s com resultados para importar. %d %s da turma sem resultados neste ficheiro. Poderá preencher as respetivas classificações na grelha de correção.',
+                $withResults,
+                $withResults === 1 ? 'aluno' : 'alunos',
+                $missing,
+                $missing === 1 ? 'aluno' : 'alunos',
+            ),
+            ['with_results' => $withResults, 'missing' => $missing],
         )->toArray()];
     }
 

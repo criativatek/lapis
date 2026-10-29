@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.185.1] — 2026-10-29
+
+> **Importar um ficheiro que não traz a turma toda.** Quando o ficheiro do
+> Intuitivo (ou de qualquer outra origem) tem menos alunos do que a turma — por
+> exemplo, dois fizeram a prova em papel —, o passo «Rever e importar» diz agora
+> quantos alunos têm resultados e quantos ficam por preencher na grelha. A grelha
+> continua a ser da turma e do instrumento, não do ficheiro. **Sem migrations,
+> sem seeder, sem alterações ao motor de cálculo nem ao contrato de importação.**
+
+### Corrigido
+
+- **O aviso «alunos da turma que não constam do ficheiro»** contava as
+  matrículas todas da turma, incluindo quem já tinha saído ou só entrou depois
+  da data de aplicação. Passa a contar só os alunos a quem o elemento de
+  avaliação se aplica nessa data (a mesma coorte do emparelhamento e a mesma
+  janela de entrada/saída da completude) e diz, por extenso, «N alunos com
+  resultados para importar. M alunos da turma sem resultados neste ficheiro.
+  Poderá preencher as respetivas classificações na grelha de correção.» Uma linha
+  que o professor ignorou não conta como tendo resultados. Sem data de aplicação
+  conhecida, vale a turma toda — o mesmo recurso do emparelhamento. Os alunos sem
+  resultado continuam sem nenhuma nota registada: nem zero, nem falta.
+- **O aviso passa a ver-se**: deixa de ser uma linha cinzenta e pequena e fica
+  num bloco «Informação» no passo «Rever e importar».
+- **Ordem estável da turma.** A grelha, as exportações e o emparelhamento
+  ordenavam por número de turma sem desempate; dois alunos com o mesmo número, ou
+  sem número, ficavam por ordem indefinida (e diferente em SQLite e em MySQL).
+  Há agora um só critério (`Enrollment::scopeInClassOrder()`): número de turma,
+  os sem número no fim, e o `id` a desempatar. Sem nulos nem empates a ordem é a
+  que já era.
 ## [0.185.0] — 2026-10-28
 
 > **Resultados de uma correção, em Excel, e faltas com número.** A grelha de

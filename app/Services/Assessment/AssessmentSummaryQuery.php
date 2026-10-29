@@ -85,7 +85,7 @@ class AssessmentSummaryQuery
 
         $enrollments = $instrument->schoolClass->enrollments()
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         $scores = StudentItemScore::where('instrument_id', $instrument->id)->get();

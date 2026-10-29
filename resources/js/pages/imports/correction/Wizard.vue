@@ -2791,14 +2791,21 @@ const typeName = computed(
                 </ul>
             </div>
 
-            <ul
+            <div
                 v-if="infos.length"
-                class="list-inside list-disc text-xs text-muted-foreground"
+                class="space-y-1 rounded-md border border-border bg-muted/40 p-4"
+                role="status"
             >
-                <li v-for="issue in infos" :key="issue.code + issue.message">
-                    {{ issue.message }}
-                </li>
-            </ul>
+                <p class="text-sm font-medium">Informação</p>
+                <ul class="list-inside list-disc text-sm text-foreground">
+                    <li
+                        v-for="issue in infos"
+                        :key="issue.code + issue.message"
+                    >
+                        {{ issue.message }}
+                    </li>
+                </ul>
+            </div>
 
             <div
                 class="flex flex-wrap items-center gap-3 border-t border-border pt-4"

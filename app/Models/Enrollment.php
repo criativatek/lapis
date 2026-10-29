@@ -95,6 +95,27 @@ class Enrollment extends Model
                 ->orWhereDate('left_on', '>=', $date));
     }
 
+    /**
+     * A ordem da turma: pelo número de turma, com um desempate estável.
+     *
+     * UM SÓ SÍTIO PARA A ORDEM EM QUE OS ALUNOS APARECEM — grelha, exportações
+     * e emparelhamento têm de concordar, e só concordam se ninguém deixar a
+     * ordem ao acaso do motor. Duas coisas que `orderBy('class_number')` sozinho
+     * não garante: (1) dois alunos com o mesmo número (ou ambos sem número)
+     * ficavam por ordem indefinida, e o SQLite e o MySQL decidiam de maneira
+     * diferente; (2) onde os NULL ficam — o SQLite põe-nos primeiro, o MySQL
+     * também em ASC, mas isso é detalhe do motor, não contrato. Aqui um aluno
+     * sem número vai SEMPRE para o fim, e o `id` desempata.
+     *
+     * @param  Builder<Enrollment>  $query
+     */
+    public function scopeInClassOrder(Builder $query): void
+    {
+        $query->orderByRaw('class_number is null')
+            ->orderBy('class_number')
+            ->orderBy('id');
+    }
+
     protected function casts(): array
     {
         return [

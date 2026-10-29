@@ -343,7 +343,7 @@ class ClassController extends Controller
             // EnrollmentController::destroy(), que faz a pergunta outra vez: um
             // separador aberto há uma hora mostra o botão como estava e
             // continua a não apagar nada (§8.2).
-            'students' => $class->activeEnrollments()->with('student.identity')->orderBy('class_number')->get()
+            'students' => $class->activeEnrollments()->with('student.identity')->inClassOrder()->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,
                     // O id numérico é o que a secção «Grupos» envia de volta:
@@ -418,7 +418,7 @@ class ClassController extends Controller
             'former_students' => $class->enrollments()
                 ->whereNot('status', EnrollmentStatus::Active)
                 ->with('student.identity')
-                ->orderBy('class_number')
+                ->inClassOrder()
                 ->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'ulid' => $enrollment->ulid,

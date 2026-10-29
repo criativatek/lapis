@@ -90,7 +90,7 @@ class ClassCharacterisationController extends Controller
                     ->orWhereIn('id', $characterised);
             })
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         $characterisations = EnrollmentCharacterisation::query()
