@@ -17,6 +17,7 @@ import type { LessonOutcomeValue } from '@/components/lessons/LessonOutcomePanel
 import LessonPreparationContextPanel from '@/components/lessons/LessonPreparationContextPanel.vue';
 import UnsavedChangesDialog from '@/components/lessons/UnsavedChangesDialog.vue';
 import LessonSummaryConflict from '@/components/lessons/week/LessonSummaryConflict.vue';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -98,7 +99,93 @@ type Lesson = {
     } | null;
 };
 
-const props = defineProps<{ lesson: Lesson; attendance: LessonAttendance; day_events: DayEvent[] }>();
+/**
+ * A interrupção do calendário que cobre o dia desta aula — derivada em leitura,
+ * ou null — e o que «Ver e corrigir» lhe faria, com a MESMA classificação do
+ * aviso: `retirable` só quando a aula sai mesmo; senão, `reasons` diz porquê.
+ */
+type CalendarConflict = {
+    title: string;
+    type: string;
+    type_label: string;
+    starts_on: string;
+    ends_on: string;
+    kind?: 'A' | 'B' | 'C' | null;
+    retirable?: boolean;
+    /** A aula é de uma turma que quem vê leciona (só essas entram em «Ver e corrigir»). */
+    in_scope?: boolean;
+    year_editable?: boolean;
+    reasons?: { code: string; label: string }[];
+} | null;
+
+const props = withDefaults(
+    defineProps<{ lesson: Lesson; attendance: LessonAttendance; day_events: DayEvent[]; calendar_conflict?: CalendarConflict }>(),
+    { calendar_conflict: null },
+);
+
+const conflictDateFormatter = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+
+function conflictDate(date: string): string {
+    return conflictDateFormatter.format(new Date(`${date}T00:00:00Z`));
+}
+
+/** «Esta aula cai num dia sem aulas (Interrupção de Natal, 21/12/2026 – 02/01/2027).» */
+const conflictSentence = computed(() => {
+    const conflict = props.calendar_conflict;
+
+    if (conflict === null) {
+        return null;
+    }
+
+    const range =
+        conflict.starts_on === conflict.ends_on
+            ? conflictDate(conflict.starts_on)
+            : `${conflictDate(conflict.starts_on)} – ${conflictDate(conflict.ends_on)}`;
+
+    return `Esta aula cai num dia sem aulas (${conflict.title}, ${range}).`;
+});
+
+/**
+ * O que «Ver e corrigir» faz a ESTA aula, dito para o caso dela — e nunca
+ * «tem registos» de uma aula vazia num ano fechado, nem «pode ser retirada» de
+ * uma aula com planeamento sem dizer para onde ele vai.
+ */
+const conflictOutcome = computed<string | null>(() => {
+    const conflict = props.calendar_conflict;
+
+    if (conflict === null) {
+        return null;
+    }
+
+    if (conflict.in_scope === false) {
+        return 'Não é de uma turma tua: só os professores da turma a podem corrigir, em Aulas e Sumários.';
+    }
+
+    if (conflict.retirable === true && conflict.kind === 'A') {
+        return 'Está vazia: pode ser retirada em Aulas e Sumários › Ver e corrigir.';
+    }
+
+    if (conflict.retirable === true && conflict.kind === 'B') {
+        return 'Tem planeamento: em Aulas e Sumários › Ver e corrigir, é retirada e o planeamento passa para a aula seguinte da turma (ou do grupo), sem se perder nada.';
+    }
+
+    if ((conflict.kind === 'A' || conflict.kind === 'B') && conflict.year_editable === false) {
+        return 'O ano letivo está fechado, por isso não é alterada.';
+    }
+
+    if (conflict.kind === 'C') {
+        return conflict.reasons?.length === 1 && conflict.reasons[0].code === 'batch_limit'
+            ? 'Fica para a correção seguinte: em Aulas e Sumários › Ver e corrigir, há demasiadas aulas com planeamento para uma só vez.'
+            : 'Não é alterada automaticamente:';
+    }
+
+    return 'Não é alterada automaticamente.';
+});
+const conflictReasons = computed(() => {
+    const reasons = props.calendar_conflict?.reasons ?? [];
+
+    return reasons.length === 1 && reasons[0].code === 'batch_limit' ? [] : reasons;
+});
 
 // Rascunho de faltas antes da consolidação: começa com o que o servidor já
 // sabia (linhas 'absent' gravadas) e viaja com o sumário e com o "marcar
@@ -649,6 +736,17 @@ function goBack(event: MouseEvent): void {
                 {{ returnLabel }}
             </a>
         </Button>
+
+        <Alert v-if="conflictSentence" data-testid="lesson-calendar-conflict">
+            <Info aria-hidden="true" />
+            <AlertDescription>
+                <p>{{ conflictSentence }}</p>
+                <p v-if="conflictOutcome" data-testid="lesson-calendar-conflict-outcome">{{ conflictOutcome }}</p>
+                <ul v-if="conflictReasons.length > 0" class="list-disc pl-5" data-testid="lesson-calendar-conflict-reasons">
+                    <li v-for="reason in conflictReasons" :key="reason.code">{{ reason.label }}</li>
+                </ul>
+            </AlertDescription>
+        </Alert>
 
         <div class="space-y-3">
             <div class="flex flex-wrap items-start justify-between gap-3">

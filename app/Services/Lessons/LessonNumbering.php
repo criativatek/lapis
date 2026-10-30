@@ -124,6 +124,101 @@ final class LessonNumbering
     }
 
     /**
+     * Renumera a turma depois de se RETIRAREM aulas vazias do meio da sequência
+     * (reconciliação com o calendário), ACEITANDO LACUNAS.
+     *
+     * `resequence()` recusa quando fechar um buraco deixaria uma aula lecionada
+     * com um número diferente do POSICIONAL (guardTaughtHistory): retirar uma
+     * aberta anterior a uma lecionada "puxa" a posição da lecionada para trás.
+     * Aqui a guarda posicional não se aplica, porque a derivação de `project()`
+     * já trata as lecionadas como FIXAS — só as abertas derivam, e a lecionada
+     * mantém o número que tem, deixando uma lacuna onde a aula retirada estava.
+     * Em vez da guarda posicional, a garantia é a que importa e é VERIFICADA DUAS
+     * VEZES: antes de escrever (nenhuma alteração calculada toca numa aula
+     * fechada com número) e depois (o que ficou gravado das fechadas com número é
+     * exatamente o que lá estava). Qualquer desvio é uma ValidationException e
+     * quem chama reverte a transação.
+     *
+     * Não altera `resequence()` nem o comportamento de DeleteLesson, que continua
+     * a recusar. COM A NUMERAÇÃO CONGELADA, `writable()` só deixa escrever as
+     * aulas sem número: nada que exista muda e a lacuna fica por inteiro.
+     *
+     * SEMPRE DENTRO DE UMA TRANSAÇÃO DE QUEM CHAMA, com a turma bloqueada.
+     *
+     * LEITURAS CORRENTES, E COM BLOQUEIO. Quem chama já leu muita coisa na mesma
+     * transação, e em InnoDB (REPEATABLE READ) uma leitura simples vem do
+     * retrato tirado na primeira — não da linha gravada agora. MarkLessonAsTaught
+     * fecha uma aula prendendo SÓ a aula (nunca a turma): uma aula aberta no
+     * retrato pode estar lecionada no momento em que esta renumeração escreve.
+     * Calculada sobre o retrato, essa aula contava como livre e recebia um
+     * número novo (o UPDATE cai sempre na versão gravada) — e as duas
+     * verificações, lidas do mesmo retrato, não davam por nada. Por isso:
+     *
+     *  1. as aulas da turma são presas (FOR UPDATE) PELA ORDEM DO ID — a ordem
+     *     de `lockLessons` na reconciliação; a turma já está presa por quem
+     *     chama, e é ela que serializa quem numera;
+     *  2. a sequência, o histórico e a verificação final leem-se com
+     *     `lockForUpdate()`: leituras correntes, que veem o que foi gravado.
+     *
+     * Uma aula fechada entretanto é FIXA aqui (nunca muda de número); se isso
+     * mudar o plano, o token de quem chama recusa.
+     *
+     * @return array<int, int|null> lesson_id => número novo, só das aulas que mudaram
+     *
+     * @throws ValidationException se alguma aula fechada com número mudasse
+     */
+    public function resequenceAcceptingGaps(int $classId): array
+    {
+        Lesson::query()->where('class_id', $classId)->orderBy('id')->lockForUpdate()->pluck('id');
+
+        $lessons = $this->sequence($classId, lock: true);
+
+        /** @var array<int, array{number: int, end: int|null, manual: bool}> $history */
+        $history = [];
+
+        foreach ($lessons as $lesson) {
+            if ($lesson->isClosedAndNumbered() && $lesson->lesson_number !== null) {
+                $history[(int) $lesson->getKey()] = [
+                    'number' => $lesson->lesson_number,
+                    'end' => $lesson->lesson_number_end,
+                    'manual' => (bool) $lesson->lesson_number_manual,
+                ];
+            }
+        }
+
+        $links = $this->link($lessons, $this->slotKeys($classId));
+        $changes = $this->writable($this->changesFor($this->project($lessons)));
+
+        foreach (array_keys($changes) as $lessonId) {
+            if (isset($history[$lessonId])) {
+                throw $this->historyWouldChange();
+            }
+        }
+
+        $this->writeLinks($links);
+        $this->writeNumbers($changes);
+
+        foreach (DB::table('lessons')->whereIn('id', array_keys($history))->lockForUpdate()->get(['id', 'lesson_number', 'lesson_number_end', 'lesson_number_manual']) as $row) {
+            $before = $history[(int) $row->id];
+
+            if ((int) $row->lesson_number !== $before['number']
+                || ($row->lesson_number_end === null ? null : (int) $row->lesson_number_end) !== $before['end']
+                || (bool) $row->lesson_number_manual !== $before['manual']) {
+                throw $this->historyWouldChange();
+            }
+        }
+
+        return array_map(fn (array $change): ?int => $change['to'], $changes);
+    }
+
+    private function historyWouldChange(): ValidationException
+    {
+        return ValidationException::withMessages([
+            'lesson_number' => __('Esta operação mudaria o número de uma aula já fechada. O histórico não é renumerado.'),
+        ]);
+    }
+
+    /**
      * As aulas fechadas e COERENTES neste momento: lesson_id => número, para as
      * fechadas com número, não manuais, cujo número guardado é igual ao
      * posicional. É a fotografia que `resequence()` compara depois das escritas
@@ -285,11 +380,15 @@ final class LessonNumbering
             }
         }
 
+        // SÓ DEPOIS DO COMMIT: uma pré-visualização (a reconciliação com o
+        // calendário materializa numa transação que reverte sempre) ou uma volta
+        // desfeita até um ponto de gravação não escreveu nada — e o registo
+        // apontava para aulas que nunca existiram. Revertida, a chamada é
+        // descartada; fora de qualquer transação, corre já.
         if ($unnumbered !== []) {
-            Log::warning('lessons.numbering.unnumbered_without_room', [
-                'class_id' => $classId,
-                'lessons' => array_values($unnumbered),
-            ]);
+            $context = ['class_id' => $classId, 'lessons' => array_values($unnumbered)];
+
+            DB::afterCommit(fn () => Log::warning('lessons.numbering.unnumbered_without_room', $context));
         }
 
         return array_map(fn (array $change): ?int => $change['to'], $changes);
@@ -971,15 +1070,22 @@ final class LessonNumbering
     /**
      * @return Collection<int, Lesson>
      */
-    private function sequence(int $classId): Collection
+    private function sequence(int $classId, bool $lock = false): Collection
     {
         // UMA AUSÊNCIA DO PROFESSOR NÃO É LIÇÃO (0.146.0): fica fora da
         // sequência, sem número e sem unidade.
-        return Lesson::query()
+        $query = Lesson::query()
             ->where('class_id', $classId)
             ->where(fn ($query) => $query->whereNull('outcome')->orWhere('outcome', '!=', LessonOutcome::TeacherAbsent->value))
             ->orderBy('starts_at')
-            ->orderBy('id')
-            ->get();
+            ->orderBy('id');
+
+        // Uma leitura CORRENTE (ver `resequenceAcceptingGaps`): as linhas já
+        // estão presas por id, por isso isto não toma bloqueios novos.
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
     }
 }

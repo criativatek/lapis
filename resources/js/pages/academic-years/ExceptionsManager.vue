@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
-import { CalendarOff, Pencil, Plus, Sparkles, Trash2 } from '@lucide/vue';
+import { CalendarOff, Pencil, Plus, Sparkles, Trash2, X } from '@lucide/vue';
 import type { ComponentPublicInstance } from 'vue';
 import { computed, nextTick, ref } from 'vue';
+import CalendarImpactDialog from '@/components/calendar-conflicts/CalendarImpactDialog.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,16 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    GENERAL_REFUSAL_MESSAGE,
+    IMPACT_REFRESH_FAILED_MESSAGE,
+    IMPACT_UNAVAILABLE_MESSAGE,
+    planNeedsDialog,
+    requestJson,
+    splitErrors,
+    STALE_PLAN_MESSAGE,
+} from '@/lib/calendarReconciliation';
+import type { ReconciliationPlan } from '@/lib/calendarReconciliation';
 
 type Option = { value: string; label: string };
 
@@ -215,6 +226,319 @@ function setStartsOn(next: string): void {
     }
 }
 
+// ------------------------------------- o impacto nas aulas já criadas
+
+/**
+ * ANTES DE GRAVAR, PERGUNTA-SE O QUE ACONTECE ÀS AULAS. Uma interrupção
+ * criada (ou alargada) depois de as aulas existirem deixa-as em dias sem aulas;
+ * eliminada (ou encurtada), liberta dias. O servidor responde, sem gravar nada,
+ * com o plano e um `plan_token`. Se não houver nada a dizer grava-se como
+ * sempre; se houver, o `CalendarImpactDialog` mostra-o e só então se grava —
+ * com o token (confirmar e aplicar) ou sem ele (guardar sem alterar as aulas).
+ *
+ * SE A PRÉ-VISUALIZAÇÃO FALHAR (ligação, erro do servidor, espera por um
+ * bloqueio) NÃO SE GRAVA EM SILÊNCIO: diz-se que as aulas desses dias ficam
+ * por corrigir e que os professores passam a ver o aviso, e pergunta-se
+ * «Guardar sem alterar as aulas?». Gravar sem reconciliar é seguro — nenhuma
+ * aula é tocada —, mas é uma decisão de quem grava.
+ *
+ * UMA RECUSA QUE NÃO É DE UM CAMPO (`exception`, `plan_token`,
+ * `lesson_number`, `academic_year`) não tem onde aparecer por baixo de um campo:
+ * diz-se numa mensagem geral, por cima da lista.
+ */
+const FIELD_KEYS = ['type', 'title', 'starts_on', 'ends_on', 'note'] as const;
+type ImpactAction = 'create' | 'update' | 'delete';
+
+type PendingChange = {
+    action: ImpactAction;
+    row: Row | null;
+    exception: CalendarException | null;
+};
+
+const checking = ref(false);
+const pending = ref<PendingChange | null>(null);
+const impact = ref<ReconciliationPlan | null>(null);
+const impactOpen = ref(false);
+const impactLoading = ref(false);
+const impactBusy = ref(false);
+const impactMessage = ref<string | null>(null);
+/** A pré-visualização falhou para este gesto: espera pela decisão de quem grava. */
+const unverified = ref<PendingChange | null>(null);
+/**
+ * Para onde volta o foco quando o diálogo fecha sem gravar (Esc, Cancelar):
+ * o «Guardar» da linha em edição, ou o «Eliminar» da exceção. Os diálogos
+ * abrem DEPOIS de um pedido assíncrono — sem isto, o foco caía no primeiro
+ * botão da página («Alternar barra lateral»).
+ */
+const returnFocusTarget = ref<HTMLElement | null>(null);
+
+function focusTargetFor(change: PendingChange): HTMLElement | null {
+    if (change.action === 'delete' && change.exception !== null) {
+        return document.querySelector<HTMLElement>(
+            `[data-delete-exception="${change.exception.ulid}"]`,
+        );
+    }
+
+    return document.querySelector<HTMLElement>('[data-save-exception]');
+}
+
+function returnFocus(event: Event): void {
+    const target = returnFocusTarget.value;
+
+    if (target && document.body.contains(target)) {
+        event.preventDefault();
+        target.focus();
+    }
+}
+/** A última recusa que não pertence a nenhum campo. */
+const generalError = ref<string | null>(null);
+
+function showRefusal(errors: Record<string, string>): void {
+    const { general } = splitErrors(errors, FIELD_KEYS);
+
+    if (general.length > 0) {
+        generalError.value = general.join(' ');
+    }
+}
+
+type ImpactResult =
+    | { kind: 'plan'; plan: ReconciliationPlan }
+    | { kind: 'invalid'; errors: Record<string, string> }
+    | { kind: 'failed' };
+
+async function fetchImpact(change: PendingChange): Promise<ImpactResult> {
+    const payload: Record<string, unknown> = { action: change.action };
+
+    if (change.exception !== null) {
+        payload.exception = change.exception.ulid;
+    }
+
+    if (change.action !== 'delete') {
+        payload.type = form.type;
+        payload.title = form.title;
+        payload.starts_on = form.starts_on;
+        payload.ends_on = form.ends_on;
+        payload.note = form.note === '' ? null : form.note;
+    }
+
+    try {
+        const result = await requestJson<ReconciliationPlan>(
+            `/academic-years/${props.academicYear.ulid}/exceptions/impact`,
+            'POST',
+            payload,
+        );
+
+        if (result.status === 422) {
+            const raw = (
+                result.body as {
+                    errors?: Record<string, string | string[]>;
+                } | null
+            )?.errors;
+            const errors: Record<string, string> = {};
+
+            for (const [field, value] of Object.entries(raw ?? {})) {
+                errors[field] = Array.isArray(value) ? value[0] : value;
+            }
+
+            return Object.keys(errors).length > 0
+                ? { kind: 'invalid', errors }
+                : { kind: 'failed' };
+        }
+
+        if (!result.ok || result.body === null) {
+            return { kind: 'failed' };
+        }
+
+        return { kind: 'plan', plan: result.body };
+    } catch {
+        return { kind: 'failed' };
+    }
+}
+
+/**
+ * Pede o plano e decide: mostra o diálogo, ou deixa gravar. Devolve `true` se o
+ * gesto ficou tratado aqui (diálogo aberto, ou campos recusados).
+ */
+async function reviewImpact(change: PendingChange): Promise<boolean> {
+    checking.value = true;
+
+    try {
+        const result = await fetchImpact(change);
+
+        if (result.kind === 'invalid') {
+            // A mesma recusa que o servidor daria ao gravar: fica nos campos —
+            // e o que não é de um campo, na mensagem geral.
+            const { fields, general } = splitErrors(result.errors, FIELD_KEYS);
+
+            form.setError(fields);
+            generalError.value =
+                general.length > 0
+                    ? general.join(' ')
+                    : Object.keys(fields).length > 0
+                      ? null
+                      : GENERAL_REFUSAL_MESSAGE;
+
+            return true;
+        }
+
+        if (result.kind === 'failed') {
+            // Não se grava às cegas: quem grava decide.
+            returnFocusTarget.value = focusTargetFor(change);
+            unverified.value = change;
+
+            return true;
+        }
+
+        if (planNeedsDialog(result.plan)) {
+            returnFocusTarget.value = focusTargetFor(change);
+            pending.value = change;
+            impact.value = result.plan;
+            impactMessage.value = null;
+            impactOpen.value = true;
+
+            return true;
+        }
+    } finally {
+        checking.value = false;
+    }
+
+    return false;
+}
+
+/**
+ * Depois de uma recusa por plano obsoleto: o mesmo diálogo, com o plano de
+ * agora. SE A NOVA VERIFICAÇÃO FALHAR, o plano antigo deixa de valer — não se
+ * deixa confirmar com o token velho (seria outra recusa): diz-se porquê, e fica
+ * só «Guardar sem alterar as aulas» ou «Cancelar».
+ */
+async function refreshImpact(): Promise<void> {
+    const change = pending.value;
+
+    if (change === null) {
+        return;
+    }
+
+    impactLoading.value = true;
+
+    try {
+        const result = await fetchImpact(change);
+
+        if (result.kind === 'plan') {
+            impact.value = result.plan;
+        } else {
+            impact.value = null;
+            impactMessage.value = IMPACT_REFRESH_FAILED_MESSAGE;
+        }
+    } finally {
+        impactLoading.value = false;
+    }
+}
+
+function closeImpact(): void {
+    impactOpen.value = false;
+    impactLoading.value = false;
+    impactBusy.value = false;
+    impactMessage.value = null;
+    pending.value = null;
+    impact.value = null;
+}
+
+function onImpactToggle(open: boolean): void {
+    if (!open) {
+        closeImpact();
+    }
+}
+
+function submitPending(token: string | null): void {
+    const change = pending.value;
+
+    if (change === null) {
+        return;
+    }
+
+    impactBusy.value = true;
+    impactMessage.value = null;
+
+    // Um pedido que acaba sem sucesso NEM erros de validação (um 403 numa
+    // sessão de suporte, um 500, a ligação) não chama nem `onSuccess` nem
+    // `onError`: sem isto, o diálogo ficava preso em «a gravar».
+    let settled = false;
+
+    const done = (): void => {
+        settled = true;
+        closeImpact();
+    };
+
+    const finished = (): void => {
+        if (!settled && impactOpen.value) {
+            impactBusy.value = false;
+            impactMessage.value = GENERAL_REFUSAL_MESSAGE;
+        }
+    };
+
+    const refused = (errors: Record<string, string>): void => {
+        settled = true;
+        impactBusy.value = false;
+
+        if (errors.plan_token !== undefined) {
+            impactMessage.value = STALE_PLAN_MESSAGE;
+            void refreshImpact();
+
+            return;
+        }
+
+        // Qualquer outra recusa: as de campo ficam por baixo dos campos, por
+        // trás do diálogo; as outras na mensagem geral. Fecha-se para serem vistas.
+        showRefusal(errors);
+        closeImpact();
+    };
+
+    if (change.action === 'delete' && change.exception !== null) {
+        submitDelete(change.exception, token, done, refused, finished);
+
+        return;
+    }
+
+    if (change.row !== null) {
+        submitSave(change.row, token, done, refused, finished);
+    }
+}
+
+function confirmImpact(): void {
+    submitPending(impact.value?.plan_token ?? null);
+}
+
+function saveWithoutReconciling(): void {
+    submitPending(null);
+}
+
+/** «Guardar sem alterar as aulas» depois de a pré-visualização ter falhado. */
+function saveUnverified(): void {
+    const change = unverified.value;
+
+    unverified.value = null;
+
+    if (change === null) {
+        return;
+    }
+
+    if (change.action === 'delete' && change.exception !== null) {
+        submitDelete(change.exception, null);
+
+        return;
+    }
+
+    if (change.row !== null) {
+        submitSave(change.row, null);
+    }
+}
+
+function onUnverifiedToggle(open: boolean): void {
+    if (!open) {
+        unverified.value = null;
+    }
+}
+
 // ---------------------------------------------------- gravar e eliminar
 
 function exceptionUrl(exception: CalendarException): string {
@@ -227,25 +551,66 @@ function exceptionUrl(exception: CalendarException): string {
  * pelo que fechar a linha é tudo o que aqui há para fazer. Se a validação
  * recusar, nada disto corre: a linha fica aberta, com o que estava escrito e com
  * os erros do servidor por baixo dos campos.
+ *
+ * Com `token`, o pedido leva `reconcile` e o `plan_token` da pré-visualização:
+ * a exceção e a retirada das aulas vazias gravam-se juntas, ou nenhuma.
  */
-function save(row: Row): void {
-    if (row.exception === null) {
-        form.post(`/academic-years/${props.academicYear.ulid}/exceptions`, {
-            preserveScroll: true,
-            onSuccess: () => {
+function submitSave(
+    row: Row,
+    token: string | null,
+    done: () => void = () => {},
+    refused: (errors: Record<string, string>) => void = showRefusal,
+    finished: () => void = () => {},
+): void {
+    form.transform((data) =>
+        token === null ? data : { ...data, reconcile: true, plan_token: token },
+    );
+
+    const options = {
+        preserveScroll: true,
+        onSuccess: () => {
+            if (row.exception === null) {
                 creating.value = false;
-            },
-        });
+            } else {
+                editingUlid.value = null;
+            }
+
+            done();
+        },
+        onError: (errors: Record<string, string>) => refused(errors),
+        onFinish: () => finished(),
+    };
+
+    if (row.exception === null) {
+        form.post(
+            `/academic-years/${props.academicYear.ulid}/exceptions`,
+            options,
+        );
 
         return;
     }
 
-    form.put(exceptionUrl(row.exception), {
-        preserveScroll: true,
-        onSuccess: () => {
-            editingUlid.value = null;
-        },
-    });
+    form.put(exceptionUrl(row.exception), options);
+}
+
+async function save(row: Row): Promise<void> {
+    if (checking.value) {
+        return;
+    }
+
+    generalError.value = null;
+
+    const change: PendingChange = {
+        action: row.exception === null ? 'create' : 'update',
+        row,
+        exception: row.exception,
+    };
+
+    if (await reviewImpact(change)) {
+        return;
+    }
+
+    submitSave(row, null);
 }
 
 /**
@@ -264,16 +629,41 @@ function onDeleteDialogToggle(open: boolean): void {
  * caixa cinzenta que não se parece com nada do resto da página. Enquanto ela
  * está no ar não parte pedido nenhum, e é só aqui que ele parte.
  */
-function destroy(): void {
+async function destroy(): Promise<void> {
     const target = confirmingDelete.value;
 
-    if (target === null) {
+    if (target === null || checking.value) {
         return;
     }
 
     confirmingDelete.value = null;
+    generalError.value = null;
 
-    router.delete(exceptionUrl(target), { preserveScroll: true });
+    if (
+        await reviewImpact({ action: 'delete', row: null, exception: target })
+    ) {
+        return;
+    }
+
+    submitDelete(target, null);
+}
+
+function submitDelete(
+    target: CalendarException,
+    token: string | null,
+    done: () => void = () => {},
+    refused: (errors: Record<string, string>) => void = showRefusal,
+    finished: () => void = () => {},
+): void {
+    router.delete(exceptionUrl(target), {
+        preserveScroll: true,
+        ...(token === null
+            ? {}
+            : { data: { reconcile: true, plan_token: token } }),
+        onSuccess: () => done(),
+        onError: (errors: Record<string, string>) => refused(errors),
+        onFinish: () => finished(),
+    });
 }
 
 // ------------------------------------------------------- o estado de repouso
@@ -543,6 +933,15 @@ function confirmSuggestions(): void {
             </div>
         </div>
 
+        <p
+            v-if="generalError"
+            role="alert"
+            class="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            data-testid="exceptions-general-error"
+        >
+            {{ generalError }}
+        </p>
+
         <EmptyState v-if="rows.length === 0" title="Ainda não há feriados nem interrupções neste ano letivo." />
 
         <div
@@ -716,7 +1115,7 @@ function confirmSuggestions(): void {
                         type="submit"
                         size="sm"
                         data-save-exception
-                        :disabled="form.processing"
+                        :disabled="form.processing || checking"
                     >
                         Guardar
                     </Button>
@@ -739,8 +1138,10 @@ function confirmSuggestions(): void {
                     <DialogDescription>
                         «{{ confirmingDelete?.title }}» deixa de constar do
                         calendário deste ano letivo, e aqueles dias voltam a ser
-                        letivos. Os períodos, as avaliações, o horário e os
-                        acontecimentos não são afetados.
+                        letivos. As aulas já criadas não são apagadas: se
+                        houver aulas por abrir nesses dias, aparecem quando
+                        abrir as semanas. Os períodos, as avaliações, o horário
+                        e os acontecimentos não são afetados.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -760,6 +1161,75 @@ function confirmSuggestions(): void {
                         @click="destroy"
                     >
                         <Trash2 class="size-4" /> Eliminar
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!--
+            O QUE ACONTECE ÀS AULAS JÁ CRIADAS — só abre quando há aulas
+            afetadas. Gravar sem confirmar aqui é o gesto de sempre.
+        -->
+        <CalendarImpactDialog
+            :open="impactOpen"
+            :plan="impact"
+            :loading="impactLoading"
+            :busy="impactBusy"
+            :message="impactMessage"
+            :return-focus="returnFocusTarget"
+            @update:open="onImpactToggle"
+            @confirm="confirmImpact"
+            @save-only="saveWithoutReconciling"
+        />
+
+        <!--
+            A PRÉ-VISUALIZAÇÃO FALHOU: não se grava às cegas. «Guardar sem
+            alterar as aulas» é o gesto de sempre; «Cancelar» não grava nada.
+        -->
+        <Dialog :open="unverified !== null" @update:open="onUnverifiedToggle">
+            <DialogContent
+                class="max-h-[90vh] max-w-lg overflow-y-auto pb-0"
+                :show-close-button="false"
+                data-testid="impact-unavailable"
+                @close-auto-focus="returnFocus"
+            >
+                <!-- O «Fechar» do canto com alvo de 44 px. -->
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    class="absolute top-2 right-2 size-11"
+                    aria-label="Fechar"
+                    data-testid="impact-unavailable-x"
+                    @click="unverified = null"
+                >
+                    <X class="size-4" aria-hidden="true" />
+                </Button>
+                <DialogHeader class="pr-8">
+                    <DialogTitle>Não foi possível verificar as aulas</DialogTitle>
+                    <DialogDescription>
+                        {{ IMPACT_UNAVAILABLE_MESSAGE }}
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter
+                    class="sticky bottom-0 -mx-6 gap-2 border-t bg-background px-6 py-4"
+                >
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        class="min-h-11"
+                        data-testid="impact-unavailable-cancel"
+                        @click="unverified = null"
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        type="button"
+                        class="min-h-11"
+                        data-testid="impact-unavailable-save"
+                        @click="saveUnverified"
+                    >
+                        Guardar sem alterar as aulas
                     </Button>
                 </DialogFooter>
             </DialogContent>

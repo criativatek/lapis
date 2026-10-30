@@ -3,6 +3,7 @@
 namespace Tests\Feature\Lessons;
 
 use App\Actions\Lessons\DeleteLesson;
+use App\Actions\Lessons\MaterializeLessonsForRange;
 use App\Models\ClassGroup;
 use App\Models\Lesson;
 use App\Models\LessonStatus;
@@ -380,6 +381,29 @@ class SplitGroupLessonNumberingTest extends TestCase
                 && $context['class_id'] === $this->schoolClass->id
                 && count($context['lessons']) === 2)
             ->once();
+    }
+
+    /**
+     * O MESMO AVISO, NUMA MATERIALIZAÇÃO REVERTIDA, NÃO SE ESCREVE: a
+     * pré-visualização da reconciliação com o calendário materializa numa
+     * transação que reverte sempre, e o registo apontava para aulas que nunca
+     * existiram. Só depois do commit.
+     */
+    #[Test]
+    public function a_rolled_back_materialization_writes_no_unnumbered_warning(): void
+    {
+        Log::spy();
+
+        $this->whole('2026-10-15 15:00:00', ['lesson_number' => 1, 'status' => LessonStatus::Taught]);
+
+        DB::beginTransaction();
+        $this->inTenant($this->organization, fn () => app(MaterializeLessonsForRange::class)->execute(
+            $this->schoolClass, CarbonImmutable::parse('2026-10-05'), CarbonImmutable::parse('2026-10-11'), $this->teacher,
+        ));
+        $this->assertSame(2, $this->inTenant($this->organization, fn (): int => Lesson::query()->whereNotNull('class_group_id')->count()));
+        DB::rollBack();
+
+        Log::shouldNotHaveReceived('warning');
     }
 
     /** Materializar semanas novas continua a sequência e os pares. */

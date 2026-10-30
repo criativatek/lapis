@@ -114,6 +114,7 @@ function mountPage(
     } = {},
     attendanceOverrides: Partial<typeof defaultAttendance> = {},
     dayEvents: DayEvent[] = [],
+    calendarConflict: Record<string, unknown> | null = null,
 ) {
     const wrapper = mount(Show, {
         props: {
@@ -146,6 +147,7 @@ function mountPage(
             },
             attendance: { ...defaultAttendance, ...attendanceOverrides },
             day_events: dayEvents,
+            calendar_conflict: calendarConflict as never,
         },
         global: { stubs: { teleport: true } },
     });
@@ -1364,5 +1366,84 @@ describe('lessons/Show — «Não houve aula» com texto por guardar e formulár
         await wrapper.setProps({ lesson: { ...lesson, summary_version: 5 } });
 
         expect(summaryForm().reset).not.toHaveBeenCalled();
+    });
+});
+
+describe('lessons/Show — aula num dia sem aulas', () => {
+    const conflict = {
+        title: 'Interrupção de Natal',
+        type: 'holiday',
+        type_label: 'Interrupção letiva',
+        starts_on: '2026-12-21',
+        ends_on: '2027-01-02',
+    };
+
+    const outcome = (extra: Record<string, unknown>): string =>
+        mountPage({}, {}, [], { ...conflict, in_scope: true, year_editable: true, reasons: [], ...extra })
+            .get('[data-testid="lesson-calendar-conflict"]')
+            .text();
+
+    it('says an empty lesson can be retired only when the correction would really retire it', () => {
+        const text = outcome({ kind: 'A', retirable: true });
+
+        expect(text).toContain('Esta aula cai num dia sem aulas (Interrupção de Natal, 21/12/2026 – 02/01/2027).');
+        expect(text).toContain('Está vazia: pode ser retirada em Aulas e Sumários › Ver e corrigir.');
+    });
+
+    it('says where the planning of a lesson with planning goes', () => {
+        const text = outcome({ kind: 'B', retirable: true });
+
+        expect(text).toContain('Tem planeamento');
+        expect(text).toContain('o planeamento passa para a aula seguinte da turma (ou do grupo)');
+        expect(text).not.toContain('Está vazia');
+    });
+
+    it('never says an empty lesson in a closed year has records', () => {
+        const text = outcome({ kind: 'A', retirable: false, year_editable: false });
+
+        expect(text).toContain('O ano letivo está fechado, por isso não é alterada.');
+        expect(text).not.toContain('registos');
+        expect(text).not.toContain('pode ser retirada');
+    });
+
+    it('says why an open lesson is kept, with the reason in Portuguese', () => {
+        const wrapper = mountPage({}, {}, [], {
+            ...conflict,
+            kind: 'C',
+            retirable: false,
+            in_scope: true,
+            year_editable: true,
+            reasons: [{ code: 'protected_lesson_after', label: 'O planeamento teria de passar por uma aula seguinte que já tem registos ou que já passou.' }],
+        });
+        const text = wrapper.get('[data-testid="lesson-calendar-conflict"]').text();
+
+        // Aberta e sem resultado — e mesmo assim não é retirável: não se promete o que a correção não faz.
+        expect(text).not.toContain('pode ser retirada');
+        expect(text).toContain('Não é alterada automaticamente:');
+        expect(wrapper.get('[data-testid="lesson-calendar-conflict-reasons"]').text()).toContain('aula seguinte que já tem registos');
+    });
+
+    it('says a lesson over the planning limit waits for the next correction, not for an individual review', () => {
+        const wrapper = mountPage({}, {}, [], {
+            ...conflict,
+            kind: 'C',
+            retirable: false,
+            in_scope: true,
+            year_editable: true,
+            reasons: [{ code: 'batch_limit', label: 'Fica para a correção seguinte: há demasiadas aulas com planeamento para uma só vez.' }],
+        });
+
+        expect(wrapper.get('[data-testid="lesson-calendar-conflict-outcome"]').text()).toContain('Fica para a correção seguinte');
+        expect(wrapper.find('[data-testid="lesson-calendar-conflict-reasons"]').exists()).toBe(false);
+    });
+
+    it('says only the class teachers can fix a lesson of a class the viewer does not teach', () => {
+        const text = outcome({ kind: null, retirable: false, in_scope: false });
+
+        expect(text).toContain('só os professores da turma a podem corrigir');
+    });
+
+    it('shows nothing when the day is a teaching day', () => {
+        expect(mountPage().find('[data-testid="lesson-calendar-conflict"]').exists()).toBe(false);
     });
 });

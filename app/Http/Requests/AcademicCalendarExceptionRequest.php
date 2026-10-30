@@ -56,6 +56,32 @@ class AcademicCalendarExceptionRequest extends FormRequest
             // É a mesma comparação que a CHECK da tabela faz.
             'ends_on' => $this->endsOnRules(),
             'note' => ['nullable', 'string', 'max:2000'],
+        ] + self::reconcileRules();
+    }
+
+    /**
+     * «Reconciliar as aulas já existentes» (opcional): sem `reconcile` o pedido é
+     * o de sempre e nenhuma aula é tocada; com ele, o `plan_token` da
+     * pré-visualização é obrigatório. Partilhado com o pedido de eliminar.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function reconcileRules(): array
+    {
+        return [
+            'reconcile' => ['nullable', 'boolean'],
+            'plan_token' => ['required_if_accepted:reconcile', 'nullable', 'string', 'size:64'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function reconcileMessages(): array
+    {
+        return [
+            'plan_token.required_if_accepted' => __('Pede primeiro a pré-visualização e confirma o que ela mostra.'),
+            'plan_token.size' => __('A pré-visualização é inválida. Pede-a de novo.'),
         ];
     }
 
@@ -92,7 +118,7 @@ class AcademicCalendarExceptionRequest extends FormRequest
             'ends_on.date_format' => __('Indique uma data de fim válida.'),
             'ends_on.after_or_equal' => __('Indique uma data de fim igual ou posterior à data de início.'),
             'note.max' => __('A observação não pode ter mais de 2000 caracteres.'),
-        ];
+        ] + self::reconcileMessages();
     }
 
     /**

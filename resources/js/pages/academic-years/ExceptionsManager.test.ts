@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as VueModule from 'vue';
 import { nextTick } from 'vue';
@@ -8,6 +8,7 @@ const routerDelete = vi.fn();
 const routerPost = vi.fn();
 const formPost = vi.fn();
 const formPut = vi.fn();
+const transformed: { fn: ((data: unknown) => unknown) | null } = { fn: null };
 
 vi.mock('@inertiajs/vue3', async () => {
     const { reactive } = await vi.importActual<typeof VueModule>('vue');
@@ -31,6 +32,14 @@ vi.mock('@inertiajs/vue3', async () => {
                 },
                 reset() {},
                 clearErrors() {},
+                setError(errors: Record<string, string>) {
+                    Object.assign(this.errors, errors);
+                },
+                transform(callback: (data: unknown) => unknown) {
+                    transformed.fn = callback;
+
+                    return this;
+                },
                 post: (...args: unknown[]) => formPost(...args),
                 put: (...args: unknown[]) => formPut(...args),
             }),
@@ -90,6 +99,55 @@ function mountManager(exceptions: CalendarException[] = [exception()]) {
     });
 }
 
+const NO_IMPACT = {
+    plan_token: 't'.repeat(64),
+    scope: 'organization_owner',
+    operation: 'create',
+    counts: { A: 0, B: 0, C: 0 },
+    totals: { retired: 0, shifted: 0, awaiting_teacher: 0, flagged: 0 },
+    classes: [],
+    gaps: [],
+    freed_days: [],
+    existing_on_freed_days: { count: 0 },
+    changes_anything: false,
+};
+
+/** Uma pré-visualização com aulas afetadas. */
+const WITH_IMPACT = {
+    ...NO_IMPACT,
+    counts: { A: 2, B: 1, C: 1 },
+    totals: { retired: 2, shifted: 0, awaiting_teacher: 1, flagged: 1 },
+    classes: [
+        {
+            class: 'class-a',
+            class_label: '8.º A',
+            retired: 2,
+            shifted: 0,
+            awaiting_teacher: 1,
+            flagged: 1,
+            renumbered: 0,
+            gaps: [5],
+        },
+    ],
+    gaps: [{ class: 'class-a', class_label: '8.º A', numbers: [5] }],
+    changes_anything: true,
+};
+
+/** O servidor responde ao pedido de pré-visualização — sempre o mesmo corpo. */
+function stubImpact(body: unknown, status = 200) {
+    const fetchMock = vi.fn(() =>
+        Promise.resolve({
+            ok: status < 400,
+            status,
+            json: () => Promise.resolve(body),
+        }),
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    return fetchMock;
+}
+
 function field(id: string): HTMLInputElement | null {
     return document.body.querySelector<HTMLInputElement>(`#${id}`);
 }
@@ -107,6 +165,7 @@ function field(id: string): HTMLInputElement | null {
  */
 describe('ExceptionsManager', () => {
     beforeEach(() => {
+        stubImpact(NO_IMPACT);
         routerDelete.mockClear();
         routerPost.mockClear();
         formPost.mockClear();
@@ -116,6 +175,7 @@ describe('ExceptionsManager', () => {
 
     afterEach(() => {
         document.body.innerHTML = '';
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
@@ -207,6 +267,7 @@ describe('ExceptionsManager', () => {
             .get('input#exception-title')
             .setValue('Implantação da República (confirmado)');
         await wrapper.get('[data-save-exception]').trigger('submit');
+        await flushPromises();
 
         expect(formPut).toHaveBeenCalledWith(
             '/academic-years/year-a/exceptions/exc-a',
@@ -286,6 +347,7 @@ describe('ExceptionsManager', () => {
         await wrapper.get('[data-add-exception]').trigger('click');
         await wrapper.get('input#exception-title').setValue('Carnaval');
         await wrapper.get('[data-save-exception]').trigger('submit');
+        await flushPromises();
 
         expect(formPost).toHaveBeenCalledWith(
             '/academic-years/year-a/exceptions',
@@ -429,7 +491,7 @@ describe('ExceptionsManager', () => {
         document.body
             .querySelector<HTMLButtonElement>('[data-confirm-delete]')
             ?.click();
-        await nextTick();
+        await flushPromises();
 
         expect(routerDelete).toHaveBeenCalledWith(
             '/academic-years/year-a/exceptions/exc-b',
@@ -805,5 +867,360 @@ describe('ExceptionsManager · feriados nacionais', () => {
             document.body.querySelector('[data-suggestions-error]')
                 ?.textContent,
         ).toContain('Não foi possível obter os feriados nacionais.');
+    });
+});
+
+// ═════════════════════════ o impacto nas aulas já criadas (reconciliação)
+
+/**
+ * Antes de gravar, pergunta-se ao servidor o que acontece às aulas. Sem aulas
+ * afetadas grava-se como sempre; com aulas afetadas abre o diálogo e só ele
+ * decide se o pedido leva `reconcile` e o `plan_token`.
+ */
+describe('ExceptionsManager · impacto nas aulas', () => {
+    beforeEach(() => {
+        routerDelete.mockClear();
+        routerPost.mockClear();
+        formPost.mockClear();
+        formPut.mockClear();
+        transformed.fn = null;
+        document.body.innerHTML = '';
+    });
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    async function createCarnaval(wrapper: ReturnType<typeof mountManager>) {
+        await wrapper.get('[data-add-exception]').trigger('click');
+        await wrapper.get('input#exception-title').setValue('Carnaval');
+        await wrapper.get('[data-save-exception]').trigger('submit');
+        await flushPromises();
+    }
+
+    function button(testId: string): HTMLButtonElement | null {
+        return document.body.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
+    }
+
+    it('asks the server for the impact before saving, and saves straight away when nothing is affected', async () => {
+        const fetchMock = stubImpact(NO_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/academic-years/year-a/exceptions/impact');
+        expect(JSON.parse(String(init.body))).toMatchObject({ action: 'create', title: 'Carnaval' });
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).toBeNull();
+        expect(formPost).toHaveBeenCalledTimes(1);
+        // Sem confirmação não viaja `reconcile`.
+        expect(transformed.fn?.({ title: 'x' })).toEqual({ title: 'x' });
+    });
+
+    it('opens the dialog instead of saving when lessons are affected', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        expect(formPost).not.toHaveBeenCalled();
+        const text = document.body.textContent ?? '';
+        expect(text).toContain('Vai ser corrigido');
+        expect(text).toContain('Vai ser preservado');
+        expect(text).toContain('Precisa de revisão');
+        expect(text).toContain('As aulas por dar ocupam o lugar das retiradas; as lecionadas mantêm o número.');
+        expect(text).toContain('8.º A');
+        expect(text).toContain('lição 5');
+        expect(button('impact-confirm')).not.toBeNull();
+        expect(button('impact-save-only')).not.toBeNull();
+        expect(button('impact-cancel')).not.toBeNull();
+    });
+
+    it('«Confirmar e aplicar às aulas» sends reconcile and the plan token', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        expect(formPost).toHaveBeenCalledTimes(1);
+        expect(transformed.fn?.({ title: 'Carnaval' })).toEqual({
+            title: 'Carnaval',
+            reconcile: true,
+            plan_token: WITH_IMPACT.plan_token,
+        });
+    });
+
+    it('«Guardar sem alterar as aulas» saves exactly as before, without reconcile', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-save-only')?.click();
+        await flushPromises();
+
+        expect(formPost).toHaveBeenCalledTimes(1);
+        expect(transformed.fn?.({ title: 'Carnaval' })).toEqual({ title: 'Carnaval' });
+    });
+
+    it('«Cancelar» closes the dialog and saves nothing', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-cancel')?.click();
+        await flushPromises();
+
+        expect(formPost).not.toHaveBeenCalled();
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).toBeNull();
+    });
+
+    it('explains a stale plan and asks for the preview again', async () => {
+        const fetchMock = stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        const options = formPost.mock.calls[0][1] as { onError: (errors: Record<string, string>) => void };
+        options.onError({ plan_token: 'O calendário ou as aulas mudaram desde a pré-visualização.' });
+        await flushPromises();
+
+        expect(document.body.textContent).toContain(
+            'O calendário ou as aulas mudaram entretanto. Veja de novo a pré-visualização antes de confirmar.',
+        );
+        // Um segundo pedido de pré-visualização, e o diálogo continua aberto.
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(button('impact-confirm')).not.toBeNull();
+    });
+
+    it('never stays stuck «a gravar» when the confirmed save ends without success or validation errors', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        expect(button('impact-confirm')?.disabled).toBe(true);
+
+        // Um 403 numa sessão de suporte (ou um 500): o Inertia não chama nem
+        // onSuccess nem onError — só onFinish.
+        const options = formPost.mock.calls[0][1] as { onFinish: () => void };
+        options.onFinish();
+        await flushPromises();
+
+        expect(document.body.querySelector('[data-testid="impact-message"]')?.textContent).toContain('Não foi possível guardar. Nada foi alterado.');
+        expect(button('impact-confirm')?.disabled).toBe(false);
+        expect(button('impact-save-only')?.disabled).toBe(false);
+    });
+
+    it('does not keep the old plan when checking the lessons again fails', async () => {
+        let calls = 0;
+        const fetchMock = vi.fn(() => {
+            calls++;
+
+            return calls === 1
+                ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(WITH_IMPACT) })
+                : Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        const options = formPost.mock.calls[0][1] as { onError: (errors: Record<string, string>) => void };
+        options.onError({ plan_token: 'O calendário ou as aulas mudaram desde a pré-visualização.' });
+        await flushPromises();
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(document.body.textContent).toContain('Não foi possível voltar a verificar as aulas.');
+        // O token velho não volta a ser enviado: só se pode gravar sem alterar as aulas, ou cancelar.
+        expect(button('impact-confirm')?.disabled).toBe(true);
+        expect(button('impact-save-only')?.disabled).toBe(false);
+    });
+
+    it('says «dias voltam a ser letivos» and that no lesson is deleted when freeing days', async () => {
+        stubImpact({
+            ...NO_IMPACT,
+            operation: 'delete',
+            freed_days: ['2026-12-21', '2026-12-22', '2026-12-23'],
+            existing_on_freed_days: { count: 4 },
+        });
+        const wrapper = mountManager([NATAL]);
+
+        await wrapper.get('[data-delete-exception="exc-b"]').trigger('click');
+        await nextTick();
+        document.body.querySelector<HTMLButtonElement>('[data-confirm-delete]')?.click();
+        await flushPromises();
+
+        const text = document.body.textContent ?? '';
+        expect(routerDelete).not.toHaveBeenCalled();
+        expect(text).toContain('3 dias voltam a ser letivos');
+        expect(text).toContain('nenhuma aula é apagada');
+        // Nada a corrigir: não se oferece «aplicar às aulas».
+        expect(button('impact-confirm')).toBeNull();
+        expect(button('impact-save-only')).not.toBeNull();
+    });
+
+    it('deletes with reconcile and the token once confirmed', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([NATAL]);
+
+        await wrapper.get('[data-delete-exception="exc-b"]').trigger('click');
+        await nextTick();
+        document.body.querySelector<HTMLButtonElement>('[data-confirm-delete]')?.click();
+        await flushPromises();
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        expect(routerDelete).toHaveBeenCalledWith(
+            '/academic-years/year-a/exceptions/exc-b',
+            expect.objectContaining({ data: { reconcile: true, plan_token: WITH_IMPACT.plan_token } }),
+        );
+    });
+
+    /**
+     * A PRÉ-VISUALIZAÇÃO FALHOU (500, ligação, espera por um bloqueio): não se
+     * grava em silêncio. Antes desta correção gravava-se logo, sem reconciliar
+     * e sem dizer nada a quem gravava.
+     */
+    it('asks before saving without checking the lessons when the preview cannot be obtained', async () => {
+        stubImpact({ message: 'erro' }, 500);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        expect(formPost).not.toHaveBeenCalled();
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).toBeNull();
+        const unavailable = document.body.querySelector('[data-testid="impact-unavailable"]')?.textContent ?? '';
+        expect(unavailable).toContain('Não foi possível verificar as aulas já criadas.');
+        // Diz o que acontece se gravar assim: as aulas ficam por corrigir e os professores são avisados.
+        expect(unavailable).toContain('as aulas desses dias ficam por corrigir');
+        expect(unavailable).toContain('os professores das turmas passam a ver um aviso');
+        expect(button('impact-unavailable-save')?.className).toContain('min-h-11');
+        expect(button('impact-unavailable-cancel')?.className).toContain('min-h-11');
+
+        button('impact-unavailable-save')?.click();
+        await flushPromises();
+
+        expect(formPost).toHaveBeenCalledTimes(1);
+        expect(transformed.fn?.({ title: 'Carnaval' })).toEqual({ title: 'Carnaval' });
+    });
+
+    it('saves nothing when the person cancels after the preview failed', async () => {
+        vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
+        const wrapper = mountManager([NATAL]);
+
+        await wrapper.get('[data-delete-exception="exc-b"]').trigger('click');
+        await nextTick();
+        document.body.querySelector<HTMLButtonElement>('[data-confirm-delete]')?.click();
+        await flushPromises();
+
+        expect(button('impact-unavailable-save')).not.toBeNull();
+        button('impact-unavailable-cancel')?.click();
+        await flushPromises();
+
+        expect(routerDelete).not.toHaveBeenCalled();
+        expect(document.body.querySelector('[data-testid="impact-unavailable"]')).toBeNull();
+    });
+
+    it('shows a refusal that belongs to no field as a general message', async () => {
+        stubImpact({ message: 'x', errors: { exception: ['Esta exceção do calendário já não existe.'] } }, 422);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        expect(formPost).not.toHaveBeenCalled();
+        expect(wrapper.get('[data-testid="exceptions-general-error"]').text()).toBe('Esta exceção do calendário já não existe.');
+    });
+
+    it('shows a general message when the confirmed save is refused for a reason that is not a field', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-confirm')?.click();
+        await flushPromises();
+
+        const options = formPost.mock.calls[0][1] as { onError: (errors: Record<string, string>) => void };
+        options.onError({ lesson_number: 'Esta operação mudaria o número de uma aula já fechada. O histórico não é renumerado.' });
+        await flushPromises();
+
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).toBeNull();
+        expect(wrapper.get('[data-testid="exceptions-general-error"]').text()).toContain('O histórico não é renumerado.');
+    });
+
+    it('says how many lessons still to be given change number', async () => {
+        stubImpact({
+            ...WITH_IMPACT,
+            classes: [{ ...WITH_IMPACT.classes[0], renumbered: 3 }],
+        });
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        const text = document.body.textContent ?? '';
+        expect(text).toContain('Atenção à numeração');
+        expect(text).toContain('8.º A: 3 aulas por dar mudam de número');
+        expect(text).toContain('As aulas por dar ocupam o lugar das retiradas; as lecionadas mantêm o número.');
+    });
+
+    /**
+     * O diálogo abre DEPOIS de um pedido assíncrono: ao fechar sem gravar, o
+     * foco volta ao «Guardar» do formulário — e não ao primeiro botão da página.
+     */
+    it('gives the focus back to «Guardar» when the impact dialog closes without saving', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).not.toBeNull();
+
+        button('impact-cancel')?.click();
+        await flushPromises();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement?.hasAttribute('data-save-exception')).toBe(true);
+    });
+
+    it('gives the focus back to «Guardar» when the «could not check» dialog is cancelled', async () => {
+        stubImpact({ message: 'erro' }, 500);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+        button('impact-unavailable-cancel')?.click();
+        await flushPromises();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(document.activeElement?.hasAttribute('data-save-exception')).toBe(true);
+    });
+
+    it('shows the server validation on the fields instead of opening the dialog', async () => {
+        stubImpact({ errors: { starts_on: ['Indique uma data de início válida.'] } }, 422);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        expect(formPost).not.toHaveBeenCalled();
+        expect(document.body.querySelector('[data-testid="impact-dialog"]')).toBeNull();
+        expect(wrapper.text()).toContain('Indique uma data de início válida.');
+    });
+
+    it('never mentions internal jargon in the dialog', async () => {
+        stubImpact(WITH_IMPACT);
+        const wrapper = mountManager([]);
+
+        await createCarnaval(wrapper);
+
+        const text = document.body.textContent ?? '';
+        expect(text).not.toMatch(/plan_token|materializ|ocorrência|\bA\/B\/C\b/i);
     });
 });

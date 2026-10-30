@@ -211,6 +211,27 @@ class Lesson extends Model
     }
 
     /**
+     * A aula leva algo que NÃO se perde em silêncio ao ser retirada do horário:
+     * está fechada ou lecionada, tem número indicado pelo professor, assiduidade
+     * (consolidada ou rascunho) ou uma linha de sumário/plano.
+     *
+     * A definição que ReconcileLessonsWithSlotValidity sempre usou, extraída
+     * para aqui para que a reconciliação com o calendário a reutilize em vez de
+     * a duplicar. LÊ OS ATRIBUTOS `*_exists`: quem chama carrega a aula com
+     * `withExists(['summary', 'plan', 'attendances'])`.
+     */
+    public function carriesContent(): bool
+    {
+        return $this->isClosed()
+            || $this->lesson_number_manual
+            || $this->status === LessonStatus::Taught
+            || $this->attendance_recorded_at !== null
+            || (bool) $this->getAttribute('summary_exists')
+            || (bool) $this->getAttribute('plan_exists')
+            || (bool) $this->getAttribute('attendances_exists');
+    }
+
+    /**
      * Fechada e com número próprio na sequência (lecionada ou atividade da
      * turma). É o histórico que a renumeração não pode mudar.
      */
