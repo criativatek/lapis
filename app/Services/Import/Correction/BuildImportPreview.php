@@ -118,7 +118,16 @@ class BuildImportPreview
     protected function items(CanonicalCorrectionGrid $grid, ImportMapping $mapping, ?Instrument $instrument): array
     {
         return array_map(function (CanonicalItem $item) use ($mapping, $instrument): array {
+            // An empty or non-numeric value is «not decided yet», exactly as
+            // ImportCorrectionGrid::pointsFor reads it: preview and confirmation
+            // must agree on which cotação a question has, so an empty field from
+            // the client falls back to the file's own cotação.
             $chosen = $mapping->points[$item->sourceKey] ?? null;
+
+            if (! is_string($chosen) || $chosen === '' || ! is_numeric($chosen)) {
+                $chosen = null;
+            }
+
             $mappedId = $mapping->items[$item->sourceKey] ?? null;
 
             // Associating with an existing instrument: the cotação already

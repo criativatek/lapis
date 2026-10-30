@@ -154,6 +154,25 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
     }
 
     /**
+     * A estrutura de grupos do ficheiro, na ordem das colunas.
+     */
+    protected function declareGroups(IntuitivoWorkbookBuilder $builder): IntuitivoWorkbookBuilder
+    {
+        return $builder
+            ->group('GRUPO I', array_slice($this->maxima(), 0, 6))
+            ->group('GRUPO II', array_slice($this->maxima(), 6, 5))
+            ->group('GRUPO III', array_slice($this->maxima(), 11, 5));
+    }
+
+    /**
+     * O domínio da questão (0-based): o da secção a que pertence.
+     */
+    protected function domainNameFor(int $question): string
+    {
+        return ['Leitura', 'Gramática', 'Escrita'][$question < 6 ? 0 : ($question < 11 ? 1 : 2)];
+    }
+
+    /**
      * O ficheiro do Intuitivo: 21 alunos (todos menos os do papel), por uma
      * ordem que não é a da turma — a inversa.
      *
@@ -161,10 +180,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
      */
     protected function workbookBuilder(array $overrides = []): IntuitivoWorkbookBuilder
     {
-        $builder = IntuitivoWorkbookBuilder::make()
-            ->group('GRUPO I', array_slice($this->maxima(), 0, 6))
-            ->group('GRUPO II', array_slice($this->maxima(), 6, 5))
-            ->group('GRUPO III', array_slice($this->maxima(), 11, 5));
+        $builder = $this->declareGroups(IntuitivoWorkbookBuilder::make());
 
         foreach (array_reverse(array_keys($this->names)) as $number) {
             if (in_array($number, self::PAPER_NUMBERS, true)) {
@@ -249,14 +265,13 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
             $students[$sourceKey] = $enrollmentId;
         }
 
-        $byGroup = ['Leitura', 'Gramática', 'Escrita'];
         $points = [];
         $domains = [];
 
         foreach ($preview['items'] as $index => $item) {
             $points[$item['source_key']] = $item['points'];
             $domains[$item['source_key']] = [[
-                'domain_id' => $this->domains[$byGroup[$index < 6 ? 0 : ($index < 11 ? 1 : 2)]],
+                'domain_id' => $this->domains[$this->domainNameFor($index)],
                 'allocation_percent' => '100',
             ]];
         }
@@ -529,7 +544,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
         });
 
         $items = $this->itemIds($instrument);
-        $this->assertCount(16, $items);
+        $this->assertCount(count($this->maxima()), $items);
 
         // A grelha devolve os 23 alunos, pela ordem da turma.
         $this->actingAs($this->teacher)
@@ -548,7 +563,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
 
         // 21 × 16 notas, cada uma na questão certa.
         $scores = $this->scoresOf($instrument);
-        $this->assertCount(21 * 16, $scores);
+        $this->assertCount(21 * count($this->maxima()), $scores);
 
         foreach ($this->names as $number => $name) {
             foreach ($items as $question => $itemId) {
@@ -579,7 +594,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
 
         // E cada questão leva o domínio da sua secção.
         $this->assertSame(
-            ['Leitura', 'Leitura', 'Leitura', 'Leitura', 'Leitura', 'Leitura', 'Gramática', 'Gramática', 'Gramática', 'Gramática', 'Gramática', 'Escrita', 'Escrita', 'Escrita', 'Escrita', 'Escrita'],
+            array_map(fn (int $question): string => $this->domainNameFor($question), array_keys($this->maxima())),
             app(CurrentOrganization::class)->runFor($this->organization, function () use ($items): array {
                 return array_map(
                     fn (int $itemId): string => Domain::find(ItemDomainAllocation::where('instrument_item_id', $itemId)->firstOrFail()->domain_id)->name,
@@ -623,7 +638,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
         );
 
         $after = $this->scoresOf($instrument);
-        $this->assertCount(23 * 16, $after);
+        $this->assertCount(23 * count($this->maxima()), $after);
 
         // As 21 × 16 notas importadas ficaram como estavam.
         foreach ($before as $key => $score) {
@@ -697,7 +712,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
         );
 
         $paperBefore = $this->paperRows($instrument);
-        $this->assertCount(32, $paperBefore);
+        $this->assertCount(2 * count($this->maxima()), $paperBefore);
 
         // Primeira reimportação: sem escolher nada, a nota manual fica.
         $this->reimport($instrument, $items, []);
@@ -705,7 +720,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
         $scores = $this->scoresOf($instrument);
         $this->assertEqualsWithDelta($handValue, (float) $scores[$edited]->points_earned, 0.0001, 'Sem CONFLICT_IMPORT a nota manual tem de ser preservada.');
         $this->assertSame($paperBefore, $this->paperRows($instrument), 'As provas em papel não podem ser tocadas.');
-        $this->assertCount(23 * 16, $scores);
+        $this->assertCount(23 * count($this->maxima()), $scores);
 
         // Segunda: com CONFLICT_IMPORT explícito, é substituída.
         $this->reimport($instrument, $items, [$edited => ImportMapping::CONFLICT_IMPORT]);
@@ -713,7 +728,7 @@ class IntuitivoPartialRosterTest extends CorrectionImportHttpTest
         $scores = $this->scoresOf($instrument);
         $this->assertEqualsWithDelta($this->markFor(5, 0), (float) $scores[$edited]->points_earned, 0.0001);
         $this->assertSame($paperBefore, $this->paperRows($instrument), 'As provas em papel continuam por tocar.');
-        $this->assertCount(23 * 16, $scores);
+        $this->assertCount(23 * count($this->maxima()), $scores);
 
         app(CurrentOrganization::class)->runFor($this->organization, function (): void {
             $this->assertSame(1, Instrument::count(), 'Reimportar não cria um segundo instrumento.');

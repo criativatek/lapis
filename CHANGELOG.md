@@ -54,6 +54,28 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   Há agora um só critério (`Enrollment::scopeInClassOrder()`): número de turma,
   os sem número no fim, e o `id` a desempatar. Sem nulos nem empates a ordem é a
   que já era.
+- **Intuitivo: grupos de uma só coluna.** Uma ficha com um grupo final de uma
+  coluna (por exemplo «GRUPO V (Máximo: 24.00)», unido na vertical sobre as
+  linhas 1–2) perdia essa coluna em silêncio: lia 4 grupos e 16 perguntas em vez
+  de 5 e 17, e o total do aluno deixava de bater com as notas. O parser percorre
+  agora as colunas da esquerda para a direita, de B até ao «Total»; cada coluna
+  pertence a um grupo unido na horizontal ou é um grupo de uma só pergunta, cuja
+  cotação vem do «(Máximo: …)» do cabeçalho. As identidades já existentes
+  (`group:N`, `item:group:N:LETRA`) não mudam.
+- **Nenhuma coluna é ignorada em silêncio.** Uma coluna com cabeçalho ou números
+  que não se consiga atribuir a um grupo, grupos sobrepostos, conteúdo depois do
+  «Total», uma cotação em falta ou texto onde devia estar uma nota recusam o
+  ficheiro, com uma mensagem que nomeia a coluna ou a célula (nunca valores de
+  alunos). Um grupo que declare o seu próprio máximo tem de bater com a soma das
+  suas perguntas; se não bater, é um aviso visível.
+- **As cotações do Intuitivo vêm do ficheiro e aparecem preenchidas.** Um campo
+  de cotação vazio vindo do cliente passa a contar como «por decidir» e cai na
+  cotação do ficheiro, na pré-visualização tal como na gravação (antes a
+  pré-visualização mostrava «sem cotação» e a gravação usava a do ficheiro). No
+  detalhe por perguntas, quando o ficheiro traz cotações, o assistente diz
+  «As cotações vêm do ficheiro … Confirme-as ou altere-as se necessário» em vez de
+  mandar definir uma cotação por omissão.
+
 ## [0.185.0] — 2026-10-28
 
 > **Resultados de uma correção, em Excel, e faltas com número.** A grelha de
