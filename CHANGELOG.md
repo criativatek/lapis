@@ -25,7 +25,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
-## [0.185.1] — 2026-10-29
+## [0.186.1] — 2026-10-30
 
 > **Importar um ficheiro que não traz a turma toda.** Quando o ficheiro do
 > Intuitivo (ou de qualquer outra origem) tem menos alunos do que a turma — por
@@ -75,6 +75,156 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   detalhe por perguntas, quando o ficheiro traz cotações, o assistente diz
   «As cotações vêm do ficheiro … Confirme-as ou altere-as se necessário» em vez de
   mandar definir uma cotação por omissão.
+
+## [0.186.0] — 2026-10-30
+
+> **Interrupções do calendário que chegam depois das aulas.** Acrescentar
+> férias de Natal, um feriado ou um dia não letivo quando as aulas desses dias já
+> existiam deixava essas aulas por corrigir. Agora o responsável vê o que
+> acontece antes de gravar, os professores são avisados e corrigem as suas
+> turmas, e nada do que está escrito se perde. **Sem migrations e sem alterações ao backup** (o formato do
+> ficheiro de cópia de segurança não muda).
+
+### Adicionado
+
+- **Pré-visualização antes de gravar uma interrupção.** Ao criar, alterar ou
+  eliminar um feriado ou interrupção em «Feriados e interrupções», o Lapispro
+  mostra o que acontece às aulas já criadas nesses dias: o que vai ser corrigido
+  (aulas vazias retiradas), o que vai ser preservado (planeamento e registos
+  nunca se apagam), a numeração («Atenção à numeração»: por turma, quantas aulas
+  por dar mudam de número e que lições ficam sem aula, porque as aulas por dar
+  ocupam o lugar das retiradas e as lecionadas mantêm o número) e o que precisa
+  de revisão — por turma e por razão, em palavras simples (por exemplo «7.º A:
+  1 aula (faz parte de uma lição partilhada com o grupo T2, que continua a ter
+  aula)»), sem mostrar aulas nem conteúdo. «Confirmar e aplicar às aulas» grava a interrupção e
+  retira as aulas vazias na mesma operação; «Guardar sem alterar as aulas»
+  grava como até aqui. Só contam os dias da interrupção que se está a gravar
+  (nunca os de outra gravada antes «sem alterar as aulas»), e eliminar uma
+  interrupção nunca retira aulas. Se o calendário ou as aulas mudarem entre a
+  pré-visualização e a confirmação, nada é gravado e a pré-visualização pede-se
+  de novo; se a pré-visualização falhar, o Lapispro avisa que, gravando assim,
+  as aulas desses dias ficam por corrigir e os professores passam a ver um aviso
+  em «Aulas e Sumários», e pergunta «Guardar sem alterar as aulas?» em vez de
+  gravar em silêncio
+  (`POST /academic-years/{ano}/exceptions/impact`, com limite de pedidos;
+  `reconcile` e `plan_token` em `store`, `update` e `destroy` — recusados numa
+  sessão de suporte e sem o módulo «Aulas e Sumários»; sem o módulo, a
+  pré-visualização responde que não há aulas a corrigir).
+- **Aviso ao professor em «Aulas e Sumários»**: «Há N aulas das tuas turmas em
+  dias sem aulas (Interrupção de Natal)», com o nome das interrupções de todas
+  as aulas contadas. «Ver e corrigir» mostra, turma a turma, o que vai ser
+  corrigido, ONDE FICA cada planeamento — uma linha por aula retirada («O
+  planeamento de segunda, 21/12 passa para segunda, 04/01.») e, à parte, o
+  planeamento que já estava nas aulas seguintes e avança («O planeamento que já
+  estava nas aulas de 04/01 e 05/01 avança para a aula seguinte: 11/01 e
+  12/01.»), ou fica guardado como planeamento pendente se o horário acabar —,
+  a numeração e as aulas a rever uma a uma, com a razão de cada uma. Só mostra
+  datas, turmas e razões, nunca texto pedagógico. Se a pré-visualização falhar,
+  «Tentar de novo» sem fechar o diálogo. Quando já só restam aulas para rever à
+  mão, o aviso deixa de prometer correção: «Há N aulas … que precisam da tua
+  revisão», «Já foi corrigido o que podia ser corrigido automaticamente.» e
+  «Ver aulas para rever». Com o ano letivo fechado é só consulta
+  (`GET /lessons/calendar-conflicts`, `POST …/preview` e `POST …/regularize`,
+  ambos com limite de pedidos — o da confirmação mais estreito). No máximo 150
+  aulas com planeamento por confirmação; as restantes ficam para a seguinte.
+- A mensagem depois de corrigir diz que o planeamento passou para a aula
+  seguinte, sem se perder nada, e que essas aulas foram retiradas.
+- **Aviso na página da aula**: «Esta aula cai num dia sem aulas (…)», a dizer o
+  que «Ver e corrigir» lhe faz — retirá-la (vazia), retirá-la e passar o
+  planeamento para a aula seguinte, deixá-la para a correção seguinte — ou
+  porque não é alterada automaticamente, com a razão. A classificação é a das
+  turmas todas de quem vê, como em «Ver e corrigir».
+- Secção «Esqueci-me das férias de Natal (ou de outra interrupção)» no artigo
+  de ajuda «Escrever o sumário de uma aula».
+
+### Alterado
+
+- Uma interrupção criada, alargada, encurtada ou eliminada passa a tratar as
+  aulas já criadas, e não só as que ainda vão ser criadas. Os dias libertados
+  voltam a ser letivos e as aulas aparecem quando se abrem as semanas. Eliminar
+  não apaga aula nenhuma; encurtar retira só as aulas vazias que ainda caiam nos
+  dias que continuam na interrupção.
+- O diálogo «Eliminar do calendário?» diz agora o que acontece às aulas.
+- Cada professor só corrige as suas turmas; o responsável pelo ano retira as
+  aulas vazias de toda a organização, mas nunca move o planeamento de turmas que
+  não leciona.
+
+### Corrigido
+
+- Na correção, o planeamento de uma aula retirada não cai noutra aula do mesmo
+  feriado: passa para a aula seguinte da mesma turma ou grupo. E nunca
+  desce por cima de uma aula que já passou, que tem presenças (ou rascunho),
+  um número indicado à mão, um sumário revisto ou um plano pendente: essa aula
+  com planeamento fica para revisão. Os fluxos de sempre («Professor ausente»,
+  «Registar e adiar a preparação») não mudam: a aula seguinte continua a ser a
+  aula seguinte, mesmo num feriado ainda por regularizar.
+- Aulas já criadas em dias de feriado ou interrupção deixam de ficar em silêncio:
+  são retiradas se estiverem vazias, ou sinalizadas ao professor se não puderem
+  ser corrigidas automaticamente.
+- **Uma lição partilhada (T1/T2) nunca se desfaz.** Se o feriado só apanha um
+  dos grupos — a T1 à segunda, com a T2 de terça a ter aula —, a T1 já não é
+  retirada (nem vazia, nem com planeamento): fica para revisão («os grupos da
+  turma dão esta lição em aulas separadas, e a do outro grupo continua a
+  existir»). Retirá-la
+  deixava os dois grupos desalinhados para sempre, sem aviso.
+- O planeamento nunca salta uma aula num dia sem aulas que fica (por exemplo,
+  com um número indicado à mão): essa aula com planeamento fica para revisão,
+  em vez de o planeamento anterior ficar depois do dela.
+- Com dois públicos na turma (turma inteira e um grupo), criar a próxima aula
+  de um deles já não faz o outro saltar a sua próxima aula.
+- Quando o horário acaba antes do planeamento, a pendência guarda os textos
+  pela ordem das aulas.
+- A pré-visualização e a confirmação deixam de poder recusar sempre: quando a
+  correção não consegue cumprir o que a simulação previa (uma aula que não pode
+  nascer por conflito de horário, uma aula de outro grupo no mesmo tempo), essa
+  aula fica para revisão, e a lição partilhada com ela também.
+- A confirmação do professor e do responsável já não é recusada só porque
+  alguém gravou o primeiro sumário de uma aula fora do que se corrige, ou abriu
+  uma semana noutra turma.
+- A pré-visualização do professor toma os bloqueios pela mesma ordem de quem
+  grava sumários e resultados — sem deadlocks com eles — e o responsável só
+  bloqueia as aulas dos dias da exceção que grava (nenhuma, ao eliminar).
+- Os textos dos diálogos deixam de chamar «aulas com registos» a todas as que
+  ficam para revisão, e «Ver e corrigir» lista as aulas a rever da própria
+  pré-visualização. Com o módulo «Aulas e Sumários» só para consulta, ou numa
+  sessão de suporte, o aviso mostra «Ver aulas» e diz porquê.
+- **Uma aula marcada como lecionada a meio da correção nunca muda de número.**
+  A renumeração lia as aulas do retrato da transação; uma aula de hoje fechada
+  noutra sessão depois desse retrato (marcar como lecionada só prende a aula)
+  podia receber um número novo. Agora a renumeração prende e relê as aulas das
+  turmas que renumera, e a guarda final do histórico lê o estado gravado: ou a
+  correção recusa (o plano mudou), ou o número fica.
+- **O aviso e a página da aula já não pedem para sempre uma correção que não
+  acontece.** Quando a próxima aula de um grupo não pode nascer (outro tempo da
+  turma, criado antes, ocupa a mesma hora), a classificação já o sabe: o aviso,
+  a página da aula e «Ver e corrigir» dizem o mesmo — a aula fica para revisão.
+- Um deadlock da base de dados a meio da correção deixa de aparecer como um erro
+  sem sentido («SAVEPOINT … does not exist»): a confirmação repete-se até três
+  vezes, recalculando tudo, e só então desiste com o erro verdadeiro, sem nada
+  gravado.
+- Um rascunho de faltas gravado a meio da correção numa aula vazia fora da
+  vigência do seu tempo já não é apagado com ela: a aula fica.
+- A pré-visualização do responsável prende a turma antes das aulas que retira,
+  pela ordem de quem regista resultados.
+- Menos trabalho por pedido: a correção materializa cada dia uma só vez (antes,
+  cada ocorrência do horário que não podia nascer voltava a materializar o
+  intervalo inteiro), a classificação só procura no horário as ocorrências de
+  que precisa, e um `plan_token` malformado é recusado antes de qualquer
+  bloqueio.
+- «N aulas por dar mudam de número» conta-se contra os números de antes da
+  correção, e o aviso técnico de aulas sem número só fica registado quando a
+  materialização é gravada (as pré-visualizações já não o deixam).
+- Concordância: «1 aula vazia é retirada: não tem nada escrito».
+- Acessibilidade: os botões «Ver e corrigir» e do diálogo «Não foi possível
+  verificar as aulas» têm alvo de 44 px em qualquer largura; os três diálogos
+  novos têm um «Fechar» de 44 px e o rodapé com os botões fica sempre à vista;
+  ao fechar o diálogo do impacto sem gravar, o foco volta ao «Guardar» (ou ao
+  «Eliminar») de onde se partiu.
+
+### Inalterado
+
+- Sem migrations, sem seeder e sem alterações ao backup nem ao motor de
+  numeração das aulas já lecionadas.
 
 ## [0.185.0] — 2026-10-28
 

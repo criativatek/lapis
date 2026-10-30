@@ -4,7 +4,6 @@ namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
 use App\Models\LessonOrigin;
-use App\Models\LessonStatus;
 use App\Models\RecurringLessonSlot;
 use App\Services\Lessons\LessonNumbering;
 use Carbon\CarbonImmutable;
@@ -102,7 +101,7 @@ class ReconcileLessonsWithSlotValidity
                     ->get();
 
                 foreach ($outside as $lesson) {
-                    if ($this->carriesContent($lesson)) {
+                    if ($this->carriesContent($lesson) || $this->carriesContentNow($lesson)) {
                         $preserved++;
 
                         continue;
@@ -144,7 +143,7 @@ class ReconcileLessonsWithSlotValidity
                 ->get();
 
             foreach ($orphaned as $lesson) {
-                if ($this->carriesContent($lesson)) {
+                if ($this->carriesContent($lesson) || $this->carriesContentNow($lesson)) {
                     $preserved++;
 
                     continue;
@@ -164,14 +163,34 @@ class ReconcileLessonsWithSlotValidity
         });
     }
 
+    /**
+     * A definição vive em `Lesson::carriesContent()` (partilhada com a
+     * reconciliação com o calendário); aqui só se nomeia.
+     */
     private function carriesContent(Lesson $lesson): bool
     {
-        return $lesson->isClosed()
-            || $lesson->lesson_number_manual
-            || $lesson->status === LessonStatus::Taught
-            || $lesson->attendance_recorded_at !== null
-            || (bool) $lesson->getAttribute('summary_exists')
-            || (bool) $lesson->getAttribute('plan_exists')
-            || (bool) $lesson->getAttribute('attendances_exists');
+        return $lesson->carriesContent();
+    }
+
+    /**
+     * A MESMA PERGUNTA, COM LEITURAS CORRENTES — só para a aula que se ia
+     * apagar. O `withExists` da consulta de cima é uma subconsulta dentro de um
+     * SELECT … FOR UPDATE: em InnoDB (REPEATABLE READ) lê do retrato da
+     * transação, não do que está gravado. Quando a reconciliação com o
+     * calendário materializa (ReconcileLessonsWithCalendarExceptions), o
+     * retrato foi tirado muito antes — e um rascunho de faltas gravado depois
+     * dele numa aula fora do intervalo preso não se via: a aula era apagada e
+     * `cascadeOnDelete` levava o rascunho. Lidas aqui uma a uma e com FOR
+     * UPDATE (a aula já está presa: a mesma ordem aula → filhos de
+     * SaveLessonSummary), veem o que foi gravado.
+     *
+     * Sem concorrência dá a mesma resposta que `carriesContent()`; custa três
+     * leituras por aula a apagar, e as aulas apagadas aqui são raras.
+     */
+    private function carriesContentNow(Lesson $lesson): bool
+    {
+        return $lesson->summary()->select('id')->lockForUpdate()->first() !== null
+            || $lesson->plan()->select('id')->lockForUpdate()->first() !== null
+            || $lesson->attendances()->select('id')->lockForUpdate()->first() !== null;
     }
 }

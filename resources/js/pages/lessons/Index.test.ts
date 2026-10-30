@@ -75,6 +75,13 @@ vi.mock('@inertiajs/vue3', async () => {
     };
 });
 
+// O aviso das aulas em dias sem aulas faz o seu próprio pedido ao montar; tem
+// testes próprios (CalendarConflictsBanner.test.ts) e aqui contaria como um
+// `fetch` a mais nas asserções por posição.
+vi.mock('@/components/calendar-conflicts/CalendarConflictsBanner.vue', () => ({
+    default: { name: 'CalendarConflictsBanner', render: () => null },
+}));
+
 // O menu real abre por pointerdown num portal; aqui tudo fica inline e o
 // clique num item emite o `select` do reka-ui.
 vi.mock('@/components/ui/dropdown-menu', () => {
