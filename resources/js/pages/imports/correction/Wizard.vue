@@ -397,6 +397,17 @@ const simple = computed(() => form.result_mode === 'overall');
 const grouped = computed(() => form.result_mode === 'per_group');
 const detailed = computed(() => form.result_mode === 'per_question');
 
+/**
+ * Whether the FILE states a cotação for every question — decided by the data,
+ * never by the name of the source. Then the cotações arrive filled in and the
+ * teacher only confirms or changes them.
+ */
+const pointsFromFile = computed(
+    () =>
+        props.preview.items.length > 0 &&
+        props.preview.items.every((item) => item.source_points !== null),
+);
+
 /** Only offered when the file actually states sections. */
 const hasGroups = computed(() => props.preview.groups.length > 0);
 
@@ -771,7 +782,9 @@ const missing = computed<string[]>(() => {
 
     if (creating.value) {
         const semCotacao = props.preview.items.filter(
-            (item) => !form.points[item.source_key],
+            // A cotação the file states is never asked for again: an emptied
+            // field falls back to it on the server.
+            (item) => !form.points[item.source_key] && !item.source_points,
         ).length;
 
         if (semCotacao > 0) {
@@ -2241,7 +2254,11 @@ const typeName = computed(
                                         <span
                                             class="block text-xs font-normal text-muted-foreground"
                                         >
-                                            {{ group.questions }} perguntas
+                                            {{
+                                                group.questions === 1
+                                                    ? '1 pergunta'
+                                                    : `${group.questions} perguntas`
+                                            }}
                                         </span>
                                     </td>
                                     <td
@@ -2333,7 +2350,15 @@ const typeName = computed(
                         <h3 class="text-sm font-medium">
                             Cotação das perguntas
                         </h3>
-                        <p class="text-xs text-muted-foreground">
+                        <p
+                            v-if="pointsFromFile"
+                            class="text-xs text-muted-foreground"
+                        >
+                            As cotações vêm do ficheiro
+                            {{ preview.source_label }}. Confirme-as ou altere-as
+                            se necessário.
+                        </p>
+                        <p v-else class="text-xs text-muted-foreground">
                             O {{ preview.source_label }} não fornece uma cotação
                             por pergunta. Defina-a antes de importar — nada é
                             assumido por omissão.
@@ -2791,14 +2816,21 @@ const typeName = computed(
                 </ul>
             </div>
 
-            <ul
+            <div
                 v-if="infos.length"
-                class="list-inside list-disc text-xs text-muted-foreground"
+                class="space-y-1 rounded-md border border-border bg-muted/40 p-4"
+                role="status"
             >
-                <li v-for="issue in infos" :key="issue.code + issue.message">
-                    {{ issue.message }}
-                </li>
-            </ul>
+                <p class="text-sm font-medium">Informação</p>
+                <ul class="list-inside list-disc text-sm text-foreground">
+                    <li
+                        v-for="issue in infos"
+                        :key="issue.code + issue.message"
+                    >
+                        {{ issue.message }}
+                    </li>
+                </ul>
+            </div>
 
             <div
                 class="flex flex-wrap items-center gap-3 border-t border-border pt-4"

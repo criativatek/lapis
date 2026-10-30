@@ -570,7 +570,7 @@ class BuildResultsProgression
         $rows = Enrollment::query()
             ->where('class_id', $class->id)
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         foreach ($rows as $enrollment) {

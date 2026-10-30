@@ -22,7 +22,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
  */
 class IntuitivoWorkbookBuilder
 {
-    /** @var list<array{label: string, items: list<array{label: string, max: float|null}>}> */
+    /** @var list<array{label: string, items: list<array{label: string, max: float|null}>, declared?: float, single?: array{max: float|null, header: string|null, merge: bool}}> */
     protected array $groups = [];
 
     /** @var list<array{name: string, scores: list<float|null>}> */
@@ -98,9 +98,56 @@ class IntuitivoWorkbookBuilder
     }
 
     /**
+     * Invented people, in a fixed order. No real name, no name of a real class.
+     *
+     * @return list<string>
+     */
+    public static function fictionalNames(int $count = 23): array
+    {
+        $first = ['Alda', 'Bento', 'Cátia', 'Duarte', 'Edite', 'Fausto', 'Gilda', 'Hélio', 'Ivone', 'Jácome', 'Lara', 'Márcio', 'Nair', 'Olavo', 'Paula', 'Quirino', 'Rita', 'Salomé', 'Tadeu', 'Ulisses', 'Vera', 'Xavier', 'Zélia'];
+        $last = ['Alvorada', 'Brumoso', 'Cantarola', 'Dourado', 'Esquivo', 'Fontela', 'Girassol', 'Horizonte', 'Imaginário', 'Juncal', 'Lavanda', 'Mirante', 'Nevoeiro', 'Oliveiral', 'Pinheiral', 'Quimera', 'Ribeirinho', 'Sobreiral', 'Tormenta', 'Urzal', 'Valado', 'Xistoso', 'Zimbral'];
+
+        return array_map(fn (int $i): string => $first[$i].' '.$last[($i * 5 + 3) % 23], range(0, $count - 1));
+    }
+
+    /**
+     * The structure of an export with a one-column final group: four groups of
+     * 4+4+4+4 | 4+4+4+6 | 5+5+5+5 | 6+7+4+5 and a «GRUPO V (Máximo: 24.00)» that
+     * is a single question, Total 100. Invented students, invented marks, with
+     * real zeros.
+     *
+     * @param  list<string>|null  $names
+     */
+    public static function withSingleColumnLastGroup(?array $names = null, bool $mergeVertically = true): self
+    {
+        $builder = self::make()
+            ->group('GRUPO I', [4, 4, 4, 4])
+            ->group('GRUPO II', [4, 4, 4, 6])
+            ->group('GRUPO III', [5, 5, 5, 5])
+            ->group('GRUPO IV', [6, 7, 4, 5])
+            ->singleColumnGroup('GRUPO V', 24, $mergeVertically);
+
+        $maxima = [4, 4, 4, 4, 4, 4, 4, 6, 5, 5, 5, 5, 6, 7, 4, 5, 24];
+
+        foreach ($names ?? self::fictionalNames(21) as $row => $name) {
+            $scores = [];
+
+            foreach ($maxima as $question => $max) {
+                // Deterministic, spread over 0..max, and zero often enough to
+                // prove a zero stays a zero.
+                $scores[] = round($max * (($row * 7 + $question * 3) % 5) / 4, 2);
+            }
+
+            $builder->student($name, $scores);
+        }
+
+        return $builder;
+    }
+
+    /**
      * @param  list<float|null>  $maxima  one per question, in order
      */
-    public function group(string $label, array $maxima): self
+    public function group(string $label, array $maxima, ?float $declaredMaximum = null): self
     {
         $items = [];
 
@@ -110,7 +157,32 @@ class IntuitivoWorkbookBuilder
             $items[] = ['label' => 'Item '.($index + 1), 'max' => $max];
         }
 
-        $this->groups[] = ['label' => $label, 'items' => $items];
+        $group = ['label' => $label, 'items' => $items];
+
+        if ($declaredMaximum !== null) {
+            $group['declared'] = $declaredMaximum;
+        }
+
+        $this->groups[] = $group;
+
+        return $this;
+    }
+
+    /**
+     * A group of ONE column, as a real export has for «GRUPO V»: the question is
+     * the group. The cotação goes in the row 1 header as «(Máximo: X)» unless
+     * `$max` is null (to prove a missing one is refused).
+     *
+     * @param  bool  $mergeVertically  rows 1–2 merged into one cell; false leaves row 2 as plain empty cells
+     * @param  string|null  $questionHeader  a row 2 header, when the file has one (e.g. «Pergunta única (Máximo: 24.00)»)
+     */
+    public function singleColumnGroup(string $label, ?float $max, bool $mergeVertically = true, ?string $questionHeader = null): self
+    {
+        $this->groups[] = [
+            'label' => $label,
+            'items' => [['label' => $label, 'max' => $max]],
+            'single' => ['max' => $max, 'header' => $questionHeader, 'merge' => $mergeVertically],
+        ];
 
         return $this;
     }
@@ -243,6 +315,25 @@ class IntuitivoWorkbookBuilder
         foreach ($this->groups as $group) {
             $first = $column;
 
+            if (isset($group['single'])) {
+                $letter = $this->letter($column);
+                $single = $group['single'];
+                $sheet->setCellValue(
+                    $letter.'1',
+                    $single['max'] === null ? $group['label'] : sprintf('%s (Máximo: %.2f)', $group['label'], $single['max']),
+                );
+
+                if ($single['header'] !== null) {
+                    $sheet->setCellValue($letter.'2', $single['header']);
+                } elseif ($single['merge']) {
+                    $sheet->mergeCells($letter.'1:'.$letter.'2');
+                }
+
+                $column++;
+
+                continue;
+            }
+
             foreach ($group['items'] as $item) {
                 $letter = $this->letter($column);
                 $header = $item['max'] === null
@@ -253,7 +344,10 @@ class IntuitivoWorkbookBuilder
                 $column++;
             }
 
-            $sheet->setCellValue($this->letter($first).'1', $group['label']);
+            $sheet->setCellValue(
+                $this->letter($first).'1',
+                isset($group['declared']) ? sprintf('%s (Máximo: %.2f)', $group['label'], $group['declared']) : $group['label'],
+            );
 
             if ($this->mergeGroupHeaders && $column - 1 > $first) {
                 $sheet->mergeCells($this->letter($first).'1:'.$this->letter($column - 1).'1');

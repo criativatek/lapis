@@ -148,7 +148,7 @@ class WriteLapisGrid
         $enrollments = Enrollment::query()
             ->where('class_id', $instrument->class_id)
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         $row = LapisGridContract::FIRST_DATA_ROW;

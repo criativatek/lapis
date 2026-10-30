@@ -255,7 +255,7 @@ class InterventionController extends Controller
             // the filter and the edit form: an intervention recorded in
             // November belongs to the students of November, and neither
             // finding it nor correcting it may depend on them still being here.
-            'enrollments' => $class->enrollments()->with('student.identity')->orderBy('class_number')->get()
+            'enrollments' => $class->enrollments()->with('student.identity')->inClassOrder()->get()
                 ->map(fn (Enrollment $enrollment) => [
                     'id' => $enrollment->id,
                     'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',

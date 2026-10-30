@@ -83,7 +83,7 @@ class ClassCohort
         return Enrollment::query()
             ->where('class_id', $class->getKey())
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get()
             ->keyBy(fn (Enrollment $enrollment): int => (int) $enrollment->getKey());
     }

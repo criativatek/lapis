@@ -66,8 +66,7 @@ class ClassMeasuresMap
         ]));
 
         $roster = $class->activeEnrollments()
-            ->orderBy('class_number')
-            ->orderBy('id')
+            ->inClassOrder()
             ->get();
 
         $rosterIds = array_values($roster->pluck('id')->map(fn ($id): int => (int) $id)->all());

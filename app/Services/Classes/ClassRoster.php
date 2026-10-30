@@ -97,7 +97,7 @@ class ClassRoster
         $enrollments = $class->activeEnrollments()
             ->enrolledOn($date)
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
 
         if ($classGroup === null) {

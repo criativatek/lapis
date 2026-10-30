@@ -2,6 +2,7 @@
 
 namespace App\Services\Import\Correction;
 
+use App\Domain\Assessment\Bc;
 use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CanonicalGroup;
 use App\Domain\Import\Correction\CanonicalInstrument;
@@ -206,13 +207,17 @@ class IntuitivoXlsxParser implements CorrectionGridParser
             throw new UnreadableIntuitivoSheet('A folha «Notas» não começa com a coluna «Nome do estudante».');
         }
 
-        [$groups, $items, $groupOf] = $this->structure($sheet, $lastColumn);
+        $boundary = $this->totalBoundary($sheet, $lastColumn);
+
+        [$groups, $items, $groupOf, $issues] = $this->structure($sheet, $lastRow, $boundary);
 
         if ($groups === [] || $items === []) {
             throw new UnreadableIntuitivoSheet('Não foi possível identificar os grupos e as perguntas na folha «Notas».');
         }
 
-        $totalColumn = $this->totalColumn($sheet, $lastColumn, $items);
+        $this->guardTrailingColumns($sheet, $boundary, $lastColumn, $lastRow);
+
+        $totalColumn = $this->totalColumn($sheet, $boundary, $lastColumn);
         [$students, $results, $summaries] = $this->students($sheet, $lastRow, $items, $groupOf, $totalColumn);
 
         if ($students === []) {
@@ -233,7 +238,7 @@ class IntuitivoXlsxParser implements CorrectionGridParser
             students: $students,
             results: $results,
             summaries: $summaries,
-            issues: [],
+            issues: $issues,
             // Only what explains the reading. No OOXML metadata, no author, no
             // path, no sheet dimensions beyond what a person would need (§10).
             sourceMetadata: [
@@ -245,85 +250,180 @@ class IntuitivoXlsxParser implements CorrectionGridParser
     }
 
     /**
-     * Groups and questions, read from the merged headers on row 1 and the
-     * «Item N (Máximo: X)» headers on row 2.
+     * Groups and questions, read column by column from B up to the Total column.
      *
-     * The merge is the only statement of a group's extent. A group header that
-     * is not merged spans one column, which is legitimate for a one-question
-     * group and is why an unmerged FILE is refused elsewhere rather than here.
+     * Every column in that range belongs to exactly one of:
      *
-     * @return array{0: list<CanonicalGroup>, 1: list<CanonicalItem>, 2: array<string, string>}
+     *  - a HORIZONTAL merge on row 1 (the group), with one «Item N (Máximo: X)»
+     *    header per column on row 2 — the format the parser has always read;
+     *  - a group of ONE column: a vertical merge on rows 1–2 (or a plain row 1
+     *    header), where the question is the group itself and the cotação comes
+     *    from «(Máximo: X)» on row 1 or, when row 2 has a header, from there.
+     *
+     * Nothing else is allowed to carry marks. A column with a header or with
+     * numbers in it that cannot be placed in a group is a reason to refuse the
+     * file, never to skip the column: a mark that silently does not arrive is
+     * worse than a file that says it cannot be read.
+     *
+     * @return array{0: list<CanonicalGroup>, 1: list<CanonicalItem>, 2: array<string, string>, 3: list<ImportIssue>}
      *
      * @throws UnreadableIntuitivoSheet
      */
-    protected function structure(Worksheet $sheet, int $lastColumn): array
+    protected function structure(Worksheet $sheet, int $lastRow, int $boundary): array
     {
-        $spans = $this->groupSpans($sheet, $lastColumn);
+        $horizontal = $this->mergedGroups($sheet, $boundary);
 
         $groups = [];
         $items = [];
         $groupOf = [];
+        $issues = [];
         $sequence = 0;
+        $groupCount = 0;
 
-        foreach ($spans as $index => $span) {
-            $groupKey = 'group:'.($index + 1);
+        for ($column = 2; $column < $boundary; $column++) {
+            $letter = Coordinate::stringFromColumnIndex($column);
 
-            $groups[] = new CanonicalGroup(
-                sourceKey: $groupKey,
-                sequence: $index + 1,
-                label: $span['label'],
-                metadata: ['columns' => $span['from'].'..'.$span['to']],
-            );
+            if (isset($horizontal[$column])) {
+                $span = $horizontal[$column];
+                $groupCount++;
+                $groupKey = 'group:'.$groupCount;
+                [$groupLabel, $declared] = $this->splitHeader($span['label']);
+                $groupPoints = '0';
 
-            for ($column = $span['fromIndex']; $column <= $span['toIndex']; $column++) {
-                $letter = Coordinate::stringFromColumnIndex($column);
-                $header = $this->text($sheet, $letter.'2');
+                $groups[] = new CanonicalGroup(
+                    sourceKey: $groupKey,
+                    sequence: $groupCount,
+                    label: $groupLabel,
+                    metadata: ['columns' => $span['from'].'..'.$span['to']],
+                );
 
-                if ($header === null) {
-                    throw new UnreadableIntuitivoSheet("A coluna {$letter} não tem cabeçalho de pergunta.");
+                for ($inner = $span['fromIndex']; $inner <= $span['toIndex']; $inner++) {
+                    $innerLetter = Coordinate::stringFromColumnIndex($inner);
+                    $header = $this->text($sheet, $innerLetter.'2');
+
+                    if ($header === null) {
+                        throw new UnreadableIntuitivoSheet("A coluna {$innerLetter} não tem cabeçalho de pergunta.");
+                    }
+
+                    [$label, $maximum] = $this->splitHeader($header);
+
+                    if ($maximum === null) {
+                        throw new UnreadableIntuitivoSheet("A pergunta «{$label}» não declara a cotação máxima.");
+                    }
+
+                    $sequence++;
+                    // Identity is the COLUMN, never the label: «Item 1» exists in
+                    // every group and merging two of them would merge two different
+                    // questions (§12).
+                    $itemKey = 'item:'.$groupKey.':'.$innerLetter;
+                    $groupOf[$innerLetter] = $itemKey;
+                    $groupPoints = $this->decimal(Bc::add(Bc::of($groupPoints), Bc::of($maximum)));
+
+                    $items[] = new CanonicalItem(
+                        sourceKey: $itemKey,
+                        sequence: $sequence,
+                        groupSourceKey: $groupKey,
+                        code: $label,
+                        label: $label,
+                        pointsPossible: $maximum,
+                        metadata: ['column' => $innerLetter],
+                    );
                 }
 
-                [$label, $maximum] = $this->splitHeader($header);
-
-                if ($maximum === null) {
-                    throw new UnreadableIntuitivoSheet("A pergunta «{$label}» não declara a cotação máxima.");
+                // A group that states its own maximum has to agree with its
+                // questions. Said out loud, never settled: the questions win.
+                if ($declared !== null && Bc::compare(Bc::of($declared), Bc::of($groupPoints)) !== 0) {
+                    $issues[] = ImportIssue::make(
+                        IssueCode::SourceTotalMismatch,
+                        "O cabeçalho do grupo «{$groupLabel}» declara {$declared}, mas as cotações das suas perguntas somam {$groupPoints}. O Lapispro usa a soma das perguntas.",
+                        ['group' => $groupKey, 'declared' => $declared, 'sum' => $groupPoints],
+                    );
                 }
 
-                $sequence++;
-                // Identity is the COLUMN, never the label: «Item 1» exists in
-                // every group and merging two of them would merge two different
-                // questions (§12).
-                $itemKey = 'item:'.$groupKey.':'.$letter;
-                $groupOf[$letter] = $itemKey;
+                $column = $span['toIndex'];
 
-                $items[] = new CanonicalItem(
-                    sourceKey: $itemKey,
-                    sequence: $sequence,
-                    groupSourceKey: $groupKey,
-                    code: $label,
-                    label: $label,
-                    pointsPossible: $maximum,
-                    metadata: ['column' => $letter],
+                continue;
+            }
+
+            $first = $this->text($sheet, $letter.'1');
+            $second = $this->text($sheet, $letter.'2');
+
+            if ($first === null && $second === null && ! $this->columnHasData($sheet, $letter, $lastRow)) {
+                continue; // Entirely empty: nothing to lose.
+            }
+
+            if ($first === null) {
+                throw new UnreadableIntuitivoSheet(
+                    "A coluna {$letter} tem conteúdo mas não pertence a nenhum grupo da folha «Notas». Nada foi importado.",
                 );
             }
+
+            [$groupLabel, $groupMaximum] = $this->splitHeader($first);
+            $label = $groupLabel;
+            $maximum = $groupMaximum;
+
+            if ($second !== null) {
+                [$questionLabel, $questionMaximum] = $this->splitHeader($second);
+                $label = $questionLabel !== '' ? $questionLabel : $groupLabel;
+
+                if ($questionMaximum !== null && $groupMaximum !== null && Bc::compare(Bc::of($questionMaximum), Bc::of($groupMaximum)) !== 0) {
+                    throw new UnreadableIntuitivoSheet(
+                        "A coluna {$letter} declara duas cotações diferentes ({$groupMaximum} e {$questionMaximum}). Nada foi importado.",
+                    );
+                }
+
+                $maximum = $questionMaximum ?? $groupMaximum;
+            }
+
+            if ($maximum === null) {
+                throw new UnreadableIntuitivoSheet("A coluna {$letter} («{$groupLabel}») não declara a cotação máxima.");
+            }
+
+            $groupCount++;
+            $sequence++;
+            $groupKey = 'group:'.$groupCount;
+            $itemKey = 'item:'.$groupKey.':'.$letter;
+            $groupOf[$letter] = $itemKey;
+
+            // A group of one column: the question IS the group.
+            $groups[] = new CanonicalGroup(
+                sourceKey: $groupKey,
+                sequence: $groupCount,
+                label: $groupLabel,
+                metadata: ['columns' => $letter.'..'.$letter],
+            );
+
+            $items[] = new CanonicalItem(
+                sourceKey: $itemKey,
+                sequence: $sequence,
+                groupSourceKey: $groupKey,
+                code: $label,
+                label: $label,
+                pointsPossible: $maximum,
+                metadata: ['column' => $letter],
+            );
         }
 
-        return [$groups, $items, $groupOf];
+        return [$groups, $items, $groupOf, $issues];
     }
 
     /**
-     * Where each group begins and ends, from the merges on row 1.
+     * The horizontal merges of row 1 between column B and the Total column,
+     * keyed by their first column.
      *
-     * Column A and the trailing Total columns are merged vertically (A1:A2) and
-     * are not groups; a group merge is horizontal on row 1.
+     * Vertical merges (rows 1–2, one column) need no entry: they are read as a
+     * group of one column. What is refused here is everything that cannot be
+     * placed — a block merge, a merge running into the Total, two merges on the
+     * same column.
      *
-     * @return list<array{label: string, from: string, to: string, fromIndex: int, toIndex: int}>
+     * @return array<int, array{label: string, from: string, to: string, fromIndex: int, toIndex: int}>
      *
      * @throws UnreadableIntuitivoSheet
      */
-    protected function groupSpans(Worksheet $sheet, int $lastColumn): array
+    protected function mergedGroups(Worksheet $sheet, int $boundary): array
     {
         $spans = [];
+        $claimed = [];
 
         foreach ($sheet->getMergeCells() as $range) {
             [$start, $end] = array_pad(explode(':', $range), 2, null);
@@ -335,41 +435,103 @@ class IntuitivoXlsxParser implements CorrectionGridParser
             $fromColumn = Coordinate::columnIndexFromString(preg_replace('/\d/', '', $start) ?? '');
             $toColumn = Coordinate::columnIndexFromString(preg_replace('/\d/', '', $end) ?? '');
             $fromRow = (int) preg_replace('/\D/', '', $start);
+            $toRow = (int) preg_replace('/\D/', '', $end);
 
-            // Horizontal, on row 1, and past column A.
-            if ($fromRow !== 1 || $toColumn <= $fromColumn || $fromColumn < 2) {
+            // Column A, the Total columns and the student rows are not headers.
+            if ($fromRow !== 1 || $fromColumn < 2 || $fromColumn >= $boundary) {
                 continue;
             }
 
-            $label = $this->text($sheet, $start);
+            $startLetter = Coordinate::stringFromColumnIndex($fromColumn);
 
-            if ($label === null || $this->looksLikeTotal($label)) {
+            if ($toColumn >= $boundary || $toRow > 2 || ($toColumn > $fromColumn && $toRow > 1)) {
+                throw new UnreadableIntuitivoSheet("As células unidas a partir de {$startLetter}1 não correspondem a um grupo reconhecido. Nada foi importado.");
+            }
+
+            for ($column = $fromColumn; $column <= $toColumn; $column++) {
+                if (isset($claimed[$column])) {
+                    throw new UnreadableIntuitivoSheet('Os grupos da folha «Notas» sobrepõem-se.');
+                }
+
+                $claimed[$column] = true;
+            }
+
+            if ($toColumn === $fromColumn) {
                 continue;
             }
 
-            $spans[] = [
-                'label' => $label,
-                'from' => Coordinate::stringFromColumnIndex($fromColumn),
+            // The name is checked after every overlap has been looked for, so a
+            // pair of overlapping merges is reported as such.
+            $spans[$fromColumn] = [
+                'label' => (string) $this->text($sheet, $start),
+                'from' => $startLetter,
                 'to' => Coordinate::stringFromColumnIndex($toColumn),
                 'fromIndex' => $fromColumn,
-                'toIndex' => min($toColumn, $lastColumn),
+                'toIndex' => $toColumn,
             ];
         }
 
-        usort($spans, fn (array $a, array $b): int => $a['fromIndex'] <=> $b['fromIndex']);
-
-        // Overlapping groups would put one question in two of them.
-        $previousEnd = 1;
-
         foreach ($spans as $span) {
-            if ($span['fromIndex'] <= $previousEnd) {
-                throw new UnreadableIntuitivoSheet('Os grupos da folha «Notas» sobrepõem-se.');
+            if ($span['label'] === '') {
+                throw new UnreadableIntuitivoSheet("O grupo que começa em {$span['from']}1 não tem nome. Nada foi importado.");
             }
-
-            $previousEnd = $span['toIndex'];
         }
 
         return $spans;
+    }
+
+    /**
+     * The first column whose row 1 header starts with «Total» (the percentage
+     * column included), or one past the last column when the export has none.
+     * Everything between B and here is a group; everything from here on is a
+     * total.
+     */
+    protected function totalBoundary(Worksheet $sheet, int $lastColumn): int
+    {
+        for ($column = 2; $column <= $lastColumn; $column++) {
+            $header = $this->text($sheet, Coordinate::stringFromColumnIndex($column).'1');
+
+            if ($header !== null && $this->looksLikeTotal($header)) {
+                return $column;
+            }
+        }
+
+        return $lastColumn + 1;
+    }
+
+    /**
+     * Nothing to the right of the Total may carry marks: only the Total columns
+     * themselves are allowed there.
+     *
+     * @throws UnreadableIntuitivoSheet
+     */
+    protected function guardTrailingColumns(Worksheet $sheet, int $boundary, int $lastColumn, int $lastRow): void
+    {
+        for ($column = $boundary; $column <= $lastColumn; $column++) {
+            $letter = Coordinate::stringFromColumnIndex($column);
+            $header = $this->text($sheet, $letter.'1');
+
+            if ($header !== null && $this->looksLikeTotal($header)) {
+                continue;
+            }
+
+            if ($header !== null || $this->text($sheet, $letter.'2') !== null || $this->columnHasData($sheet, $letter, $lastRow)) {
+                throw new UnreadableIntuitivoSheet(
+                    "A coluna {$letter} está depois do total e tem conteúdo que o Lapispro não sabe interpretar. Nada foi importado.",
+                );
+            }
+        }
+    }
+
+    protected function columnHasData(Worksheet $sheet, string $letter, int $lastRow): bool
+    {
+        for ($row = 3; $row <= $lastRow; $row++) {
+            if ($this->text($sheet, $letter.$row) !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -404,17 +566,12 @@ class IntuitivoXlsxParser implements CorrectionGridParser
     /**
      * The column holding each student's own total, if the export has one.
      *
-     * @param  list<CanonicalItem>  $items
+     * Searched from the boundary the groups stop at, so it is by construction
+     * never a question column.
      */
-    protected function totalColumn(Worksheet $sheet, int $lastColumn, array $items): ?string
+    protected function totalColumn(Worksheet $sheet, int $boundary, int $lastColumn): ?string
     {
-        $lastQuestion = 0;
-
-        foreach ($items as $item) {
-            $lastQuestion = max($lastQuestion, Coordinate::columnIndexFromString($item->metadata['column']));
-        }
-
-        for ($column = $lastQuestion + 1; $column <= $lastColumn; $column++) {
+        for ($column = $boundary; $column <= $lastColumn; $column++) {
             $letter = Coordinate::stringFromColumnIndex($column);
             $header = $this->text($sheet, $letter.'1');
 
@@ -476,10 +633,16 @@ class IntuitivoXlsxParser implements CorrectionGridParser
 
             foreach ($items as $item) {
                 $letter = $item->metadata['column'];
+                if ($this->text($sheet, $letter.$row) === null) {
+                    continue; // Blank: no mark, and no opinion about why.
+                }
+
                 $value = $this->number($sheet, $letter.$row);
 
                 if ($value === null) {
-                    continue; // Blank: no mark, and no opinion about why.
+                    // Something is written there and it is not a number. Skipping
+                    // it would lose it without a word.
+                    throw new UnreadableIntuitivoSheet("A célula {$letter}{$row} não contém um número. Nada foi importado.");
                 }
 
                 $results[] = new CanonicalResult(

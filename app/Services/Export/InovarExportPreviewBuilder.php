@@ -384,7 +384,7 @@ class InovarExportPreviewBuilder
         return Enrollment::query()
             ->where('class_id', $class->id)
             ->with('student.identity')
-            ->orderBy('class_number')
+            ->inClassOrder()
             ->get();
     }
 
