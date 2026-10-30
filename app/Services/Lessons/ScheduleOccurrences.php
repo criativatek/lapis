@@ -163,7 +163,7 @@ final class ScheduleOccurrences
      *
      * @param  Collection<int, AcademicCalendarException>  $exceptions
      */
-    private function isNonTeachingDay(CarbonImmutable $date, Collection $exceptions): bool
+    public function isNonTeachingDay(CarbonImmutable $date, Collection $exceptions): bool
     {
         $day = $date->toDateString();
 

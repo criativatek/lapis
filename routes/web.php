@@ -59,6 +59,7 @@ use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LessonActivityPostponementController;
 use App\Http\Controllers\LessonAttendanceController;
 use App\Http\Controllers\LessonBatchController;
+use App\Http\Controllers\LessonCalendarConflictController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\LessonInsertionController;
 use App\Http\Controllers\LessonNumberController;
@@ -284,6 +285,14 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
     // letivo», que é a única que as lista e a única que as mostra num
     // formulário. Um endereço próprio para as ver seria uma segunda página a
     // dizer o que a primeira já diz.
+    // Pré-visualização do impacto nas aulas já existentes (só leitura, JSON).
+    // `impact` é um segmento literal num POST: não colide com
+    // `exceptions/{exception}`, que só responde a PUT e DELETE. Com throttle,
+    // como as outras pré-visualizações: simula a retirada das aulas vazias da
+    // organização inteira numa transação revertida, e não guarda nada.
+    Route::post('academic-years/{academic_year}/exceptions/impact', [AcademicCalendarExceptionController::class, 'impact'])
+        ->middleware('throttle:30,1')
+        ->name('academic-years.exceptions.impact');
     Route::post('academic-years/{academic_year}/exceptions', [AcademicCalendarExceptionController::class, 'store'])
         ->name('academic-years.exceptions.store');
     Route::put('academic-years/{academic_year}/exceptions/{exception}', [AcademicCalendarExceptionController::class, 'update'])
@@ -633,6 +642,28 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // o mesmo plano que `apply` executa, dentro de uma transação revertida.
         Route::post('lessons/sequences/{lessonSequence}/preview', [LessonSequenceController::class, 'preview'])->name('lessons.sequences.preview');
         Route::post('lessons/sequences/{lessonSequence}/apply', [LessonSequenceController::class, 'apply'])->name('lessons.sequences.apply');
+
+        // Aulas do professor que caem em dias não letivos (feriado criado depois
+        // de as aulas existirem). ANTES do wildcard `lessons/{lesson}`, que
+        // engoliria «calendar-conflicts» como um ulid. `preview` só lê; a
+        // `regularize` exige o `plan_token` dela.
+        // Throttle suave: classifica todas as turmas do professor (a mesma
+        // classificação da pré-visualização) e é pedido sempre que «Aulas e
+        // Sumários» abre. Uma recusa só esconde o aviso (falha silenciosa).
+        Route::get('lessons/calendar-conflicts', [LessonCalendarConflictController::class, 'index'])
+            ->middleware('throttle:60,1')
+            ->name('lessons.calendar-conflicts.index');
+        // Com throttle: simula o deslocamento do planeamento (e materializa) numa
+        // transação revertida.
+        Route::post('lessons/calendar-conflicts/preview', [LessonCalendarConflictController::class, 'preview'])
+            ->middleware('throttle:30,1')
+            ->name('lessons.calendar-conflicts.preview');
+        // Throttle mais estreito: a execução prende o ano, as turmas e as aulas
+        // do professor e recalcula o plano inteiro antes de comparar o token.
+        // Um token malformado é recusado antes (CalendarConflictRequest).
+        Route::post('lessons/calendar-conflicts/regularize', [LessonCalendarConflictController::class, 'regularize'])
+            ->middleware('throttle:10,1')
+            ->name('lessons.calendar-conflicts.regularize');
 
         Route::get('lessons/{lesson}', [LessonController::class, 'show'])->name('lessons.show');
         // O número da lição indicado pelo professor (0.169.0): a pré-visualização

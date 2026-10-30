@@ -49,6 +49,7 @@ import {
 } from 'vue';
 import ActivitySessionCard from '@/components/activity-sessions/ActivitySessionCard.vue';
 import ActivitySessionDialog from '@/components/activity-sessions/ActivitySessionDialog.vue';
+import CalendarConflictsBanner from '@/components/calendar-conflicts/CalendarConflictsBanner.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import InputError from '@/components/InputError.vue';
 import ActivityPostponeDialog from '@/components/lessons/ActivityPostponeDialog.vue';
@@ -260,6 +261,26 @@ watch(
 );
 
 const page = usePage();
+
+/**
+ * Depois de «Ver e corrigir»: as aulas retiradas e o planeamento movido têm de
+ * sair do ecrã. UMA VISITA SÍNCRONA, e não `router.reload()` — pelo mesmo
+ * motivo do arranque (ver `onMounted`): um reload assíncrono tardio repunha as
+ * props e o URL de uma semana ou vista anterior.
+ */
+function reloadAfterCalendarFix(): void {
+    router.get(
+        page.url,
+        {},
+        {
+            only: ['lessons', 'activitySessions', 'classView'],
+            preserveState: true,
+            preserveScroll: true,
+            preserveUrl: true,
+            replace: true,
+        },
+    );
+}
 const state = computed<WeekViewState>(() => parseWeekViewState(page.url));
 const view = computed<WeekView>(() => state.value.view);
 
@@ -2143,6 +2164,8 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                 </DropdownMenu>
             </div>
         </header>
+        <!-- Aulas das suas turmas em dias sem aulas: pede-se depois de montar, não pesa na página. -->
+        <CalendarConflictsBanner v-if="academicYear" @changed="reloadAfterCalendarFix" />
         <InputError :message="materializeError" />
 
         <!-- 2. CONSULTA — a vista do calendário e a pesquisa nos sumários. -->

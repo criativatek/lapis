@@ -13,21 +13,27 @@ use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
 use App\Http\Requests\Lessons\RecordLessonOutcomeRequest;
+use App\Models\AcademicCalendarException;
+use App\Models\AcademicYear;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
+use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
 use App\Models\User;
+use App\Services\Lessons\CalendarReconciliationPresenter;
 use App\Services\Lessons\LessonAttendanceRoster;
 use App\Services\Lessons\LessonDayEvents;
 use App\Services\Lessons\LessonPreparationContext;
+use App\Services\Lessons\NonTeachingDayConflicts;
 use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Lessons\LessonNumberingFreeze;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,6 +64,8 @@ class LessonController extends Controller implements HasMiddleware
         protected LessonPreparationContext $lessonContext,
         protected UsageRecorder $usage,
         protected SetLessonNumber $setLessonNumber,
+        protected NonTeachingDayConflicts $calendarConflicts,
+        protected CalendarReconciliationPresenter $calendarPresenter,
     ) {}
 
     /**
@@ -83,6 +91,10 @@ class LessonController extends Controller implements HasMiddleware
             'day_events' => $this->entitlements->canRead('calendar')
                 ? $this->dayEvents->for($lesson, $this->user($request))
                 : [],
+            // «Esta aula cai num dia não letivo»: a exceção do ano que cobre o dia
+            // local da aula, ou null. DERIVADA EM LEITURA — não há coluna: a aula
+            // está em conflito enquanto o seu dia for de exceção.
+            'calendar_conflict' => $this->calendarConflict($lesson, $this->user($request)),
             'lesson' => [
                 'ulid' => $lesson->ulid,
                 'starts_at' => $lesson->starts_at->toIso8601String(),
@@ -144,6 +156,79 @@ class LessonController extends Controller implements HasMiddleware
                 ],
             ],
         ]);
+    }
+
+    /**
+     * A exceção que cobre o dia, e o que a reconciliação faria a ESTA aula — a
+     * MESMA classificação do aviso e de «Ver e corrigir»
+     * (NonTeachingDayConflicts, no âmbito do professor), e não uma regra à
+     * parte: `retirable` só é verdadeiro se «Ver e corrigir» a retirar mesmo
+     * (A, ou B com o planeamento a descer), e `reasons` diz porquê quando não.
+     *
+     * NAS TURMAS DE QUEM VÊ, TODAS: «Ver e corrigir» classifica as turmas que o
+     * utilizador leciona de uma vez — o limite de planeamentos por execução
+     * (`batch_limit`) conta as B de todas elas —, por isso a página da aula
+     * classifica o mesmo conjunto, e não só a turma da aula. Uma aula de uma
+     * turma que o utilizador não leciona (o responsável a ver a aula de um
+     * colega) fica sem classificação (`in_scope` falso): só os professores da
+     * turma a corrigem.
+     *
+     * @return array{title: string, type: string, type_label: string, starts_on: string, ends_on: string, kind: string|null, retirable: bool, in_scope: bool, year_editable: bool, reasons: list<array{code: string, label: string}>}|null
+     */
+    private function calendarConflict(Lesson $lesson, User $viewer): ?array
+    {
+        $day = CarbonImmutable::instance($lesson->starts_at)->setTimezone('Europe/Lisbon')->toDateString();
+
+        $exception = AcademicCalendarException::query()
+            ->where('academic_year_id', $lesson->schoolClass->academic_year_id)
+            ->whereDate('starts_on', '<=', $day)
+            ->whereDate('ends_on', '>=', $day)
+            ->orderBy('id')
+            ->first();
+
+        if ($exception === null) {
+            return null;
+        }
+
+        $class = $lesson->schoolClass;
+        /** @var AcademicYear|null $year */
+        $year = $class->academicYear()->first();
+        $row = null;
+        $inScope = false;
+
+        if ($year !== null) {
+            $classes = SchoolClass::query()
+                ->where('academic_year_id', $year->getKey())
+                ->notArchived()
+                ->taughtBy($viewer)
+                ->orderBy('id')
+                ->get();
+            $inScope = $classes->contains(fn (SchoolClass $candidate): bool => (int) $candidate->getKey() === (int) $class->getKey());
+
+            foreach ($inScope ? $this->calendarConflicts->classify($classes, $year) : [] as $candidate) {
+                if ((int) $candidate['lesson']->getKey() === (int) $lesson->getKey()) {
+                    $row = $candidate;
+
+                    break;
+                }
+            }
+        }
+
+        $kind = $row['kind'] ?? null;
+
+        return [
+            'title' => $exception->title,
+            'type' => $exception->type->value,
+            'type_label' => $exception->type->label(),
+            'starts_on' => $exception->starts_on->toDateString(),
+            'ends_on' => $exception->ends_on->toDateString(),
+            'kind' => $kind,
+            'retirable' => in_array($kind, [NonTeachingDayConflicts::RETIRABLE, NonTeachingDayConflicts::PLANNED], true)
+                && $year !== null && $year->isEditable(),
+            'in_scope' => $inScope,
+            'year_editable' => $year !== null && $year->isEditable(),
+            'reasons' => $row === null ? [] : $this->calendarPresenter->reasons($row['reasons']),
+        ];
     }
 
     public function updateSummary(
