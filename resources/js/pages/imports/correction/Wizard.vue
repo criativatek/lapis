@@ -2254,7 +2254,11 @@ const typeName = computed(
                                         <span
                                             class="block text-xs font-normal text-muted-foreground"
                                         >
-                                            {{ group.questions }} perguntas
+                                            {{
+                                                group.questions === 1
+                                                    ? '1 pergunta'
+                                                    : `${group.questions} perguntas`
+                                            }}
                                         </span>
                                     </td>
                                     <td
