@@ -12,11 +12,13 @@ use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Fixtures\Import\IntuitivoWorkbookBuilder;
 
 /**
@@ -47,7 +49,10 @@ class IntuitivoRefusalIsNeverZeroStudentsTest extends CorrectionImportHttpTest
         parent::tearDown();
     }
 
-    protected function upload_book(IntuitivoWorkbookBuilder $builder, ?callable $tamper = null, string $source = 'intuitivo')
+    /**
+     * @return TestResponse<Response>
+     */
+    protected function upload_book(IntuitivoWorkbookBuilder $builder, ?callable $tamper = null, string $source = 'intuitivo'): TestResponse
     {
         Storage::fake('local');
 
@@ -74,7 +79,7 @@ class IntuitivoRefusalIsNeverZeroStudentsTest extends CorrectionImportHttpTest
     // ------------------------------------------------------------ the refusals
 
     /**
-     * @return array<string, array{0: callable(Worksheet): void, 1: string}>
+     * @return array<string, array{0: \Closure, 1: string}>
      */
     public static function structurallyIncompatibleFiles(): array
     {
@@ -159,15 +164,22 @@ class IntuitivoRefusalIsNeverZeroStudentsTest extends CorrectionImportHttpTest
 
         $snapshot = app(CurrentOrganization::class)->runFor($this->organization, fn () => CorrectionImport::firstOrFail()->canonical_snapshot);
 
-        $first = collect($snapshot['results'])->where('student_source_key', 'student:3')->keyBy('item_source_key');
+        $first = [];
+
+        foreach ($snapshot['results'] as $result) {
+            if ($result['student_source_key'] === 'student:3') {
+                $first[$result['item_source_key']] = $result;
+            }
+        }
 
         $this->assertSame('0', $first['item:group:1:B']['points_earned']);
-        $this->assertArrayNotHasKey('item:group:1:C', $first->all());
+        $this->assertArrayNotHasKey('item:group:1:C', $first);
         $this->assertSame('2.75', $first['item:group:1:D']['points_earned']);
         $this->assertCount(21, $snapshot['students']);
 
         // The question's maximum is the maximum, not a mark.
-        $this->assertSame('4', collect($snapshot['items'])->firstWhere('source_key', 'item:group:1:B')['points_possible']);
+        $maxima = array_column($snapshot['items'], 'points_possible', 'source_key');
+        $this->assertSame('4', $maxima['item:group:1:B']);
     }
 
     #[Test]
