@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Import;
 
+use App\Domain\Import\Correction\CanonicalCorrectionGrid;
 use App\Domain\Import\Correction\CorrectionGridSource;
+use App\Domain\Import\Correction\ImportMapping;
+use App\Domain\Import\Correction\TabularMapping;
 use App\Models\CorrectionImport;
+use App\Services\Import\Correction\GenericSpreadsheetParser;
 use App\Services\Import\Correction\IntuitivoXlsxParser;
 use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\UploadedFile;
@@ -176,6 +180,65 @@ class IntuitivoRefusalIsNeverZeroStudentsTest extends CorrectionImportHttpTest
         $this->assertCount(21, $snapshot['summaries']);
         $this->assertCount(357, $snapshot['results']); // 21 × 17: no total, no percentage.
         $this->assertSame('100', $snapshot['instrument']['source_total']);
+    }
+
+    // ------------------------------------- the header the teacher named herself
+
+    protected function parseTampered(callable $tamper): CanonicalCorrectionGrid
+    {
+        IntuitivoWorkbookBuilder::withSingleColumnLastGroup()->writeTo($this->path);
+        $spreadsheet = IOFactory::load($this->path);
+        $tamper($spreadsheet->getSheetByName('Notas'));
+        (new Xlsx($spreadsheet))->save($this->path);
+
+        return (new IntuitivoXlsxParser)->parse($this->path, 'ficha.xlsx');
+    }
+
+    #[Test]
+    public function a_group_header_with_a_name_after_the_maximum_is_read(): void
+    {
+        // The real file: "GRUPO V (Máximo: 24.00)- Expressão escrita", a vertical
+        // merge with the maximum in the MIDDLE of the text.
+        $grid = $this->parseTampered(function (Worksheet $s): void {
+            $s->setCellValue('R1', 'GRUPO V (Máximo: 24.00)- Expressão escrita');
+            $s->setCellValue('B1', 'GRUPO I Oralidade');
+        });
+
+        $this->assertTrue($grid->canBeConfirmed());
+        $this->assertCount(21, $grid->students);
+        $this->assertCount(17, $grid->items);
+        $this->assertCount(357, $grid->results);
+        $this->assertSame('24', $grid->items[16]->pointsPossible);
+        $this->assertSame('GRUPO V - Expressão escrita', $grid->groups[4]->label);
+        $this->assertSame('GRUPO I Oralidade', $grid->groups[0]->label);
+    }
+
+    #[Test]
+    public function two_maxima_in_one_header_stay_ambiguous_and_are_refused(): void
+    {
+        $grid = $this->parseTampered(fn (Worksheet $s) => $s->setCellValue('R1', 'GRUPO V (Máximo: 24.00) e (Máximo: 20.00)'));
+
+        $this->assertSame([], $grid->students);
+        $this->assertStringContainsString('não declara a cotação máxima', $grid->errors()[0]->message);
+    }
+
+    #[Test]
+    public function the_spreadsheet_source_reads_the_same_file_but_asks_for_the_cotacoes(): void
+    {
+        // What the refusal message promises, and no more.
+        IntuitivoWorkbookBuilder::withSingleColumnLastGroup()->writeTo($this->path);
+
+        $mapping = new ImportMapping(
+            resultMode: 'per_question',
+            table: new TabularMapping(sheet: 'Notas', headerRow: 2, studentColumn: 'A', resultColumns: range('B', 'R')),
+        );
+        $grid = app(GenericSpreadsheetParser::class)->parseWith($this->path, 'ficha.xlsx', $mapping);
+
+        $this->assertCount(21, $grid->students);
+        $this->assertCount(17, $grid->items);
+        $this->assertCount(357, $grid->results);
+        $this->assertSame([], $grid->groups);
+        $this->assertNotSame([], $grid->errors());
     }
 
     // ------------------------------------------------ the others do not move

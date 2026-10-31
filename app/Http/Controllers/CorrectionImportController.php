@@ -129,7 +129,7 @@ class CorrectionImportController extends Controller
         // to fix. The refusal is said here, on the upload form, and nothing is
         // stored.
         if ($grid->students === [] && ! $source->needsToBeDescribed() && ($refusal = $grid->errors()[0] ?? null) !== null) {
-            return back()->withErrors(['file' => $refusal->message.' '.__('Confirme que é a exportação original, sem alterações, ou importe-a como «:origem».', ['origem' => CorrectionGridSource::Generic->label()])]);
+            return back()->withErrors(['file' => $refusal->message.' '.__('Corrija este ponto no ficheiro e carregue-o de novo. A origem «:origem» também lê as notas por pergunta, mas sem os grupos e sem as cotações, que terá de indicar.', ['origem' => CorrectionGridSource::Generic->label()])]);
         }
 
         $storedPath = $this->storage->store($upload->getRealPath(), $originalName);
