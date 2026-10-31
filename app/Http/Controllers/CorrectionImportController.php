@@ -121,6 +121,17 @@ class CorrectionImportController extends Controller
 
         $hash = $this->storage->hash($upload->getRealPath());
         $grid = $parser->parse($upload->getRealPath(), $originalName);
+
+        // A source that explains itself and came back with a refusal and not a
+        // single student has not been «read» — it has been refused. Opening the
+        // wizard on it showed «0 alunos no ficheiro», which reads as a finding
+        // about the class and hides the one sentence that tells the teacher what
+        // to fix. The refusal is said here, on the upload form, and nothing is
+        // stored.
+        if ($grid->students === [] && ! $source->needsToBeDescribed() && ($refusal = $grid->errors()[0] ?? null) !== null) {
+            return back()->withErrors(['file' => $refusal->message.' '.__('Confirme que é a exportação original, sem alterações, ou importe-a como «:origem».', ['origem' => CorrectionGridSource::Generic->label()])]);
+        }
+
         $storedPath = $this->storage->store($upload->getRealPath(), $originalName);
 
         // The snapshot is the whole file — names, answers, everything. If this
