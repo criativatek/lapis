@@ -51,3 +51,19 @@ O professor que registou um resultado (e só ele) pode corrigi-lo na página da 
 - **Rollback de código**: o código anterior ignora a tabela; o estado atual da aula está em
   `lessons`. O histórico viaja na exportação pessoal (só o das aulas do próprio; ver
   `backup-schema.md`, v21) e restaura-se sem duplicar; a recuperação integral é a cópia diária da base.
+
+### Correção administrativa excecional (titular fora da turma)
+
+`PATCH /lessons/{lesson}/outcome/administrative` (`LessonPolicy::rectifyOutcomeAsAdministrator`).
+Reutiliza a competência que o modelo já reconhece à direção da instituição para as retificações
+(`SchoolClassPolicy::reviewRectifications`: dono de uma organização **institucional**); não há hierarquia nova.
+
+- Só uma aula `not_held`, só quando o titular do registo (`outcome_recorded_by`) já não pertence à turma, só a **causa** (e a
+  descrição de «outra causa»), com motivo obrigatório. Nunca o resultado, nunca um motivo de ausência, nunca uma especificação
+  perante a greve em nome de alguém (fica vazia).
+- **Corrigir ≠ consultar**: a direção não passa a ler a aula, a especificação, a descrição nem o histórico (a página da aula
+  continua 403 para quem não leciona; `LessonOutcomeDetails::mayRead` não mudou). O que o titular reservou fica no histórico
+  (`kind = administrative`), que ninguém sem essa leitura vê.
+- **O único professor que ficou nunca recebe a permissão por o ser** (testado).
+- Limite: **não há ecrã** — a direção não abre a página da aula. Proposta de UI (fora desta versão): uma linha em
+  «Retificações» da turma, com a causa e o motivo, sem mostrar nenhum detalhe.

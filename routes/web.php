@@ -688,6 +688,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('lessons/{lesson}/outcome', [LessonController::class, 'recordOutcome'])->name('lessons.outcome');
         // Corrigir o resultado já registado (histórico auditável; só o titular do registo).
         Route::patch('lessons/{lesson}/outcome', [LessonController::class, 'rectifyOutcome'])->name('lessons.outcome.rectify');
+        // Correção ADMINISTRATIVA da causa (direção, titular fora da turma); não lê detalhes reservados.
+        Route::patch('lessons/{lesson}/outcome/administrative', [LessonController::class, 'rectifyOutcomeAsAdministrator'])->name('lessons.outcome.rectify-administrative');
         // O registo retroativo a partir da semana: o MESMO cálculo da página da aula (`retroactiveOutcome`),
         // pedido só quando o professor escolhe «Aula não realizada», para a semana não pagar uma
         // consulta por cartão.

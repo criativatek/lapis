@@ -407,7 +407,7 @@ class ValidateBackupPayload
             $valid = $this->isUlid($ulid)
                 && $this->isUlid($row['lesson_ulid'] ?? null)
                 && $previous !== null && $current !== null && $previous !== $current
-                && in_array($kind, [LessonOutcomeRectification::KIND_OUTCOME, LessonOutcomeRectification::KIND_DETAILS], true)
+                && in_array($kind, [LessonOutcomeRectification::KIND_OUTCOME, LessonOutcomeRectification::KIND_DETAILS, LessonOutcomeRectification::KIND_ADMINISTRATIVE], true)
                 && mb_strlen($motive, 'UTF-8') >= 3 && mb_strlen($motive, 'UTF-8') <= 200
                 && $at !== null && strtotime($at) !== false;
 

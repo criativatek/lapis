@@ -175,6 +175,92 @@ class RectifyLessonOutcome
         });
     }
 
+    /**
+     * CORREÇÃO ADMINISTRATIVA EXCECIONAL: o titular do registo já não pertence à turma e a causa de uma
+     * aula não realizada está errada. Quem a faz é a direção da instituição (LessonPolicy::rectifyOutcomeAsAdministrator),
+     * que NÃO lê os detalhes reservados do titular — e por isso aqui só se pode mudar a CAUSA, que é da turma:
+     *
+     *  - nunca o resultado (um motivo de ausência é um dado sobre uma pessoa concreta);
+     *  - nunca se declara uma especificação perante a greve em nome de ninguém (fica vazia);
+     *  - o que o titular tinha reservado (especificação, descrição) guarda-se no histórico, onde a direção
+     *    não o lê, e deixa de estar na aula porque deixou de se aplicar à nova causa.
+     *
+     * Mesmos limites de integridade da correção normal: numa transação, sem tocar em números, planeamento,
+     * sumário nem assiduidade; motivo obrigatório; autor e histórico guardados (`kind = administrative`).
+     */
+    public function executeAsAdministrator(
+        Lesson $lesson,
+        User $actor,
+        LessonNotHeldCause $cause,
+        string $motive,
+        ?string $causeNote = null,
+    ): LessonOutcomeRectification {
+        return DB::transaction(function () use ($lesson, $actor, $cause, $motive, $causeNote): LessonOutcomeRectification {
+            SchoolClass::query()->whereKey($lesson->class_id)->lockForUpdate()->first();
+
+            /** @var Lesson $locked */
+            $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
+
+            if ($locked->outcome !== LessonOutcome::NotHeld) {
+                throw ValidationException::withMessages([
+                    'outcome' => __('A direção só corrige a causa de uma aula não realizada.'),
+                ]);
+            }
+
+            if ($locked->outcome_cause === $cause) {
+                throw ValidationException::withMessages([
+                    'cause' => __('Nada mudou: não há nada para corrigir.'),
+                ]);
+            }
+
+            $motive = trim($motive);
+
+            if (mb_strlen($motive) < self::MOTIVE_MIN || mb_strlen($motive) > self::MOTIVE_MAX) {
+                throw ValidationException::withMessages([
+                    'rectification_note' => __('Indica o motivo da correção (entre :min e :max carateres).', ['min' => self::MOTIVE_MIN, 'max' => self::MOTIVE_MAX]),
+                ]);
+            }
+
+            // Sem especificação perante a greve: a direção não declara nada em nome de um professor.
+            $this->recorder->guardDetails(LessonOutcome::NotHeld, null, $cause, null, $causeNote);
+
+            $previous = $this->snapshot($locked);
+
+            $locked->outcome_cause = $cause;
+            $locked->outcome_teacher_situation = null;
+            $locked->outcome_cause_note = $cause === LessonNotHeldCause::Other ? $this->recorder->cleanNote($causeNote) : null;
+            $new = $this->snapshot($locked);
+            $locked->save();
+
+            $rectification = LessonOutcomeRectification::create([
+                'lesson_id' => $locked->getKey(),
+                'rectified_by' => $actor->getKey(),
+                'rectified_at' => Carbon::now(),
+                'kind' => LessonOutcomeRectification::KIND_ADMINISTRATIVE,
+                'previous' => $previous,
+                'current' => $new,
+                'motive' => $motive,
+            ]);
+
+            $this->audit->record(
+                'lesson.outcome_rectified',
+                $locked,
+                $actor,
+                'Causa da aula corrigida pela direção.',
+                [
+                    'kind' => LessonOutcomeRectification::KIND_ADMINISTRATIVE,
+                    'from_outcome' => $previous['outcome'],
+                    'to_outcome' => $new['outcome'],
+                    'from_cause' => $previous['cause'],
+                    'to_cause' => $new['cause'],
+                    'reserved_details_changed' => $previous['situation'] !== null || $previous['cause_note'] !== $new['cause_note'],
+                ],
+            );
+
+            return $rectification;
+        });
+    }
+
     private function guardDetails(
         Lesson $locked,
         LessonOutcome $outcome,
