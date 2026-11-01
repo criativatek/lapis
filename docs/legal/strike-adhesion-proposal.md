@@ -23,7 +23,7 @@ Numa aula **não realizada** com a causa «Greve», o professor pode, **se quise
 - Não vai para a auditoria, para a IA, para pesquisas, painéis nem relatórios gerais da turma.
 - O relatório geral mostra apenas a causa agregada «Greve». O relatório pessoal mostra a
   especificação do próprio, quando existe.
-- O backup integral de recuperação guarda-a (sem isso o restauro não é fiel).
+- O backup integral de recuperação (a cópia diária da base, só da operação) guarda-a, para o restauro ser fiel. A exportação pessoal restaurável só leva a do próprio; a de colegas viaja reduzida.
 
 ## 2. O que precisa de validação jurídica (por decidir por quem tem competência)
 

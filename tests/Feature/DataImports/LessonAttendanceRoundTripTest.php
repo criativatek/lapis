@@ -273,8 +273,8 @@ class LessonAttendanceRoundTripTest extends TestCase
     }
 
     /**
-     * O backup é DE QUEM O DESCARREGA: leva inteiro o que esse utilizador registou, e o que um
-     * colega registou e lhe está reservado viaja no valor válido menos específico — a linha
+     * A exportação é PESSOAL (não um backup integral): leva inteiro o que esse utilizador registou,
+     * e o que um colega registou e lhe está reservado viaja no valor válido menos específico — a linha
      * continua restaurável, o dado reservado não sai. A causa («Greve») é da turma e viaja.
      */
     #[Test]
@@ -309,6 +309,12 @@ class LessonAttendanceRoundTripTest extends TestCase
         $this->assertSame('adhered', $byDay($own, '11-06')['outcome_teacher_situation']);
         $this->assertSame('Assunto reservado do professor', $byDay($own, '11-13')['outcome_cause_note']);
         $this->assertNull($byDay($own, '11-20')['outcome_teacher_situation']);
+
+        // É a exportação PESSOAL (não um backup integral) e o manifesto diz quantas aulas viajaram reduzidas.
+        $this->assertSame('personal', $own['scope']);
+        $this->assertSame(1, $own['reduced_lessons']);
+        $this->assertSame('personal', $theirs['scope']);
+        $this->assertSame(3, $theirs['reduced_lessons']);
 
         // O colega não recebe nada reservado, mas recebe as causas da turma e o que é seu.
         $this->assertSame('other', $byDay($theirs, '10-30')['outcome_reason']);

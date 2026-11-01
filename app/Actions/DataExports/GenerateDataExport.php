@@ -2204,18 +2204,44 @@ class GenerateDataExport
     }
 
     /**
+     * O utilizador que exporta pode ler o que esta aula guarda de reservado? A MESMA regra da
+     * interface (`LessonOutcomeDetails::mayRead`).
+     *
+     * @param  BackupRefs  $refs
+     */
+    protected function mayReadLessonDetails(Lesson $lesson, array $refs, User $user): bool
+    {
+        $class = $refs['classesById']->get($lesson->class_id);
+        $teacherIds = $class === null ? [] : array_values($class->teachers->pluck('id')->map(fn (mixed $id): int => (int) $id)->all());
+
+        return LessonOutcomeDetails::mayRead($lesson->outcome_recorded_by === null ? null : (int) $lesson->outcome_recorded_by, (int) $user->getKey(), $teacherIds);
+    }
+
+    /**
+     * Esta linha foi REDUZIDA na exportação: tem dado reservado de um colega que não viaja.
+     *
+     * @param  BackupRefs  $refs
+     */
+    protected function lessonDetailsReduced(Lesson $lesson, array $refs, User $user): bool
+    {
+        $hasReserved = $lesson->outcome_reason !== null || $lesson->outcome_teacher_situation !== null || $lesson->outcome_cause_note !== null;
+
+        return $hasReserved && ! $this->mayReadLessonDetails($lesson, $refs, $user);
+    }
+
+    /**
      * @param  BackupRefs  $refs
      * @return array<string, mixed>
      */
     protected function lessonRow(Lesson $lesson, array $refs, User $user): array
     {
-        // O backup é DE QUEM O DESCARREGA: leva inteiro o que esse utilizador registou, mas o que
-        // um colega registou e lhe está reservado (motivo de ausência, especificação perante a
-        // greve, descrição de «Outra causa») viaja no valor válido menos específico, para a linha
-        // continuar restaurável sem entregar o dado. A causa («Greve») é da turma e viaja.
-        $class = $refs['classesById']->get($lesson->class_id);
-        $teacherIds = $class === null ? [] : array_values($class->teachers->pluck('id')->map(fn (mixed $id): int => (int) $id)->all());
-        $mayRead = LessonOutcomeDetails::mayRead($lesson->outcome_recorded_by === null ? null : (int) $lesson->outcome_recorded_by, (int) $user->getKey(), $teacherIds);
+        // ESTA É A EXPORTAÇÃO PESSOAL, NÃO UM BACKUP INTEGRAL: leva inteiro o que o utilizador
+        // registou e o que a turma lhe mostra; o que um colega registou e lhe está reservado
+        // (motivo de ausência, especificação perante a greve, descrição de «Outra causa») viaja no
+        // valor válido menos específico, para a linha continuar restaurável sem entregar o dado.
+        // A causa («Greve») é da turma e viaja. A recuperação integral é a cópia diária da base
+        // (scripts/backup-database.sh), só da operação — nunca um ficheiro entregue a um professor.
+        $mayRead = $this->mayReadLessonDetails($lesson, $refs, $user);
 
         return [
             'ulid' => $lesson->ulid,
@@ -2410,6 +2436,11 @@ class GenerateDataExport
             'generated_at' => Carbon::now()->toIso8601String(),
             'organization' => ['ulid' => $organization->ulid, 'name' => $organization->name, 'type' => $organization->type->value],
             'exported_by' => ['name' => $user->name, 'email' => $user->email],
+            // EXPORTAÇÃO PESSOAL: o âmbito é o do utilizador que exporta. `reduced_lessons` conta as
+            // aulas cujo dado reservado de um colega viaja reduzido («Outro», sem especificação,
+            // «Reservado»): quem restaura sabe que esse detalhe não está no ficheiro.
+            'scope' => 'personal',
+            'reduced_lessons' => $lessons->filter(fn (Lesson $lesson): bool => $this->lessonDetailsReduced($lesson, $refs, $user))->count(),
             'capabilities' => [
                 'classes', 'students', 'enrollments', 'academic_years', 'subjects', 'academic_periods', 'scales', 'instrument_types', 'domains',
                 'assessment_profiles', 'assessment_profile_versions', 'profile_version_domains', 'profile_version_periods',
