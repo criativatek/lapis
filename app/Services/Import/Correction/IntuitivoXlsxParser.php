@@ -545,8 +545,16 @@ class IntuitivoXlsxParser implements CorrectionGridParser
      */
     protected function splitHeader(string $header): array
     {
-        if (preg_match('/^(.*?)\s*\(\s*Máximo\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*\)\s*$/u', $header, $matches) === 1) {
-            return [trim($matches[1]), $this->decimal(str_replace(',', '.', $matches[2]))];
+        // The token may be followed by a name the teacher added to the header
+        // («GRUPO V (Máximo: 24.00)- Expressão escrita»). Exactly ONE token is
+        // accepted wherever it sits; two would be two statements of the cotação
+        // and nothing here chooses between them.
+        $token = '/\s*\(\s*Máximo\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*\)\s*/u';
+
+        if (preg_match_all($token, $header, $matches) === 1) {
+            $label = trim((string) preg_replace('/\s{2,}/u', ' ', (string) preg_replace($token, ' ', $header, 1)));
+
+            return [$label, $this->decimal(str_replace(',', '.', $matches[1][0]))];
         }
 
         return [trim($header), null];
