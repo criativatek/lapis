@@ -25,6 +25,106 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.187.0] — 2026-11-01
+
+> **Serviço letivo e importação detalhada do Intuitivo.** Duas frentes numa só
+> publicação, porque `main` já as integrou (PRs #121–#139 e #143). **O serviço
+> letivo chega com as duas chaves desligadas** — `LAPIS_LESSON_NOT_HELD_ENABLED`
+> e `LAPIS_STRIKE_ADHESION_RECORDING` — à espera da validação jurídica e da
+> atualização da Política de Privacidade e do Acordo: nada do que recolhe dados
+> novos está ao alcance de um professor até lá. **Duas migrations aditivas.**
+
+### Serviço letivo (atrás de `LAPIS_LESSON_NOT_HELD_ENABLED`, desligada)
+
+- **«Aula não realizada».** Uma aula prevista que não se realizou fecha-se com
+  uma **causa estruturada**: greve, escola sem condições de funcionamento,
+  encerramento por mau tempo, problema nas instalações, razão organizacional ou
+  «outra causa» (com uma descrição curta). Não leva número de lição, não conta
+  como lecionada, não leva assiduidade nem sumário, e o planeamento desce para a
+  aula seguinte, como numa ausência do professor.
+- **Greve com especificação facultativa.** Registar só «Greve» é o normal e não
+  implica nada; o professor **pode** acrescentar «Não aderi à greve» — e «Aderi à
+  greve» só com a segunda chave (`LAPIS_STRIKE_ADHESION_RECORDING`, desligada).
+  Nunca se infere (nem do sumário, nem das faltas, nem da própria não realização)
+  nem se atribui a outro professor.
+- **Registo retroativo.** Uma aula **vazia** anterior a aulas já fechadas pode
+  registar-se como não realizada — na página da aula e na vista semanal, com o
+  mesmo diálogo —, depois de o ecrã dizer, pela voz do servidor, o que o impede
+  (sumário escrito, planeamento pendente, faltas em rascunho, número indicado
+  pelo professor, lição partilhada com outro grupo) e de pedir confirmação.
+  Nenhuma aula lecionada muda de número; a lacuna fica onde a aula estava.
+- **Corrigir o resultado de uma aula**, na página da aula, com **histórico
+  auditável** (tabela nova `lesson_outcome_rectifications`: autor, data, valores
+  anteriores e novos e motivo, 3 a 200 carateres). Corrige-se a causa, a
+  especificação da greve, a descrição e o motivo da ausência, e troca-se entre
+  «Professor ausente» e «Aula não realizada» — as únicas passagens que não mexem
+  em números, planeamento, sumário nem assiduidade. **De ou para «Lecionada» e
+  «Turma noutra atividade letiva» não se corrige** (alteraria a numeração e o
+  planeamento): o ecrã diz porquê e nada se renumera em silêncio. Só o titular
+  do registo corrige.
+- **Correção administrativa excecional**: se o titular deixou a turma, a direção
+  da instituição (a competência que já tem para as retificações) pode corrigir
+  **apenas a causa**, com motivo, sem ler a especificação, a descrição nem o
+  histórico. O único professor que ficou **não** recebe esta competência por o
+  ser. **Não tem ecrã nesta versão** (ver `docs/lesson-outcome-recovery.md`).
+- **Relatório «Serviço letivo»** (menu de Aulas): por turma e intervalo, as aulas
+  previstas partidas em lecionadas, turma noutra atividade letiva, professor
+  ausente, não realizadas e ainda sem registo — a soma fecha sempre —, a
+  percentagem de aulas dadas (dadas ÷ previstas, com as não realizadas no
+  denominador e as sem registo à parte), as causas, a evolução mensal e um bloco
+  pessoal com o que o próprio registou. A causa («Greve») é da turma; a
+  especificação, a descrição de «outra causa» e o motivo de uma ausência só
+  chegam a quem os registou.
+- **Exportação pessoal.** O ficheiro que o professor descarrega é a exportação
+  **pessoal** (`scope: personal`), não um backup integral — esse é a cópia diária
+  da base, só da operação. O dado reservado de um colega viaja reduzido
+  («Outro», sem especificação, «Reservado») e o manifesto diz quantas aulas
+  foram reduzidas. **Esquema de backup v21**, aditivo: as colunas da causa e a
+  coleção opcional `lesson_outcome_rectifications` (o histórico das correções
+  **das aulas do próprio**, que se restaura sem duplicar). Um backup v21 é
+  recusado por código anterior; um v≤20 restaura-se com os campos novos nulos.
+
+### Alterado — visível mesmo com as chaves desligadas
+
+- **Observadores** de uma turma deixam de poder registar o resultado de uma aula
+  (só professores com acesso de escrita).
+- **O motivo de uma ausência do professor** só o lê quem a registou; um colega,
+  observador incluído, vê que a aula não se deu e que o motivo está reservado.
+- **Numeração das aulas abertas.** As aulas abertas anteriores à primeira
+  lecionada **conservam o número que já tinham** quando continua livre, ordenado
+  e abaixo da seguinte; quando uma aula deixa de numerar, a lacuna fica **onde a
+  aula estava** e não no início. Âncora manual continua a contar para trás.
+- **Página «Serviço letivo»** e, no relatório da turma, a causa agregada.
+
+### Importação do Intuitivo
+
+- **O Intuitivo abre em «Detalhe por perguntas».** Abria em «Resultados por
+  grupos» (cinco números por aluno e um domínio por grupo) e deixava de fora as
+  classificações individuais do ficheiro. Agora cotações e classificações vêm do
+  ficheiro e nada é pedido ao professor além do que o ficheiro não traz.
+  Plickers e «Folha de cálculo» não mudam; os outros modos continuam a um clique.
+- **A grelha de correção mostra os grupos do teste.** Com mais de um grupo, uma
+  fila nomeia cada grupo com a sua cotação; no fim das perguntas de cada grupo há
+  um **subtotal por aluno** (`obtido/máximo`) e o **total** vem com a cotação
+  global (a declarada ou, na sua falta, a soma das cotações). Sem ruído de vírgula
+  flutuante; célula vazia mostra «—», nunca 0; um teste simples fica como estava.
+- Validado de ponta a ponta com a ficha de referência (21 alunos, 17 perguntas,
+  5 grupos): 357 classificações persistidas e visíveis, 105 subtotais e 21 totais
+  corretos. (Inclui o que a 0.186.2 já trouxe: uma recusa já não aparece como
+  «0 alunos».)
+
+### Migrations (aditivas) e recuperação
+
+- `2026_11_26_000100_add_outcome_cause_to_lessons_table` — três colunas nulas em
+  `lessons` (causa, especificação perante a greve, descrição).
+- `2026_11_27_000100_create_lesson_outcome_rectifications_table` — tabela nova do
+  histórico das correções. Sem backfill.
+- **Rollback só de código, nunca `migrate:rollback`.** O código anterior ignora a
+  coluna e a tabela. Antes de voltar o código atrás: `php artisan
+  lapis:lesson-outcome-recovery-check` tem de sair com 0 (com as chaves
+  desligadas não existe nenhuma aula não realizada). Com uma não realizada
+  gravada, o código anterior não lê a turma.
+
 ## [0.186.2] — 2026-11-01
 
 > **Importar do Intuitivo: uma recusa já não parece «0 alunos», e o cabeçalho de
