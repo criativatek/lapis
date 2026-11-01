@@ -16,7 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Spinner } from '@/components/ui/spinner';
-import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
+import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import { SURFACE } from '@/lib/surfaces';
 
 export type SpecialLessonOutcome = 'teacher_absent' | 'class_external_activity' | 'not_held';
@@ -40,6 +40,12 @@ const props = defineProps<{
      * servidor) e pede confirmação antes de guardar.
      */
     retroactive?: { closed_after: string; blockers: string[] } | null;
+    /**
+     * CORRIGIR o resultado já registado: o diálogo abre com os valores atuais, só oferece os resultados
+     * para onde se pode corrigir (o servidor decide), pede o motivo da correção e envia um PATCH. A aula
+     * continua fechada: números, planeamento e sumário não mudam.
+     */
+    rectify?: OutcomeRectification | null;
     initialOutcome?: SpecialLessonOutcome;
     /** «8.º F · 09:30–10:20» — para o professor saber que aula está a fechar. */
     lessonContext?: string | null;
@@ -86,6 +92,7 @@ const form = useForm<{
     cause: string;
     situation: string;
     cause_note: string;
+    rectification_note: string;
 }>({
     outcome: props.retroactive ? 'not_held' : 'teacher_absent',
     reason: '',
@@ -93,6 +100,7 @@ const form = useForm<{
     cause: '',
     situation: '',
     cause_note: '',
+    rectification_note: '',
 });
 
 // A especificação só existe com «Greve»; a descrição só com «Outra causa». Mudar
@@ -113,7 +121,18 @@ watch(
 watch(open, (value) => {
     confirming.value = false;
 
-    if (value && props.retroactive) {
+    if (value && props.rectify) {
+        const current = props.rectify.current;
+
+        form.outcome = (current.outcome ?? 'teacher_absent') as SpecialLessonOutcome;
+        form.reason = current.reason ?? '';
+        form.note = current.note ?? '';
+        form.cause = current.cause ?? '';
+        form.situation = current.situation ?? '';
+        form.cause_note = current.cause_note ?? '';
+        form.rectification_note = '';
+        form.clearErrors();
+    } else if (value && props.retroactive) {
         form.outcome = 'not_held';
     } else if (value && props.initialOutcome) {
         form.outcome = props.initialOutcome;
@@ -121,7 +140,7 @@ watch(open, (value) => {
 });
 
 function submit(): void {
-    if (props.lessonUlid === null || props.unsavedChanges) {
+    if (props.lessonUlid === null || (props.unsavedChanges && !props.rectify) || (props.rectify && form.rectification_note.trim().length < 3)) {
         return;
     }
 
@@ -139,13 +158,16 @@ function submit(): void {
     }
 
     emit('submitting', true);
+    const motive = (data: { rectification_note: string }) => (props.rectify ? { rectification_note: data.rectification_note.trim() } : {});
+
     form.transform((data) => {
         if (data.outcome === 'teacher_absent') {
-            return { outcome: data.outcome, reason: data.reason };
+            return { outcome: data.outcome, reason: data.reason, ...motive(data) };
         }
 
         if (data.outcome === 'not_held') {
             return {
+                ...motive(data),
                 outcome: data.outcome,
                 cause: data.cause,
                 ...(data.cause === 'strike' && data.situation !== '' ? { situation: data.situation } : {}),
@@ -154,8 +176,8 @@ function submit(): void {
             };
         }
 
-        return { outcome: data.outcome, note: data.note.trim() === '' ? null : data.note };
-    }).post(`/lessons/${props.lessonUlid}/outcome`, {
+        return { outcome: data.outcome, note: data.note.trim() === '' ? null : data.note, ...motive(data) };
+    })[props.rectify ? 'patch' : 'post'](`/lessons/${props.lessonUlid}/outcome`, {
         preserveScroll: true,
         onSuccess: () => {
             open.value = false;
@@ -173,14 +195,20 @@ function submit(): void {
         <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-md">
             <form class="space-y-4" @submit.prevent="submit">
                 <DialogHeader class="space-y-2">
-                    <DialogTitle>O que aconteceu nesta aula?</DialogTitle>
+                    <DialogTitle>{{ rectify ? 'Corrigir o resultado desta aula' : 'O que aconteceu nesta aula?' }}</DialogTitle>
                     <DialogDescription>
                         <span v-if="lessonContext" class="block font-medium text-foreground">{{ lessonContext }}</span>
-                        O planeamento desta aula passa para a aula seguinte. As faltas em rascunho são descartadas.
+                        <template v-if="rectify">
+                            A aula continua fechada: os números das lições, o planeamento e o sumário não mudam. A correção
+                            fica no histórico da aula, com o valor anterior.
+                        </template>
+                        <template v-else>
+                            O planeamento desta aula passa para a aula seguinte. As faltas em rascunho são descartadas.
+                        </template>
                     </DialogDescription>
                 </DialogHeader>
 
-                <div v-if="unsavedChanges" :class="['space-y-3 rounded-xl border p-4 text-sm', SURFACE.sky]" data-testid="outcome-unsaved">
+                <div v-if="unsavedChanges && !rectify" :class="['space-y-3 rounded-xl border p-4 text-sm', SURFACE.sky]" data-testid="outcome-unsaved">
                     <p class="flex items-start gap-2">
                         <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                         Tens alterações por guardar no sumário desta aula. Guarda-as primeiro: a preparação que passa
@@ -220,18 +248,25 @@ function submit(): void {
 
                 <fieldset v-if="!retroactive" class="grid gap-2">
                     <legend class="sr-only">Resultado</legend>
-                    <label class="flex min-h-9 items-center gap-2">
+                    <label v-if="!rectify || rectify.targets.includes('teacher_absent')" class="flex min-h-9 items-center gap-2">
                         <input v-model="form.outcome" type="radio" name="outcome" value="teacher_absent" />
                         Professor ausente
                     </label>
-                    <label class="flex min-h-9 items-center gap-2">
+                    <label v-if="!rectify || rectify.targets.includes('class_external_activity')" class="flex min-h-9 items-center gap-2">
                         <input v-model="form.outcome" type="radio" name="outcome" value="class_external_activity" />
                         Turma em outras atividades letivas
                     </label>
-                    <label v-if="notHeldOptions" class="flex min-h-9 items-center gap-2" data-testid="outcome-not-held">
+                    <label
+                        v-if="notHeldOptions && (!rectify || rectify.targets.includes('not_held'))"
+                        class="flex min-h-9 items-center gap-2"
+                        data-testid="outcome-not-held"
+                    >
                         <input v-model="form.outcome" type="radio" name="outcome" value="not_held" />
                         Aula não realizada
                     </label>
+                    <p v-if="rectify?.outcome_locked_reason" class="text-xs text-muted-foreground" data-testid="rectify-locked">
+                        {{ rectify.outcome_locked_reason }}
+                    </p>
                     <InputError :message="form.errors.outcome" />
                 </fieldset>
 
@@ -303,6 +338,23 @@ function submit(): void {
                     <InputError :message="form.errors.note" />
                 </div>
 
+                <div v-if="rectify" class="grid gap-2" data-testid="rectify-motive">
+                    <Label for="outcome-rectification-note">Motivo da correção</Label>
+                    <input
+                        id="outcome-rectification-note"
+                        v-model="form.rectification_note"
+                        name="rectification_note"
+                        maxlength="200"
+                        required
+                        class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                        aria-describedby="outcome-rectification-note-hint"
+                    />
+                    <p id="outcome-rectification-note-hint" class="text-xs text-muted-foreground">
+                        Fica no histórico da aula, visível só para ti. Evita incluir dados pessoais.
+                    </p>
+                    <InputError :message="form.errors.rectification_note" />
+                </div>
+
                 <div v-if="confirming" :class="['space-y-1 rounded-xl border p-4 text-sm', SURFACE.amber]" data-testid="retroactive-confirm">
                     <p class="font-medium">Confirmas?</p>
                     <p>
@@ -318,10 +370,16 @@ function submit(): void {
                     <Button
                         type="submit"
                         class="min-h-11"
-                        :disabled="form.processing || lessonUlid === null || unsavedChanges === true || (retroactive?.blockers.length ?? 0) > 0"
+                        :disabled="
+                            form.processing ||
+                            lessonUlid === null ||
+                            (unsavedChanges === true && !rectify) ||
+                            (retroactive?.blockers.length ?? 0) > 0 ||
+                            (!!rectify && form.rectification_note.trim().length < 3)
+                        "
                     >
                         <Spinner v-if="form.processing" />
-                        {{ retroactive ? (confirming ? 'Confirmar registo' : 'Continuar') : 'Registar' }}
+                        {{ rectify ? 'Guardar correção' : retroactive ? (confirming ? 'Confirmar registo' : 'Continuar') : 'Registar' }}
                     </Button>
                 </DialogFooter>
             </form>

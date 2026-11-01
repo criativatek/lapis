@@ -34,3 +34,20 @@ atualizados e validados juridicamente.
 
 Esquema v21 (ver `backup-schema.md`). Um backup v21 é recusado por código
 anterior; um v≤20 restaura-se com os campos novos nulos.
+
+## Correções do resultado
+
+O professor que registou um resultado (e só ele) pode corrigi-lo na página da aula
+(`PATCH /lessons/{lesson}/outcome`, `RectifyLessonOutcome`), com a mesma chave
+`LAPIS_LESSON_NOT_HELD_ENABLED` — desligada, a correção não existe.
+
+- **Detalhes** (causa, especificação da greve, descrição, motivo da ausência): sempre.
+- **Resultado**: só entre «Professor ausente» e «Aula não realizada» (ambos sem número,
+  sem assiduidade, sem sumário, com o planeamento já descido). Qualquer outra passagem
+  recusa-se com a razão; nada se renumera.
+- **Histórico**: tabela `lesson_outcome_rectifications` (quem, quando, valores
+  anteriores e novos, motivo). Os valores podem trazer dado reservado ao titular: só ele os lê, e a
+  auditoria geral (`lesson.outcome_rectified`) leva apenas resultado e causa.
+- **Rollback de código**: o código anterior ignora a tabela; o estado atual da aula está em
+  `lessons`. O histórico **não viaja na exportação pessoal** nesta versão (só o estado atual);
+  a recuperação do histórico é a cópia diária da base de dados.

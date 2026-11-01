@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { CalendarX2 } from '@lucide/vue';
+import { CalendarX2, PencilLine } from '@lucide/vue';
 import { ref } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
-import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
+import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import { statusToneClasses } from '@/lib/statusTone';
 
 export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held';
@@ -36,6 +36,8 @@ defineProps<{
     notHeldOptions?: NotHeldOptions | null;
     /** A aula é anterior a aulas já fechadas: o registo retroativo, com as razões que o impedem. */
     retroactiveOutcome?: { closed_after: string; blockers: string[] } | null;
+    /** Corrigir o resultado já registado: só para o titular do registo (o servidor decide); inclui o histórico. */
+    outcomeRectification?: OutcomeRectification | null;
     /** «8.º F · 09:30–10:20» — identifica a aula no diálogo. */
     lessonContext?: string | null;
     canRecord: boolean;
@@ -51,6 +53,10 @@ const emit = defineEmits<{ submitting: [boolean] }>();
 
 const dialogOpen = ref(false);
 const retroactiveOpen = ref(false);
+const rectifyOpen = ref(false);
+
+const when = (iso: string): string =>
+    new Date(iso).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
 </script>
 
 <template>
@@ -80,6 +86,36 @@ const retroactiveOpen = ref(false);
             </template>
             O planeamento passou para a aula seguinte.
         </p>
+
+        <div v-if="outcomeRectification" class="space-y-2 pt-2" data-testid="lesson-outcome-rectification">
+            <LessonOutcomeDialog
+                v-model:open="rectifyOpen"
+                :lesson-ulid="lessonUlid"
+                :reasons="reasons"
+                :not-held-options="notHeldOptions ?? null"
+                :rectify="outcomeRectification"
+                :lesson-context="lessonContext ?? null"
+            >
+                <Button type="button" variant="outline" class="min-h-11" data-testid="open-rectify-dialog" @click="rectifyOpen = true">
+                    <PencilLine class="size-4" /> Corrigir resultado
+                </Button>
+            </LessonOutcomeDialog>
+
+            <details v-if="outcomeRectification.history.length > 0" class="text-sm" data-testid="rectification-history">
+                <summary class="min-h-11 cursor-pointer py-3">
+                    Correções ({{ outcomeRectification.history.length }})
+                </summary>
+                <ul class="space-y-3">
+                    <li v-for="entry in outcomeRectification.history" :key="entry.ulid" data-testid="rectification-entry">
+                        <p class="font-medium">{{ when(entry.at) }}<span v-if="entry.by"> · {{ entry.by }}</span></p>
+                        <p v-for="change in entry.changes" :key="change.field">
+                            {{ change.label }}: {{ change.from }} → {{ change.to }}
+                        </p>
+                        <p class="text-muted-foreground">Motivo: {{ entry.motive }}</p>
+                    </li>
+                </ul>
+            </details>
+        </div>
     </section>
 
     <section
