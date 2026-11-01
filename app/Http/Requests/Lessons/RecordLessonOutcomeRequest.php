@@ -57,6 +57,8 @@ class RecordLessonOutcomeRequest extends FormRequest
                 ],
                 'situation' => ['nullable', 'string', Rule::enum(TeacherStrikeSituation::class)],
                 'cause_note' => ['nullable', 'string', 'max:160'],
+                // Registo retroativo: só pedido, nunca presumido. A aula tem de ser vazia (RecordLessonOutcome).
+                'retroactive' => ['sometimes', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('outcome') !== LessonOutcome::NotHeld->value)],
             ];
         }
 
@@ -116,6 +118,11 @@ class RecordLessonOutcomeRequest extends FormRequest
     public function situation(): ?TeacherStrikeSituation
     {
         return $this->filled('situation') ? TeacherStrikeSituation::from($this->string('situation')->toString()) : null;
+    }
+
+    public function retroactive(): bool
+    {
+        return $this->boolean('retroactive');
     }
 
     public function causeNote(): ?string
