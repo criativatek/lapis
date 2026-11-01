@@ -59,7 +59,7 @@ class BuildLessonOutcomeRectificationsPlan
                 ->pluck('ulid')
                 ->flip();
         $elsewhere = $this->ulidOrganizationsElsewhere(LessonOutcomeRectification::class, $ulids, $destination->getKey());
-        $recognised = $this->recognisedByIdentity($existingLessonIds->values()->all(), $destination);
+        $recognised = $this->recognisedByIdentity(array_values($existingLessonIds->values()->all()), $destination);
 
         $rows = collect($rectificationsIn)->map(function (array $row) use ($actor, $restorableLessons, $existingLessonIds, $existingUlids, $elsewhere, $recognised): array {
             $ulid = $row['ulid'];
