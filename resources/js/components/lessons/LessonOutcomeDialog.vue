@@ -267,6 +267,10 @@ function submit(): void {
                     <p v-if="rectify?.outcome_locked_reason" class="text-xs text-muted-foreground" data-testid="rectify-locked">
                         {{ rectify.outcome_locked_reason }}
                     </p>
+                    <p v-else-if="rectify" class="text-xs text-muted-foreground" data-testid="rectify-restriction">
+                        Não se corrige de ou para «Lecionada» nem «Turma noutra atividade letiva»: alteraria a numeração das
+                        lições e o planeamento.
+                    </p>
                     <InputError :message="form.errors.outcome" />
                 </fieldset>
 

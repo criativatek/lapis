@@ -261,6 +261,12 @@ describe('LessonOutcomeDialog — corrigir o resultado', () => {
         expect(wrapper.find('[data-testid="retroactive-info"]').exists()).toBe(false);
     });
 
+    it('explica que não se corrige de ou para «Lecionada» nem «Turma noutra atividade letiva»', async () => {
+        const wrapper = await opened(rectification());
+
+        expect(wrapper.get('[data-testid="rectify-restriction"]').text()).toContain('alteraria a numeração');
+    });
+
     it('só deixa guardar com um motivo e envia um PATCH com ele', async () => {
         const wrapper = await opened(rectification());
         await wrapper.get('#outcome-cause').setValue('weather_closure');
