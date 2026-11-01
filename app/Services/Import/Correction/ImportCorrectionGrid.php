@@ -62,6 +62,9 @@ use Illuminate\Support\Facades\DB;
  */
 class ImportCorrectionGrid
 {
+    /** Width of `instrument_items.code`. */
+    protected const ITEM_CODE_MAX_LENGTH = 16;
+
     public function __construct(
         protected InstrumentBuilder $builder,
         protected RecordScores $recordScores,
@@ -500,7 +503,7 @@ class ImportCorrectionGrid
 
         foreach ($grid->items as $item) {
             $items[] = [
-                'code' => $item->code ?? 'Q'.$item->sequence,
+                'code' => $this->itemCode($item),
                 'label' => $item->label,
                 'points_possible' => (float) $this->pointsFor($item, $mapping),
                 // The source's own sections, when it has any. A source without
@@ -518,6 +521,27 @@ class ImportCorrectionGrid
         }
 
         return $items;
+    }
+
+    /**
+     * The code an imported question gets in the instrument.
+     *
+     * `instrument_items.code` is a short code (16 characters), not a title. A
+     * source can hand over a long header as the code — Intuitivo does for a
+     * section made of a single column («GRUPO V - Expressão escrita») — and
+     * letting it through is a 500 at the very last step. The full text is
+     * never lost: it stays as the item's label. When it does not fit, the
+     * position stands in, which is unique in the instrument.
+     */
+    protected function itemCode(CanonicalItem $item): string
+    {
+        $code = trim((string) $item->code);
+
+        if ($code === '' || mb_strlen($code) > self::ITEM_CODE_MAX_LENGTH) {
+            return 'Q'.$item->sequence;
+        }
+
+        return $code;
     }
 
     /**
