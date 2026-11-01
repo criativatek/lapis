@@ -24,6 +24,13 @@ Numa aula **não realizada** com a causa «Greve», o professor pode, **se quise
 - O relatório geral mostra apenas a causa agregada «Greve». O relatório pessoal mostra a
   especificação do próprio, quando existe.
 - O backup integral de recuperação (a cópia diária da base, só da operação) guarda-a, para o restauro ser fiel. A exportação pessoal restaurável só leva a do próprio; a de colegas viaja reduzida.
+- **Correções.** O professor pode corrigir a especificação (inclusive deixá-la vazia). Cada correção
+  guarda o valor anterior e o novo num histórico visível só para ele (não vai para a auditoria geral
+  nem para relatórios), com um motivo textual curto. O histórico viaja na exportação pessoal **do
+  próprio**; o dos colegas nunca.
+- **Direção.** A correção administrativa (titular fora da turma) só muda a causa, nunca declara nem lê
+  a especificação; ao mudar a causa para uma que não é «Greve», a especificação do titular deixa de
+  estar na aula e fica só no histórico, ilegível para a direção.
 
 ## 2. O que precisa de validação jurídica (por decidir por quem tem competência)
 
@@ -36,6 +43,14 @@ Numa aula **não realizada** com a causa «Greve», o professor pode, **se quise
    a nomear estes dados e a sua natureza.
 4. Nova data de entrada em vigor e notificação, conforme o procedimento já usado.
 5. Se o backup/exportação pessoal deve incluir a especificação dos colegas da mesma turma.
+   (Hoje não inclui: viaja reduzida.) **[A VALIDAR]**
+6. Conservação da especificação **e do seu histórico de correções**; se uma correção que apaga a
+   especificação deve ou não manter o valor anterior no histórico. **[A VALIDAR]**
+7. Se a correção administrativa que remove a especificação (por mudar a causa) é aceitável sem
+   informar o titular. **[A VALIDAR]**
+
+> Todos os pontos desta secção ficam **[A VALIDAR]** por quem tem competência; nenhum é dado por
+> concluído nem condiciona o desenvolvimento ou os testes.
 
 ## 3. Como se liga, depois da validação
 

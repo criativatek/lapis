@@ -28,6 +28,25 @@ Complementa `docs/legal/strike-adhesion-proposal.md` (comportamento da especific
    integral: esse é a cópia diária da base de dados, só da operação.
 7. O relatório pessoal «Serviço letivo» mostra ao professor as causas e a especificação que
    **ele** registou.
+8. **Correções.** Quem registou um resultado pode corrigi-lo (a causa, a especificação facultativa,
+   a descrição, o motivo da ausência; e trocar «Professor ausente» por «Aula não realizada» e
+   vice-versa). Nunca de ou para «Lecionada» nem «Turma noutra atividade letiva» (alteraria a
+   numeração e o planeamento). Cada correção guarda **quem**, **quando**, os **valores anteriores e
+   novos** e um **motivo em texto livre curto** (3 a 200 carateres), pedido ao professor.
+9. **Visibilidade do histórico.** O histórico (que inclui valores reservados e o motivo textual)
+   só é lido por quem tem a leitura do dado original (o titular do registo). Não vai para a
+   auditoria geral (esta leva só o resultado e a causa, que são da turma), nem para relatórios,
+   pesquisas, painéis ou assistentes de IA.
+10. **Correção administrativa excecional.** Se o titular deixou de pertencer à turma, a direção da
+    instituição (a competência que já tem para as retificações) pode corrigir **apenas a causa**,
+    com motivo. Não lê a especificação, a descrição nem o histórico, e não declara nada em nome de
+    um professor. O único professor que ficou **não** recebe esta competência por o ser.
+11. **Exportação pessoal vs. backup operacional.** A exportação que o professor descarrega
+    (`scope: personal`) leva o que ele registou, incluindo o **histórico das suas correções**; o
+    dado reservado de colegas viaja reduzido e o histórico dos colegas não viaja. Não é um backup
+    integral: esse é a cópia diária da base de dados, só da operação, que guarda tudo.
+12. **Restauro.** Restaura-se acrescentando (nunca sobrescreve), sem duplicar correções, sem
+    reclamar a autoria de quem não é a conta que importa.
 
 ## 2. Redação proposta
 
@@ -55,6 +74,18 @@ Quem acede: a causa, os professores com acesso à turma; o restante, só o próp
 > última indicação altera a classificação do tratamento (cf. «não constitui categoria especial»
 > na redação atual).]**
 
+### 2.2b Política de Privacidade — correções, histórico e exportações (acrescento proposto)
+
+> O professor pode corrigir o resultado que registou de uma aula. Cada correção fica guardada com
+> o nome de quem a fez, a data, os valores anteriores e novos e um motivo curto escrito pelo
+> professor (que deve evitar dados pessoais). Este histórico é visível apenas para o professor que
+> registou o resultado. A exportação de dados pessoais inclui o histórico das correções do próprio
+> professor; os dados reservados de outros professores não são incluídos. Cópias de segurança
+> operacionais da base de dados contêm todos os dados e são acessíveis apenas à operação do
+> serviço, durante o prazo de conservação indicado. **[A VALIDAR: prazo de conservação do
+> histórico e das cópias; fundamento de licitude do motivo textual; direito de retificação e de
+> acesso quando o titular do registo já não está na turma; quem responde a um pedido de acesso.]**
+
 ### 2.3 Data de entrada em vigor e notificação
 
 Nova data de entrada em vigor e o mesmo procedimento de notificação usado nas revisões
@@ -78,5 +109,17 @@ anteriores. **[A VALIDAR]**
    alguém? (Hoje não há especificação visível a outros; mas uma turma com um só professor…)
 3. Prazo de conservação da especificação (ligado ao fim do ano letivo ou à vida da conta?).
 4. A exportação pessoal entregue a um professor deve incluir a causa dos colegas? (Hoje inclui — é da turma.)
-5. Direito de retificação: o professor corrige a sua especificação (a interface permite
-   corrigir o registo?) — hoje um resultado registado não é editável nesta fase.
+5. Direito de retificação: o professor corrige o que registou na página da aula (resultado, causa,
+   especificação, descrição), com histórico. **[A VALIDAR]** se o histórico, por guardar os valores
+   anteriores incluindo a especificação, deve ser apagável a pedido ou conservado como registo de
+   auditoria, e por quanto tempo.
+6. O **motivo textual** da correção (texto livre, 3–200 carateres) é um dado novo. **[A VALIDAR]**
+   fundamento, minimização (a interface pede para evitar dados pessoais) e conservação.
+7. **Correção administrativa**: a direção corrige a causa sem ler os detalhes. **[A VALIDAR]** se
+   esta intervenção precisa de ser comunicada ao titular e se a competência da direção, reutilizada
+   do modelo das retificações de classificações, é suficiente para um dado do professor.
+8. **Exportação pessoal** inclui o histórico das correções do próprio. **[A VALIDAR]** se deve
+   incluir também as correções administrativas feitas por terceiros sobre registos do próprio.
+9. **Conservação e recuperação**: o dump diário guarda tudo (incluindo especificação e histórico)
+   durante o prazo operacional da cópia; a exportação pessoal é gerada a pedido e expira em 24 h.
+   **[A VALIDAR]** prazo da cópia diária e procedimento de apagamento após o prazo.
