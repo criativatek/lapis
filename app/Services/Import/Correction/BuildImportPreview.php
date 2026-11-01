@@ -75,7 +75,7 @@ class BuildImportPreview
         $students = match (true) {
             $mapping->importsOverallResult() => $this->withOverallResult($students, $grid, $mapping, $instrument),
             $mapping->importsGroupResults() => $this->withGroupResults($students, $grid, $groups),
-            default => $this->withLapisResult($students, $grid, $items),
+            default => $this->withQuestionMarks($this->withLapisResult($students, $grid, $items), $grid, $items, $groups),
         };
 
         $issues = $this->issues($grid, $mapping, $students, $items, $class, $instrument);
@@ -142,6 +142,9 @@ class BuildImportPreview
             return [
                 'source_key' => $item->sourceKey,
                 'sequence' => $item->sequence,
+                // The section the file puts this question in, so the review can
+                // draw the questions under their group and a subtotal after them.
+                'group_source_key' => $item->groupSourceKey,
                 'code' => $item->code,
                 'label' => $item->label,
                 'question_text' => $item->questionText,
@@ -210,6 +213,84 @@ class BuildImportPreview
             $student['lapis_percentage'] = ($judged === 0 || Bc::isZero($possible))
                 ? null
                 : Bc::round(Bc::mul(Bc::div($earned, $possible), '100'), 1, 'half_up');
+
+            return $student;
+        }, $students);
+    }
+
+    /**
+     * Every mark of every student, question by question, with the subtotal of
+     * each section and the total — the grid the teacher is about to confirm,
+     * shown before anything is written.
+     *
+     * A count of questions and a percentage are not a review. A teacher
+     * confirming an import has to be able to find a student, read the seventeen
+     * numbers against the paper and only then press the button; and what they
+     * read here is exactly what the grid will hold afterwards, because both come
+     * from the same results and the same cotações.
+     *
+     * A question without a mark is null and shown as a blank, never as a zero; a
+     * section with a blank has no subtotal, and a student with a blank section
+     * has no total (GroupResultItem::sum).
+     *
+     * @param  list<array<string, mixed>>  $students
+     * @param  list<array<string, mixed>>  $items
+     * @param  list<array<string, mixed>>  $groups
+     * @return list<array<string, mixed>>
+     */
+    protected function withQuestionMarks(array $students, CanonicalCorrectionGrid $grid, array $items, array $groups): array
+    {
+        $points = [];
+
+        foreach ($items as $item) {
+            $value = $item['points'];
+
+            if (is_string($value) && $value !== '' && is_numeric($value)) {
+                $points[$item['source_key']] = $value;
+            }
+        }
+
+        $questionsOf = [];
+
+        foreach ($grid->items as $item) {
+            if ($item->groupSourceKey !== null) {
+                $questionsOf[$item->groupSourceKey][] = $item->sourceKey;
+            }
+        }
+
+        $allQuestions = array_map(fn (CanonicalItem $item): string => $item->sourceKey, $grid->items);
+
+        return array_map(function (array $student) use ($grid, $points, $groups, $questionsOf, $allQuestions): array {
+            $marks = array_fill_keys($allQuestions, null);
+
+            foreach ($grid->resultsForStudent($student['source_key']) as $result) {
+                $worth = $points[$result->itemSourceKey] ?? null;
+
+                // The mark the file states, or the one a right/wrong verdict
+                // turns into once the question is worth something.
+                $mark = $worth === null ? $result->pointsEarned : $result->resolvedAgainst($worth)->pointsEarned;
+
+                $marks[$result->itemSourceKey] = $mark === null ? null : GroupResultItem::points($mark);
+            }
+
+            $perGroup = [];
+
+            foreach ($groups as $group) {
+                $earned = GroupResultItem::sum($marks, $questionsOf[$group['source_key']] ?? []);
+
+                $perGroup[] = [
+                    'source_key' => $group['source_key'],
+                    'label' => $group['label'],
+                    'earned' => $earned === null ? null : GroupResultItem::points($earned),
+                    'possible' => $group['points_possible'],
+                ];
+            }
+
+            $total = GroupResultItem::sum($marks, $allQuestions);
+
+            $student['marks'] = $marks;
+            $student['group_results'] = $perGroup;
+            $student['lapis_total'] = $total === null ? null : GroupResultItem::points($total);
 
             return $student;
         }, $students);

@@ -337,6 +337,127 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $this->assertSame($this->domains['Escrita'], $last['domains'][0]['domain_id']);
     }
 
+    // ------------------------- d. a revisão mostra cada classificação, cada subtotal e o total ANTES de confirmar
+
+    #[Test]
+    public function the_review_carries_every_mark_every_subtotal_and_the_total_of_every_student(): void
+    {
+        $import = $this->uploadWorkbook();
+        $preview = $this->preview($import);
+        $mapping = $this->createMapping($preview);
+        unset($mapping['domains']);
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $mapping);
+        $preview = $this->preview($import);
+
+        $this->assertSame(ImportMapping::RESULT_PER_QUESTION, $preview['result_mode']);
+        $this->assertCount(21, $preview['students']);
+        $this->assertCount(17, $preview['items']);
+        $this->assertCount(5, $preview['groups']);
+
+        // Cada pergunta diz a que grupo pertence, por isso a revisão desenha-as debaixo da sua secção.
+        $this->assertSame(
+            array_merge(array_fill(0, 4, 'group:1'), array_fill(0, 4, 'group:2'), array_fill(0, 4, 'group:3'), array_fill(0, 4, 'group:4'), ['group:5']),
+            array_column($preview['items'], 'group_source_key'),
+        );
+
+        $keys = array_column($preview['items'], 'source_key');
+        $byName = [];
+
+        foreach ($preview['students'] as $row) {
+            $byName[$row['display_name']] = $row;
+        }
+
+        $marksSeen = 0;
+        $subtotalsSeen = 0;
+        $totalsSeen = 0;
+        $groupSizes = [4, 4, 4, 4, 1];
+
+        foreach ($this->names as $number => $name) {
+            if (in_array($number, self::PAPER_NUMBERS, true)) {
+                $this->assertArrayNotHasKey($name, $byName, 'Quem fez a prova em papel não está no ficheiro.');
+
+                continue;
+            }
+
+            $row = $byName[$name];
+            $this->assertCount(17, $row['marks']);
+
+            foreach ($keys as $question => $key) {
+                $this->assertSame((string) $this->markFor($number, $question), $row['marks'][$key], "{$name}, pergunta ".($question + 1));
+                $marksSeen++;
+            }
+
+            $this->assertCount(5, $row['group_results']);
+            $offset = 0;
+
+            foreach ($this->groupSums($number) as $group => $expected) {
+                $this->assertSame((string) $expected, $row['group_results'][$group]['earned'], "{$name}, subtotal do grupo ".($group + 1));
+                $this->assertSame((string) array_sum(array_slice($this->maxima(), $offset, $groupSizes[$group])), $row['group_results'][$group]['possible']);
+                $offset += $groupSizes[$group];
+                $subtotalsSeen++;
+            }
+
+            $this->assertSame((string) array_sum($this->groupSums($number)), $row['lapis_total'], "{$name}, total");
+            $totalsSeen++;
+        }
+
+        $this->assertSame(21 * 17, $marksSeen);
+        $this->assertSame(21 * 5, $subtotalsSeen);
+        $this->assertSame(21, $totalsSeen);
+    }
+
+    #[Test]
+    public function in_the_review_a_blank_cell_is_a_blank_and_a_zero_is_a_zero(): void
+    {
+        // Aluno 4, pergunta 1 em branco (célula sem valor); aluno 5, pergunta 2 a zero. O
+        // workbookBuilder() lê os overrides com `??`, que engole o null — por isso o ficheiro é montado aqui.
+        $builder = $this->declareGroups(IntuitivoWorkbookBuilder::make());
+
+        foreach (array_reverse(array_keys($this->names)) as $number) {
+            if (in_array($number, self::PAPER_NUMBERS, true)) {
+                continue;
+            }
+
+            $scores = [];
+
+            foreach (array_keys($this->maxima()) as $question) {
+                $scores[] = match (true) {
+                    $number === 4 && $question === 0 => null,
+                    $number === 5 && $question === 1 => 0,
+                    default => $this->markFor($number, $question),
+                };
+            }
+
+            $builder->student($this->names[$number], $scores);
+        }
+
+        $import = $this->uploadWorkbook($builder);
+        $mapping = $this->createMapping($this->preview($import));
+        unset($mapping['domains']);
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $mapping);
+        $preview = $this->preview($import);
+
+        $keys = array_column($preview['items'], 'source_key');
+        $rows = [];
+
+        foreach ($preview['students'] as $row) {
+            $rows[$row['display_name']] = $row;
+        }
+
+        $blank = $rows[$this->names[4]];
+        $this->assertNull($blank['marks'][$keys[0]]);
+        $this->assertNull($blank['group_results'][0]['earned'], 'Um grupo com uma célula em branco não tem subtotal.');
+        $this->assertNotNull($blank['group_results'][1]['earned']);
+        $this->assertNull($blank['lapis_total'], 'Nem total: uma soma parcial seria uma nota mais baixa a passar por completa.');
+
+        $zero = $rows[$this->names[5]];
+        $this->assertSame('0', $zero['marks'][$keys[1]]);
+        $this->assertNotNull($zero['group_results'][0]['earned']);
+        $this->assertNotNull($zero['lapis_total']);
+    }
+
     // ------------------------- produção 2026-11-01: o cabeçalho do GRUPO V é mais comprido do que o código de um item
 
     #[Test]

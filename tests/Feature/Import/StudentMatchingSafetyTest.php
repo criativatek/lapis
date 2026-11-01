@@ -240,6 +240,132 @@ class StudentMatchingSafetyTest extends TestCase
         $this->assertSame('normalised_name', $rows[0]['reason']);
     }
 
+    // ------------------------------------------- first name and last surname
+
+    #[Test]
+    public function the_first_name_and_the_last_surname_match_when_they_name_one_student(): void
+    {
+        // Intuitivo writes a shorter name than the school holds. The middle
+        // names differ; the first and the last do not; there is one such student.
+        $joao = $this->enrol('João Pedro Cunha', 1);
+        $this->enrol('Maria Inês Cunha', 2);
+        $this->enrol('João Miguel Santos', 3);
+
+        $rows = $this->match([
+            $this->sourceStudent('student:1', 'João Manuel Cunha'),
+            $this->sourceStudent('student:2', 'João Cunha'),
+            $this->sourceStudent('student:3', 'joao cunha'),
+        ]);
+
+        foreach ($rows as $index => $row) {
+            if ($index === 0) {
+                $this->assertSame($joao->id, $row['enrollment_id']);
+                $this->assertSame(MatchSourceStudents::STATUS_MATCHED, $row['status']);
+                $this->assertSame('first_and_last_name', $row['reason']);
+
+                continue;
+            }
+
+            // The same student again from a later row: seen as a collision, never
+            // written twice.
+            $this->assertNull($row['enrollment_id']);
+            $this->assertSame(MatchSourceStudents::STATUS_AMBIGUOUS, $row['status']);
+            $this->assertSame('already_taken', $row['reason']);
+        }
+    }
+
+    #[Test]
+    public function a_saved_decision_keeps_the_automatic_reason_unless_the_teacher_chose_somebody_else(): void
+    {
+        $joao = $this->enrol('João Pedro Cunha', 1);
+        $rita = $this->enrol('Rita Sá', 2);
+        $this->enrol('Nuno Lima', 3);
+
+        $rows = $this->match(
+            [
+                $this->sourceStudent('student:1', 'João Manuel Cunha'),
+                $this->sourceStudent('student:2', 'Rita Sá'),
+                $this->sourceStudent('student:3', 'Nome Que Não Existe'),
+                $this->sourceStudent('student:4', 'Nuno Lima'),
+            ],
+            ['student:1' => $joao->id, 'student:2' => $rita->id, 'student:3' => $joao->id, 'student:4' => null],
+        );
+
+        // Kept as suggested: the review still says what the pair rests on.
+        $this->assertSame('first_and_last_name', $rows[0]['reason']);
+        $this->assertSame('exact_name', $rows[1]['reason']);
+        // Nobody was suggested: this one the teacher actually chose.
+        $this->assertSame('confirmed_by_teacher', $rows[2]['reason']);
+        $this->assertSame(MatchSourceStudents::STATUS_MATCHED, $rows[2]['status']);
+        // Leaving a row out is always the teacher's.
+        $this->assertSame('ignored_by_teacher', $rows[3]['reason']);
+        $this->assertSame(MatchSourceStudents::STATUS_IGNORED, $rows[3]['status']);
+    }
+
+    #[Test]
+    public function particles_between_surnames_do_not_count_as_a_surname(): void
+    {
+        $ana = $this->enrol('Ana Sofia de Sousa e Silva', 1);
+
+        $rows = $this->match([$this->sourceStudent('student:1', 'Ana Silva')]);
+
+        $this->assertSame($ana->id, $rows[0]['enrollment_id']);
+        $this->assertSame('first_and_last_name', $rows[0]['reason']);
+    }
+
+    #[Test]
+    public function two_students_sharing_first_name_and_last_surname_are_a_question_for_the_teacher(): void
+    {
+        $this->enrol('João Pedro Cunha', 1);
+        $this->enrol('João Miguel Cunha', 2);
+        $this->enrol('Rita Cunha', 3);
+
+        $rows = $this->match([$this->sourceStudent('student:1', 'João Cunha')]);
+
+        $this->assertNull($rows[0]['enrollment_id']);
+        $this->assertSame(MatchSourceStudents::STATUS_AMBIGUOUS, $rows[0]['status']);
+        $this->assertSame('first_and_last_name', $rows[0]['reason']);
+        $this->assertCount(2, $rows[0]['suggestions']);
+    }
+
+    #[Test]
+    public function a_single_word_never_matches_by_first_and_last_name(): void
+    {
+        // «Nicole» alone names nobody with certainty: the exact rungs still apply
+        // (a class with one «Nicole» on the roll matches by name), but the first
+        // and last surname rung needs two words to have anything to compare.
+        $this->enrol('Nicole Andrade', 1);
+        $this->enrol('Nicole Barros', 2);
+
+        $rows = $this->match([$this->sourceStudent('student:1', 'Nicole')]);
+
+        $this->assertNull($rows[0]['enrollment_id']);
+        $this->assertSame(MatchSourceStudents::STATUS_UNMATCHED, $rows[0]['status']);
+
+        $nicole = $this->enrol('Nicole', 3);
+        $rows = $this->match([$this->sourceStudent('student:1', 'Nicole')]);
+
+        $this->assertSame($nicole->id, $rows[0]['enrollment_id']);
+        $this->assertSame('exact_name', $rows[0]['reason']);
+    }
+
+    #[Test]
+    public function a_different_first_name_or_a_different_last_surname_matches_nobody(): void
+    {
+        $this->enrol('João Pedro Cunha', 1);
+
+        $rows = $this->match([
+            $this->sourceStudent('student:1', 'Pedro Cunha'),
+            $this->sourceStudent('student:2', 'João Pedro'),
+            $this->sourceStudent('student:3', 'João Cunha Pedro'),
+        ]);
+
+        foreach ($rows as $row) {
+            $this->assertNull($row['enrollment_id'], 'Um nome parecido não é o mesmo nome.');
+            $this->assertSame(MatchSourceStudents::STATUS_UNMATCHED, $row['status']);
+        }
+    }
+
     #[Test]
     public function two_students_with_the_same_name_are_never_resolved_silently(): void
     {
