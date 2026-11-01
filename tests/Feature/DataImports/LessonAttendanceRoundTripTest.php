@@ -15,6 +15,7 @@ use App\Models\Lesson;
 use App\Models\LessonAttendance;
 use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
+use App\Models\LessonOutcomeRectification;
 use App\Models\LessonPlan;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
@@ -335,6 +336,138 @@ class LessonAttendanceRoundTripTest extends TestCase
             [LessonOutcome::TeacherAbsent->value, LessonOutcome::NotHeld->value, LessonOutcome::NotHeld->value, LessonOutcome::NotHeld->value],
             Lesson::where('class_id', SchoolClass::firstOrFail()->id)->where('starts_at', '>=', '2025-10-30')->whereIn('outcome', [LessonOutcome::TeacherAbsent->value, LessonOutcome::NotHeld->value])->orderBy('starts_at')->pluck('outcome')->map(fn ($outcome) => $outcome instanceof LessonOutcome ? $outcome->value : $outcome)->all(),
         ));
+    }
+
+    /** Uma aula não realizada com duas correções, ambas do titular (quem exporta). */
+    private function rectifiedLesson(SchoolClass $class, ?User $author = null, string $day = '2025-10-30'): Lesson
+    {
+        $author ??= $this->teacher;
+
+        return $this->inTenant(function () use ($class, $author, $day): Lesson {
+            $lesson = Lesson::create([
+                'class_id' => $class->id, 'starts_at' => "{$day} 09:00:00", 'ends_at' => "{$day} 10:00:00",
+                'status' => LessonStatus::Prepared, 'outcome' => LessonOutcome::NotHeld,
+                'outcome_cause' => LessonNotHeldCause::Strike, 'outcome_teacher_situation' => TeacherStrikeSituation::NotAdhered,
+                'outcome_recorded_at' => "{$day} 10:00:00", 'outcome_recorded_by' => $author->id, 'created_by' => $author->id,
+            ]);
+            $blank = ['outcome' => 'not_held', 'reason' => null, 'note' => null, 'cause' => 'strike', 'situation' => null, 'cause_note' => null];
+            LessonOutcomeRectification::create([
+                'lesson_id' => $lesson->id, 'rectified_by' => $author->id, 'rectified_at' => "{$day} 11:00:00", 'kind' => 'details',
+                'previous' => ['outcome' => 'not_held', 'reason' => null, 'note' => null, 'cause' => 'organizational', 'situation' => null, 'cause_note' => null],
+                'current' => $blank, 'motive' => 'Afinal foi greve',
+            ]);
+            LessonOutcomeRectification::create([
+                'lesson_id' => $lesson->id, 'rectified_by' => $author->id, 'rectified_at' => "{$day} 12:00:00", 'kind' => 'details',
+                'previous' => $blank, 'current' => ['situation' => 'not_adhered'] + $blank, 'motive' => 'Quero especificar',
+            ]);
+
+            return $lesson;
+        });
+    }
+
+    /**
+     * O histórico das correções das MINHAS aulas viaja na exportação pessoal e restaura-se uma só vez: o autor
+     * é reclamado só pela conta que o fez, e restaurar de novo (mesmo com ulids novos) não duplica nada.
+     */
+    #[Test]
+    public function the_rectification_history_of_my_own_lessons_round_trips_and_never_duplicates(): void
+    {
+        $class = $this->scenario();
+        $this->rectifiedLesson($class);
+
+        $backup = $this->backupUpload();
+        $json = $this->backupJson($backup);
+        $this->assertSame(21, $json['schema_version']);
+        $this->assertContains('lesson_outcome_rectifications', $json['capabilities']);
+        $this->assertCount(2, $json['lesson_outcome_rectifications']);
+        $first = $json['lesson_outcome_rectifications'][0];
+        $this->assertSame($this->teacher->email, $first['rectified_by_email']);
+        $this->assertSame('Afinal foi greve', $first['motive']);
+        $this->assertSame('organizational', $first['previous']['cause']);
+        $this->assertSame('details', $first['kind']);
+
+        // Restaurado na minha própria conta: as correções e as aulas já lá estão — nada se duplica.
+        $this->confirmAs($this->teacher->personalOrganization(), $this->teacher, $this->uploadInto($backup));
+        $this->inTenant(fn () => $this->assertSame(2, LessonOutcomeRectification::count()));
+
+        // Noutra conta: restauram-se, sem reclamar o autor; e uma segunda vez não duplica.
+        $colleague = User::factory()->create(['email' => 'colega-historico@example.test']);
+        $destination = $colleague->personalOrganization();
+        foreach ([1, 2] as $round) {
+            $this->confirmAs($destination, $colleague, $this->uploadIntoAs($destination, $colleague, $backup));
+            $this->inOrganization($destination, function () use ($round): void {
+                $rows = LessonOutcomeRectification::orderBy('id')->get();
+                $this->assertCount(2, $rows, "volta {$round}");
+                $this->assertNull($rows[0]->rectified_by, 'O autor nunca é a conta que importa.');
+                $this->assertSame(['Afinal foi greve', 'Quero especificar'], $rows->pluck('motive')->all());
+                $this->assertSame('organizational', $rows[0]->previous['cause']);
+                $this->assertSame('not_adhered', $rows[1]->current['situation']);
+                $this->assertSame(Lesson::where('outcome', 'not_held')->firstOrFail()->id, $rows[0]->lesson_id);
+            });
+        }
+    }
+
+    /** A exportação pessoal de um colega nunca leva o histórico das aulas de outro professor. */
+    #[Test]
+    public function a_colleagues_export_never_carries_the_history_of_someone_elses_lessons(): void
+    {
+        $class = $this->scenario();
+        $colleague = User::factory()->create(['email' => 'colega-sem-historico@example.test']);
+        $this->inTenant(function () use ($class, $colleague): void {
+            $colleague->organizations()->attach($this->teacher->personalOrganization(), ['joined_at' => now()]);
+            $class->teachers()->attach($colleague, ['role' => 'co_teacher']);
+        });
+        $this->rectifiedLesson($class);
+        $mine = $this->rectifiedLesson($class, $colleague, '2025-11-06');
+
+        $theirs = $this->backupJson($this->backupUploadAs($colleague));
+        $own = $this->backupJson($this->backupUpload());
+
+        $this->assertSame(2, collect($own['lesson_outcome_rectifications'])->where('lesson_ulid', '!=', $mine->ulid)->count());
+        $this->assertSame([$mine->ulid], collect($theirs['lesson_outcome_rectifications'])->pluck('lesson_ulid')->unique()->values()->all());
+        $this->assertStringNotContainsString('Quero especificar', (string) json_encode(collect($theirs['lesson_outcome_rectifications'])->where('lesson_ulid', '!=', $mine->ulid)->all()));
+        $this->assertStringNotContainsString($this->teacher->email, (string) json_encode($theirs['lesson_outcome_rectifications']));
+    }
+
+    #[Test]
+    public function a_backup_without_the_history_restores_as_before_and_invalid_rows_never_block_the_file(): void
+    {
+        $class = $this->scenario();
+        $this->rectifiedLesson($class);
+        $colleague = User::factory()->create(['email' => 'colega-v20@example.test']);
+        $destination = $colleague->personalOrganization();
+
+        // v≤20: a chave não existe.
+        $without = $this->rewriteBackup($this->backupUpload(), function (array $json): array {
+            unset($json['lesson_outcome_rectifications']);
+
+            return $json;
+        });
+        $this->confirmAs($destination, $colleague, $this->uploadIntoAs($destination, $colleague, $without));
+        $this->inOrganization($destination, function (): void {
+            $this->assertSame(1, Lesson::where('outcome', 'not_held')->count());
+            $this->assertSame(0, LessonOutcomeRectification::count());
+        });
+
+        // Linhas inválidas: motivo curto, aula desconhecida, resultado «lecionada», duplicada — só essas ficam de fora.
+        $other = User::factory()->create(['email' => 'colega-invalido@example.test']);
+        $target = $other->personalOrganization();
+        $tampered = $this->rewriteBackup($this->backupUpload(), function (array $json): array {
+            $good = $json['lesson_outcome_rectifications'][0];
+            $json['lesson_outcome_rectifications'] = [
+                $json['lesson_outcome_rectifications'][1],
+                ['motive' => 'ab', 'ulid' => (string) Str::ulid()] + $good,
+                ['lesson_ulid' => (string) Str::ulid(), 'ulid' => (string) Str::ulid()] + $good,
+                ['ulid' => (string) Str::ulid(), 'current' => ['outcome' => 'taught'] + $good['current']] + $good,
+                $json['lesson_outcome_rectifications'][1],
+            ];
+
+            return $json;
+        });
+        $this->confirmAs($target, $other, $this->uploadIntoAs($target, $other, $tampered));
+        $this->inOrganization($target, function (): void {
+            $this->assertSame(['Quero especificar'], LessonOutcomeRectification::pluck('motive')->all());
+        });
     }
 
     /**

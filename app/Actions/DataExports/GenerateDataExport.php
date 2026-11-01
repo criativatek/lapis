@@ -28,6 +28,7 @@ use App\Models\InterventionSupportMeasure;
 use App\Models\ItemDomainAllocation;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
+use App\Models\LessonOutcomeRectification;
 use App\Models\LessonPlan;
 use App\Models\LessonSummary;
 use App\Models\Organization;
@@ -2204,6 +2205,45 @@ class GenerateDataExport
     }
 
     /**
+     * O histórico das correções dos resultados de aulas que o utilizador que exporta PODE LER (as suas):
+     * a regra é a do resto da exportação (`mayReadLessonDetails`), por isso o histórico de um colega
+     * nunca viaja — nem sequer como linha reduzida. O email do autor só vai se for o de quem exporta.
+     *
+     * @param  Collection<int, Lesson>  $lessons
+     * @param  BackupRefs  $refs
+     * @return list<array<string, mixed>>
+     */
+    protected function lessonOutcomeRectificationRows(Collection $lessons, array $refs, User $user): array
+    {
+        $readable = $lessons
+            ->filter(fn (Lesson $lesson): bool => $this->mayReadLessonDetails($lesson, $refs, $user))
+            ->pluck('ulid', 'id');
+
+        if ($readable->isEmpty()) {
+            return [];
+        }
+
+        $rows = LessonOutcomeRectification::query()
+            ->whereIn('lesson_id', $readable->keys())
+            ->with('rectifier')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (LessonOutcomeRectification $rectification): array => [
+                'ulid' => $rectification->ulid,
+                'lesson_ulid' => $readable->get($rectification->lesson_id),
+                'rectified_by_email' => $rectification->rectifier !== null && $rectification->rectifier->is($user) ? $user->email : null,
+                'rectified_at' => $rectification->rectified_at->toIso8601String(),
+                'kind' => $rectification->kind,
+                'previous' => $rectification->previous,
+                'current' => $rectification->current,
+                'motive' => $rectification->motive,
+            ])
+            ->all();
+
+        return array_values($rows);
+    }
+
+    /**
      * O utilizador que exporta pode ler o que esta aula guarda de reservado? A MESMA regra da
      * interface (`LessonOutcomeDetails::mayRead`).
      *
@@ -2449,7 +2489,7 @@ class GenerateDataExport
                 'self_assessment_responses', 'interim_assessments', 'evidence_records', 'interventions',
                 'intervention_reviews', 'reports',
                 'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'cancelled_lesson_occurrences',
-                'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances',
+                'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances', 'lesson_outcome_rectifications',
                 'results_analysis_notes',
                 'class_notebook_entries',
                 'record_followup_cases', 'record_followup_confirmations',
@@ -2520,6 +2560,7 @@ class GenerateDataExport
             'recurring_lesson_slots' => $recurringLessonSlots->map(fn (RecurringLessonSlot $slot): array => $this->recurringLessonSlotRow($slot, $refs))->values(),
             'cancelled_lesson_occurrences' => $cancelledLessonOccurrences->map(fn (CancelledLessonOccurrence $occurrence): array => $this->cancelledLessonOccurrenceRow($occurrence, $refs))->values(),
             'lessons' => $lessons->map(fn (Lesson $lesson): array => $this->lessonRow($lesson, $refs, $user))->values(),
+            'lesson_outcome_rectifications' => $this->lessonOutcomeRectificationRows($lessons, $refs, $user),
             'lesson_summaries' => $lessonSummaries->map(fn (LessonSummary $summary): array => $this->lessonSummaryRow($summary, $refs))->values(),
             'lesson_plans' => $lessonPlans->map(fn (LessonPlan $plan): array => $this->lessonPlanRow($plan, $refs))->values(),
             'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),

@@ -147,6 +147,10 @@ const domainGroups: {
                 label: 'Aulas canceladas',
             },
             { key: 'lessons', label: 'Aulas' },
+            {
+                key: 'lesson_outcome_rectifications',
+                label: 'Correções de resultados de aulas',
+            },
             { key: 'lesson_summaries', label: 'Sumários' },
             { key: 'lesson_plans', label: 'Planificações de aula' },
             { key: 'lesson_attendances', label: 'Assiduidade' },
@@ -248,6 +252,10 @@ const summaryGroups: {
                 label: 'Aulas canceladas',
             },
             { key: 'lessons_created', label: 'Aulas' },
+            {
+                key: 'lesson_outcome_rectifications_created',
+                label: 'Correções de resultados de aulas',
+            },
             { key: 'lesson_summaries_created', label: 'Sumários' },
             { key: 'lesson_plans_created', label: 'Planificações de aula' },
             { key: 'lesson_attendances_created', label: 'Assiduidade' },

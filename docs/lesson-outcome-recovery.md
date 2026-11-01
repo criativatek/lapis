@@ -49,5 +49,5 @@ O professor que registou um resultado (e só ele) pode corrigi-lo na página da 
   anteriores e novos, motivo). Os valores podem trazer dado reservado ao titular: só ele os lê, e a
   auditoria geral (`lesson.outcome_rectified`) leva apenas resultado e causa.
 - **Rollback de código**: o código anterior ignora a tabela; o estado atual da aula está em
-  `lessons`. O histórico **não viaja na exportação pessoal** nesta versão (só o estado atual);
-  a recuperação do histórico é a cópia diária da base de dados.
+  `lessons`. O histórico viaja na exportação pessoal (só o das aulas do próprio; ver
+  `backup-schema.md`, v21) e restaura-se sem duplicar; a recuperação integral é a cópia diária da base.

@@ -59,6 +59,14 @@ class WriteLessons
     use ResolvesWrittenReferences;
 
     /**
+     * The lessons this restore left in the destination (new ∪ existing), by source ulid —
+     * what the tiers that hang off a lesson (the rectification history) point at.
+     *
+     * @var array<string, int>
+     */
+    public array $lessonIdsByUlid = [];
+
+    /**
      * @param  array<string, int>  $byUlid
      * @return array{ok: bool, id: int|null}
      */
@@ -127,6 +135,7 @@ class WriteLessons
 
         $cancelledCreated = $this->writeCancelledOccurrences($cancelledRows, $classesByUlid, $groupsByUlid, $slotsByUlid, $groupClassIds, $slotClassIds);
         ['byUlid' => $lessonsByUlid, 'created' => $lessonsCreated] = $this->writeLessons($lessonRows, $classesByUlid, $groupsByUlid, $slotsByUlid, $groupClassIds, $slotClassIds);
+        $this->lessonIdsByUlid = $lessonsByUlid;
         $lessonClassIds = $this->classIdMap(Lesson::class, $lessonsByUlid);
 
         $summariesCreated = $this->writeSummaries($summaryRows, $lessonsByUlid);

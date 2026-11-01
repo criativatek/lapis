@@ -55,6 +55,7 @@ class ExecuteDataImport
         private readonly WriteAssessmentData $dataWriter,
         private readonly WritePedagogicalRecords $recordsWriter,
         private readonly WriteLessons $lessonsWriter,
+        private readonly WriteLessonOutcomeRectifications $lessonOutcomeRectificationsWriter,
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
         private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
         private readonly WriteTimetableActivities $timetableActivitiesWriter,
@@ -149,6 +150,12 @@ class ExecuteDataImport
                 $enrollmentsForLessons,
             );
 
+            // Schema v21 — the history of the corrections of lesson outcomes: only adds
+            // history, after the lessons it points at; never touches the lesson.
+            $lessonOutcomeRectificationsCreated = $this->lessonOutcomeRectificationsWriter->write(
+                $rows['lesson_outcome_rectifications'] ?? [], $this->lessonsWriter->lessonIdsByUlid,
+            );
+
             // Schema v13 — depends on the instrument map `writeInstruments()`
             // has just built (new ∪ existing ∪ conflict). A `conflict`
             // instrument is in that map for its other children, but the plan
@@ -217,6 +224,7 @@ class ExecuteDataImport
                 'lesson_summaries_created' => $lessonCounts['lesson_summaries'],
                 'lesson_plans_created' => $lessonCounts['lesson_plans'],
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
+                'lesson_outcome_rectifications_created' => $lessonOutcomeRectificationsCreated,
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
                 'class_notebook_entries_created' => $classNotebookEntriesCreated,
                 'timetable_activities_created' => $timetableActivitiesCreated,

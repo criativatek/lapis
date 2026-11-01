@@ -21,6 +21,7 @@ use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
 use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
+use App\Models\LessonOutcomeRectification;
 use App\Models\LessonStatus;
 use App\Models\ParticipationLevel;
 use App\Models\ProfileVersionStatus;
@@ -286,6 +287,10 @@ class ValidateBackupPayload
         // activities. Absent in a backup ≤18: `?? []`, zero rows, never an error.
         $canonical['timetable_activity_occurrences'] = $this->validTimetableActivitySessionRows($decoded, $rowIssues);
 
+        // Schema v21 — the history of the corrections of the exporter's own lesson outcomes.
+        // Absent in a backup ≤20: `?? []`, zero rows, never an error.
+        $canonical['lesson_outcome_rectifications'] = $this->validLessonOutcomeRectificationRows($decoded, $rowIssues);
+
         return ['canonical' => $canonical, 'schemaCompatibility' => $compatibility, 'rowIssues' => $rowIssues];
     }
 
@@ -361,6 +366,113 @@ class ValidateBackupPayload
         }
 
         return $result;
+    }
+
+    /**
+     * Schema v21 — the history of the corrections the exporting teacher made to the outcome of
+     * their own lessons. An invalid row is reported and skipped, never a refused file; the
+     * reason is a fixed sentence that carries neither the motive nor any value.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validLessonOutcomeRectificationRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['lesson_outcome_rectifications'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'lesson_ulid', 'rectified_by_email', 'rectified_at', 'kind', 'previous', 'current', 'motive'];
+        $seen = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $row = array_intersect_key($row, array_flip($allowedKeys));
+            $ulid = $row['ulid'] ?? null;
+            $reportUlid = is_string($ulid) && $this->isUlid($ulid) ? $ulid : null;
+
+            $previous = $this->validRectificationSnapshot($row['previous'] ?? null);
+            $current = $this->validRectificationSnapshot($row['current'] ?? null);
+            $motive = is_string($row['motive'] ?? null) ? trim($row['motive']) : '';
+            $at = $this->nullableDateTime($row['rectified_at'] ?? null);
+            $kind = $row['kind'] ?? null;
+
+            $valid = $this->isUlid($ulid)
+                && $this->isUlid($row['lesson_ulid'] ?? null)
+                && $previous !== null && $current !== null && $previous !== $current
+                && in_array($kind, [LessonOutcomeRectification::KIND_OUTCOME, LessonOutcomeRectification::KIND_DETAILS], true)
+                && mb_strlen($motive, 'UTF-8') >= 3 && mb_strlen($motive, 'UTF-8') <= 200
+                && $at !== null && strtotime($at) !== false;
+
+            if (! $valid) {
+                $rowIssues[] = ['domain' => 'lesson_outcome_rectifications', 'ulid' => $reportUlid, 'reason' => $this->t('Correção de resultado com campos em falta ou inválidos.')];
+
+                continue;
+            }
+
+            if (isset($seen[$ulid])) {
+                $rowIssues[] = ['domain' => 'lesson_outcome_rectifications', 'ulid' => $reportUlid, 'reason' => $this->t('Correção duplicada neste ficheiro.')];
+
+                continue;
+            }
+
+            $seen[$ulid] = true;
+            $validated[] = [
+                'ulid' => $ulid,
+                'lesson_ulid' => $row['lesson_ulid'],
+                'rectified_by_email' => $this->nullableString($row['rectified_by_email'] ?? null),
+                'rectified_at' => Carbon::parse($at)->toIso8601String(),
+                'kind' => $kind,
+                'previous' => $previous,
+                'current' => $current,
+                'motive' => $motive,
+            ];
+        }
+
+        return $validated;
+    }
+
+    /**
+     * The six outcome fields of a correction, each with a value its enum accepts (or null) —
+     * including the legacy `not_informed` situation a row may legitimately carry.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function validRectificationSnapshot(mixed $value): ?array
+    {
+        if (! is_array($value)) {
+            return null;
+        }
+
+        $fields = ['outcome', 'reason', 'note', 'cause', 'situation', 'cause_note'];
+        $snapshot = [];
+
+        foreach ($fields as $field) {
+            $item = $value[$field] ?? null;
+
+            if ($item !== null && ! is_string($item)) {
+                return null;
+            }
+
+            $snapshot[$field] = $item;
+        }
+
+        $valid = $snapshot['outcome'] !== null && LessonOutcome::tryFrom($snapshot['outcome']) !== null
+            && $snapshot['outcome'] !== LessonOutcome::Taught->value
+            && ($snapshot['reason'] === null || TeacherAbsenceReason::tryFrom($snapshot['reason']) !== null)
+            && ($snapshot['cause'] === null || LessonNotHeldCause::tryFrom($snapshot['cause']) !== null)
+            && ($snapshot['situation'] === null || TeacherStrikeSituation::tryFrom($snapshot['situation']) !== null)
+            && ($snapshot['note'] === null || mb_strlen($snapshot['note'], 'UTF-8') <= 160)
+            && ($snapshot['cause_note'] === null || mb_strlen($snapshot['cause_note'], 'UTF-8') <= 160);
+
+        return $valid ? $snapshot : null;
     }
 
     private function isUlid(mixed $value): bool
