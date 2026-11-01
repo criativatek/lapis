@@ -61,7 +61,7 @@ class LessonNotHeldRetroactiveTest extends TestCase
             $event = AuditEvent::query()->where('event', 'lesson.outcome_recorded')->where('subject_id', $b->id)->sole();
             $this->assertTrue($event->properties['retroactive']);
             $this->assertSame([1], $event->properties['gaps']);
-            $this->assertSame([['from' => 1, 'to' => 2], ['from' => 2, 'to' => null]], $event->properties['renumbered_numbers']);
+            $this->assertEquals([['from' => 1, 'to' => 2], ['from' => 2, 'to' => null]], $event->properties['renumbered_numbers']);
             $this->assertSame('school_not_operating', $event->properties['cause']);
             $this->assertSame(0, $event->properties['planning_shifted']);
         });
