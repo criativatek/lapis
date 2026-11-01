@@ -22,9 +22,10 @@ Complementa `docs/legal/strike-adhesion-proposal.md` (comportamento da especific
 4. Observadores da turma não registam nem alteram resultados.
 5. A especificação não vai para a auditoria, para pesquisas, para painéis, para relatórios da
    turma, nem para os assistentes de IA.
-6. O **backup** é de quem o descarrega: contém por inteiro o que esse utilizador registou; o que
-   um colega reservou viaja no valor válido menos específico («Outro», sem especificação,
-   «Reservado»), para o ficheiro continuar restaurável sem entregar o dado.
+6. A **exportação pessoal** (restaurável) contém por inteiro o que o utilizador registou; o que um
+   colega reservou viaja no valor válido menos específico («Outro», sem especificação,
+   «Reservado»), para o ficheiro continuar restaurável sem entregar o dado. Não é um backup
+   integral: esse é a cópia diária da base de dados, só da operação.
 7. O relatório pessoal «Serviço letivo» mostra ao professor as causas e a especificação que
    **ele** registou.
 
@@ -76,6 +77,6 @@ anteriores. **[A VALIDAR]**
 2. A causa «Greve», visível a todos os professores da turma e em agregados, identifica indiretamente
    alguém? (Hoje não há especificação visível a outros; mas uma turma com um só professor…)
 3. Prazo de conservação da especificação (ligado ao fim do ano letivo ou à vida da conta?).
-4. O backup entregue a um professor deve incluir a causa dos colegas? (Hoje inclui — é da turma.)
+4. A exportação pessoal entregue a um professor deve incluir a causa dos colegas? (Hoje inclui — é da turma.)
 5. Direito de retificação: o professor corrige a sua especificação (a interface permite
    corrigir o registo?) — hoje um resultado registado não é editável nesta fase.
