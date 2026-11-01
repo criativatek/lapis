@@ -5,7 +5,7 @@ import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
 import { statusToneClasses } from '@/lib/statusTone';
 
-export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity';
+export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held';
 
 /**
  * «Não houve aula» (0.146.0) — registar que a ocorrência fechou como
@@ -55,7 +55,7 @@ const dialogOpen = ref(false);
         </p>
         <p v-if="outcomeNote" class="text-sm">{{ outcomeNote }}</p>
         <p class="text-sm">
-            <template v-if="outcome === 'teacher_absent'">
+            <template v-if="outcome === 'teacher_absent' || outcome === 'not_held'">
                 Esta aula não é numerada nem contada como lecionada. A assiduidade não se aplica.
             </template>
             <template v-else>

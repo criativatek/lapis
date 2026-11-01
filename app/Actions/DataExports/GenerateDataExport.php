@@ -2225,6 +2225,11 @@ class GenerateDataExport
             'outcome' => $lesson->outcome?->value,
             'outcome_reason' => $lesson->outcome_reason?->value,
             'outcome_note' => $lesson->outcome_note,
+            // v21: a causa de uma aula não realizada. Reservada ao titular na
+            // interface; aqui viaja inteira, porque sem ela o restauro invalidaria a linha.
+            'outcome_cause' => $lesson->outcome_cause?->value,
+            'outcome_teacher_situation' => $lesson->outcome_teacher_situation?->value,
+            'outcome_cause_note' => $lesson->outcome_cause_note,
             'outcome_recorded_at' => $lesson->outcome_recorded_at?->toIso8601String(),
             'outcome_recorded_by_email' => $this->authorEmail($lesson->outcome_recorded_by, $refs),
             'attendance_recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),

@@ -108,6 +108,7 @@ class ReportLessonsTest extends TestCase
             'subject_development' => 2,
             'teacher_absent' => 1,
             'class_external_activity' => 1,
+            'not_held' => 0,
             'not_recorded' => 1,
         ], $section->data['totals']);
         $this->assertSame(5, $section->data['totals']['planned']);

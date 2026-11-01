@@ -7,7 +7,15 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (20) is what GenerateDataExport writes today. Version 20 adds the
+ * CURRENT (21) is what GenerateDataExport writes today. Version 21 adds the
+ * cause of a lesson that was planned and not held (`outcome = not_held`):
+ * `lessons[].outcome_cause`, `outcome_teacher_situation` and
+ * `outcome_cause_note`, together with the new outcome value. Absent in a backup
+ * ≤20: all null, and nothing else changes. A row that breaks the coherence
+ * (cause without `not_held`, situation without `strike`, `other` without a
+ * description) is an invalid row, never a refused file. A backup v21 is refused
+ * by earlier code (unsupported newer): it would otherwise drop the new columns
+ * silently and read `not_held` as an unknown outcome. Version 20 adds the
  * chain of rectifications of the classifications — a published decision that
  * was corrected is not edited, a new row replaces it and the old one stays as
  * history: `classifications[].rectifies_ulid` (the row this one replaces),
@@ -116,7 +124,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 20;
+    public const int CURRENT = 21;
 
     public const int MINIMUM_SUPPORTED = 2;
 

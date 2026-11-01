@@ -19,6 +19,7 @@ use App\Models\InstrumentStatus;
 use App\Models\InterventionEffectiveness;
 use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
+use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\ParticipationLevel;
@@ -32,6 +33,7 @@ use App\Models\ResultState;
 use App\Models\SelfAssessmentFilledBy;
 use App\Models\SelfAssessmentStatus;
 use App\Models\TeacherAbsenceReason;
+use App\Models\TeacherStrikeSituation;
 use App\Models\TimetableActivityKind;
 use App\Models\TimetableActivitySession;
 use App\Models\TimetableActivitySessionStatus;
@@ -247,7 +249,7 @@ class ValidateBackupPayload
             'cancelled_lesson_occurrences' => $this->whitelistRows($decoded, 'cancelled_lesson_occurrences', ['class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'occurs_at', 'cancelled_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validCancelledLessonOccurrenceRow($row, $rowIssues);
             }),
-            'lessons' => $this->rejectOverlappingManualLessons($this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by_email', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
+            'lessons' => $this->rejectOverlappingManualLessons($this->whitelistRows($decoded, 'lessons', ['ulid', 'class_ulid', 'class_group_ulid', 'recurring_lesson_slot_ulid', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_cause', 'outcome_teacher_situation', 'outcome_cause_note', 'outcome_recorded_at', 'outcome_recorded_by_email', 'attendance_recorded_at', 'attendance_recorded_by_email', 'created_by_email'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validLessonRow($row, $rowIssues);
             }), $rowIssues),
             'lesson_summaries' => $this->whitelistRows($decoded, 'lesson_summaries', ['ulid', 'lesson_ulid', 'content', 'private_notes', 'resources', 'homework', 'reviewed_at', 'reviewed_by_email'], function (array $row) use (&$rowIssues): ?array {
@@ -1760,12 +1762,26 @@ class ValidateBackupPayload
         $reasonRaw = $row['outcome_reason'] ?? null;
         $reason = $reasonRaw === null ? null : TeacherAbsenceReason::tryFrom((string) $reasonRaw);
         $note = $row['outcome_note'] ?? null;
+        // v21: a causa de uma aula não realizada. Ausente num backup ≤20 ⇒ tudo nulo.
+        $causeRaw = $row['outcome_cause'] ?? null;
+        $cause = $causeRaw === null ? null : LessonNotHeldCause::tryFrom((string) $causeRaw);
+        $situationRaw = $row['outcome_teacher_situation'] ?? null;
+        $situation = $situationRaw === null ? null : TeacherStrikeSituation::tryFrom((string) $situationRaw);
+        $causeNoteRaw = $row['outcome_cause_note'] ?? null;
+        $causeNote = is_string($causeNoteRaw) ? trim($causeNoteRaw) : null;
+        $causeValid = ($causeRaw === null || ($cause !== null && $outcome === LessonOutcome::NotHeld))
+            && ($outcome !== LessonOutcome::NotHeld || $cause !== null)
+            && ($situationRaw === null || ($situation !== null && $cause === LessonNotHeldCause::Strike))
+            && ($causeNoteRaw === null || (is_string($causeNoteRaw) && $causeNote !== '' && mb_strlen($causeNote) <= 160 && $cause === LessonNotHeldCause::Other))
+            && ($cause !== LessonNotHeldCause::Other || $causeNote !== null)
+            && ($outcome !== LessonOutcome::NotHeld || $reasonRaw === null);
         $outcomeValid = ($outcomeRaw === null || $outcome !== null)
             && ($reasonRaw === null || ($reason !== null && $outcome === LessonOutcome::TeacherAbsent))
             && ($outcome !== LessonOutcome::TeacherAbsent || $reason !== null)
             && ($note === null || (is_string($note) && mb_strlen($note) <= 160 && $outcome === LessonOutcome::ClassExternalActivity))
             && ($outcome === null || $outcome->takesAttendance() || ($row['attendance_recorded_at'] ?? null) === null)
-            && ($outcome === null || $outcome === LessonOutcome::Taught || $status !== LessonStatus::Taught);
+            && ($outcome === null || $outcome === LessonOutcome::Taught || $status !== LessonStatus::Taught)
+            && $causeValid;
 
         // v18 (0.169.0): o número indicado pelo professor. Ausente num backup
         // anterior ⇒ sem fim e não manual (nada muda). Um fim tem de ser um
@@ -1792,6 +1808,10 @@ class ValidateBackupPayload
             return null;
         }
 
+        // Uma ausência do professor ou uma aula não realizada não numera nem
+        // pertence a uma lição — a mesma invariante que RecordLessonOutcome grava.
+        $unnumbered = $outcome !== null && ! $outcome->isNumbered();
+
         return [
             'ulid' => $ulid,
             'class_ulid' => $classUlid,
@@ -1801,14 +1821,17 @@ class ValidateBackupPayload
             'ends_at' => $this->nullableDateTime($row['ends_at'] ?? null),
             // Uma ausência do professor não numera nem pertence a uma lição —
             // a mesma invariante que RecordLessonOutcome grava.
-            'lesson_number' => $outcome === LessonOutcome::TeacherAbsent ? null : $numberStart,
-            'lesson_number_end' => $outcome === LessonOutcome::TeacherAbsent ? null : $numberEndRaw,
-            'lesson_number_manual' => $outcome !== LessonOutcome::TeacherAbsent && $numberStart !== null && $numberManualRaw === true,
-            'lesson_unit_key' => $outcome === LessonOutcome::TeacherAbsent ? null : $lessonUnitKey['value'],
+            'lesson_number' => $unnumbered ? null : $numberStart,
+            'lesson_number_end' => $unnumbered ? null : $numberEndRaw,
+            'lesson_number_manual' => ! $unnumbered && $numberStart !== null && $numberManualRaw === true,
+            'lesson_unit_key' => $unnumbered ? null : $lessonUnitKey['value'],
             'status' => $row['status'],
             'outcome' => $outcome?->value,
             'outcome_reason' => $reason?->value,
             'outcome_note' => $this->nullableString($note),
+            'outcome_cause' => $cause?->value,
+            'outcome_teacher_situation' => $situation?->value,
+            'outcome_cause_note' => $causeNote === '' ? null : $causeNote,
             'outcome_recorded_at' => $this->nullableDateTime($row['outcome_recorded_at'] ?? null),
             'outcome_recorded_by_email' => $this->nullableString($row['outcome_recorded_by_email'] ?? null),
             'attendance_recorded_at' => $this->nullableDateTime($row['attendance_recorded_at'] ?? null),

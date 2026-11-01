@@ -283,7 +283,7 @@ final class LessonNumbering
     public function previewHypotheticalChanges(int $classId, iterable $lessons): array
     {
         $sorted = new Collection(collect($lessons)
-            ->reject(fn (Lesson $lesson): bool => $lesson->outcome === LessonOutcome::TeacherAbsent)
+            ->reject(fn (Lesson $lesson): bool => $lesson->outcome !== null && ! $lesson->outcome->isNumbered())
             ->sort(function (Lesson $left, Lesson $right): int {
                 $byTime = $left->starts_at->getTimestamp() <=> $right->starts_at->getTimestamp();
 
@@ -1076,7 +1076,7 @@ final class LessonNumbering
         // sequência, sem número e sem unidade.
         $query = Lesson::query()
             ->where('class_id', $classId)
-            ->where(fn ($query) => $query->whereNull('outcome')->orWhere('outcome', '!=', LessonOutcome::TeacherAbsent->value))
+            ->where(fn ($query) => $query->whereNull('outcome')->orWhereNotIn('outcome', LessonOutcome::unnumberedValues()))
             ->orderBy('starts_at')
             ->orderBy('id');
 

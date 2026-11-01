@@ -14,6 +14,7 @@ export const LESSON_STATE_ICONS: Record<string, Component> = {
     taught: CircleCheck,
     teacher_absent: UserX,
     class_external_activity: Route,
+    not_held: UserX,
 };
 
 export function lessonStateIcon(state: string): Component {
