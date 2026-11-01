@@ -90,6 +90,7 @@ class BuildImportPlan
         private readonly BuildAssessmentDataPlan $dataPlan,
         private readonly BuildPedagogicalRecordsPlan $recordsPlan,
         private readonly BuildLessonsPlan $lessonsPlan,
+        private readonly BuildLessonOutcomeRectificationsPlan $lessonOutcomeRectificationsPlan,
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
         private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
         private readonly BuildTimetableActivitiesPlan $timetableActivitiesPlan,
@@ -231,6 +232,15 @@ class BuildImportPlan
             $enrollmentsByUlid,
         );
 
+        // Schema v21 — the history of the corrections of the exporter's own lesson outcomes:
+        // needs the lessons plan, because a correction is only restored with its lesson.
+        $lessonOutcomeRectifications = $this->lessonOutcomeRectificationsPlan->build(
+            $canonical['lesson_outcome_rectifications'] ?? [],
+            $destination,
+            $actor,
+            $lessons['rows']['lessons'],
+        );
+
         // Schema v15 — after the logbook records: a declaration covers records,
         // and each covered occurrence is mapped to what this restore will
         // leave in the destination.
@@ -260,6 +270,7 @@ class BuildImportPlan
             $data['rows'],
             $records['rows'],
             $lessons['rows'],
+            $lessonOutcomeRectifications['rows'],
             $resultsAnalysisNotes['rows'],
             $classNotebookEntries['rows'],
             $timetableActivities['rows'],

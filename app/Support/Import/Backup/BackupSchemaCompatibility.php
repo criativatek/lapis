@@ -15,7 +15,9 @@ namespace App\Support\Import\Backup;
  * (cause without `not_held`, situation without `strike`, `other` without a
  * description) is an invalid row, never a refused file. A backup v21 is refused
  * by earlier code (unsupported newer): it would otherwise drop the new columns
- * silently and read `not_held` as an unknown outcome. Version 20 adds the
+ * silently and read `not_held` as an unknown outcome. Version 21 also carries the optional
+ * `lesson_outcome_rectifications` collection (the history of the corrections of the exporter's
+ * own lessons): additive, absent ⇒ none, and v21 was never published without it. Version 20 adds the
  * chain of rectifications of the classifications — a published decision that
  * was corrected is not edited, a new row replaces it and the old one stays as
  * history: `classifications[].rectifies_ulid` (the row this one replaces),
