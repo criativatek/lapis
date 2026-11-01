@@ -209,6 +209,32 @@ function visit(params: Record<string, string | null>): void {
                             <dd class="text-2xl font-semibold">{{ report.totals.not_recorded }}</dd>
                         </div>
                     </dl>
+                    <!-- As previstas partem-se em cinco, sem sobreposição: a soma fecha sempre. -->
+                    <div class="rounded-xl border bg-card p-4" data-testid="breakdown">
+                        <h3 class="text-sm font-medium">As {{ report.totals.planned }} previstas, uma a uma</h3>
+                        <ul class="mt-2 divide-y text-sm">
+                            <li class="flex justify-between gap-3 py-1.5">
+                                <span>Lecionadas</span>
+                                <span class="font-medium tabular-nums">{{ report.totals.subject_development }}</span>
+                            </li>
+                            <li class="flex justify-between gap-3 py-1.5">
+                                <span>Turma noutra atividade letiva <span class="text-xs text-muted-foreground">(contam como dadas)</span></span>
+                                <span class="font-medium tabular-nums">{{ report.totals.class_external_activity }}</span>
+                            </li>
+                            <li class="flex justify-between gap-3 py-1.5">
+                                <span>Professor ausente <span class="text-xs text-muted-foreground">(não contam como dadas)</span></span>
+                                <span class="font-medium tabular-nums">{{ report.totals.teacher_absent }}</span>
+                            </li>
+                            <li class="flex justify-between gap-3 py-1.5">
+                                <span>Aulas não realizadas <span class="text-xs text-muted-foreground">(não contam como dadas)</span></span>
+                                <span class="font-medium tabular-nums">{{ report.totals.not_held }}</span>
+                            </li>
+                            <li class="flex justify-between gap-3 py-1.5">
+                                <span>Ainda sem registo</span>
+                                <span class="font-medium tabular-nums">{{ report.totals.not_recorded }}</span>
+                            </li>
+                        </ul>
+                    </div>
                     <p v-if="report.upcoming > 0" class="text-xs text-muted-foreground">
                         Mais {{ report.upcoming }} {{ report.upcoming === 1 ? 'aula prevista' : 'aulas previstas' }} depois de
                         hoje, que ainda não entram nas contas.

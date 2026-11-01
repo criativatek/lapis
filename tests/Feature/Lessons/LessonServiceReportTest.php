@@ -234,4 +234,47 @@ class LessonServiceReportTest extends TestCase
         $this->assertEquals(66.7, $report['given_percentage']);
         $this->assertSame(1, array_sum(array_column($report['evolution'], 'not_held')));
     }
+
+    /**
+     * As cinco categorias PARTEM as aulas previstas: nenhuma aula conta em duas, e a soma fecha. É o que impede
+     * dupla contagem entre «lecionadas», «outra atividade», «ausência», «não realizadas» e «sem registo».
+     */
+    #[Test]
+    public function the_categories_partition_the_planned_lessons_so_nothing_is_counted_twice(): void
+    {
+        $this->seedLessons();
+        $this->closed('2026-10-20 09:30:00', LessonOutcome::TeacherAbsent, ['outcome_reason' => 'training']);
+
+        $totals = $this->report($this->teacher)['report']['totals'];
+
+        $this->assertSame(
+            $totals['planned'],
+            $totals['subject_development'] + $totals['class_external_activity'] + $totals['teacher_absent'] + $totals['not_held'] + $totals['not_recorded'],
+        );
+        $this->assertSame($totals['counted_as_taught'], $totals['subject_development'] + $totals['class_external_activity']);
+        $this->assertSame([6, 2, 1, 1, 1, 1], [$totals['planned'], $totals['subject_development'], $totals['class_external_activity'], $totals['teacher_absent'], $totals['not_held'], $totals['not_recorded']]);
+    }
+
+    #[Test]
+    public function rectifying_an_absence_into_not_held_moves_one_lesson_between_categories_and_keeps_the_denominator(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $this->seedLessons();
+        $absent = $this->closed('2026-10-20 09:30:00', LessonOutcome::TeacherAbsent, ['outcome_reason' => 'training']);
+        $before = $this->report($this->teacher)['report'];
+
+        $this->actingAs($this->teacher)->withSession(['organization_id' => $this->organization->id])
+            ->patchJson("/lessons/{$absent->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'rectification_note' => 'Era greve'])->assertRedirect();
+
+        $after = $this->report($this->teacher)['report'];
+
+        $this->assertSame($before['totals']['planned'], $after['totals']['planned']);
+        $this->assertSame($before['totals']['counted_as_taught'], $after['totals']['counted_as_taught']);
+        $this->assertEquals($before['given_percentage'], $after['given_percentage']);
+        $this->assertSame($before['totals']['teacher_absent'] - 1, $after['totals']['teacher_absent']);
+        $this->assertSame($before['totals']['not_held'] + 1, $after['totals']['not_held']);
+        $this->assertSame($before['personal']['teacher_absent'] - 1, $after['personal']['teacher_absent']);
+        $this->assertSame($before['personal']['not_held_recorded'] + 1, $after['personal']['not_held_recorded']);
+        $this->assertSame(['strike'], array_column($after['causes'], 'cause'));
+    }
 }

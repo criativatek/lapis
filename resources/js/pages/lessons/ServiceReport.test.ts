@@ -81,6 +81,25 @@ describe('lessons/ServiceReport', () => {
         expect(wrapper.get('[data-testid="given-breakdown"]').text()).toBe('Dadas = 2 lecionadas + 1 com a turma noutra atividade letiva.');
     });
 
+    it('splits the planned lessons into five non-overlapping groups that add up to the planned total', () => {
+        const wrapper = mountPage({ report: report({ totals: { ...report().totals, planned: 6, teacher_absent: 1 } }) });
+        const rows = wrapper.findAll('[data-testid="breakdown"] li').map((row) => {
+            const cells = row.findAll(':scope > span');
+
+            return [cells[0].text().replace(/\s+/g, ' '), Number(cells[1].text())] as const;
+        });
+
+        expect(rows).toEqual([
+            ['Lecionadas', 2],
+            ['Turma noutra atividade letiva (contam como dadas)', 1],
+            ['Professor ausente (não contam como dadas)', 1],
+            ['Aulas não realizadas (não contam como dadas)', 1],
+            ['Ainda sem registo', 1],
+        ]);
+        expect(wrapper.get('[data-testid="breakdown"]').text()).toContain('As 6 previstas, uma a uma');
+        expect(rows.reduce((total, [, count]) => total + count, 0)).toBe(6);
+    });
+
     it('hides the unrecorded note when every lesson is recorded', () => {
         const wrapper = mountPage({
             report: report({ totals: { ...report().totals, not_recorded: 0 } }),
