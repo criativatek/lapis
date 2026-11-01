@@ -45,6 +45,7 @@ import {
     validateNumberDraft,
 } from '@/lib/lessonNumber';
 import type { LessonNumberDraft, LessonNumberErrors, LessonNumberPreview } from '@/lib/lessonNumber';
+import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
 import { lessonDisplayState, lessonNumberLabel } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
@@ -78,8 +79,13 @@ type Lesson = {
     /** A categoria é de outro professor da turma: não viaja, só esta indicação. */
     outcome_reason_reserved?: boolean;
     outcome_note: string | null;
+    /** A causa de uma aula não realizada é da turma; os outros dois campos só chegam a quem a registou. */
+    outcome_cause_label?: string | null;
+    outcome_teacher_situation_label?: string | null;
+    outcome_cause_note?: string | null;
     can_record_outcome: boolean;
     absence_reasons: { value: string; label: string }[];
+    not_held_options?: NotHeldOptions | null;
     pending_plan: string | null;
     /** Decididos no servidor — ver LessonController::show(). */
     can_delete: boolean;
@@ -784,6 +790,10 @@ function goBack(event: MouseEvent): void {
             :outcome-reason-label="lesson.outcome_reason_label"
             :outcome-reason-reserved="lesson.outcome_reason_reserved"
             :outcome-note="lesson.outcome_note"
+            :outcome-cause-label="lesson.outcome_cause_label"
+            :outcome-teacher-situation-label="lesson.outcome_teacher_situation_label"
+            :outcome-cause-note="lesson.outcome_cause_note"
+            :not-held-options="lesson.not_held_options"
             :can-record="lesson.can_record_outcome"
             :reasons="lesson.absence_reasons"
             :pending-plan="lesson.pending_plan"

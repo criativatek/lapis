@@ -60,6 +60,8 @@ export type WeekLesson = {
     /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
     outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held' | null;
     outcome_label: string | null;
+    /** Falso num observador: acompanha a turma mas não regista resultados. */
+    can_record_outcome?: boolean;
     can_delete: boolean;
     can_clear_summary: boolean;
     /** Se a assiduidade desta aula já está consolidada — ver Lesson::attendanceRecorded(). */

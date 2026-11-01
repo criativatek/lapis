@@ -20,7 +20,7 @@
  */
 import { router } from '@inertiajs/vue3';
 import { Check, Ellipsis } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, inject, ref } from 'vue';
 import type { SpecialLessonOutcome } from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { notHeldEnabledKey } from '@/lib/lessonOutcomeOptions';
 
 const props = withDefaults(
     defineProps<{
@@ -36,9 +37,13 @@ const props = withDefaults(
         contextLabel: string;
         time: string;
         variant?: 'responsive' | 'desktop' | 'mobile';
+        /** Um observador acompanha a turma mas não regista resultados: o menu não os oferece. */
+        canRecordOutcome?: boolean;
     }>(),
-    { variant: 'responsive' },
+    { variant: 'responsive', canRecordOutcome: true },
 );
+
+const notHeldEnabled = inject(notHeldEnabledKey, computed(() => false));
 
 const emit = defineEmits<{ outcome: [SpecialLessonOutcome] }>();
 
@@ -84,7 +89,7 @@ function markTaught(): void {
             >
                 <Check class="size-3.5" aria-hidden="true" /> Lecionada
             </Button>
-            <DropdownMenu>
+            <DropdownMenu v-if="canRecordOutcome">
                 <DropdownMenuTrigger as-child>
                     <Button
                         type="button"
@@ -103,6 +108,9 @@ function markTaught(): void {
                     </DropdownMenuItem>
                     <DropdownMenuItem data-testid="quick-external-activity" @select="emit('outcome', 'class_external_activity')">
                         Turma em outras atividades letivas
+                    </DropdownMenuItem>
+                    <DropdownMenuItem v-if="notHeldEnabled" data-testid="quick-not-held" @select="emit('outcome', 'not_held')">
+                        Aula não realizada
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -128,12 +136,17 @@ function markTaught(): void {
                 <DropdownMenuItem class="min-h-11" data-testid="quick-mark-taught-mobile" @select="markTaught">
                     <Check class="size-4" aria-hidden="true" /> Lecionada
                 </DropdownMenuItem>
-                <DropdownMenuItem class="min-h-11" @select="emit('outcome', 'teacher_absent')">
-                    Professor ausente
-                </DropdownMenuItem>
-                <DropdownMenuItem class="min-h-11" @select="emit('outcome', 'class_external_activity')">
-                    Turma em outras atividades letivas
-                </DropdownMenuItem>
+                <template v-if="canRecordOutcome">
+                    <DropdownMenuItem class="min-h-11" @select="emit('outcome', 'teacher_absent')">
+                        Professor ausente
+                    </DropdownMenuItem>
+                    <DropdownMenuItem class="min-h-11" @select="emit('outcome', 'class_external_activity')">
+                        Turma em outras atividades letivas
+                    </DropdownMenuItem>
+                    <DropdownMenuItem v-if="notHeldEnabled" class="min-h-11" data-testid="quick-not-held-mobile" @select="emit('outcome', 'not_held')">
+                        Aula não realizada
+                    </DropdownMenuItem>
+                </template>
             </DropdownMenuContent>
         </DropdownMenu>
     </div>

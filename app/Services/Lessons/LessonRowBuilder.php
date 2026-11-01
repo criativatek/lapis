@@ -12,6 +12,7 @@ use App\Support\Lessons\LessonNumberingFreeze;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A LINHA DE AULA, escrita num sítio só.
@@ -134,7 +135,18 @@ final class LessonRowBuilder
             ? $this->dayEvents->forLessons($visible, $teacher)
             : [];
 
-        return array_values($visible->map(function (Lesson $lesson) use ($dayEvents, $tones): array {
+        // Os observadores acompanham a turma mas não registam resultados
+        // (LessonPolicy::recordOutcome): uma consulta para a lista inteira, e o
+        // ecrã não oferece o que o servidor recusaria.
+        $observing = DB::table('class_teachers')
+            ->where('user_id', $teacher->getKey())
+            ->where('role', 'observer')
+            ->whereIn('class_id', $visible->pluck('class_id')->unique()->all())
+            ->pluck('class_id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all();
+
+        return array_values($visible->map(function (Lesson $lesson) use ($dayEvents, $tones, $observing): array {
             $content = trim((string) $lesson->summary?->content);
 
             return [
@@ -178,6 +190,7 @@ final class LessonRowBuilder
                 // Como a ocorrência fechou (0.146.0) — NULL enquanto aberta.
                 'outcome' => $lesson->outcome?->value,
                 'outcome_label' => $lesson->outcome?->label(),
+                'can_record_outcome' => ! in_array((int) $lesson->class_id, $observing, true),
                 'attendance_recorded' => $lesson->attendanceRecorded(),
                 // NULL enquanto não está consolidada: antes disso o que
                 // existe é só o rascunho de faltas, e mostrá-lo como

@@ -18,6 +18,7 @@ use App\Services\Lessons\WeeklyLessonsQuery;
 use App\Services\Timetable\ActivitySessionWeek;
 use App\Support\Entitlements\AccessState;
 use App\Support\Entitlements\Entitlements;
+use App\Support\Lessons\NotHeldOptions;
 use App\Support\Retention\ResolveSelectedAcademicYear;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -135,6 +136,9 @@ class LessonWeekController extends Controller implements HasMiddleware
                 fn (TeacherAbsenceReason $reason): array => ['value' => $reason->value, 'label' => $reason->label()],
                 TeacherAbsenceReason::cases(),
             ),
+            // «Aula não realizada»: as causas e as especificações da greve, UMA vez com a
+            // semana; NULL com a funcionalidade desligada (a opção nem existe no ecrã).
+            'notHeldOptions' => NotHeldOptions::forPage(),
         ]);
     }
 

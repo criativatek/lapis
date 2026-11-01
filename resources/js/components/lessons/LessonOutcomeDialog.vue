@@ -16,9 +16,10 @@ import {
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Spinner } from '@/components/ui/spinner';
+import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
 import { SURFACE } from '@/lib/surfaces';
 
-export type SpecialLessonOutcome = 'teacher_absent' | 'class_external_activity';
+export type SpecialLessonOutcome = 'teacher_absent' | 'class_external_activity' | 'not_held';
 
 /**
  * O diálogo «O que aconteceu nesta aula?» (0.146.0), extraído em 0.147.0 para
@@ -31,6 +32,8 @@ export type SpecialLessonOutcome = 'teacher_absent' | 'class_external_activity';
 const props = defineProps<{
     lessonUlid: string | null;
     reasons: { value: string; label: string }[];
+    /** «Aula não realizada»: causas e especificações. `null`/ausente = funcionalidade desligada. */
+    notHeldOptions?: NotHeldOptions | null;
     initialOutcome?: SpecialLessonOutcome;
     /** «8.º F · 09:30–10:20» — para o professor saber que aula está a fechar. */
     lessonContext?: string | null;
@@ -69,11 +72,36 @@ async function saveBeforeRecording(): Promise<void> {
     }
 }
 
-const form = useForm<{ outcome: SpecialLessonOutcome; reason: string; note: string }>({
+const form = useForm<{
+    outcome: SpecialLessonOutcome;
+    reason: string;
+    note: string;
+    cause: string;
+    situation: string;
+    cause_note: string;
+}>({
     outcome: 'teacher_absent',
     reason: '',
     note: '',
+    cause: '',
+    situation: '',
+    cause_note: '',
 });
+
+// A especificação só existe com «Greve»; a descrição só com «Outra causa». Mudar
+// de causa limpa o que deixou de se aplicar, para nunca viajar por engano.
+watch(
+    () => form.cause,
+    (cause) => {
+        if (cause !== 'strike') {
+            form.situation = '';
+        }
+
+        if (cause !== 'other') {
+            form.cause_note = '';
+        }
+    },
+);
 
 watch(open, (value) => {
     if (value && props.initialOutcome) {
@@ -87,11 +115,22 @@ function submit(): void {
     }
 
     emit('submitting', true);
-    form.transform((data) =>
-        data.outcome === 'teacher_absent'
-            ? { outcome: data.outcome, reason: data.reason }
-            : { outcome: data.outcome, note: data.note.trim() === '' ? null : data.note },
-    ).post(`/lessons/${props.lessonUlid}/outcome`, {
+    form.transform((data) => {
+        if (data.outcome === 'teacher_absent') {
+            return { outcome: data.outcome, reason: data.reason };
+        }
+
+        if (data.outcome === 'not_held') {
+            return {
+                outcome: data.outcome,
+                cause: data.cause,
+                ...(data.cause === 'strike' && data.situation !== '' ? { situation: data.situation } : {}),
+                ...(data.cause === 'other' ? { cause_note: data.cause_note.trim() } : {}),
+            };
+        }
+
+        return { outcome: data.outcome, note: data.note.trim() === '' ? null : data.note };
+    }).post(`/lessons/${props.lessonUlid}/outcome`, {
         preserveScroll: true,
         onSuccess: () => {
             open.value = false;
@@ -145,6 +184,10 @@ function submit(): void {
                         <input v-model="form.outcome" type="radio" name="outcome" value="class_external_activity" />
                         Turma em outras atividades letivas
                     </label>
+                    <label v-if="notHeldOptions" class="flex min-h-9 items-center gap-2" data-testid="outcome-not-held">
+                        <input v-model="form.outcome" type="radio" name="outcome" value="not_held" />
+                        Aula não realizada
+                    </label>
                     <InputError :message="form.errors.outcome" />
                 </fieldset>
 
@@ -155,6 +198,50 @@ function submit(): void {
                         <option v-for="reason in reasons" :key="reason.value" :value="reason.value">{{ reason.label }}</option>
                     </NativeSelect>
                     <InputError :message="form.errors.reason" />
+                </div>
+
+                <div v-else-if="form.outcome === 'not_held' && notHeldOptions" class="grid gap-3" data-testid="not-held-fields">
+                    <div class="grid gap-2">
+                        <Label for="outcome-cause">Causa</Label>
+                        <NativeSelect id="outcome-cause" v-model="form.cause" name="cause" required>
+                            <option value="" disabled>Escolhe a causa</option>
+                            <option v-for="cause in notHeldOptions.causes" :key="cause.value" :value="cause.value">{{ cause.label }}</option>
+                        </NativeSelect>
+                        <InputError :message="form.errors.cause" />
+                    </div>
+
+                    <fieldset v-if="form.cause === 'strike'" class="grid gap-2" data-testid="strike-specification">
+                        <legend class="text-sm font-medium">Queres especificar? (opcional)</legend>
+                        <label class="flex min-h-9 items-center gap-2">
+                            <input v-model="form.situation" type="radio" name="situation" value="" />
+                            Não especificar
+                        </label>
+                        <label v-for="option in notHeldOptions.specifications" :key="option.value" class="flex min-h-9 items-center gap-2">
+                            <input v-model="form.situation" type="radio" name="situation" :value="option.value" />
+                            {{ option.label }}
+                        </label>
+                        <p class="text-xs text-muted-foreground">Só tu vês esta especificação.</p>
+                        <InputError :message="form.errors.situation" />
+                    </fieldset>
+
+                    <div v-if="form.cause === 'other'" class="grid gap-2">
+                        <Label for="outcome-cause-note">Descrição breve</Label>
+                        <input
+                            id="outcome-cause-note"
+                            v-model="form.cause_note"
+                            name="cause_note"
+                            maxlength="160"
+                            required
+                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                            aria-describedby="outcome-cause-note-hint"
+                        />
+                        <p id="outcome-cause-note-hint" class="text-xs text-muted-foreground">Evita incluir dados pessoais.</p>
+                        <InputError :message="form.errors.cause_note" />
+                    </div>
+
+                    <p class="text-xs text-muted-foreground">
+                        Esta aula não conta como lecionada nem leva número. O planeamento passa para a aula seguinte.
+                    </p>
                 </div>
 
                 <div v-else class="grid gap-2">
