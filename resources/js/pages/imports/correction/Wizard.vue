@@ -264,8 +264,7 @@ function tableStateFor(): TableState {
     return {
         sheet: stored?.sheet ?? null,
         header_row: stored?.header_row ?? suggested.header_row ?? null,
-        student_column:
-            stored?.student_column ?? suggested.student_column ?? null,
+        student_column: stored?.student_column ?? suggested.student_column ?? null,
         result_columns:
             stored?.result_columns && stored.result_columns.length > 0
                 ? [...stored.result_columns]
@@ -1229,11 +1228,7 @@ const typeName = computed(
             -->
             <div>
                 <h2 class="text-base font-semibold">
-                    {{
-                        resultsAreRead
-                            ? 'Alunos e resultados'
-                            : 'Ler resultados'
-                    }}
+                    {{ resultsAreRead ? 'Alunos e resultados' : 'Ler resultados' }}
                 </h2>
                 <p class="text-sm text-muted-foreground">
                     <template v-if="resultsAreRead">
@@ -1297,8 +1292,8 @@ const typeName = computed(
                     </template>
                 </p>
                 <p class="mt-1 text-xs">
-                    As cotações e os domínios vêm da avaliação e não do
-                    ficheiro. Confirme a correspondência dos alunos e continue.
+                    As cotações e os domínios vêm da avaliação e não do ficheiro.
+                    Confirme a correspondência dos alunos e continue.
                 </p>
             </div>
 
@@ -1314,7 +1309,8 @@ const typeName = computed(
                         <template v-if="sheetIsDescribed && importedRows > 0">
                             A ler {{ importedRows }}
                             {{ importedRows === 1 ? 'aluno' : 'alunos' }} a
-                            partir da coluna {{ studentColumnName }}.
+                            partir da coluna
+                            {{ studentColumnName }}.
                         </template>
                         <template v-else>
                             Responda a estas perguntas e o Lapispro lê os
@@ -1598,8 +1594,8 @@ const typeName = computed(
                                     class="h-9 rounded-md border border-input bg-background px-3 text-sm"
                                 />
                                 <p class="text-xs text-muted-foreground">
-                                    O Lapispro não deduz o máximo a partir da
-                                    melhor nota da turma.
+                                    O Lapispro não deduz o máximo a partir da melhor
+                                    nota da turma.
                                 </p>
                             </div>
                         </div>
@@ -1684,9 +1680,7 @@ const typeName = computed(
                       hunting for the reason; the sentence beside it names the
                       next answer required (§11).
                     -->
-                    <div
-                        class="flex flex-wrap items-center gap-3 border-t border-border pt-4"
-                    >
+                    <div class="flex flex-wrap items-center gap-3 border-t border-border pt-4">
                         <Button
                             type="button"
                             :disabled="!sheetIsDescribed || form.processing"
@@ -1784,11 +1778,7 @@ const typeName = computed(
                                 v-if="statesParticipation || !simple"
                                 class="px-3 py-2 font-medium"
                             >
-                                {{
-                                    statesParticipation
-                                        ? 'Respostas'
-                                        : 'Resultados'
-                                }}
+                                {{ statesParticipation ? 'Respostas' : 'Resultados' }}
                             </th>
                             <th class="px-3 py-2 font-medium">Estado</th>
                         </tr>
@@ -1908,10 +1898,7 @@ const typeName = computed(
                             -->
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <span
-                                    v-if="
-                                        statesParticipation &&
-                                        !student.participated
-                                    "
+                                    v-if="statesParticipation && !student.participated"
                                     class="block text-xs text-amber-700"
                                 >
                                     Não participou nesta aplicação
@@ -1940,10 +1927,7 @@ const typeName = computed(
               save yet, and pressing it would take the teacher forward from a
               screen that has not done its job (§8).
             -->
-            <div
-                v-if="resultsAreRead"
-                class="flex flex-wrap items-center gap-3"
-            >
+            <div v-if="resultsAreRead" class="flex flex-wrap items-center gap-3">
                 <button
                     type="button"
                     class="rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
@@ -2019,9 +2003,7 @@ const typeName = computed(
                     v-if="creating"
                     class="flex flex-wrap items-baseline justify-between gap-2 text-sm"
                 >
-                    <p class="font-medium">
-                        Vai ser registada uma nova avaliação.
-                    </p>
+                    <p class="font-medium">Vai ser registada uma nova avaliação.</p>
                     <button
                         v-if="preview.eligible_instruments.length > 0"
                         type="button"
@@ -2063,8 +2045,7 @@ const typeName = computed(
                     class="flex flex-wrap items-baseline justify-between gap-2 text-sm"
                 >
                     <p class="font-medium">
-                        Os resultados vão juntar-se a uma avaliação já
-                        registada.
+                        Os resultados vão juntar-se a uma avaliação já registada.
                     </p>
                     <button
                         type="button"
@@ -2187,8 +2168,8 @@ const typeName = computed(
                     Conta para a classificação
                 </label>
                 <p v-else class="text-sm text-muted-foreground sm:col-span-2">
-                    Os instrumentos de avaliação diagnóstica não contribuem para
-                    as médias classificativas.
+                    Os instrumentos de avaliação diagnóstica não contribuem
+                    para as médias classificativas.
                 </p>
 
                 <!-- The one pedagogical decision the simple path asks for: what
@@ -2763,9 +2744,7 @@ const typeName = computed(
                         <dt class="inline text-muted-foreground">
                             Data da avaliação:
                         </dt>
-                        <dd class="inline">
-                            {{ chosenInstrument.applied_on }}
-                        </dd>
+                        <dd class="inline">{{ chosenInstrument.applied_on }}</dd>
                     </div>
                     <div v-if="chosenInstrument.period">
                         <dt class="inline text-muted-foreground">Período:</dt>
@@ -2879,9 +2858,7 @@ const typeName = computed(
                                 <th
                                     v-if="column.item"
                                     class="px-2 py-1 text-right font-normal whitespace-nowrap"
-                                    :title="
-                                        column.item.question_text ?? undefined
-                                    "
+                                    :title="column.item.question_text ?? undefined"
                                 >
                                     {{ reviewHeading(column.item) }}
                                     <span class="text-muted-foreground"
@@ -2917,32 +2894,21 @@ const typeName = computed(
                                     v-if="column.item"
                                     class="px-2 py-2 text-right tabular-nums"
                                     :class="
-                                        (student.marks?.[
-                                            column.item.source_key
-                                        ] ?? null) === null
+                                        (student.marks?.[column.item.source_key] ?? null) === null
                                             ? 'text-muted-foreground'
                                             : ''
                                     "
                                     data-testid="review-mark"
                                 >
-                                    {{
-                                        student.marks?.[
-                                            column.item.source_key
-                                        ] ?? '—'
-                                    }}
+                                    {{ student.marks?.[column.item.source_key] ?? '—' }}
                                 </td>
                                 <td
                                     v-else-if="column.section"
                                     class="bg-muted/30 px-2 py-2 text-right font-semibold tabular-nums"
                                     data-testid="review-subtotal"
                                 >
-                                    {{
-                                        reviewSubtotal(
-                                            student,
-                                            column.section,
-                                        ) ?? '—'
-                                    }}<span
-                                        class="font-normal text-muted-foreground"
+                                    {{ reviewSubtotal(student, column.section) ?? '—'
+                                    }}<span class="font-normal text-muted-foreground"
                                         >/{{ column.section.possible }}</span
                                     >
                                 </td>
@@ -2952,8 +2918,7 @@ const typeName = computed(
                                 data-testid="review-total"
                             >
                                 {{ student.lapis_total ?? '—'
-                                }}<span
-                                    class="font-normal text-muted-foreground"
+                                }}<span class="font-normal text-muted-foreground"
                                     >/{{ reviewTotalPossible }}</span
                                 >
                             </td>
@@ -2969,10 +2934,7 @@ const typeName = computed(
                             </td>
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <span
-                                    v-if="
-                                        statesParticipation &&
-                                        !student.participated
-                                    "
+                                    v-if="statesParticipation && !student.participated"
                                     class="text-amber-700"
                                     >Não participou nesta aplicação</span
                                 >
@@ -3035,10 +2997,7 @@ const typeName = computed(
                             </td>
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <span
-                                    v-if="
-                                        statesParticipation &&
-                                        !student.participated
-                                    "
+                                    v-if="statesParticipation && !student.participated"
                                     class="text-amber-700"
                                     >Não participou nesta aplicação</span
                                 >
@@ -3085,9 +3044,8 @@ const typeName = computed(
             </p>
             <p v-else class="text-xs text-muted-foreground">
                 O resultado da plataforma é apresentado como referência. O
-                resultado Lapispro reflete as cotações definidas nesta
-                avaliação, por isso os dois podem divergir sem que nenhum esteja
-                errado.
+                resultado Lapispro reflete as cotações definidas nesta avaliação,
+                por isso os dois podem divergir sem que nenhum esteja errado.
             </p>
 
             <div
