@@ -1,10 +1,10 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
-import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
+import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import LessonOutcomeDialog from './LessonOutcomeDialog.vue';
 
-const posted = vi.hoisted(() => [] as { url: string; data: Record<string, unknown> }[]);
+const posted = vi.hoisted(() => [] as { url: string; data: Record<string, unknown>; method?: string }[]);
 
 vi.mock('@inertiajs/vue3', () => ({
     useForm: (data: Record<string, unknown>) => {
@@ -13,7 +13,9 @@ vi.mock('@inertiajs/vue3', () => ({
         return Object.assign(form, {
             transform: (fn: (current: Record<string, unknown>) => Record<string, unknown>) => ({
                 post: (url: string) => posted.push({ url, data: fn({ ...form }) }),
+                patch: (url: string) => posted.push({ url, method: 'patch', data: fn({ ...form }) }),
             }),
+            clearErrors: vi.fn(),
             reset: vi.fn(),
         });
     },
@@ -210,5 +212,112 @@ describe('LessonOutcomeDialog — registo retroativo', () => {
 
         await wrapper.get('form').trigger('submit');
         expect(posted).toEqual([]);
+    });
+});
+
+describe('LessonOutcomeDialog — corrigir o resultado', () => {
+    beforeEach(() => {
+        posted.length = 0;
+    });
+
+    const rectification = (overrides: Partial<OutcomeRectification> = {}): OutcomeRectification => ({
+        current: { outcome: 'not_held', reason: null, note: null, cause: 'strike', situation: 'not_adhered', cause_note: null },
+        targets: ['teacher_absent', 'not_held'],
+        outcome_locked_reason: null,
+        history: [],
+        ...overrides,
+    });
+
+    function mountRectify(rectify: OutcomeRectification, extra: Record<string, unknown> = {}) {
+        return mount(LessonOutcomeDialog, {
+            props: {
+                open: false,
+                lessonUlid: 'lesson-a',
+                reasons: [{ value: 'training', label: 'Formação' }],
+                notHeldOptions: options,
+                lessonContext: '7.º A · 09:30–10:20',
+                rectify,
+                ...extra,
+            },
+            global: { stubs: { teleport: true } },
+        });
+    }
+
+    async function opened(rectify: OutcomeRectification, extra: Record<string, unknown> = {}) {
+        const wrapper = mountRectify(rectify, extra);
+        await wrapper.setProps({ open: true });
+
+        return wrapper;
+    }
+
+    it('abre com os valores atuais, diz que nada mais muda e pede o motivo da correção', async () => {
+        const wrapper = await opened(rectification());
+
+        expect(wrapper.text()).toContain('Corrigir o resultado desta aula');
+        expect(wrapper.text()).toContain('os números das lições, o planeamento e o sumário não mudam');
+        expect((wrapper.get('#outcome-cause').element as HTMLSelectElement).value).toBe('strike');
+        expect((wrapper.get('input[name="situation"]:checked').element as HTMLInputElement).value).toBe('not_adhered');
+        expect(wrapper.find('[data-testid="rectify-motive"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="retroactive-info"]').exists()).toBe(false);
+    });
+
+    it('só deixa guardar com um motivo e envia um PATCH com ele', async () => {
+        const wrapper = await opened(rectification());
+        await wrapper.get('#outcome-cause').setValue('weather_closure');
+
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+        await wrapper.get('form').trigger('submit');
+        expect(posted).toEqual([]);
+
+        await wrapper.get('#outcome-rectification-note').setValue('  Foi o mau tempo  ');
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined();
+        await wrapper.get('form').trigger('submit');
+
+        expect(posted).toEqual([
+            {
+                url: '/lessons/lesson-a/outcome',
+                method: 'patch',
+                data: { rectification_note: 'Foi o mau tempo', outcome: 'not_held', cause: 'weather_closure' },
+            },
+        ]);
+    });
+
+    it('troca de «Aula não realizada» para «Professor ausente» com o motivo da ausência', async () => {
+        const wrapper = await opened(rectification());
+        await wrapper.get('input[value="teacher_absent"]').setValue(true);
+        await wrapper.get('#outcome-reason').setValue('training');
+        await wrapper.get('#outcome-rectification-note').setValue('Era formação');
+        await wrapper.get('form').trigger('submit');
+
+        expect(posted[0]).toEqual({
+            url: '/lessons/lesson-a/outcome',
+            method: 'patch',
+            data: { outcome: 'teacher_absent', reason: 'training', rectification_note: 'Era formação' },
+        });
+    });
+
+    it('numa atividade da turma só se corrige a descrição e diz-se porquê', async () => {
+        const wrapper = await opened(
+            rectification({
+                current: { outcome: 'class_external_activity', reason: null, note: 'Visita', cause: null, situation: null, cause_note: null },
+                targets: ['class_external_activity'],
+                outcome_locked_reason: 'Passar para outro resultado altera a numeração.',
+            }),
+        );
+
+        expect(wrapper.find('input[value="teacher_absent"]').exists()).toBe(false);
+        expect(wrapper.find('input[value="not_held"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="rectify-locked"]').text()).toContain('altera a numeração');
+        expect((wrapper.get('#outcome-note').element as HTMLInputElement).value).toBe('Visita');
+    });
+
+    it('as alterações por guardar no sumário não bloqueiam uma correção (não mexe no sumário)', async () => {
+        const wrapper = await opened(rectification(), { unsavedChanges: true });
+
+        expect(wrapper.find('[data-testid="outcome-unsaved"]').exists()).toBe(false);
+        await wrapper.get('#outcome-cause').setValue('organizational');
+        await wrapper.get('#outcome-rectification-note').setValue('Organizacional');
+
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined();
     });
 });

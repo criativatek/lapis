@@ -6,6 +6,7 @@ use App\Actions\Lessons\ClearLessonSummary;
 use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\RecordLessonOutcome;
+use App\Actions\Lessons\RectifyLessonOutcome;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Actions\Lessons\SetLessonNumber;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
@@ -13,6 +14,7 @@ use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
 use App\Http\Requests\Lessons\RecordLessonOutcomeRequest;
+use App\Http\Requests\Lessons\RectifyLessonOutcomeRequest;
 use App\Models\AcademicCalendarException;
 use App\Models\AcademicYear;
 use App\Models\Enrollment;
@@ -32,6 +34,7 @@ use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Lessons\LessonNumberingFreeze;
 use App\Support\Lessons\LessonOutcomeDetails;
+use App\Support\Lessons\LessonOutcomeRectificationView;
 use App\Support\Lessons\NotHeldOptions;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
@@ -60,6 +63,7 @@ class LessonController extends Controller implements HasMiddleware
         protected DeleteLesson $deleteLesson,
         protected LessonAttendanceRoster $attendanceRoster,
         protected RecordLessonOutcome $recordLessonOutcome,
+        protected RectifyLessonOutcome $rectifyLessonOutcome,
         protected ShiftLessonPlanning $lessonPlanning,
         protected LessonDayEvents $dayEvents,
         protected Entitlements $entitlements,
@@ -137,6 +141,8 @@ class LessonController extends Controller implements HasMiddleware
                 // Registo retroativo: só quando a única coisa que impede o registo é haver
                 // aulas posteriores já fechadas. As razões vão já, para o ecrã as dizer.
                 'retroactive_outcome' => $this->retroactiveOutcome($request, $lesson),
+                // Corrigir o resultado já registado: só chega ao titular do registo (o dado pode ser reservado).
+                'outcome_rectification' => LessonOutcomeRectificationView::for($lesson, $this->user($request), $this->rectifyLessonOutcome),
                 // Planeamento que desceu até aqui e já não coube em nenhuma
                 // ocorrência até ao fim do ano (ShiftLessonPlanning).
                 'pending_plan' => $lesson->plan?->planned_summary,
@@ -538,6 +544,31 @@ class LessonController extends Controller implements HasMiddleware
         ]);
 
         return back()->with('success', $message);
+    }
+
+    /**
+     * «Corrigir o resultado»: a aula continua fechada; números, planeamento, sumário e faltas não se mexem
+     * (RectifyLessonOutcome). Fica o histórico com o valor anterior, o novo, quem e porquê.
+     */
+    public function rectifyOutcome(RectifyLessonOutcomeRequest $request, Lesson $lesson): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $this->rectifyLessonOutcome->execute(
+            $lesson,
+            $request->outcome(),
+            $this->user($request),
+            $request->motive(),
+            $request->reason(),
+            $request->note(),
+            $request->cause(),
+            $request->situation(),
+            $request->causeNote(),
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Resultado corrigido. A correção fica no histórico da aula.')]);
+
+        return back();
     }
 
     /**

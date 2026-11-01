@@ -250,20 +250,7 @@ class RecordLessonOutcome
             ]);
         }
 
-        if ($outcome === LessonOutcome::TeacherAbsent && $reason === null) {
-            throw ValidationException::withMessages([
-                'reason' => __('Indica o motivo da ausência.'),
-            ]);
-        }
-
-        // A especificação «Aderi» é uma declaração do próprio, só com a funcionalidade ligada.
-        if ($situation !== null && ! in_array($situation, TeacherStrikeSituation::available(), true)) {
-            throw ValidationException::withMessages([
-                'situation' => __('Esta especificação não está disponível.'),
-            ]);
-        }
-
-        $this->guardCoherence($outcome, $reason, $cause, $situation, $causeNote);
+        $this->guardDetails($outcome, $reason, $cause, $situation, $causeNote);
 
         if ($locked->attendanceRecorded()) {
             throw ValidationException::withMessages([
@@ -476,6 +463,36 @@ class RecordLessonOutcome
     }
 
     /**
+     * Os campos do resultado são válidos para ESTE resultado — a mesma recusa no registo e na
+     * correção: o motivo da ausência é obrigatório; a especificação «Aderi» só com a chave ligada;
+     * e a coerência de `guardCoherence`.
+     *
+     * @throws ValidationException
+     */
+    public function guardDetails(
+        LessonOutcome $outcome,
+        ?TeacherAbsenceReason $reason,
+        ?LessonNotHeldCause $cause,
+        ?TeacherStrikeSituation $situation,
+        ?string $causeNote,
+    ): void {
+        if ($outcome === LessonOutcome::TeacherAbsent && $reason === null) {
+            throw ValidationException::withMessages([
+                'reason' => __('Indica o motivo da ausência.'),
+            ]);
+        }
+
+        // A especificação «Aderi» é uma declaração do próprio, só com a funcionalidade ligada.
+        if ($situation !== null && ! in_array($situation, TeacherStrikeSituation::available(), true)) {
+            throw ValidationException::withMessages([
+                'situation' => __('Esta especificação não está disponível.'),
+            ]);
+        }
+
+        $this->guardCoherence($outcome, $reason, $cause, $situation, $causeNote);
+    }
+
+    /**
      * A coerência entre resultado, causa, situação e descrição — a mesma que o
      * validador do backup aplica a cada linha. Uma causa só existe em
      * `not_held`; a situação só com `strike`; «outra causa» exige descrição.
@@ -548,7 +565,7 @@ class RecordLessonOutcome
         return $isObserver ? null : $situation;
     }
 
-    private function cleanNote(?string $note): ?string
+    public function cleanNote(?string $note): ?string
     {
         $note = $note === null ? '' : trim($note);
 

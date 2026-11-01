@@ -686,6 +686,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
         Route::post('lessons/{lesson}/outcome', [LessonController::class, 'recordOutcome'])->name('lessons.outcome');
+        // Corrigir o resultado já registado (histórico auditável; só o titular do registo).
+        Route::patch('lessons/{lesson}/outcome', [LessonController::class, 'rectifyOutcome'])->name('lessons.outcome.rectify');
         // O registo retroativo a partir da semana: o MESMO cálculo da página da aula (`retroactiveOutcome`),
         // pedido só quando o professor escolhe «Aula não realizada», para a semana não pagar uma
         // consulta por cartão.

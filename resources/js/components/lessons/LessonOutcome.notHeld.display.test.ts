@@ -118,3 +118,41 @@ describe('LessonQuickActions — aula não realizada', () => {
         expect(wrapper.text()).toContain('Lecionada');
     });
 });
+
+describe('LessonOutcomePanel — corrigir o resultado', () => {
+    const rectification = {
+        current: { outcome: 'not_held', reason: null, note: null, cause: 'strike', situation: null, cause_note: null },
+        targets: ['teacher_absent', 'not_held'],
+        outcome_locked_reason: null,
+        history: [
+            {
+                ulid: 'r1',
+                at: '2026-10-15T09:00:00+01:00',
+                by: 'Ana',
+                kind: 'details',
+                motive: 'Corrigi a especificação',
+                changes: [{ field: 'situation', label: 'Especificação perante a greve', from: '—', to: 'Não aderi à greve' }],
+            },
+        ],
+    };
+
+    it('só oferece «Corrigir resultado» e o histórico a quem o servidor deu a correção', () => {
+        const without = mount(LessonOutcomePanel, { props: { ...base } });
+        expect(without.find('[data-testid="open-rectify-dialog"]').exists()).toBe(false);
+        expect(without.find('[data-testid="rectification-history"]').exists()).toBe(false);
+
+        const wrapper = mount(LessonOutcomePanel, { props: { ...base, outcomeRectification: rectification } });
+        expect(wrapper.get('[data-testid="open-rectify-dialog"]').text()).toContain('Corrigir resultado');
+        const history = wrapper.get('[data-testid="rectification-history"]').text();
+        expect(history).toContain('Correções (1)');
+        expect(history).toContain('Especificação perante a greve: — → Não aderi à greve');
+        expect(history).toContain('Motivo: Corrigi a especificação');
+    });
+
+    it('sem correções anteriores não mostra a lista', () => {
+        const wrapper = mount(LessonOutcomePanel, { props: { ...base, outcomeRectification: { ...rectification, history: [] } } });
+
+        expect(wrapper.find('[data-testid="open-rectify-dialog"]').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="rectification-history"]').exists()).toBe(false);
+    });
+});

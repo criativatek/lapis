@@ -3,8 +3,10 @@
 namespace App\Policies;
 
 use App\Models\Lesson;
+use App\Models\LessonOutcome;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Support\Lessons\LessonOutcomeDetails;
 
 class LessonPolicy
 {
@@ -34,6 +36,21 @@ class LessonPolicy
             ->whereKey($user->getKey())
             ->wherePivot('role', '!=', 'observer')
             ->exists();
+    }
+
+    /**
+     * Corrigir o resultado já registado de uma aula (RectifyLessonOutcome). Mais estrito do que registar:
+     * a correção mostra e muda dado reservado, por isso só a faz quem o pode ler — o titular do registo
+     * (LessonOutcomeDetails::mayRead) — e só quem não é observador. Uma aula lecionada não se corrige
+     * por aqui (tem sumário, faltas e número). Desligada com a funcionalidade `lesson_not_held_enabled`.
+     */
+    public function rectifyOutcome(User $user, Lesson $lesson): bool
+    {
+        return (bool) config('lapis.lesson_not_held_enabled', false)
+            && $lesson->outcome !== null
+            && $lesson->outcome !== LessonOutcome::Taught
+            && $this->recordOutcome($user, $lesson)
+            && LessonOutcomeDetails::mayReadReason($lesson, $user);
     }
 
     public function delete(User $user, Lesson $lesson): bool
