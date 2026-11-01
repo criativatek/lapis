@@ -40,6 +40,8 @@ const cameFromCalendar =
 
 type Item = {
     id: number;
+    /** Posição do grupo (secção do teste) em `groups`. */
+    group_index?: number;
     code: string;
     label: string | null;
     points_possible: number;
@@ -94,6 +96,8 @@ const props = defineProps<{
         class_ulid: string;
         period: string;
     };
+    /** As secções do teste; só se desenham quando há mais do que uma (um teste simples não mostra estrutura). */
+    groups?: { ulid: string; label: string | null }[];
     items: Item[];
     students: Student[];
     scores: Score[];
@@ -436,6 +440,97 @@ function totalFor(student: Student): number | null {
     let assessed = 0;
 
     for (const item of props.items) {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
+
+        if (current?.state === 'assessed' && current.points !== null) {
+            sum += current.points;
+            assessed += 1;
+        }
+    }
+
+    return assessed === 0 ? null : sum;
+}
+
+/**
+ * Os pontos como se mostram: sem ruído de vírgula flutuante (11.329999999 → 11,33) e sem zeros à direita.
+ * As classificações têm até 4 casas na base; a soma nunca mostra mais do que isso.
+ */
+function formatPoints(value: number): string {
+    return String(Number(value.toFixed(4))).replace('.', ',');
+}
+
+/**
+ * A cotação máxima global: a declarada no teste ou, quando não há (uma ficha importada não a traz), a soma das
+ * cotações das perguntas sem as de bónus — a mesma conta do máximo de cada grupo.
+ */
+const totalMax = computed<number | null>(() => {
+    if (props.instrument.total_points) {
+        return props.instrument.total_points;
+    }
+
+    const sum = props.items.filter((item) => !item.is_bonus).reduce((total, item) => total + (item.points_possible ?? 0), 0);
+
+    return sum > 0 ? sum : null;
+});
+
+type Section = { index: number; label: string; items: Item[]; max: number };
+
+/**
+ * As secções do teste, na ordem do teste, cada uma com a sua cotação máxima (a soma das cotações das suas
+ * perguntas, sem as de bónus — o mesmo critério do denominador da percentagem). Só existem quando o teste
+ * tem mais do que um grupo: um teste simples continua a ser uma só fila de perguntas.
+ */
+const sections = computed<Section[]>(() => {
+    const groups = props.groups ?? [];
+
+    if (groups.length < 2) {
+        return [];
+    }
+
+    return groups
+        .map((group, index) => {
+            const own = props.items.filter((item) => (item.group_index ?? 0) === index);
+
+            return {
+                index,
+                label: group.label?.trim() || `Grupo ${index + 1}`,
+                items: own,
+                max: own.filter((item) => !item.is_bonus).reduce((sum, item) => sum + (item.points_possible ?? 0), 0),
+            };
+        })
+        .filter((section) => section.items.length > 0);
+});
+
+type Column = { key: string; item: Item | null; columnIndex: number; section: Section | null };
+
+/**
+ * As colunas pela ordem em que se desenham: cada pergunta e, no fim das de cada grupo, o subtotal desse
+ * grupo. `columnIndex` é a posição da pergunta em `items` (a navegação por teclado depende dela, não da coluna).
+ */
+const columns = computed<Column[]>(() => {
+    if (sections.value.length === 0) {
+        return props.items.map((item, columnIndex) => ({ key: `item-${item.id}`, item, columnIndex, section: null }));
+    }
+
+    const result: Column[] = [];
+
+    for (const section of sections.value) {
+        for (const item of section.items) {
+            result.push({ key: `item-${item.id}`, item, columnIndex: props.items.indexOf(item), section: null });
+        }
+
+        result.push({ key: `subtotal-${section.index}`, item: null, columnIndex: -1, section });
+    }
+
+    return result;
+});
+
+/** O subtotal de um grupo: a soma das classificações já registadas nas suas perguntas; null se nenhuma. */
+function subtotalFor(student: Student, section: Section): number | null {
+    let sum = 0;
+    let assessed = 0;
+
+    for (const item of section.items) {
         const current = cells[cellKey(student.enrollment_id, item.id)];
 
         if (current?.state === 'assessed' && current.points !== null) {
@@ -1122,17 +1217,51 @@ function revertCancellation(): void {
         <div v-else class="overflow-x-auto rounded-lg border border-border">
             <table class="w-full border-collapse text-sm">
                 <thead class="bg-muted/50">
-                    <tr>
-                        <th class="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left font-medium">Aluno</th>
-                        <th v-for="item in items" :key="item.id" class="min-w-24 px-2 py-2 text-center font-medium">
-                            <div>{{ item.code }}</div>
-                            <div class="text-xs font-normal text-muted-foreground">
-                                {{ item.points_possible }} pts<span v-if="item.is_bonus"> · bónus</span>
-                            </div>
-                            <div v-if="item.domains.length" class="text-[10px] font-normal text-muted-foreground">
-                                {{ item.domains.map((d) => `${d.name} ${d.percent}%`).join(' · ') }}
+                    <!-- Com grupos, uma fila a nomeá-los (com a cotação de cada um) por cima das perguntas. -->
+                    <tr v-if="sections.length > 0" data-testid="group-header-row">
+                        <th rowspan="2" class="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left font-medium">Aluno</th>
+                        <th
+                            v-for="section in sections"
+                            :key="section.index"
+                            :colspan="section.items.length + 1"
+                            class="border-l border-border px-2 py-1.5 text-center font-medium"
+                            data-testid="group-header"
+                        >
+                            <div>{{ section.label }}</div>
+                            <div class="text-xs font-normal text-muted-foreground">{{ formatPoints(section.max) }} pts</div>
+                        </th>
+                        <th rowspan="2" class="border-l border-border px-3 py-2 text-right font-medium">
+                            <div>Pontuação bruta</div>
+                            <div class="text-[10px] font-normal text-muted-foreground">pontos obtidos / cotação</div>
+                        </th>
+                        <th rowspan="2" class="min-w-40 px-3 py-2 text-left font-medium">
+                            <div class="flex items-center gap-1.5">
+                                <span>{{ official.label }}</span>
+                                <span
+                                    v-if="official.status === 'provisional'"
+                                    class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-900"
+                                >provisória</span>
                             </div>
                         </th>
+                    </tr>
+                    <tr>
+                        <th v-if="sections.length === 0" class="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left font-medium">Aluno</th>
+                        <template v-for="column in columns" :key="column.key">
+                            <th v-if="column.item" class="min-w-24 px-2 py-2 text-center font-medium">
+                                <div>{{ column.item.code }}</div>
+                                <div class="text-xs font-normal text-muted-foreground">
+                                    {{ column.item.points_possible }} pts<span v-if="column.item.is_bonus"> · bónus</span>
+                                </div>
+                                <div v-if="column.item.domains.length" class="text-[10px] font-normal text-muted-foreground">
+                                    {{ column.item.domains.map((d) => `${d.name} ${d.percent}%`).join(' · ') }}
+                                </div>
+                            </th>
+                            <th v-else-if="column.section" class="min-w-24 bg-muted/70 px-2 py-2 text-center font-medium" data-testid="subtotal-header">
+                                <div>Subtotal</div>
+                                <div class="text-xs font-normal text-muted-foreground">{{ formatPoints(column.section.max) }} pts</div>
+                            </th>
+                        </template>
+                        <template v-if="sections.length === 0">
                         <th class="px-3 py-2 text-right font-medium">
                             <div>Pontuação bruta</div>
                             <div class="text-[10px] font-normal text-muted-foreground">pontos obtidos / cotação</div>
@@ -1146,6 +1275,7 @@ function revertCancellation(): void {
                                 >provisória</span>
                             </div>
                         </th>
+                        </template>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
@@ -1213,7 +1343,16 @@ function revertCancellation(): void {
                             </div>
                         </td>
 
-                        <td v-for="(item, columnIndex) in items" :key="item.id" class="px-1 py-0.5 text-center">
+                        <template v-for="{ key, item, columnIndex, section } in columns" :key="key">
+                        <td v-if="section" class="bg-muted/30 px-2 py-0.5 text-right font-semibold tabular-nums" data-testid="subtotal-cell">
+                            <template v-if="subtotalFor(student, section) === null">
+                                <span class="text-muted-foreground" title="Sem classificações neste grupo — não é zero.">—</span>
+                            </template>
+                            <template v-else>
+                                {{ formatPoints(subtotalFor(student, section)!) }}<span class="font-normal text-muted-foreground">/{{ formatPoints(section.max) }}</span>
+                            </template>
+                        </td>
+                        <td v-else-if="item" class="px-1 py-0.5 text-center">
                             <div class="flex items-center justify-center gap-1">
                                 <!--
                                   The score box is right-aligned, not centred.
@@ -1296,13 +1435,14 @@ function revertCancellation(): void {
                                 </div>
                             </div>
                         </td>
+                        </template>
 
-                        <td class="px-3 py-0.5 text-right font-semibold tabular-nums">
+                        <td class="px-3 py-0.5 text-right font-semibold tabular-nums" data-testid="total-cell">
                             <template v-if="totalFor(student) === null">
                                 <span class="text-muted-foreground" title="Sem classificações registadas — não é zero.">—</span>
                             </template>
                             <template v-else>
-                                {{ totalFor(student) }}<span v-if="instrument.total_points" class="font-normal text-muted-foreground">/{{ instrument.total_points }}</span>
+                                {{ formatPoints(totalFor(student)!) }}<span v-if="totalMax" class="font-normal text-muted-foreground">/{{ formatPoints(totalMax) }}</span>
                                 <span v-if="percentFor(student) !== null" class="font-normal text-muted-foreground"> · {{ percentFor(student) }}%</span>
                                 <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
                             </template>

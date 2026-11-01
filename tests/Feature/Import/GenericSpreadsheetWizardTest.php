@@ -594,7 +594,7 @@ class GenericSpreadsheetWizardTest extends CorrectionImportHttpTest
     {
         $this->assertSame('Resultado na plataforma', CorrectionGridSource::Intuitivo->resultLabel());
         $this->assertFalse(CorrectionGridSource::Intuitivo->needsToBeDescribed());
-        $this->assertSame(ImportMapping::RESULT_PER_GROUP, CorrectionGridSource::Intuitivo->defaultResultMode());
+        $this->assertSame(ImportMapping::RESULT_PER_QUESTION, CorrectionGridSource::Intuitivo->defaultResultMode());
 
         // And the section wording is still in the component for it.
         $this->assertStringContainsString('Resultados por grupos', $this->wizard());

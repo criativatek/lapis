@@ -193,7 +193,8 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $import = $this->uploadWorkbook();
         $preview = $this->preview($import);
 
-        $this->assertSame(ImportMapping::RESULT_PER_GROUP, $preview['result_mode']);
+        // Opens on the questions (the whole file); the teacher switches to the sections.
+        $this->assertSame(ImportMapping::RESULT_PER_QUESTION, $preview['result_mode']);
 
         $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $this->groupedMapping($preview));
 
@@ -331,5 +332,74 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $last = $after['items'][16];
         $this->assertSame('GRUPO V', $last['label']);
         $this->assertSame($this->domains['Escrita'], $last['domains'][0]['domain_id']);
+    }
+
+    // ------------------------- e. a grelha reproduz o ficheiro: cada pergunta, cada subtotal, o total
+
+    #[Test]
+    public function opened_as_it_arrives_every_mark_of_every_student_is_persisted_and_the_grid_shows_groups_and_subtotals(): void
+    {
+        $import = $this->uploadWorkbook();
+        $preview = $this->preview($import);
+
+        // Sem escolher nada além do que o ficheiro não traz (título, data, tipo, período): nenhuma
+        // cotação, nenhuma classificação, nenhum domínio é pedido ao professor.
+        $this->assertSame(ImportMapping::RESULT_PER_QUESTION, $preview['result_mode']);
+        $mapping = $this->createMapping($preview);
+        unset($mapping['domains']);
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $mapping);
+        $this->assertTrue($this->preview($import)['can_confirm']);
+        $this->actingAs($this->teacher)->post("/imports/correction/{$import->ulid}/confirm")->assertRedirect();
+
+        $instrument = $this->instrument();
+        $items = $this->itemIds($instrument);
+        $scores = $this->scoresOf($instrument);
+
+        $this->assertCount(17, $items);
+        $this->assertCount(21 * 17, $scores, '21 alunos × 17 perguntas, e nenhuma linha para quem fez a prova em papel.');
+
+        $groupSizes = [4, 4, 4, 4, 1];
+
+        foreach ($this->names as $number => $name) {
+            if (in_array($number, self::PAPER_NUMBERS, true)) {
+                continue;
+            }
+
+            foreach ($items as $question => $itemId) {
+                $score = $scores[$this->enrollmentByNumber[$number].':'.$itemId];
+
+                $this->assertSame('assessed', $score->result_state->value);
+                $this->assertEqualsWithDelta($this->markFor($number, $question), (float) $score->points_earned, 0.0001, "{$name}, pergunta ".($question + 1));
+            }
+
+            // O subtotal de cada grupo é a soma das suas perguntas persistidas.
+            $offset = 0;
+
+            foreach ($this->groupSums($number) as $group => $expected) {
+                $sum = 0.0;
+
+                for ($i = 0; $i < $groupSizes[$group]; $i++) {
+                    $sum += (float) $scores[$this->enrollmentByNumber[$number].':'.$items[$offset + $i]]->points_earned;
+                }
+
+                $this->assertEqualsWithDelta($expected, $sum, 0.0001, "{$name}, subtotal do grupo ".($group + 1));
+                $offset += $groupSizes[$group];
+            }
+        }
+
+        // A grelha recebe os cinco grupos e cada pergunta diz a que grupo pertence: é o que lhe permite
+        // desenhar os subtotais. As cotações vêm do ficheiro (16+18+20+22+24 = 100).
+        $this->actingAs($this->teacher)
+            ->get("/instruments/{$instrument->ulid}")
+            ->assertOk()
+            ->assertInertia(function (AssertableInertia $page): void {
+                $props = $page->toArray()['props'];
+
+                $this->assertCount(5, $props['groups']);
+                $this->assertSame([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4], array_column($props['items'], 'group_index'));
+                $this->assertSame([4, 4, 4, 4, 4, 4, 4, 6, 5, 5, 5, 5, 6, 7, 4, 5, 24], array_map('intval', array_column($props['items'], 'points_possible')));
+                $this->assertCount(21 * 17, $props['scores']);
+            });
     }
 }

@@ -510,7 +510,15 @@ class InstrumentController extends Controller
             return to_route('instruments.edit', $instrument->ulid);
         }
 
-        $instrument->load(['items.domainAllocations.domain', 'schoolClass', 'academicPeriod', 'type']);
+        $instrument->load(['items.domainAllocations.domain', 'groups', 'schoolClass', 'academicPeriod', 'type']);
+
+        // As secções do teste (os grupos de um Intuitivo importado, por exemplo): a grelha agrupa as
+        // perguntas por elas e mostra o subtotal de cada uma. Cada pergunta indica o grupo pela
+        // POSIÇÃO nesta lista, como na edição — o cliente nunca vê ids da base de dados.
+        $groups = $instrument->groups->values();
+        $groupIndexById = $groups->mapWithKeys(
+            fn (InstrumentGroup $group, int $index) => [$group->id => $index],
+        )->all();
 
         $enrollments = $instrument->schoolClass->enrollments()
             ->with('student.identity')
@@ -582,8 +590,13 @@ class InstrumentController extends Controller
                 // button and the progress column can never disagree.
                 ...$this->correctionWorkflowState($instrument),
             ],
+            'groups' => $groups->map(fn (InstrumentGroup $group) => [
+                'ulid' => $group->ulid,
+                'label' => $group->label,
+            ])->all(),
             'items' => $instrument->items->map(fn (InstrumentItem $item) => [
                 'id' => $item->id,
+                'group_index' => $groupIndexById[$item->instrument_group_id] ?? 0,
                 'code' => $item->code,
                 'label' => $item->label,
                 'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,

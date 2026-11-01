@@ -161,6 +161,15 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
         $this->actingAs($this->teacher)->post("/imports/correction/{$import->ulid}/confirm")->assertRedirect();
     }
 
+    /** The teacher switches this import to «Resultados por grupos» (it opens on the questions). */
+    protected function openOnSections(CorrectionImport $import): void
+    {
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", [
+            'mode' => ImportMapping::MODE_CREATE,
+            'result_mode' => ImportMapping::RESULT_PER_GROUP,
+        ]);
+    }
+
     protected function instrument(): Instrument
     {
         return app(CurrentOrganization::class)->runFor($this->organization, fn () => Instrument::firstOrFail());
@@ -169,7 +178,7 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
     // -------------------------------------------------------- 1. the default
 
     #[Test]
-    public function an_intuitivo_import_opens_on_the_sections(): void
+    public function an_intuitivo_import_opens_on_the_questions_and_the_sections_stay_one_click_away(): void
     {
         $import = $this->uploadWorkbook();
 
@@ -179,8 +188,10 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
             ->assertInertia(function (AssertableInertia $page): void {
                 $preview = $page->toArray()['props']['preview'];
 
-                // The source decides where the teacher starts, nothing more.
-                $this->assertSame(ImportMapping::RESULT_PER_GROUP, $preview['result_mode']);
+                // The source decides where the teacher starts, nothing more: on the QUESTIONS, the
+                // one reading that reproduces the file in full (every mark, every section subtotal,
+                // the total). The sections are one click away, and still read from the same file.
+                $this->assertSame(ImportMapping::RESULT_PER_QUESTION, $preview['result_mode']);
                 $this->assertCount(4, $preview['groups']);
                 $this->assertSame(
                     ['GRUPO I', 'GRUPO II', 'GRUPO III', 'GRUPO IV'],
@@ -426,6 +437,7 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
     {
         // The file claims a maximum of 90 while its own questions add to 100.
         $import = $this->uploadWorkbook(IntuitivoWorkbookBuilder::likeTheObservedExport()->declaringMaximum(90));
+        $this->openOnSections($import);
 
         $preview = $this->actingAs($this->teacher)
             ->get("/imports/correction/{$import->ulid}")
@@ -447,6 +459,7 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
         $import = $this->uploadWorkbook(
             IntuitivoWorkbookBuilder::likeTheObservedExport()->overridingTotalOf(0, 99.0),
         );
+        $this->openOnSections($import);
 
         $preview = $this->actingAs($this->teacher)
             ->get("/imports/correction/{$import->ulid}")
@@ -631,6 +644,7 @@ class IntuitivoGroupedImportTest extends CorrectionImportHttpTest
     public function the_preview_summarises_each_student_by_section(): void
     {
         $import = $this->uploadWorkbook();
+        $this->openOnSections($import);
 
         $preview = $this->actingAs($this->teacher)
             ->get("/imports/correction/{$import->ulid}")
