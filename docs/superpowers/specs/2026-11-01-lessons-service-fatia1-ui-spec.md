@@ -99,11 +99,11 @@ interface deve:
    estiver vazia. O servidor continua a decidir: recusa com a razão («tem sumário…»,
    «tem faltas em rascunho», «número indicado por si», «partilha a lição com outro
    grupo», «planeamento pendente») e remete para o tratamento individual.
-2. Dizer antes de confirmar: «Nenhuma aula já lecionada muda de número. As aulas abertas
-   antes de uma lecionada contam para trás a partir dela, por isso pode ficar uma
-   lacuna na numeração.»
+2. Dizer antes de confirmar: «Nenhuma aula já lecionada muda de número. Fica uma
+   lacuna na numeração no sítio onde esta aula estava.»
 3. Mostrar, depois, as lacunas (`gaps` da auditoria) no toast.
 
 Regra de numeração (não da operação): as abertas anteriores à primeira lecionada
-numeram-se para trás a partir dela; a lacuna fica no início da sequência.
+CONSERVAM o número gravado (se livre, ordenado e abaixo da seguinte); a lacuna fica onde
+a aula estava. Só com âncora manual (número indicado pelo professor) contam para trás.
 

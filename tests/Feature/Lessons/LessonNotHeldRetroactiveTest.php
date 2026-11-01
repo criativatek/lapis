@@ -39,7 +39,7 @@ class LessonNotHeldRetroactiveTest extends TestCase
     }
 
     #[Test]
-    public function an_empty_open_lesson_before_a_taught_one_is_recorded_leaving_a_gap_and_changing_no_taught_number(): void
+    public function an_empty_open_lesson_before_a_taught_one_is_recorded_leaving_the_gap_where_it_was_and_changing_no_number(): void
     {
         [$a, $b, $c, $d] = $this->numberedWithThirdTaught();
         $this->summary($d, 'Plano D');
@@ -49,10 +49,9 @@ class LessonNotHeldRetroactiveTest extends TestCase
         $this->inTenant($this->organization, function () use ($a, $b, $c, $d): void {
             $this->assertSame(LessonOutcome::NotHeld, $b->refresh()->outcome);
             $this->assertNull($b->lesson_number);
-            // As abertas ANTES de uma lecionada contam para trás a partir dela (regra
-            // da numeração, não desta operação): a 1.ª aberta passa a n.º 2 e a lacuna
-            // fica no início. O que não pode mudar é a lecionada.
-            $this->assertSame(2, $a->refresh()->lesson_number);
+            // A 1.ª aberta CONSERVA o n.º 1 que o professor via, e a lacuna (2) fica
+            // onde a aula estava, entre a 1 e a lecionada 3. Nada muda de número.
+            $this->assertSame(1, $a->refresh()->lesson_number);
             $this->assertSame(3, $c->refresh()->lesson_number);
             $this->assertSame(LessonStatus::Taught, $c->status);
             $this->assertSame(4, $d->refresh()->lesson_number);
@@ -60,8 +59,8 @@ class LessonNotHeldRetroactiveTest extends TestCase
 
             $event = AuditEvent::query()->where('event', 'lesson.outcome_recorded')->where('subject_id', $b->id)->sole();
             $this->assertTrue($event->properties['retroactive']);
-            $this->assertSame([1], $event->properties['gaps']);
-            $this->assertEquals([['from' => 1, 'to' => 2], ['from' => 2, 'to' => null]], $event->properties['renumbered_numbers']);
+            $this->assertSame([2], $event->properties['gaps']);
+            $this->assertEquals([['from' => 2, 'to' => null]], $event->properties['renumbered_numbers']);
             $this->assertSame('school_not_operating', $event->properties['cause']);
             $this->assertSame(0, $event->properties['planning_shifted']);
         });
