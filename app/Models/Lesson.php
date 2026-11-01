@@ -31,6 +31,9 @@ use Illuminate\Support\Carbon;
  * @property TeacherAbsenceReason|null $outcome_reason só numa ausência do professor, só categoria
  * @property string|null $outcome_note descrição curta, opcional, de uma atividade da turma
  * @property Carbon|null $outcome_recorded_at
+ * @property LessonNotHeldCause|null $outcome_cause só em `not_held`; reservada a quem registou (LessonOutcomeDetails)
+ * @property TeacherStrikeSituation|null $outcome_teacher_situation só com causa `strike`; reservada ao próprio
+ * @property string|null $outcome_cause_note descrição curta, obrigatória, de `other` em `not_held`
  * @property int|null $outcome_recorded_by
  * @property Carbon|null $attendance_recorded_at
  * @property int|null $attendance_recorded_by
@@ -40,7 +43,7 @@ use Illuminate\Support\Carbon;
  * @property-read int|null $plan_count carregado por `withCount()` em WeeklyLessonsQuery — não existe fora dessa consulta
  * @property-read int|null $attendances_count carregado por `withCount()` em WeeklyLessonsQuery — todas as linhas, não só as faltas; não existe fora dessa consulta
  */
-#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'origin', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
+#[Fillable(['class_id', 'class_group_id', 'recurring_lesson_slot_id', 'origin', 'starts_at', 'ends_at', 'lesson_number', 'lesson_number_end', 'lesson_number_manual', 'lesson_unit_key', 'status', 'outcome', 'outcome_reason', 'outcome_note', 'outcome_cause', 'outcome_teacher_situation', 'outcome_cause_note', 'outcome_recorded_at', 'outcome_recorded_by', 'attendance_recorded_at', 'attendance_recorded_by', 'created_by'])]
 class Lesson extends Model
 {
     use BelongsToOrganization, HasUlids;
@@ -71,6 +74,8 @@ class Lesson extends Model
             'outcome' => LessonOutcome::class,
             'origin' => LessonOrigin::class,
             'outcome_reason' => TeacherAbsenceReason::class,
+            'outcome_cause' => LessonNotHeldCause::class,
+            'outcome_teacher_situation' => TeacherStrikeSituation::class,
             'outcome_recorded_at' => 'datetime',
             'attendance_recorded_at' => 'datetime',
         ];
@@ -237,7 +242,7 @@ class Lesson extends Model
      */
     public function isClosedAndNumbered(): bool
     {
-        return $this->isClosed() && $this->outcome !== LessonOutcome::TeacherAbsent;
+        return $this->isClosed() && ($this->outcome === null || $this->outcome->isNumbered());
     }
 
     /**

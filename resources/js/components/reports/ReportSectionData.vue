@@ -134,6 +134,7 @@ const classLessonTotalLines = computed(() => {
               ['Com desenvolvimento efetivo da disciplina', totals.subject_development],
               ['Professor ausente', totals.teacher_absent],
               ['Turma em outras atividades letivas', totals.class_external_activity],
+              ...(Number(totals.not_held ?? 0) > 0 ? [['Aula não realizada', totals.not_held]] : []),
               ['Por registar', totals.not_recorded],
           ];
 });
@@ -145,7 +146,9 @@ function lessonOutcomeLabel(outcome: unknown): string {
           ? 'Professor ausente'
           : outcome === 'class_external_activity'
             ? 'Turma em outras atividades letivas'
-            : 'Por registar';
+            : outcome === 'not_held'
+              ? 'Aula não realizada'
+              : 'Por registar';
 }
 
 function attendanceStatusLabel(status: unknown): string {

@@ -40,6 +40,7 @@ const TONES: Record<string, QualitativeTone> = {
     taught: 'green',
     teacher_absent: 'amber',
     class_external_activity: 'violet',
+    not_held: 'amber',
 
     // Relatórios (ReportStatus)
     finalized: 'green',

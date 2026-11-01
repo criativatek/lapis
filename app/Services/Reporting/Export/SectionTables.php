@@ -94,6 +94,7 @@ class SectionTables
                 ['Com desenvolvimento efetivo da disciplina', (string) ($totals['subject_development'] ?? 0)],
                 ['Professor ausente', (string) ($totals['teacher_absent'] ?? 0)],
                 ['Turma em outras atividades letivas', (string) ($totals['class_external_activity'] ?? 0)],
+                ...(($totals['not_held'] ?? 0) > 0 ? [['Aula não realizada', (string) $totals['not_held']]] : []),
                 ['Por registar', (string) ($totals['not_recorded'] ?? 0)],
             ],
         ]];
@@ -146,6 +147,7 @@ class SectionTables
             'taught' => 'Lecionada',
             'teacher_absent' => 'Professor ausente',
             'class_external_activity' => 'Turma em outras atividades letivas',
+            'not_held' => 'Aula não realizada',
             default => 'Por registar',
         };
     }

@@ -58,7 +58,7 @@ export type WeekLesson = {
     /** Contenção da recuperação: o número só se lê (0.169.0). */
     numbering_frozen?: boolean;
     /** Como a ocorrência fechou (0.146.0) — NULL enquanto aberta. */
-    outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
+    outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held' | null;
     outcome_label: string | null;
     can_delete: boolean;
     can_clear_summary: boolean;
@@ -314,7 +314,7 @@ export function emptySummaryReason(
     lesson: WeekLesson,
     now: Date,
 ): string | null {
-    if (lesson.outcome === 'teacher_absent') {
+    if (lesson.outcome === 'teacher_absent' || lesson.outcome === 'not_held') {
         return 'O planeamento passou para a aula seguinte.';
     }
 

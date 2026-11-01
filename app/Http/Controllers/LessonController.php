@@ -108,7 +108,7 @@ class LessonController extends Controller implements HasMiddleware
                 // do professor não tem lição: o ecrã não oferece o campo.
                 'lesson_number_end' => $lesson->lesson_number_end,
                 'lesson_number_manual' => $lesson->lesson_number_manual,
-                'can_set_number' => $lesson->outcome !== LessonOutcome::TeacherAbsent,
+                'can_set_number' => $lesson->outcome === null || $lesson->outcome->isNumbered(),
                 // Contenção da recuperação: o campo aparece só de leitura, com a frase.
                 'numbering_frozen' => LessonNumberingFreeze::frozen(),
                 // A versão do sumário que este ecrã viu — volta no PUT e no
@@ -499,6 +499,9 @@ class LessonController extends Controller implements HasMiddleware
             $this->user($request),
             $request->reason(),
             $request->note(),
+            $request->cause(),
+            $request->situation(),
+            $request->causeNote(),
         );
 
         $outcomeAfter = $this->usage->attempt(
@@ -510,16 +513,19 @@ class LessonController extends Controller implements HasMiddleware
             $this->usage->action(UsageEventType::LessonOutcomeRecorded, $lesson);
         }
 
-        $message = $request->outcome() === LessonOutcome::TeacherAbsent
-            ? 'Ausência registada. O planeamento passou para a aula seguinte.'
-            : 'Atividade registada. O planeamento passou para a aula seguinte.';
+        $recorded = match ($request->outcome()) {
+            LessonOutcome::TeacherAbsent => 'Ausência registada.',
+            LessonOutcome::NotHeld => 'Aula não realizada registada.',
+            default => 'Atividade registada.',
+        };
+        $message = $recorded.' O planeamento passou para a aula seguinte.';
 
         // O toast diz o destino REAL do planeamento (0.171.0): a flash de
         // sessão `success` não chega a nenhum ecrã, e «passou para a aula
         // seguinte» às cegas deixava o professor sem saber para onde foi o plano.
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => ($request->outcome() === LessonOutcome::TeacherAbsent ? __('Ausência registada.') : __('Atividade registada.'))
+            'message' => __($recorded)
                 .' '.ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson']),
         ]);
 

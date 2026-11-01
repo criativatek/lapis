@@ -64,7 +64,7 @@ class FindLessonNumberCollisions
         $destinationLessons = Lesson::query()
             ->where('organization_id', $destination->getKey())
             ->whereIn('class_id', array_keys($incoming))
-            ->where(fn ($query) => $query->whereNull('outcome')->orWhere('outcome', '!=', LessonOutcome::TeacherAbsent->value))
+            ->where(fn ($query) => $query->whereNull('outcome')->orWhereNotIn('outcome', LessonOutcome::unnumberedValues()))
             ->orderBy('starts_at')
             ->orderBy('id')
             ->get()
@@ -156,7 +156,7 @@ class FindLessonNumberCollisions
 
         $outcome = $row['outcome'] ?? null;
 
-        if ($outcome === LessonOutcome::TeacherAbsent->value) {
+        if (in_array($outcome, LessonOutcome::unnumberedValues(), true)) {
             return false;
         }
 
@@ -167,7 +167,7 @@ class FindLessonNumberCollisions
 
     private function isFixedLesson(Lesson $lesson): bool
     {
-        if ($lesson->lesson_number === null || $lesson->outcome === LessonOutcome::TeacherAbsent) {
+        if ($lesson->lesson_number === null || ($lesson->outcome !== null && ! $lesson->outcome->isNumbered())) {
             return false;
         }
 

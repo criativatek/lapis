@@ -328,7 +328,7 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                 />Sumário revisto após lecionada
             </p>
             <p
-                v-if="lesson.outcome === 'teacher_absent'"
+                v-if="lesson.outcome === 'teacher_absent' || lesson.outcome === 'not_held'"
                 class="text-[13px] text-muted-foreground"
             >
                 Não conta na numeração

@@ -31,7 +31,7 @@ export type LessonNumberSource = {
     lesson_number_manual: boolean;
     /** Contenção da recuperação: o número só se lê (0.169.0). */
     numbering_frozen?: boolean;
-    outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
+    outcome: 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held' | null;
 };
 
 /** As chaves que o pedido de gravação (PUT/PATCH do sumário) aceita. */
@@ -68,9 +68,9 @@ export type LessonNumberErrors = { number: string | null };
 
 export const NO_NUMBER_ERRORS: LessonNumberErrors = { number: null };
 
-/** Professor ausente: a aula não tem lição, o campo não se oferece. */
+/** Professor ausente ou aula não realizada: a aula não tem lição, o campo não se oferece. */
 export function canSetLessonNumber(lesson: Pick<LessonNumberSource, 'outcome'>): boolean {
-    return lesson.outcome !== 'teacher_absent';
+    return lesson.outcome !== 'teacher_absent' && lesson.outcome !== 'not_held';
 }
 
 export function numberDraftFromLesson(lesson: Pick<LessonNumberSource, 'lesson_number' | 'lesson_number_end'>): LessonNumberDraft {

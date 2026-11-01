@@ -508,4 +508,19 @@ return [
 
     'lesson_numbering_frozen' => (bool) env('LAPIS_LESSON_NUMBERING_FROZEN', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | «Aula não realizada» (`outcome = not_held`) — registo pelo professor
+    |--------------------------------------------------------------------------
+    |
+    | DESLIGADO POR DEFEITO. O domínio, o backup e o restauro já a conhecem, mas
+    | o pedido HTTP só a aceita com esta chave ligada: oferecer causas — a greve
+    | entre elas — e a situação individual do professor é tratar dados novos, e
+    | isso exige antes a atualização da Política de Privacidade e a validação
+    | jurídica. Quem a liga em produção assume que isso já foi feito.
+    |
+    */
+
+    'lesson_not_held_enabled' => (bool) env('LAPIS_LESSON_NOT_HELD_ENABLED', false),
+
 ];

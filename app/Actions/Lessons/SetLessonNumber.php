@@ -3,7 +3,6 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
-use App\Models\LessonOutcome;
 use App\Models\LessonSummary;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -143,9 +142,9 @@ class SetLessonNumber
             throw ValidationException::withMessages(['lesson_number' => LessonNumberingFreeze::refusal()]);
         }
 
-        if ($lesson->outcome === LessonOutcome::TeacherAbsent) {
+        if ($lesson->outcome !== null && ! $lesson->outcome->isNumbered()) {
             throw ValidationException::withMessages([
-                'lesson_number' => __('Numa aula em que o professor esteve ausente não há lição: esta aula não tem número.'),
+                'lesson_number' => __('Numa aula em que o professor esteve ausente ou que não se realizou não há lição: esta aula não tem número.'),
             ]);
         }
 

@@ -3,9 +3,11 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
 use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
+use App\Models\TeacherStrikeSituation;
 use App\Models\User;
 use App\Services\Audit\AuditLog;
 use App\Services\Lessons\LessonNumbering;
@@ -51,8 +53,11 @@ class RecordLessonOutcome
         User $actor,
         ?TeacherAbsenceReason $reason = null,
         ?string $note = null,
+        ?LessonNotHeldCause $cause = null,
+        ?TeacherStrikeSituation $situation = null,
+        ?string $causeNote = null,
     ): Lesson {
-        return $this->perform($lesson, $outcome, $actor, $reason, $note)['lesson'];
+        return $this->perform($lesson, $outcome, $actor, $reason, $note, $cause, $situation, $causeNote)['lesson'];
     }
 
     /**
@@ -74,18 +79,21 @@ class RecordLessonOutcome
         User $actor,
         ?TeacherAbsenceReason $reason = null,
         ?string $note = null,
+        ?LessonNotHeldCause $cause = null,
+        ?TeacherStrikeSituation $situation = null,
+        ?string $causeNote = null,
     ): array {
         if ($outcome === LessonOutcome::Taught) {
             throw new \InvalidArgumentException('Lecionada regista-se em MarkLessonAsTaught.');
         }
 
-        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason): array {
+        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason, $cause, $situation, $causeNote): array {
             SchoolClass::query()->whereKey($lesson->class_id)->lockForUpdate()->first();
 
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
-            $this->guard($locked, $outcome, $reason);
+            $this->guard($locked, $outcome, $reason, $cause, $situation, $causeNote);
 
             $fromNumber = $locked->lesson_number;
 
@@ -97,6 +105,11 @@ class RecordLessonOutcome
             $locked->outcome = $outcome;
             $locked->outcome_reason = $outcome === LessonOutcome::TeacherAbsent ? $reason : null;
             $locked->outcome_note = $outcome === LessonOutcome::ClassExternalActivity ? $this->cleanNote($note) : null;
+            $locked->outcome_cause = $outcome === LessonOutcome::NotHeld ? $cause : null;
+            $locked->outcome_teacher_situation = $outcome === LessonOutcome::NotHeld && $cause === LessonNotHeldCause::Strike
+                ? $this->declaredSituation($locked, $actor, $situation)
+                : null;
+            $locked->outcome_cause_note = $outcome === LessonOutcome::NotHeld && $cause === LessonNotHeldCause::Other ? $this->cleanNote($causeNote) : null;
             $locked->outcome_recorded_at = Carbon::now();
             $locked->outcome_recorded_by = $actor->getKey();
 
@@ -107,7 +120,7 @@ class RecordLessonOutcome
             $hadUnitKey = false;
             $leftover = null;
 
-            if ($outcome === LessonOutcome::TeacherAbsent) {
+            if (! $outcome->isNumbered()) {
                 $wasManual = $locked->lesson_number_manual && $locked->lesson_number !== null;
                 $carriedNumber = $locked->lesson_number;
                 $hadUnitKey = $locked->class_group_id !== null && $locked->lesson_unit_key !== null;
@@ -121,7 +134,7 @@ class RecordLessonOutcome
 
             $locked->save();
 
-            if ($outcome === LessonOutcome::TeacherAbsent && $wasManual && $carriedNumber !== null) {
+            if (! $outcome->isNumbered() && $wasManual && $carriedNumber !== null) {
                 // Num grupo com lição partilhada o número viajou com a chave; nos
                 // outros casos passa à próxima unidade da turma, se esta for livre.
                 $manualHandedOver = $hadUnitKey
@@ -161,6 +174,7 @@ class RecordLessonOutcome
                 [
                     'outcome' => $outcome->value,
                     'reason' => $locked->outcome_reason?->value,
+                    'cause' => $locked->outcome_cause?->value,
                     'has_note' => $locked->outcome_note !== null,
                     'from_lesson_number' => $fromNumber,
                     'dropped_attendance_drafts' => $droppedDrafts,
@@ -205,8 +219,14 @@ class RecordLessonOutcome
         return $this->numbering->numberMaterializedLessons($classId);
     }
 
-    private function guard(Lesson $locked, LessonOutcome $outcome, ?TeacherAbsenceReason $reason): void
-    {
+    private function guard(
+        Lesson $locked,
+        LessonOutcome $outcome,
+        ?TeacherAbsenceReason $reason,
+        ?LessonNotHeldCause $cause,
+        ?TeacherStrikeSituation $situation,
+        ?string $causeNote,
+    ): void {
         if ($locked->isClosed()) {
             throw ValidationException::withMessages([
                 'outcome' => __('Esta aula já tem resultado registado.'),
@@ -218,6 +238,8 @@ class RecordLessonOutcome
                 'reason' => __('Indica o motivo da ausência.'),
             ]);
         }
+
+        $this->guardCoherence($outcome, $reason, $cause, $situation, $causeNote);
 
         if ($locked->attendanceRecorded()) {
             throw ValidationException::withMessages([
@@ -304,6 +326,79 @@ class RecordLessonOutcome
         }
 
         return ['relinked' => $relinked, 'leftover' => $leftover];
+    }
+
+    /**
+     * A coerência entre resultado, causa, situação e descrição — a mesma que o
+     * validador do backup aplica a cada linha. Uma causa só existe em
+     * `not_held`; a situação só com `strike`; «outra causa» exige descrição.
+     */
+    private function guardCoherence(
+        LessonOutcome $outcome,
+        ?TeacherAbsenceReason $reason,
+        ?LessonNotHeldCause $cause,
+        ?TeacherStrikeSituation $situation,
+        ?string $causeNote,
+    ): void {
+        if ($outcome !== LessonOutcome::NotHeld) {
+            if ($cause !== null || $situation !== null || $this->cleanNote($causeNote) !== null) {
+                throw ValidationException::withMessages([
+                    'cause' => __('A causa só se indica numa aula não realizada.'),
+                ]);
+            }
+
+            return;
+        }
+
+        if ($reason !== null) {
+            throw ValidationException::withMessages([
+                'reason' => __('O motivo só se indica numa ausência do professor.'),
+            ]);
+        }
+
+        if ($cause === null) {
+            throw ValidationException::withMessages([
+                'cause' => __('Indica a causa da aula não realizada.'),
+            ]);
+        }
+
+        if ($situation !== null && $cause !== LessonNotHeldCause::Strike) {
+            throw ValidationException::withMessages([
+                'situation' => __('A situação perante a greve só existe quando a causa é greve.'),
+            ]);
+        }
+
+        $description = $this->cleanNote($causeNote);
+
+        if ($cause === LessonNotHeldCause::Other && $description === null) {
+            throw ValidationException::withMessages([
+                'cause_note' => __('Descreve brevemente a causa.'),
+            ]);
+        }
+
+        if ($cause !== LessonNotHeldCause::Other && $description !== null) {
+            throw ValidationException::withMessages([
+                'cause_note' => __('A descrição só se indica quando a causa é «Outra causa».'),
+            ]);
+        }
+    }
+
+    /**
+     * A situação individual perante a greve é do próprio: só quem registou o
+     * resultado a declara, e um observador nunca declara — fica «adesão não
+     * confirmada». Sem declaração, também.
+     */
+    private function declaredSituation(Lesson $locked, User $actor, ?TeacherStrikeSituation $situation): TeacherStrikeSituation
+    {
+        $isObserver = SchoolClass::query()
+            ->whereKey($locked->class_id)
+            ->first()
+            ?->teachers()
+            ->wherePivot('role', 'observer')
+            ->whereKey($actor->getKey())
+            ->exists() === true;
+
+        return $isObserver ? TeacherStrikeSituation::NotInformed : ($situation ?? TeacherStrikeSituation::NotInformed);
     }
 
     private function cleanNote(?string $note): ?string

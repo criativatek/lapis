@@ -196,6 +196,7 @@ final class LessonSummarySearch
         $group->orWhereIn('lessons.outcome', [
             LessonOutcome::TeacherAbsent->value,
             LessonOutcome::ClassExternalActivity->value,
+            LessonOutcome::NotHeld->value,
         ]);
 
         return 1;

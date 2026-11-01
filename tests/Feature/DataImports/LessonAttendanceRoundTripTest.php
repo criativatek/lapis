@@ -13,6 +13,7 @@ use App\Models\DataImport;
 use App\Models\Enrollment;
 use App\Models\Lesson;
 use App\Models\LessonAttendance;
+use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
 use App\Models\LessonPlan;
 use App\Models\LessonStatus;
@@ -24,6 +25,7 @@ use App\Models\Student;
 use App\Models\StudentIdentity;
 use App\Models\Subject;
 use App\Models\TeacherAbsenceReason;
+use App\Models\TeacherStrikeSituation;
 use App\Models\User;
 use App\Services\Lessons\ClassAttendanceSummary;
 use App\Services\Lessons\LessonAttendanceRoster;
@@ -36,6 +38,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\SubscribesOrganizations;
 use Tests\TestCase;
@@ -183,6 +186,121 @@ class LessonAttendanceRoundTripTest extends TestCase
 
         // A origem continua intacta e isolada.
         $this->inTenant(fn () => $this->assertSame(1, Lesson::where('outcome', LessonOutcome::TeacherAbsent->value)->count()));
+    }
+
+    /**
+     * Schema v21: a causa de uma aula não realizada viaja inteira, a aula não
+     * numera e as colunas da causa chegam ao destino.
+     */
+    #[Test]
+    public function a_not_held_lesson_with_its_cause_survives_a_restore_and_stays_unnumbered(): void
+    {
+        $class = $this->scenario();
+
+        $this->inTenant(function () use ($class): void {
+            Lesson::create([
+                'class_id' => $class->id, 'starts_at' => '2025-10-30 09:00:00', 'ends_at' => '2025-10-30 10:00:00',
+                'status' => LessonStatus::Prepared, 'outcome' => LessonOutcome::NotHeld,
+                'outcome_cause' => LessonNotHeldCause::Strike, 'outcome_teacher_situation' => TeacherStrikeSituation::NotAdhered,
+                'outcome_recorded_at' => '2025-10-30 10:00:00', 'outcome_recorded_by' => $this->teacher->id, 'created_by' => $this->teacher->id,
+            ]);
+            Lesson::create([
+                'class_id' => $class->id, 'starts_at' => '2025-11-06 09:00:00', 'ends_at' => '2025-11-06 10:00:00',
+                'status' => LessonStatus::Preparation, 'outcome' => LessonOutcome::NotHeld,
+                'outcome_cause' => LessonNotHeldCause::Other, 'outcome_cause_note' => 'Falha de eletricidade',
+                'outcome_recorded_at' => '2025-11-06 10:00:00', 'outcome_recorded_by' => $this->teacher->id, 'created_by' => $this->teacher->id,
+            ]);
+        });
+
+        $backup = $this->backupUpload();
+        $json = $this->backupJson($backup);
+        $this->assertSame(21, $json['schema_version']);
+        $strike = collect($json['lessons'])->firstWhere('outcome_cause', 'strike');
+        $this->assertSame('not_adhered', $strike['outcome_teacher_situation']);
+
+        $colleague = User::factory()->create(['email' => 'colega-not-held@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $backup);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $lessons = Lesson::where('class_id', SchoolClass::firstOrFail()->id)->where('outcome', LessonOutcome::NotHeld->value)->get();
+            $this->assertCount(2, $lessons);
+            $this->assertTrue($lessons->every(fn (Lesson $lesson): bool => $lesson->lesson_number === null && $lesson->lesson_unit_key === null));
+            $struck = $lessons->firstWhere('outcome_cause', LessonNotHeldCause::Strike);
+            $this->assertSame(TeacherStrikeSituation::NotAdhered, $struck->outcome_teacher_situation);
+            $this->assertSame('Falha de eletricidade', $lessons->firstWhere('outcome_cause', LessonNotHeldCause::Other)->outcome_cause_note);
+        });
+    }
+
+    /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function incoherentNotHeldRows(): array
+    {
+        return [
+            'sem causa' => [['outcome' => 'not_held']],
+            'causa desconhecida' => [['outcome' => 'not_held', 'outcome_cause' => 'ferias']],
+            'causa fora de not_held' => [['outcome' => 'class_external_activity', 'outcome_cause' => 'strike']],
+            'situação sem greve' => [['outcome' => 'not_held', 'outcome_cause' => 'weather_closure', 'outcome_teacher_situation' => 'not_adhered']],
+            'outra causa sem descrição' => [['outcome' => 'not_held', 'outcome_cause' => 'other']],
+            'descrição sem outra causa' => [['outcome' => 'not_held', 'outcome_cause' => 'strike', 'outcome_cause_note' => 'texto']],
+            'com motivo de ausência' => [['outcome' => 'not_held', 'outcome_cause' => 'strike', 'outcome_reason' => 'training']],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    #[DataProvider('incoherentNotHeldRows')]
+    #[Test]
+    public function an_incoherent_not_held_row_is_invalid_and_never_written(array $fields): void
+    {
+        $this->scenario();
+        $backup = $this->backupUpload();
+        $tampered = $this->rewriteBackup($backup, function (array $json) use ($fields): array {
+            $json['lessons'][0] = $fields + $json['lessons'][0];
+            $json['lessons'][0]['status'] = 'prepared';
+            $json['lessons'][0]['attendance_recorded_at'] = null;
+
+            return $json;
+        });
+
+        $colleague = User::factory()->create(['email' => 'colega-incoerente@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $tampered);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $this->assertSame(0, Lesson::where('outcome', LessonOutcome::NotHeld->value)->count());
+            $this->assertSame(0, Lesson::whereNotNull('outcome_cause')->count());
+        });
+    }
+
+    #[Test]
+    public function a_v20_backup_without_the_cause_columns_restores_them_as_null(): void
+    {
+        $this->scenario();
+        $backup = $this->backupUpload();
+        $legacy = $this->rewriteBackup($backup, function (array $json): array {
+            $json['schema_version'] = 20;
+            foreach ($json['lessons'] as $index => $row) {
+                unset($json['lessons'][$index]['outcome_cause'], $json['lessons'][$index]['outcome_teacher_situation'], $json['lessons'][$index]['outcome_cause_note']);
+            }
+
+            return $json;
+        });
+
+        $colleague = User::factory()->create(['email' => 'colega-v20@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $legacy);
+        $this->assertSame(20, $import->source_schema_version);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $this->assertCount(4, Lesson::where('class_id', SchoolClass::firstOrFail()->id)->get());
+            $this->assertSame(0, Lesson::whereNotNull('outcome_cause')->count());
+        });
     }
 
     #[Test]

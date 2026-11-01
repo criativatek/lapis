@@ -27,21 +27,48 @@ use App\Models\User;
 final class LessonOutcomeDetails
 {
     /**
-     * @return array{outcome_reason_label: string|null, outcome_reason_reserved: bool}
+     * Tudo o que é reservado ao titular: a categoria da ausência e, numa aula
+     * não realizada, a causa, a situação individual perante a greve e a
+     * descrição de «outra causa». Para quem não é o titular não viaja nada
+     * disto: só `outcome_reason_reserved`.
+     *
+     * @return array{
+     *     outcome_reason_label: string|null,
+     *     outcome_cause_label: string|null,
+     *     outcome_teacher_situation_label: string|null,
+     *     outcome_cause_note: string|null,
+     *     outcome_reason_reserved: bool,
+     * }
      */
     public static function for(Lesson $lesson, User $viewer): array
     {
-        $reason = $lesson->outcome_reason;
+        $none = [
+            'outcome_reason_label' => null,
+            'outcome_cause_label' => null,
+            'outcome_teacher_situation_label' => null,
+            'outcome_cause_note' => null,
+        ];
 
-        if ($reason === null) {
-            return ['outcome_reason_label' => null, 'outcome_reason_reserved' => false];
+        $hasProtected = $lesson->outcome_reason !== null
+            || $lesson->outcome_cause !== null
+            || $lesson->outcome_teacher_situation !== null
+            || $lesson->outcome_cause_note !== null;
+
+        if (! $hasProtected) {
+            return $none + ['outcome_reason_reserved' => false];
         }
 
         if (! self::mayReadReason($lesson, $viewer)) {
-            return ['outcome_reason_label' => null, 'outcome_reason_reserved' => true];
+            return $none + ['outcome_reason_reserved' => true];
         }
 
-        return ['outcome_reason_label' => $reason->label(), 'outcome_reason_reserved' => false];
+        return [
+            'outcome_reason_label' => $lesson->outcome_reason?->label(),
+            'outcome_cause_label' => $lesson->outcome_cause?->label(),
+            'outcome_teacher_situation_label' => $lesson->outcome_teacher_situation?->label(),
+            'outcome_cause_note' => $lesson->outcome_cause_note,
+            'outcome_reason_reserved' => false,
+        ];
     }
 
     public static function mayReadReason(Lesson $lesson, User $viewer): bool

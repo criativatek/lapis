@@ -106,10 +106,12 @@ const note = computed(() => {
         };
     }
 
-    if (props.lesson.outcome === 'teacher_absent') {
+    if (props.lesson.outcome === 'teacher_absent' || props.lesson.outcome === 'not_held') {
         return {
             icon: Info,
-            text: 'Professor ausente: o planeamento desta aula já passou para a aula seguinte.',
+            text: props.lesson.outcome === 'not_held'
+                ? 'Aula não realizada: o planeamento desta aula já passou para a aula seguinte.'
+                : 'Professor ausente: o planeamento desta aula já passou para a aula seguinte.',
         };
     }
 

@@ -47,6 +47,7 @@ class ClassLessonsComposer implements SectionComposer
             'com desenvolvimento efetivo da disciplina, '.(int) ($totals['subject_development'] ?? 0).';',
             'professor ausente, '.(int) ($totals['teacher_absent'] ?? 0).';',
             'turma em outras atividades letivas, '.(int) ($totals['class_external_activity'] ?? 0).';',
+            (int) ($totals['not_held'] ?? 0) > 0 ? 'aula não realizada, '.(int) $totals['not_held'].';' : null,
             'por registar, '.(int) ($totals['not_recorded'] ?? 0),
         );
 
