@@ -176,6 +176,11 @@ function visit(params: Record<string, string | null>): void {
                             {{ report.totals.counted_as_taught }} dadas em {{ report.totals.planned }} previstas. As aulas
                             não realizadas contam nas previstas.
                         </p>
+                        <p class="mt-1 text-sm text-muted-foreground" data-testid="given-breakdown">
+                            Dadas = {{ report.totals.subject_development }}
+                            {{ report.totals.subject_development === 1 ? 'lecionada' : 'lecionadas' }} +
+                            {{ report.totals.class_external_activity }} com a turma noutra atividade letiva.
+                        </p>
                     </div>
                     <p
                         v-if="report.totals.not_recorded > 0"

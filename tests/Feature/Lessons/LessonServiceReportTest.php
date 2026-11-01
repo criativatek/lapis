@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Lessons;
 
+use App\Actions\Lessons\RecordLessonOutcome;
 use App\Models\Lesson;
 use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
@@ -197,5 +198,40 @@ class LessonServiceReportTest extends TestCase
 
         $this->assertSame([['cause' => 'strike', 'label' => 'Greve', 'count' => 1]], $record['causes']);
         $this->assertStringNotContainsString('adhered', (string) json_encode($record));
+    }
+
+    #[Test]
+    public function months_without_lessons_between_the_first_and_the_last_appear_at_zero(): void
+    {
+        $this->closed('2026-09-24 09:30:00', LessonOutcome::Taught);
+        $this->travelTo(CarbonImmutable::parse('2026-12-15 10:00:00', 'Europe/Lisbon'));
+        $this->closed('2026-12-10 09:30:00', LessonOutcome::Taught);
+
+        $evolution = $this->report($this->teacher)['report']['evolution'];
+
+        $this->assertSame(['2026-09', '2026-10', '2026-11', '2026-12'], array_column($evolution, 'month'));
+        $this->assertSame([1, 0, 0, 1], array_column($evolution, 'planned'));
+        $this->assertSame([null, null], [$evolution[1]['given_percentage'], $evolution[2]['given_percentage']]);
+    }
+
+    #[Test]
+    public function given_splits_into_taught_and_class_activity_and_a_retroactive_not_held_counts_once_and_never_as_given(): void
+    {
+        $this->closed('2026-10-01 09:30:00', LessonOutcome::Taught);
+        $this->closed('2026-10-08 09:30:00', LessonOutcome::ClassExternalActivity);
+        $retro = $this->makeLesson(['starts_at' => '2026-10-02 09:30:00']);
+        $this->inTenant($this->organization, fn () => app(RecordLessonOutcome::class)->execute(
+            $retro, LessonOutcome::NotHeld, $this->teacher, null, null, LessonNotHeldCause::SchoolNotOperating, null, null, true,
+        ));
+
+        $report = $this->report($this->teacher)['report'];
+
+        $this->assertSame(3, $report['totals']['planned']);
+        $this->assertSame(2, $report['totals']['counted_as_taught']);
+        $this->assertSame(1, $report['totals']['subject_development']);
+        $this->assertSame(1, $report['totals']['class_external_activity']);
+        $this->assertSame(1, $report['totals']['not_held']);
+        $this->assertEquals(66.7, $report['given_percentage']);
+        $this->assertSame(1, array_sum(array_column($report['evolution'], 'not_held')));
     }
 }
