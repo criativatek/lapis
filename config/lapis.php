@@ -115,6 +115,14 @@ return [
         // Lapispro como subcontratante dos dados dos alunos.
         'processing_effective_from' => env('LAPIS_LEGAL_PROCESSING_DATE', '2026-09-15'),
 
+        // A VERSÃO QUE DESCREVE O SERVIÇO LETIVO (aulas não realizadas, greve, correções, histórico). Vazia por
+        // defeito: enquanto não houver uma data, a Política e o Acordo mostram o texto anterior COM a data
+        // anterior — o texto novo nunca aparece com uma data antiga. Definir esta data (YYYY-MM-DD) é o ato
+        // deliberado de publicar a nova versão e depende da validação jurídica: a partir dela (e só dela) os dois
+        // documentos mostram o texto novo, passam a ter esta data de entrada em vigor, e o aviso da Política volta
+        // a aparecer a quem já o tinha fechado. Uma data futura não muda nada até chegar.
+        'lesson_service_effective_from' => env('LAPIS_LEGAL_LESSON_SERVICE_DATE'),
+
     ],
 
     /*

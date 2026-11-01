@@ -101,23 +101,38 @@ anteriores. **[A VALIDAR]**
    da publicação do texto.
 3. Ligar `LAPIS_LESSON_NOT_HELD_ENABLED` e, só depois, `LAPIS_STRIKE_ADHESION_RECORDING`.
 
-## 3b. Estado do texto (0.187.x)
+## 3b. Estado do texto e da vigência (0.187.x)
 
-O texto concreto desta proposta está implementado em `LegalDocuments` (Política: «Dados do professor», «Dados dos alunos»,
-«Durante quanto tempo», «Os seus direitos»; Acordo: «Objeto, duração e natureza do tratamento»), com o `LessonOutcomeLegalTest`
-alterado **na mesma alteração**. **Não está publicado**: a data de entrada em vigor (`LAPIS_LEGAL_PRIVACY_DATE`,
-`LAPIS_LEGAL_PROCESSING_DATE`) é um ato deliberado, a definir quando a validação estiver feita e com o aviso prévio que a
-Política promete («procuraremos avisar … antes de produzir efeitos»). O texto **não afirma** nenhum fundamento de licitude nem
-a classificação de «Greve do professor» como (não) categoria especial — o teste proíbe essas expressões nas secções alteradas.
-Pontos que continuam por validar por quem tem competência, e que **não estão resolvidos** por este texto:
+O texto concreto desta proposta está em `LegalDocuments` (Política: «Dados do professor», «Dados dos alunos», «Durante quanto
+tempo», «Os seus direitos»; Acordo: «Objeto, duração e natureza do tratamento»), com o `LessonOutcomeLegalTest` alterado na mesma
+alteração. **Está pronto mas NÃO publicado**, e a vigência funciona assim:
 
-1. enquadramento de «Greve do professor» (dado operacional ou categoria especial) e fundamento do tratamento;
+- A versão tem a sua **própria data**, `lapis.legal.lesson_service_effective_from` (`LAPIS_LEGAL_LESSON_SERVICE_DATE`), **vazia
+  por defeito**. Definir essa data é o ato deliberado de publicar. Sem data — ou com uma data futura, inválida ou inexistente — os
+  dois documentos mostram o **texto anterior com a data anterior** (2026-09-15); a partir da data chegada mostram o texto novo
+  **com essa data**. O texto novo nunca aparece sob uma data antiga, e nenhuma frase ou secção anterior é removida.
+- O **aviso da Política** (faixa não bloqueante, `User::shouldSeePrivacyNotice`) compara a data de fecho de cada utilizador com a
+  versão em vigor: quem o fechou antes da data volta a vê-lo, com mensagem própria (`lesson_service`). **Fechar o aviso não é
+  aceitar** — a Política informa; não se aceita.
+- Os **Termos** não mudam (hash fixado em teste) e a aceitação já dada (`users.terms_version`, registada na criação da conta) **não
+  é alterada nem presumida**: nada se regista como aceite em nome de ninguém.
+
+Pontos que **continuam por validar por quem tem competência** — a redação técnica não os resolve:
+
+1. enquadramento de «Greve do professor» (dado operacional ou categoria especial) e fundamento do tratamento — o texto **não afirma**
+   nenhum (o teste proíbe «categoria especial», «consentimento» e «interesse legítimo» nas secções alteradas);
 2. conservação do histórico de correções e do motivo textual (hoje: enquanto a aula existir, sem prazo automático);
 3. se a correção administrativa da direção deve ser comunicada ao titular;
 4. prazo da cópia diária de segurança, que contém os dados reservados;
-5. data de entrada em vigor e forma do aviso prévio.
+5. **se uma alteração material exige NOVA ACEITAÇÃO**: o Acordo é aceite por remissão dos Termos na criação da conta e a aplicação
+   **não tem fluxo de reaceitação** (só o aviso informativo). Se a resposta for sim, é preciso construir esse fluxo — não existe;
+6. **aviso prévio**: a Política promete avisar «antes de produzir efeitos». Uma data futura **não** mostra aviso antes de chegar;
+   se o aviso prévio tiver de ser anterior à entrada em vigor, faz-se por comunicação própria (por exemplo email) e só depois se
+   define a data;
+7. a data de entrada em vigor em si.
 
-Só depois disto se liga `LAPIS_LESSON_NOT_HELD_ENABLED` e, em separado, `LAPIS_STRIKE_ADHESION_RECORDING`.
+Só depois disto se define `LAPIS_LEGAL_LESSON_SERVICE_DATE`, se publica, e **depois** se liga `LAPIS_LESSON_NOT_HELD_ENABLED`
+(mantendo `LAPIS_STRIKE_ADHESION_RECORDING=false`).
 
 ## 4. Perguntas em aberto para quem valida
 

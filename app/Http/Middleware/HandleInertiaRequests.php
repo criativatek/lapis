@@ -126,7 +126,7 @@ class HandleInertiaRequests extends Middleware
                 // métricas de utilização traz o seu próprio aviso (com a forma de
                 // se opor), e não o texto de uma versão anterior.
                 'privacy_notice_topic' => ($user?->shouldSeePrivacyNotice() ?? false)
-                    ? (PrivacyVersion::latestChangeIsUsageMetrics() ? 'usage_metrics' : 'general')
+                    ? PrivacyVersion::latestChange()
                     : null,
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,

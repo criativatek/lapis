@@ -7,6 +7,7 @@ use App\Domain\Reporting\SectionKey;
 use App\Http\Requests\Lessons\RecordLessonOutcomeRequest;
 use App\Models\TeacherAbsenceReason;
 use App\Support\Legal\LegalDocuments;
+use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\Test;
 use Symfony\Component\Finder\Finder;
 use Tests\TestCase;
@@ -20,6 +21,16 @@ class LessonOutcomeLegalTest extends TestCase
 {
     /** sha256 dos Termos em vigor (2026-09-03). Mudar isto é uma decisão legal. */
     private const TERMS_SHA256 = '76414f530001dc25a21315d5ff7c54902ff59ef05c920a6696979c922ec03cf4';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // O texto do serviço letivo só existe com a data da SUA versão já em vigor (ver LessonServiceVersionTest,
+        // que prova o contrário): estes testes leem a versão publicada.
+        config(['lapis.legal.lesson_service_effective_from' => '2026-11-10']);
+        $this->travelTo(CarbonImmutable::parse('2026-11-15 10:00:00', (string) config('app.timezone')));
+    }
 
     #[Test]
     public function the_privacy_policy_names_the_lesson_outcome_and_the_absence_category(): void
@@ -123,16 +134,12 @@ class LessonOutcomeLegalTest extends TestCase
     }
 
     #[Test]
-    public function the_changed_documents_carry_a_valid_effective_date_that_is_set_at_publication(): void
+    public function the_changed_documents_carry_the_date_of_the_version_that_describes_the_lesson_service(): void
     {
-        // O texto novo só vale a partir de uma data de entrada em vigor DELIBERADA (config/lapis.php,
-        // `LAPIS_LEGAL_PRIVACY_DATE` / `LAPIS_LEGAL_PROCESSING_DATE`), definida quando a validação jurídica
-        // estiver feita e com o aviso prévio que a própria Política promete. Aqui só se exige que exista e
-        // seja uma data válida, nunca anterior à versão que o texto anterior tinha.
-        foreach ([LegalDocuments::privacy(), LegalDocuments::processing()] as $document) {
-            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $document['effective_from']);
-            $this->assertGreaterThanOrEqual('2026-09-15', $document['effective_from']);
-        }
+        // O texto novo só vale a partir da data DELIBERADA da sua versão (`LAPIS_LEGAL_LESSON_SERVICE_DATE`) e
+        // os dois documentos passam a tê-la como data de entrada em vigor — nunca a data antiga (2026-09-15).
+        $this->assertSame('2026-11-10', LegalDocuments::privacy()['effective_from']);
+        $this->assertSame('2026-11-10', LegalDocuments::processing()['effective_from']);
     }
 
     #[Test]

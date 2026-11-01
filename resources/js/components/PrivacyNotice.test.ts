@@ -48,4 +48,15 @@ describe('PrivacyNotice', () => {
         expect(text).not.toContain('novos canais de contacto');
         expect(wrapper.find('a[href="/settings/profile#metricas-de-utilizacao"]').exists()).toBe(true);
     });
+
+    it('announces the lesson service version with its own message, linking both documents it changed', () => {
+        const wrapper = mountWith({ should_see_privacy_notice: true, privacy_notice_topic: 'lesson_service' });
+        const text = wrapper.text();
+
+        expect(text).toContain('Atualizámos a Política de Privacidade e o Acordo de Tratamento de Dados');
+        expect(text).toContain('aulas não realizadas');
+        expect(text).not.toContain('novos canais de contacto');
+        expect(text).not.toContain('métricas de utilização');
+        expect(wrapper.find('[data-test="privacy-notice-lesson-service"]').exists()).toBe(true);
+    });
 });

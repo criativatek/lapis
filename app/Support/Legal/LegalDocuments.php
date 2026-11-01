@@ -151,6 +151,15 @@ class LegalDocuments
         return PrivacyVersion::describesUsageMetrics();
     }
 
+    /**
+     * O texto do serviço letivo (aulas não realizadas, greve, correções) só aparece quando a versão que o descreve
+     * está EM VIGOR (PrivacyVersion::lessonServiceAt): com a data dessa versão e nunca com a anterior.
+     */
+    private static function describesLessonService(): bool
+    {
+        return PrivacyVersion::describesLessonService();
+    }
+
     /*
      * Os prazos da Central de Suporte, lidos de `config/retention.php` como
      * todos os outros. O documento não pode afirmar um número que a rotina não
@@ -333,10 +342,14 @@ class LegalDocuments
                         'A organização pessoal a que pertence, as suas configurações de avaliação e as suas preferências de interface.',
                         'O estado da sua conta e do seu plano, incluindo pedidos de encerramento e períodos experimentais.',
                         'A versão dos Termos que aceitou e a data em que o fez.',
-                        'Informação operacional relativa à atividade letiva que regista: o resultado de cada aula (dada, não dada por ausência do professor, turma em outra atividade letiva, ou prevista e não realizada) e, quando aplicável, a categoria de ausência que indicar. Essa categoria é escolhida entre opções operacionais fechadas (formação, serviço oficial, outro); não é pedido nem guardado texto livre sobre o motivo pessoal da ausência.',
-                        'Aulas não realizadas: quando regista que uma aula prevista não se realizou, escolhe a causa entre opções fechadas — greve, escola sem condições de funcionamento, encerramento por mau tempo, problema nas instalações, razão organizacional da escola ou outra causa, esta com uma descrição curta da própria causa (não da pessoa). Numa aula não realizada por greve, escolhe entre «Greve» (sem mais especificação, a opção por defeito), «Greve — escola encerrada» (a escola estava encerrada por causa da greve) e, quando esta opção estiver disponível, «Greve do professor», uma indicação facultativa de que o próprio aderiu. A aplicação nunca presume nem deduz essa indicação, nem a atribui a outro professor.',
-                        'Quem vê o quê: a causa de uma aula não realizada (incluindo «Greve» e «Greve — escola encerrada») é visível para os professores com acesso à turma e aparece, agregada, nos relatórios da turma. A indicação «Greve do professor» e a descrição de «outra causa» são visíveis apenas para o professor que registou o resultado e não aparecem no registo de atividade, em pesquisas, em painéis nem em funcionalidades de inteligência artificial.',
-                        'Correções: o professor que registou um resultado pode corrigi-lo. Cada correção guarda quem a fez, a data, os valores anteriores e novos e um motivo curto escrito pelo professor (que deve evitar dados pessoais). Esse histórico é visível apenas para o professor que registou o resultado. Se esse professor deixar de pertencer à turma, a direção da instituição pode corrigir apenas a causa da aula, com motivo, sem aceder à indicação do professor, à descrição nem ao histórico.',
+                        self::describesLessonService()
+                            ? 'Informação operacional relativa à atividade letiva que regista: o resultado de cada aula (dada, não dada por ausência do professor, turma em outra atividade letiva, ou prevista e não realizada) e, quando aplicável, a categoria de ausência que indicar. Essa categoria é escolhida entre opções operacionais fechadas (formação, serviço oficial, outro); não é pedido nem guardado texto livre sobre o motivo pessoal da ausência.'
+                            : 'Informação operacional relativa à atividade letiva que regista: o resultado de cada aula (dada, não dada por ausência do professor, ou turma em outra atividade letiva) e, quando aplicável, a categoria de ausência que indicar. Essa categoria é escolhida entre opções operacionais fechadas (formação, serviço oficial, outro); não é pedido nem guardado texto livre sobre o motivo pessoal da ausência.',
+                        ...(self::describesLessonService() ? [
+                            'Aulas não realizadas: quando regista que uma aula prevista não se realizou, escolhe a causa entre opções fechadas — greve, escola sem condições de funcionamento, encerramento por mau tempo, problema nas instalações, razão organizacional da escola ou outra causa, esta com uma descrição curta da própria causa (não da pessoa). Numa aula não realizada por greve, escolhe entre «Greve» (sem mais especificação, a opção por defeito), «Greve — escola encerrada» (a escola estava encerrada por causa da greve) e, quando esta opção estiver disponível, «Greve do professor», uma indicação facultativa de que o próprio aderiu. A aplicação nunca presume nem deduz essa indicação, nem a atribui a outro professor.',
+                            'Quem vê o quê: a causa de uma aula não realizada (incluindo «Greve» e «Greve — escola encerrada») é visível para os professores com acesso à turma e aparece, agregada, nos relatórios da turma. A indicação «Greve do professor» e a descrição de «outra causa» são visíveis apenas para o professor que registou o resultado e não aparecem no registo de atividade, em pesquisas, em painéis nem em funcionalidades de inteligência artificial.',
+                            'Correções: o professor que registou um resultado pode corrigi-lo. Cada correção guarda quem a fez, a data, os valores anteriores e novos e um motivo curto escrito pelo professor (que deve evitar dados pessoais). Esse histórico é visível apenas para o professor que registou o resultado. Se esse professor deixar de pertencer à turma, a direção da instituição pode corrigir apenas a causa da aula, com motivo, sem aceder à indicação do professor, à descrição nem ao histórico.',
+                        ] : []),
                     ],
                 ],
                 [
@@ -347,7 +360,7 @@ class LegalDocuments
                         'Isto é pseudonimização, não anonimização: o professor continua a poder ver quem é cada aluno, porque precisa disso para trabalhar. O que se reduz é a exposição da identidade em tudo o resto. A anonimização — a remoção efetiva da relação com a pessoa — acontece no encerramento da conta, descrito mais abaixo.',
                         'Não é necessário anonimizar os alunos antes de os introduzir: a proteção é aplicada pelo Lapispro.',
                         'Podem ainda existir data de nascimento e fotografia, quando são introduzidas.',
-                        'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, o resultado de cada aula (incluindo a indicação de que a turma esteve em outra atividade letiva e uma descrição curta opcional dessa atividade, e a indicação de que uma aula prevista não se realizou, com a causa), assiduidade por aula (presente/falta), e relatórios.',
+                        'Dados pedagógicos: turmas e inscrições, classificações e resultados por domínio, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, o resultado de cada aula (incluindo a indicação de que a turma esteve em outra atividade letiva e uma descrição curta opcional dessa atividade'.(self::describesLessonService() ? ', e a indicação de que uma aula prevista não se realizou, com a causa' : '').'), assiduidade por aula (presente/falta), e relatórios.',
                         'O aluno não tem conta, sessão nem acesso próprio ao Lapispro. Os seus dados são introduzidos e geridos através da conta do professor.',
                     ],
                 ],
@@ -507,8 +520,10 @@ class LegalDocuments
                         ...(self::describesUsageMetrics() ? ['Métricas de utilização do serviço: os registos detalhados são eliminados por uma rotina que corre de hora a hora, ao fim de '.self::usageEventsDays().' dias, e as contagens diárias associadas a cada conta ao fim de '.self::usageRollupsDays().' dias. As de uma conta cujo encerramento é pedido são eliminadas no momento do pedido, e não voltam se o pedido for cancelado. A data em que a conta deu cada primeiro passo — primeira turma, primeiros alunos, primeiro registo — conserva-se durante '.self::usageRollupsDays().' dias; depois fica apenas a indicação de que o passo foi dado, sem data, enquanto a conta existir. Uma e outra são eliminadas com a oposição à recolha, com o pedido de encerramento ou com a conta.'] : []),
                         'Registos técnicos do servidor: rotação automática de 14 dias.',
                         'Cópias de segurança da base de dados: rotação de 30 cópias diárias e 12 mensais. Um dado eliminado da aplicação pode subsistir numa cópia de segurança até essa cópia ser substituída pela rotação.',
-                        'Histórico de correções do resultado de uma aula: conservado enquanto a aula existir. Não está definido um prazo automático de eliminação, e por isso não indicamos um.',
-                        'Exportação pessoal e cópias de segurança operacionais: a exportação que descarrega contém o que o próprio registou — incluindo o histórico das suas correções — e a causa das aulas da turma; as indicações e correções reservadas de outros professores não fazem parte dela. As cópias de segurança operacionais da base de dados, acessíveis apenas à nossa equipa técnica, contêm todos os dados, incluindo os reservados, pelos prazos de rotação indicados acima.',
+                        ...(self::describesLessonService() ? [
+                            'Histórico de correções do resultado de uma aula: conservado enquanto a aula existir. Não está definido um prazo automático de eliminação, e por isso não indicamos um.',
+                            'Exportação pessoal e cópias de segurança operacionais: a exportação que descarrega contém o que o próprio registou — incluindo o histórico das suas correções — e a causa das aulas da turma; as indicações e correções reservadas de outros professores não fazem parte dela. As cópias de segurança operacionais da base de dados, acessíveis apenas à nossa equipa técnica, contêm todos os dados, incluindo os reservados, pelos prazos de rotação indicados acima.',
+                        ] : []),
                         'Registo de atividade: conservado enquanto for necessário como registo de segurança de quem fez o quê. Não está definido um prazo automático de eliminação, e por isso não indicamos um.',
                         'Dados pedagógicos de anos letivos anteriores: não existe hoje eliminação automática por antiguidade. Quando existir, o prazo será indicado aqui antes de ser aplicado.',
                         'Reportes exportados para o nosso sistema de acompanhamento: quando o pedido é eliminado ou o conteúdo expurgado, o issue correspondente no GitHub é reescrito — fica sem conteúdo e fechado. A plataforma conserva um histórico de edições acessível à nossa equipa: reduzimos o que lá está ao mínimo que ela permite, e é por isso que a exportação é uma decisão caso a caso da nossa equipa, e não um passo automático.',
@@ -519,7 +534,9 @@ class LegalDocuments
                     'heading' => 'Os seus direitos',
                     'body' => [
                         'Sobre os dados da sua conta, os direitos exercem-se perante a '.self::entity().', escrevendo para '.self::contact('privacy_email').'.',
-                        'Acesso e retificação: pode consultar e corrigir os seus dados diretamente na aplicação — por exemplo, o resultado e a causa de uma aula que registou, ficando a correção no histórico da aula — e pedir-nos o que não conseguir fazer por si.',
+                        self::describesLessonService()
+                            ? 'Acesso e retificação: pode consultar e corrigir os seus dados diretamente na aplicação — por exemplo, o resultado e a causa de uma aula que registou, ficando a correção no histórico da aula — e pedir-nos o que não conseguir fazer por si.'
+                            : 'Acesso e retificação: pode consultar e corrigir os seus dados diretamente na aplicação, e pedir-nos o que não conseguir fazer por si.',
                         'Apagamento: pode pedir o encerramento da conta a partir das definições, com o efeito e o prazo descritos acima.',
                         'Limitação, oposição e portabilidade: '.(self::describesUsageMetrics() ? 'com exceção da oposição às métricas de utilização, que se exerce nas definições da conta, ' : '').'não existe um mecanismo automático na aplicação; exercem-se pelo mesmo endereço. Quando a portabilidade se aplique, entregamos os dados abrangidos em formato estruturado e de uso corrente.',
                         'A exportação disponível dentro da aplicação é uma funcionalidade do produto, pensada para lhe devolver o seu trabalho e permitir reimportá-lo. É útil para exercer estes direitos, mas não se confunde com eles nem esgota o direito de portabilidade, cujo âmbito é definido pela lei e não por nós.',
@@ -609,7 +626,9 @@ class LegalDocuments
     {
         return [
             'title' => 'Acordo de Tratamento de Dados',
-            'effective_from' => (string) config('lapis.legal.processing_effective_from'),
+            // A versão em vigor do Acordo: a data escrita à mão ou, se for posterior, a da versão que descreve o
+            // serviço letivo (quando em vigor). O texto novo nunca aparece com a data antiga.
+            'effective_from' => max((string) config('lapis.legal.processing_effective_from'), PrivacyVersion::lessonServiceAt()?->toDateString() ?? ''),
             'intro' => 'Quando são registados alunos no Lapispro, as finalidades desses dados são determinadas pelo responsável pelo tratamento, e o Lapispro trata-os por conta dele. Este documento descreve as condições dessa relação. É deliberadamente curto, porque um acordo que ninguém lê não protege ninguém.',
             'related' => [
                 ['label' => 'Termos de Utilização', 'href' => '/termos'],
@@ -643,7 +662,9 @@ class LegalDocuments
                         'Titulares dos dados: os alunos cujos dados sejam registados através da conta.',
                         'Categorias de dados: identificação do aluno (nome e, quando indicado, número de processo), eventualmente data de nascimento e fotografia, e dados pedagógicos — turmas e inscrições, classificações e resultados, instrumentos de avaliação, registos de acompanhamento, autoavaliações, estratégias e medidas, aulas e sumários, o resultado da ocorrência de cada aula, a indicação e descrição curta opcional de atividade letiva da turma fora da aula, assiduidade por aula (presente/falta), e relatórios.',
                         'Associada aos registos de aula pode existir ainda a categoria operacional de ausência do professor (formação, serviço oficial, outro), quando registada. É escolhida entre opções fechadas, sem texto livre sobre o motivo, e não constitui categoria especial de dados.',
-                        'Associada ao resultado de uma aula prevista e não realizada pode existir ainda a causa operacional, escolhida entre opções fechadas (incluindo a greve e a escola encerrada por causa da greve), com uma descrição curta quando a causa é «outra», e, a título facultativo e reservado ao próprio professor, a indicação da sua própria situação perante uma greve. Cada correção a um resultado de aula guarda o seu autor, a data, os valores anteriores e novos e um motivo curto. Estes registos dizem respeito à atividade do professor e não identificam alunos.',
+                        ...(self::describesLessonService() ? [
+                            'Associada ao resultado de uma aula prevista e não realizada pode existir ainda a causa operacional, escolhida entre opções fechadas (incluindo a greve e a escola encerrada por causa da greve), com uma descrição curta quando a causa é «outra», e, a título facultativo e reservado ao próprio professor, a indicação da sua própria situação perante uma greve. Cada correção a um resultado de aula guarda o seu autor, a data, os valores anteriores e novos e um motivo curto. Estes registos dizem respeito à atividade do professor e não identificam alunos.',
+                        ] : []),
                     ],
                 ],
                 [

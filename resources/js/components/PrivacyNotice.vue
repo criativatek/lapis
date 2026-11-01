@@ -23,7 +23,7 @@ const dismissedNow = ref(false);
 
 type PrivacyNoticeAuth = {
     should_see_privacy_notice?: boolean;
-    privacy_notice_topic?: 'general' | 'usage_metrics' | null;
+    privacy_notice_topic?: 'general' | 'usage_metrics' | 'lesson_service' | null;
 };
 
 const auth = computed(
@@ -38,6 +38,11 @@ const visible = computed(
 // aviso — com a forma de se opor —, não o texto de uma versão anterior.
 const aboutUsageMetrics = computed(
     () => auth.value?.privacy_notice_topic === 'usage_metrics',
+);
+
+// A versão que descreve o serviço letivo (aulas não realizadas, correções) também tem o seu aviso.
+const aboutLessonService = computed(
+    () => auth.value?.privacy_notice_topic === 'lesson_service',
 );
 
 function dismiss(): void {
@@ -59,6 +64,11 @@ function dismiss(): void {
             conta. Ao fazê-lo, a recolha é interrompida e as métricas
             associadas à sua conta são eliminadas, sem afetar o acesso às
             funcionalidades do Lapispro.
+        </span>
+        <span v-else-if="aboutLessonService" data-test="privacy-notice-lesson-service">
+            Atualizámos a Política de Privacidade e o Acordo de Tratamento de
+            Dados: passam a descrever o registo de aulas não realizadas, as suas
+            causas, as correções e quem pode ver o quê.
         </span>
         <span v-else>
             Atualizámos a Política de Privacidade para incluir os novos canais
