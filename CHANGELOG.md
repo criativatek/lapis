@@ -25,6 +25,67 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.187.0] — 2026-11-01
+
+> **Aulas e serviço letivo.** Passa a ser possível dizer que uma aula prevista
+> **não se realizou** — e porquê —, ver quantas das aulas previstas foram dadas
+> e corrigir um resultado já registado, tudo com a privacidade do professor
+> à frente. **Duas migrations, backup v21, um comando de recuperação. As duas
+> funcionalidades novas de registo chegam DESLIGADAS** (`LAPIS_LESSON_NOT_HELD_ENABLED`
+> e `LAPIS_STRIKE_ADHESION_RECORDING`, ambas `false` por defeito): ligá-las em
+> produção pressupõe a Política de Privacidade atualizada e validada
+> juridicamente (propostas em `docs/legal/`). Integra as PRs #121 a #139.
+
+### Acrescentado
+
+- **«Aula não realizada» (`not_held`).** Uma aula prevista que não se deu, com
+  causa estruturada (greve, escola sem funcionamento, encerramento por mau tempo,
+  problema nas instalações, razão organizativa, outra com descrição). Não conta
+  como lecionada, não recebe número, não leva assiduidade nem sumário e o
+  planeamento desce como numa ausência. Na **greve**, a especificação da situação
+  do próprio é facultativa («só Greve» por defeito; «Aderi» só com
+  `LAPIS_STRIKE_ADHESION_RECORDING`). Diálogo único, menus rápidos, página da
+  aula e cartões da semana.
+- **Registo retroativo.** Uma aula **aberta e vazia** anterior a aulas já fechadas
+  pode ser registada como não realizada sem mudar o número de nenhuma lecionada;
+  recusa, com a razão, se tiver conteúdo, número indicado, lição partilhada ou
+  assiduidade. A interface mostra o efeito na numeração antes de gravar.
+- **Relatório do serviço letivo** (`/lessons/service-report`): previstas, dadas,
+  não realizadas, sem registo e % dadas, causas e evolução mensal (meses vazios a
+  zero), com «As N previstas, uma a uma» em cinco grupos que fecham sempre a soma.
+  O bloco pessoal só leva o que o próprio registou.
+- **Corrigir o resultado de uma aula**, com histórico auditável (autor, data,
+  valores anteriores e novos, motivo obrigatório): detalhes do mesmo resultado, ou
+  trocar «Professor ausente» ↔ «Aula não realizada». Só o titular do registo.
+  Correção administrativa excecional da **causa** pela direção de uma organização
+  institucional quando o titular já saiu da turma (sem acesso ao registo).
+- **`lapis:lesson-outcome-recovery-check`**: só leitura; sai com 0 se não há
+  nenhuma `not_held` nem motivo «greve» (o rollback de código é seguro) e com 1
+  caso contrário (corrige-se para a frente). Ver `docs/lesson-outcome-recovery.md`.
+
+### Alterado
+
+- **O motivo de uma ausência passa a ser reservado a quem a registou.** Antes
+  qualquer professor da turma, observadores incluídos, o via na página da aula.
+  Os restantes veem que existe, não qual é.
+- **Observadores deixam de poder registar o resultado de uma aula.**
+- **Abertas anteriores à lecionada conservam o número**; a lacuna fica onde a
+  aula estava (antes a aula 1 passava a 2).
+- **A exportação pessoal deixa de se chamar backup.** Leva `scope: personal` e
+  `reduced_lessons`; o dado reservado de um colega viaja reduzido ao valor válido
+  menos específico, e continua restaurável.
+
+### Compatibilidade
+
+- **Backup v21** (era v20): um ficheiro v21 é recusado por código anterior; v≤20
+  restaura-se com os campos novos a nulo. Linha incoerente = linha inválida,
+  nunca o ficheiro. O histórico das correções viaja como coleção opcional.
+- **Rollback.** Voltar o código atrás não desfaz linhas já gravadas: com qualquer
+  `not_held` ou motivo «greve» na base, o código anterior não lê a turma. Correr
+  o comando de recuperação antes; se der 1, corrige-se para a frente.
+- Migrations aditivas: `2026_11_26_000100_add_outcome_cause_to_lessons_table`
+  (colunas nulas, sem CHECK) e `2026_11_27_000100_create_lesson_outcome_rectifications_table`.
+
 ## [0.186.2] — 2026-11-01
 
 > **Importar do Intuitivo: uma recusa já não parece «0 alunos», e o cabeçalho de
