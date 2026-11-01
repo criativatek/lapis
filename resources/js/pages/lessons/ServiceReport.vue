@@ -47,7 +47,7 @@ type Report = {
         not_held_recorded: number;
         not_held_by_others: number;
         causes: Cause[];
-        strike: { total: number; unspecified: number; adhered: number; not_adhered: number; not_informed: number };
+        strike: { total: number; unspecified: number; adhered: number; school_closed: number; not_adhered: number; not_informed: number };
         teacher_absent: number;
     };
 };
@@ -73,8 +73,9 @@ const strikeLines = computed(() => {
 
     return [
         ['Só «Greve», sem especificar', strike.unspecified],
-        ['Aderi à greve', strike.adhered],
-        ['Não aderi à greve', strike.not_adhered],
+        ['Greve do professor', strike.adhered],
+        ['Greve — escola encerrada', strike.school_closed],
+        ['Não aderi à greve (registos anteriores)', strike.not_adhered],
         ['Situação desconhecida (registos anteriores)', strike.not_informed],
     ].filter(([, count]) => Number(count) > 0) as [string, number][];
 });

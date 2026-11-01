@@ -2264,7 +2264,7 @@ class GenerateDataExport
      */
     protected function lessonDetailsReduced(Lesson $lesson, array $refs, User $user): bool
     {
-        $hasReserved = $lesson->outcome_reason !== null || $lesson->outcome_teacher_situation !== null || $lesson->outcome_cause_note !== null;
+        $hasReserved = $lesson->outcome_reason !== null || $lesson->outcome_teacher_situation?->isIndividual() === true || $lesson->outcome_cause_note !== null;
 
         return $hasReserved && ! $this->mayReadLessonDetails($lesson, $refs, $user);
     }
@@ -2304,7 +2304,7 @@ class GenerateDataExport
             // v21: a causa de uma aula não realizada. Reservada ao titular na
             // interface; aqui viaja inteira, porque sem ela o restauro invalidaria a linha.
             'outcome_cause' => $lesson->outcome_cause?->value,
-            'outcome_teacher_situation' => $mayRead ? $lesson->outcome_teacher_situation?->value : null,
+            'outcome_teacher_situation' => $mayRead || $lesson->outcome_teacher_situation?->isIndividual() === false ? $lesson->outcome_teacher_situation?->value : null,
             'outcome_cause_note' => $mayRead || $lesson->outcome_cause_note === null ? $lesson->outcome_cause_note : __('Reservado'),
             'outcome_recorded_at' => $lesson->outcome_recorded_at?->toIso8601String(),
             'outcome_recorded_by_email' => $this->authorEmail($lesson->outcome_recorded_by, $refs),

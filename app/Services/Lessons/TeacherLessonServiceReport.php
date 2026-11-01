@@ -48,7 +48,7 @@ final class TeacherLessonServiceReport
      *         not_held_recorded: int,
      *         not_held_by_others: int,
      *         causes: list<array{cause: string, label: string, count: int}>,
-     *         strike: array{total: int, unspecified: int, adhered: int, not_adhered: int, not_informed: int},
+     *         strike: array{total: int, unspecified: int, adhered: int, school_closed: int, not_adhered: int, not_informed: int},
      *         teacher_absent: int,
      *     },
      * }
@@ -138,7 +138,7 @@ final class TeacherLessonServiceReport
      *     not_held_recorded: int,
      *     not_held_by_others: int,
      *     causes: list<array{cause: string, label: string, count: int}>,
-     *     strike: array{total: int, unspecified: int, adhered: int, not_adhered: int, not_informed: int},
+     *     strike: array{total: int, unspecified: int, adhered: int, school_closed: int, not_adhered: int, not_informed: int},
      *     teacher_absent: int,
      * }
      */
@@ -156,7 +156,7 @@ final class TeacherLessonServiceReport
             ->filter(fn (Lesson $lesson): bool => LessonOutcomeDetails::mayReadReason($lesson, $teacher));
 
         $causes = [];
-        $strike = ['total' => 0, 'unspecified' => 0, 'adhered' => 0, 'not_adhered' => 0, 'not_informed' => 0];
+        $strike = ['total' => 0, 'unspecified' => 0, 'adhered' => 0, 'school_closed' => 0, 'not_adhered' => 0, 'not_informed' => 0];
         $notHeld = 0;
         $absent = 0;
 
@@ -179,6 +179,7 @@ final class TeacherLessonServiceReport
                 $strike['total']++;
                 $strike[match ($lesson->outcome_teacher_situation) {
                     TeacherStrikeSituation::Adhered => 'adhered',
+                    TeacherStrikeSituation::SchoolClosed => 'school_closed',
                     TeacherStrikeSituation::NotAdhered => 'not_adhered',
                     TeacherStrikeSituation::NotInformed => 'not_informed',
                     null => 'unspecified',

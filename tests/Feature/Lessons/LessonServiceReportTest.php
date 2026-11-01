@@ -128,13 +128,15 @@ class LessonServiceReportTest extends TestCase
         $this->closed('2026-10-15 09:30:00', LessonOutcome::NotHeld, ['outcome_cause' => LessonNotHeldCause::Strike->value, 'outcome_teacher_situation' => TeacherStrikeSituation::NotAdhered->value]);
         $this->closed('2026-10-22 09:30:00', LessonOutcome::NotHeld, ['outcome_cause' => LessonNotHeldCause::Strike->value, 'outcome_teacher_situation' => TeacherStrikeSituation::NotInformed->value]);
         $this->closed('2026-10-23 09:30:00', LessonOutcome::NotHeld, ['outcome_cause' => LessonNotHeldCause::FacilitiesProblem->value]);
+        $this->closed('2026-10-24 09:30:00', LessonOutcome::NotHeld, ['outcome_cause' => LessonNotHeldCause::Strike->value, 'outcome_teacher_situation' => TeacherStrikeSituation::SchoolClosed->value]);
 
         $personal = $this->report($this->teacher)['report']['personal'];
 
-        $this->assertSame(5, $personal['not_held_recorded']);
+        $this->assertSame(6, $personal['not_held_recorded']);
         $this->assertSame(0, $personal['not_held_by_others']);
-        $this->assertSame(['strike' => 4, 'facilities_problem' => 1], array_column($personal['causes'], 'count', 'cause'));
-        $this->assertSame(['total' => 4, 'unspecified' => 1, 'adhered' => 1, 'not_adhered' => 1, 'not_informed' => 1], $personal['strike']);
+        $this->assertSame(['strike' => 5, 'facilities_problem' => 1], array_column($personal['causes'], 'count', 'cause'));
+        // «Greve — escola encerrada» tem a sua linha: é uma circunstância da escola, distinta de «não aderi» (legado).
+        $this->assertSame(['total' => 5, 'unspecified' => 1, 'adhered' => 1, 'school_closed' => 1, 'not_adhered' => 1, 'not_informed' => 1], $personal['strike']);
     }
 
     #[Test]

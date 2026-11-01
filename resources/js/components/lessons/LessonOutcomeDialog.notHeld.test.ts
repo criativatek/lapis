@@ -43,8 +43,8 @@ const options: NotHeldOptions = {
         { value: 'other', label: 'Outra causa' },
     ],
     specifications: [
-        { value: 'adhered', label: 'Aderi à greve' },
-        { value: 'not_adhered', label: 'Não aderi à greve' },
+        { value: 'adhered', label: 'Greve do professor' },
+        { value: 'school_closed', label: 'Greve — escola encerrada' },
     ],
 };
 
@@ -84,9 +84,11 @@ describe('LessonOutcomeDialog — aula não realizada', () => {
 
         await wrapper.get('#outcome-cause').setValue('strike');
 
-        expect(wrapper.get('[data-testid="strike-specification"]').text()).toContain('Não especificar');
-        expect(wrapper.get('[data-testid="strike-specification"]').text()).toContain('Aderi à greve');
-        expect(wrapper.get('[data-testid="strike-specification"]').text()).toContain('Não aderi à greve');
+        const text = wrapper.get('[data-testid="strike-specification"]').text();
+        // As três opções, pela ordem: «Greve» (por defeito), «Greve do professor» e «Greve — escola encerrada».
+        expect(text.indexOf('Greve')).toBeLessThan(text.indexOf('Greve do professor'));
+        expect(text.indexOf('Greve do professor')).toBeLessThan(text.indexOf('Greve — escola encerrada'));
+        expect((wrapper.get('input[name="situation"]:checked').element as HTMLInputElement).value).toBe('');
     });
 
     it('«Greve» sem especificar envia só a causa — a especificação é facultativa', async () => {
@@ -99,8 +101,8 @@ describe('LessonOutcomeDialog — aula não realizada', () => {
     });
 
     it.each([
-        ['adhered', 'Aderi à greve'],
-        ['not_adhered', 'Não aderi à greve'],
+        ['adhered', 'Greve do professor'],
+        ['school_closed', 'Greve — escola encerrada'],
     ])('especificar «%s» envia a situação escolhida', async (value) => {
         const wrapper = mountDialog();
         await chooseNotHeld(wrapper);
@@ -132,12 +134,13 @@ describe('LessonOutcomeDialog — aula não realizada', () => {
         expect(posted[0].data).toEqual({ outcome: 'not_held', cause: 'other', cause_note: 'Falha de eletricidade' });
     });
 
-    it('sem a chave da adesão, «Aderi» não é oferecido', async () => {
-        const wrapper = mountDialog({ ...options, specifications: [{ value: 'not_adhered', label: 'Não aderi à greve' }] });
+    it('sem a chave da adesão, «Greve do professor» não é oferecido mas «escola encerrada» sim', async () => {
+        const wrapper = mountDialog({ ...options, specifications: [{ value: 'school_closed', label: 'Greve — escola encerrada' }] });
         await chooseNotHeld(wrapper);
         await wrapper.get('#outcome-cause').setValue('strike');
 
-        expect(wrapper.get('[data-testid="strike-specification"]').text()).not.toContain('Aderi à greve');
+        expect(wrapper.get('[data-testid="strike-specification"]').text()).not.toContain('Greve do professor');
+        expect(wrapper.get('[data-testid="strike-specification"]').text()).toContain('Greve — escola encerrada');
     });
 
     it('as outras opções continuam como estavam', async () => {
@@ -221,7 +224,7 @@ describe('LessonOutcomeDialog — corrigir o resultado', () => {
     });
 
     const rectification = (overrides: Partial<OutcomeRectification> = {}): OutcomeRectification => ({
-        current: { outcome: 'not_held', reason: null, note: null, cause: 'strike', situation: 'not_adhered', cause_note: null },
+        current: { outcome: 'not_held', reason: null, note: null, cause: 'strike', situation: 'school_closed', cause_note: null },
         targets: ['teacher_absent', 'not_held'],
         outcome_locked_reason: null,
         history: [],
@@ -256,7 +259,7 @@ describe('LessonOutcomeDialog — corrigir o resultado', () => {
         expect(wrapper.text()).toContain('Corrigir o resultado desta aula');
         expect(wrapper.text()).toContain('os números das lições, o planeamento e o sumário não mudam');
         expect((wrapper.get('#outcome-cause').element as HTMLSelectElement).value).toBe('strike');
-        expect((wrapper.get('input[name="situation"]:checked').element as HTMLInputElement).value).toBe('not_adhered');
+        expect((wrapper.get('input[name="situation"]:checked').element as HTMLInputElement).value).toBe('school_closed');
         expect(wrapper.find('[data-testid="rectify-motive"]').exists()).toBe(true);
         expect(wrapper.find('[data-testid="retroactive-info"]').exists()).toBe(false);
     });

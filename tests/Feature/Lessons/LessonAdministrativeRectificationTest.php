@@ -43,7 +43,7 @@ class LessonAdministrativeRectificationTest extends TestCase
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-10-14 10:00:00', 'Europe/Lisbon'));
         $this->bootLessonFixtures();
-        config(['lapis.lesson_not_held_enabled' => true]);
+        config(['lapis.lesson_not_held_enabled' => true, 'lapis.strike_adhesion_recording' => true]);
 
         // A turma passa a viver numa instituição cuja direção NÃO leciona.
         $this->head = User::factory()->create();
@@ -66,7 +66,7 @@ class LessonAdministrativeRectificationTest extends TestCase
         // O titular regista a aula, com uma especificação pessoal reservada.
         $this->lesson = $this->makeLesson(['starts_at' => '2026-10-13 09:30:00']);
         $this->inTenant($institution, fn () => app(RecordLessonOutcome::class)->execute(
-            $this->lesson, LessonOutcome::NotHeld, $this->teacher, null, null, LessonNotHeldCause::Strike, TeacherStrikeSituation::NotAdhered,
+            $this->lesson, LessonOutcome::NotHeld, $this->teacher, null, null, LessonNotHeldCause::Strike, TeacherStrikeSituation::Adhered,
         ));
     }
 
@@ -114,7 +114,7 @@ class LessonAdministrativeRectificationTest extends TestCase
         $this->assertSame($this->head->id, $row->rectified_by);
         $this->assertSame('A causa registada estava errada', $row->motive);
         $this->assertSame('strike', $row->previous['cause']);
-        $this->assertSame('not_adhered', $row->previous['situation'], 'O que o titular reservou fica no histórico, não se perde.');
+        $this->assertSame('adhered', $row->previous['situation'], 'O que o titular reservou fica no histórico, não se perde.');
         $this->assertNull($row->current['situation']);
     }
 
@@ -135,7 +135,7 @@ class LessonAdministrativeRectificationTest extends TestCase
         $this->assertNull($props['outcome_rectification']);
         $this->assertSame('Encerramento por mau tempo', $props['outcome_cause_label']);
         $this->assertStringNotContainsString('A causa registada estava errada', json_encode($props, JSON_THROW_ON_ERROR));
-        $this->assertStringNotContainsString('Não aderi', json_encode($props, JSON_THROW_ON_ERROR));
+        $this->assertNull($props['outcome_teacher_situation_label'], 'A declaração individual do titular não chega a um colega.');
     }
 
     #[Test]
@@ -197,7 +197,7 @@ class LessonAdministrativeRectificationTest extends TestCase
         $this->assertSame('administrative', $event->properties['kind']);
         $this->assertSame(['strike', 'weather_closure'], [$event->properties['from_cause'], $event->properties['to_cause']]);
         $this->assertTrue($event->properties['reserved_details_changed']);
-        $this->assertStringNotContainsString('not_adhered', json_encode($event->properties, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('adhered', json_encode($event->properties, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('A causa registada estava errada', json_encode($event->properties, JSON_THROW_ON_ERROR));
     }
 

@@ -35,7 +35,7 @@ class LessonOutcomeRectificationTest extends TestCase
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-10-14 10:00:00', 'Europe/Lisbon'));
         $this->bootLessonFixtures();
-        config(['lapis.lesson_not_held_enabled' => true]);
+        config(['lapis.lesson_not_held_enabled' => true, 'lapis.strike_adhesion_recording' => true]);
     }
 
     private function record(Lesson $lesson, LessonOutcome $outcome, array $with = [], ?User $by = null): Lesson
@@ -93,10 +93,10 @@ class LessonOutcomeRectificationTest extends TestCase
     {
         $lesson = $this->strike();
 
-        $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'not_adhered', 'rectification_note' => 'Afinal não aderi'])->assertRedirect();
+        $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'adhered', 'rectification_note' => 'Afinal não aderi'])->assertRedirect();
 
         $lesson->refresh();
-        $this->assertSame(TeacherStrikeSituation::NotAdhered, $lesson->outcome_teacher_situation);
+        $this->assertSame(TeacherStrikeSituation::Adhered, $lesson->outcome_teacher_situation);
         $this->assertSame(LessonOutcome::NotHeld, $lesson->outcome);
 
         $row = $this->inTenant($this->organization, fn () => LessonOutcomeRectification::query()->where('lesson_id', $lesson->id)->sole());
@@ -104,14 +104,14 @@ class LessonOutcomeRectificationTest extends TestCase
         $this->assertSame('details', $row->kind);
         $this->assertSame('Afinal não aderi', $row->motive);
         $this->assertNull($row->previous['situation']);
-        $this->assertSame('not_adhered', $row->current['situation']);
+        $this->assertSame('adhered', $row->current['situation']);
         $this->assertSame('strike', $row->previous['cause']);
     }
 
     #[Test]
     public function changing_the_cause_clears_what_no_longer_applies_and_keeps_every_step(): void
     {
-        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::NotAdhered]);
+        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::Adhered]);
 
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'other', 'cause_note' => 'Avaria elétrica', 'rectification_note' => 'Foi uma avaria'])->assertRedirect();
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'weather_closure', 'rectification_note' => 'Afinal foi o mau tempo'])->assertRedirect();
@@ -122,7 +122,7 @@ class LessonOutcomeRectificationTest extends TestCase
         $this->assertNull($lesson->outcome_cause_note);
         $rows = $this->inTenant($this->organization, fn () => LessonOutcomeRectification::query()->where('lesson_id', $lesson->id)->orderBy('id')->get());
         $this->assertCount(2, $rows);
-        $this->assertSame('not_adhered', $rows[0]->previous['situation']);
+        $this->assertSame('adhered', $rows[0]->previous['situation']);
         $this->assertSame('Avaria elétrica', $rows[1]->previous['cause_note']);
     }
 
@@ -153,9 +153,11 @@ class LessonOutcomeRectificationTest extends TestCase
         $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::Adhered]);
         config(['lapis.strike_adhesion_recording' => false]);
 
-        // Nova adesão não se oferece, mas a que já estava gravada não é rejeitada ao corrigir outra coisa.
+        // Com a chave desligada «Greve do professor» já não se oferece de novo, mas a que estava gravada lê-se
+        // e mantém-se (corrigir «para o mesmo» é só um não-evento), e «Greve — escola encerrada» não depende da chave.
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'adhered', 'rectification_note' => 'Sem mudança'])->assertJsonValidationErrors('outcome');
-        $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'not_adhered', 'rectification_note' => 'Afinal não'])->assertRedirect();
+        $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'school_closed', 'rectification_note' => 'A escola estava encerrada'])->assertRedirect();
+        $this->assertSame(TeacherStrikeSituation::SchoolClosed, $lesson->refresh()->outcome_teacher_situation);
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'adhered', 'rectification_note' => 'Voltar atrás'])->assertJsonValidationErrors('situation');
     }
 
@@ -262,7 +264,7 @@ class LessonOutcomeRectificationTest extends TestCase
     #[Test]
     public function the_history_reaches_only_the_holder_and_a_colleague_gets_no_trace_of_it(): void
     {
-        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::NotAdhered]);
+        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::Adhered]);
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'rectification_note' => 'Quero deixar de especificar'])->assertRedirect();
         $colleague = $this->colleague();
         $show = fn (User $user): array => AssertableInertia::fromTestResponse(
@@ -275,25 +277,25 @@ class LessonOutcomeRectificationTest extends TestCase
         $this->assertCount(1, $mine['history']);
         $this->assertSame('Quero deixar de especificar', $mine['history'][0]['motive']);
         $this->assertSame(['Especificação perante a greve'], array_column($mine['history'][0]['changes'], 'label'));
-        $this->assertSame('Não aderi à greve', $mine['history'][0]['changes'][0]['from']);
+        $this->assertSame('Greve do professor', $mine['history'][0]['changes'][0]['from']);
 
         $theirs = $show($colleague);
         $this->assertNull($theirs['outcome_rectification']);
         $this->assertStringNotContainsString('Quero deixar de especificar', json_encode($theirs, JSON_THROW_ON_ERROR));
-        $this->assertStringNotContainsString('Não aderi', json_encode($theirs, JSON_THROW_ON_ERROR));
+        $this->assertNull($theirs['outcome_teacher_situation_label'], 'A declaração individual do titular não chega a um colega.');
     }
 
     #[Test]
     public function the_general_audit_trail_records_the_rectification_without_reserved_data_or_free_text(): void
     {
-        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::NotAdhered]);
+        $lesson = $this->record($this->makeLesson(['starts_at' => '2026-10-13 09:30:00']), LessonOutcome::NotHeld, ['cause' => LessonNotHeldCause::Strike, 'situation' => TeacherStrikeSituation::Adhered]);
 
         $this->rectify($lesson, ['outcome' => 'not_held', 'cause' => 'strike', 'rectification_note' => 'Texto livre do professor'])->assertRedirect();
 
         $event = $this->inTenant($this->organization, fn () => AuditEvent::query()->where('event', 'lesson.outcome_rectified')->sole());
         $this->assertSame($this->teacher->id, $event->causer_id);
         $json = json_encode($event->properties, JSON_THROW_ON_ERROR);
-        $this->assertStringNotContainsString('not_adhered', $json);
+        $this->assertStringNotContainsString('adhered', $json);
         $this->assertStringNotContainsString('Texto livre do professor', $json);
         $this->assertTrue($event->properties['reserved_details_changed']);
         $this->assertSame('strike', $event->properties['from_cause']);

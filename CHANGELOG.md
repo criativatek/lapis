@@ -25,6 +25,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.187.1] — 2026-11-02
+
+> **«Aula não realizada» — as três opções de uma greve.** Numa aula não realizada
+> por greve o professor escolhe entre **«Greve»** (sem especificação, a opção por
+> defeito), **«Greve do professor»** (uma indicação facultativa de que o próprio
+> aderiu) e **«Greve — escola encerrada»** (a escola estava encerrada por causa
+> da greve). **Sem migrations, sem seeder, sem alterações ao Intuitivo.** As duas
+> chaves continuam desligadas por defeito: nada disto está ao alcance de um
+> professor até serem ligadas, o que depende da validação jurídica e da
+> atualização dos textos legais (não incluída nesta versão).
+
+### Alterado
+
+- **«Greve — escola encerrada»** (`school_closed`) descreve a escola e não uma
+  pessoa: lê-se como a causa por toda a turma, viaja inteira na exportação de um
+  colega (não conta como aula «reduzida») e **não depende da chave da adesão**.
+  Não é «Não aderi».
+- **«Greve do professor»** (`adhered`, antes «Aderi à greve») continua a ser uma
+  declaração voluntária e individual, reservada ao professor que a registou, e é
+  a **única** opção controlada por `LAPIS_STRIKE_ADHESION_RECORDING`. «Greve» e
+  «Greve — escola encerrada» só dependem de `LAPIS_LESSON_NOT_HELD_ENABLED`.
+- «Não aderi à greve» e «Adesão não confirmada» (`not_adhered`, `not_informed`)
+  já não se oferecem; os registos que os tenham continuam a ler-se, sem conversão.
+- O relatório «Serviço letivo» ganha, no bloco pessoal, a linha «Greve — escola
+  encerrada».
+- **Desligar uma chave depois de haver registos** não apaga nem esconde nada: as
+  aulas, a semana, o relatório e a exportação continuam a lê-los, e uma declaração
+  já gravada mantém-se ao corrigir outra coisa. O que se desliga é o registo e a
+  correção de novos resultados.
+
 ## [0.187.0] — 2026-11-01
 
 > **Serviço letivo e importação detalhada do Intuitivo.** Duas frentes numa só

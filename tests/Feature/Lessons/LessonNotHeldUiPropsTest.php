@@ -72,13 +72,14 @@ class LessonNotHeldUiPropsTest extends TestCase
             ['strike', 'school_not_operating', 'weather_closure', 'facilities_problem', 'organizational', 'other'],
             array_column($options['causes'], 'value'),
         );
-        // Sem a chave da adesão, «Aderi» não se oferece; o legado «not_informed» nunca.
-        $this->assertSame(['not_adhered'], array_column($options['specifications'], 'value'));
+        // Sem a chave da adesão não se oferece «Greve do professor», mas «Greve — escola encerrada» sim; os legados nunca.
+        $this->assertSame(['school_closed'], array_column($options['specifications'], 'value'));
+        $this->assertSame('Greve — escola encerrada', $options['specifications'][0]['label']);
 
         config(['lapis.strike_adhesion_recording' => true]);
         $withAdhesion = $this->props($this->teacher, '/lessons?week=2026-10-14')['notHeldOptions'];
-        $this->assertSame(['adhered', 'not_adhered'], array_column($withAdhesion['specifications'], 'value'));
-        $this->assertSame('Aderi à greve', $withAdhesion['specifications'][0]['label']);
+        $this->assertSame(['adhered', 'school_closed'], array_column($withAdhesion['specifications'], 'value'));
+        $this->assertSame('Greve do professor', $withAdhesion['specifications'][0]['label']);
     }
 
     #[Test]

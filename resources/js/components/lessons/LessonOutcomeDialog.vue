@@ -294,16 +294,18 @@ function submit(): void {
                     </div>
 
                     <fieldset v-if="form.cause === 'strike'" class="grid gap-2" data-testid="strike-specification">
-                        <legend class="text-sm font-medium">Queres especificar? (opcional)</legend>
+                        <legend class="text-sm font-medium">Tipo de greve</legend>
                         <label class="flex min-h-9 items-center gap-2">
                             <input v-model="form.situation" type="radio" name="situation" value="" />
-                            Não especificar
+                            Greve
                         </label>
                         <label v-for="option in notHeldOptions.specifications" :key="option.value" class="flex min-h-9 items-center gap-2">
                             <input v-model="form.situation" type="radio" name="situation" :value="option.value" />
                             {{ option.label }}
                         </label>
-                        <p class="text-xs text-muted-foreground">Só tu vês esta especificação.</p>
+                        <p v-if="form.situation === 'adhered'" class="text-xs text-muted-foreground" data-testid="adhesion-note">
+                            «Greve do professor» é uma declaração tua e facultativa: só tu a vês.
+                        </p>
                         <InputError :message="form.errors.situation" />
                     </fieldset>
 

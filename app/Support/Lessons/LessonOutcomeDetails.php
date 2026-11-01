@@ -3,6 +3,7 @@
 namespace App\Support\Lessons;
 
 use App\Models\Lesson;
+use App\Models\TeacherStrikeSituation;
 use App\Models\User;
 
 /**
@@ -46,15 +47,22 @@ final class LessonOutcomeDetails
         // aconteceu à turma e lê-a toda a turma, como o resultado. O que é
         // pessoal fica reservado: o motivo de uma ausência, a especificação
         // perante a greve e a descrição de «Outra causa».
+        // «Greve — escola encerrada» é uma circunstância da escola, não uma declaração de ninguém: lê-se
+        // como a causa, por toda a turma. Só a declaração INDIVIDUAL (`isIndividual()`) fica reservada.
+        $causeLabel = $lesson->outcome_teacher_situation === TeacherStrikeSituation::SchoolClosed
+            ? $lesson->outcome_teacher_situation->label()
+            : $lesson->outcome_cause?->label();
+        $individual = $lesson->outcome_teacher_situation?->isIndividual() === true ? $lesson->outcome_teacher_situation : null;
+
         $none = [
             'outcome_reason_label' => null,
-            'outcome_cause_label' => $lesson->outcome_cause?->label(),
+            'outcome_cause_label' => $causeLabel,
             'outcome_teacher_situation_label' => null,
             'outcome_cause_note' => null,
         ];
 
         $hasProtected = $lesson->outcome_reason !== null
-            || $lesson->outcome_teacher_situation !== null
+            || $individual !== null
             || $lesson->outcome_cause_note !== null;
 
         if (! $hasProtected) {
@@ -67,8 +75,8 @@ final class LessonOutcomeDetails
 
         return [
             'outcome_reason_label' => $lesson->outcome_reason?->label(),
-            'outcome_cause_label' => $lesson->outcome_cause?->label(),
-            'outcome_teacher_situation_label' => $lesson->outcome_teacher_situation?->label(),
+            'outcome_cause_label' => $causeLabel,
+            'outcome_teacher_situation_label' => $individual?->label(),
             'outcome_cause_note' => $lesson->outcome_cause_note,
             'outcome_reason_reserved' => false,
         ];
