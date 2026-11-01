@@ -256,6 +256,13 @@ class RecordLessonOutcome
             ]);
         }
 
+        // A especificação «Aderi» é uma declaração do próprio, só com a funcionalidade ligada.
+        if ($situation !== null && ! in_array($situation, TeacherStrikeSituation::available(), true)) {
+            throw ValidationException::withMessages([
+                'situation' => __('Esta especificação não está disponível.'),
+            ]);
+        }
+
         $this->guardCoherence($outcome, $reason, $cause, $situation, $causeNote);
 
         if ($locked->attendanceRecorded()) {
@@ -510,10 +517,10 @@ class RecordLessonOutcome
 
     /**
      * A situação individual perante a greve é do próprio: só quem registou o
-     * resultado a declara, e um observador nunca declara — fica «adesão não
-     * confirmada». Sem declaração, também.
+     * resultado a declara, e um observador nunca declara. Sem declaração fica
+     * `null` — o professor não especificou; nada se infere.
      */
-    private function declaredSituation(Lesson $locked, User $actor, ?TeacherStrikeSituation $situation): TeacherStrikeSituation
+    private function declaredSituation(Lesson $locked, User $actor, ?TeacherStrikeSituation $situation): ?TeacherStrikeSituation
     {
         $isObserver = SchoolClass::query()
             ->whereKey($locked->class_id)
@@ -523,7 +530,7 @@ class RecordLessonOutcome
             ->whereKey($actor->getKey())
             ->exists() === true;
 
-        return $isObserver ? TeacherStrikeSituation::NotInformed : ($situation ?? TeacherStrikeSituation::NotInformed);
+        return $isObserver ? null : $situation;
     }
 
     private function cleanNote(?string $note): ?string

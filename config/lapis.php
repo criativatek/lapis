@@ -523,4 +523,13 @@ return [
 
     'lesson_not_held_enabled' => (bool) env('LAPIS_LESSON_NOT_HELD_ENABLED', false),
 
+    /*
+    | «Aderi à greve»: especificação OPCIONAL da situação do próprio numa aula
+    | não realizada por greve (`outcome_teacher_situation = adhered`). Desligado
+    | por defeito até a Política de Privacidade e o Acordo o descreverem e a
+    | validação jurídica estar concluída. Sem a chave, a especificação não se
+    | oferece nem se aceita (a greve sem especificação funciona sempre).
+    */
+    'strike_adhesion_recording' => (bool) env('LAPIS_STRIKE_ADHESION_RECORDING', false),
+
 ];

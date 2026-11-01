@@ -23,7 +23,7 @@ class RecordLessonOutcomeRequest extends FormRequest
     {
         $lesson = $this->route('lesson');
 
-        return $lesson instanceof Lesson && $this->user()?->can('update', $lesson) === true;
+        return $lesson instanceof Lesson && $this->user()?->can('recordOutcome', $lesson) === true;
     }
 
     /**
@@ -55,7 +55,7 @@ class RecordLessonOutcomeRequest extends FormRequest
                     Rule::prohibitedIf(fn (): bool => $this->input('outcome') !== LessonOutcome::NotHeld->value),
                     'nullable', 'string', Rule::enum(LessonNotHeldCause::class),
                 ],
-                'situation' => ['nullable', 'string', Rule::enum(TeacherStrikeSituation::class)],
+                'situation' => ['nullable', 'string', Rule::in(array_column(TeacherStrikeSituation::available(), 'value'))],
                 'cause_note' => ['nullable', 'string', 'max:160'],
                 // Registo retroativo: só pedido, nunca presumido. A aula tem de ser vazia (RecordLessonOutcome).
                 'retroactive' => ['sometimes', 'boolean', Rule::prohibitedIf(fn (): bool => $this->input('outcome') !== LessonOutcome::NotHeld->value)],

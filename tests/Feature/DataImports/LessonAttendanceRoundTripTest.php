@@ -234,6 +234,45 @@ class LessonAttendanceRoundTripTest extends TestCase
     }
 
     /**
+     * A greve com especificação facultativa: `null` (não especificou), `adhered`
+     * e o `not_informed` legado sobrevivem ao restauro tal como estão, sem se
+     * converterem uns nos outros.
+     */
+    #[Test]
+    public function the_optional_strike_specification_survives_a_restore_without_conversion(): void
+    {
+        $class = $this->scenario();
+
+        $this->inTenant(function () use ($class): void {
+            foreach ([['2025-10-30', null], ['2025-11-06', TeacherStrikeSituation::Adhered], ['2025-11-13', TeacherStrikeSituation::NotInformed]] as [$day, $situation]) {
+                Lesson::create([
+                    'class_id' => $class->id, 'starts_at' => "{$day} 09:00:00", 'ends_at' => "{$day} 10:00:00",
+                    'status' => LessonStatus::Prepared, 'outcome' => LessonOutcome::NotHeld,
+                    'outcome_cause' => LessonNotHeldCause::Strike, 'outcome_teacher_situation' => $situation,
+                    'outcome_recorded_at' => "{$day} 10:00:00", 'outcome_recorded_by' => $this->teacher->id, 'created_by' => $this->teacher->id,
+                ]);
+            }
+        });
+
+        $backup = $this->backupUpload();
+        $colleague = User::factory()->create(['email' => 'colega-strike-spec@example.test']);
+        $destination = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($destination, $colleague, $backup);
+        $this->confirmAs($destination, $colleague, $import);
+
+        $this->inOrganization($destination, function (): void {
+            $bySituation = Lesson::where('class_id', SchoolClass::firstOrFail()->id)
+                ->where('outcome', LessonOutcome::NotHeld->value)
+                ->orderBy('starts_at')
+                ->get()
+                ->map(fn (Lesson $lesson): ?string => $lesson->outcome_teacher_situation?->value)
+                ->all();
+
+            $this->assertSame([null, 'adhered', 'not_informed'], $bySituation);
+        });
+    }
+
+    /**
      * @return array<string, array{array<string, mixed>}>
      */
     public static function incoherentNotHeldRows(): array
