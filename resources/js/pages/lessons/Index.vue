@@ -1438,9 +1438,32 @@ function openPostpone(lesson: WeekLesson, event: WeekLesson['day_events'][number
     postponeOpen.value = true;
 }
 
-function openOutcome(lesson: WeekLesson, outcome: SpecialLessonOutcome): void {
+/**
+ * O registo retroativo desta aula (há aulas posteriores já fechadas), tal como o servidor o descreve.
+ * É o MESMO diálogo e a MESMA resposta da página da aula; aqui só se pede quando o professor escolhe
+ * «Aula não realizada», para a semana não pagar uma consulta por cartão.
+ */
+const outcomeRetroactive = ref<{ closed_after: string; blockers: string[] } | null>(null);
+
+async function openOutcome(lesson: WeekLesson, outcome: SpecialLessonOutcome): Promise<void> {
     outcomeLesson.value = lesson;
     outcomeKind.value = outcome;
+    outcomeRetroactive.value = null;
+
+    if (outcome === 'not_held') {
+        try {
+            const response = await fetch(`/lessons/${lesson.ulid}/retroactive-outcome`, {
+                headers: { Accept: 'application/json' },
+            });
+
+            if (response.ok) {
+                outcomeRetroactive.value = ((await response.json()) as { retroactive: { closed_after: string; blockers: string[] } | null }).retroactive;
+            }
+        } catch {
+            // Sem a resposta abre-se o diálogo normal: o servidor continua a recusar o que não pode.
+        }
+    }
+
     outcomeDialogOpen.value = true;
 }
 
@@ -2827,6 +2850,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             :reasons="absenceReasons"
             :not-held-options="notHeldOptions ?? null"
             :initial-outcome="outcomeKind"
+            :retroactive="outcomeRetroactive"
             :unsaved-changes="editorHasUnsavedChanges(outcomeLesson?.ulid)"
             :save-first="saveSummary"
             @recorded="closeEditorOnLesson(outcomeLesson?.ulid)"

@@ -181,6 +181,7 @@ function mountPage(
         classes?: TeacherClass[];
         attach?: boolean;
         activitySessions?: ActivitySessionItem[];
+        notHeldOptions?: { causes: { value: string; label: string }[]; specifications: { value: string; label: string }[] } | null;
     } = {},
 ) {
     inertia.page.url = options.url ?? '/lessons?week=2026-10-05';
@@ -197,6 +198,7 @@ function mountPage(
             absenceReasons: [{ value: 'training', label: 'Formação' }],
             classes: options.classes ?? teacherClasses,
             classView: options.classView ?? null,
+            notHeldOptions: options.notHeldOptions ?? null,
         },
         global: { stubs: { EmptyState: true, teleport: !options.attach } },
         attachTo: options.attach ? document.body : undefined,
@@ -2345,5 +2347,63 @@ describe('vista Semana — sessões das outras atividades', () => {
         const wrapper = mountPage([]);
 
         expect(wrapper.find('empty-state-stub').exists()).toBe(true);
+    });
+});
+
+describe('registo retroativo a partir da semana', () => {
+    const started = () => makeLesson({ ulid: 'started', starts_at: '2026-10-08T10:40:00+01:00', ends_at: '2026-10-08T11:30:00+01:00' });
+    const notHeldOptions = { causes: [{ value: 'strike', label: 'Greve' }], specifications: [] };
+    const answer = (retroactive: { closed_after: string; blockers: string[] } | null) =>
+        vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ retroactive }) } as Response));
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('«Aula não realizada» pede ao servidor o registo retroativo e abre o MESMO diálogo com a resposta', async () => {
+        vi.stubGlobal('fetch', answer({ closed_after: '07/10/2026', blockers: ['tem sumário ou preparação escritos'] }));
+        const wrapper = mountPage([started()], { notHeldOptions });
+
+        await wrapper.get('[data-testid="quick-not-held"]').trigger('click');
+        await flushPromises();
+
+        expect(vi.mocked(fetch).mock.calls[0][0]).toBe('/lessons/started/retroactive-outcome');
+        const dialog = wrapper.findComponent(LessonOutcomeDialog);
+        expect(dialog.props('open')).toBe(true);
+        expect(dialog.props('retroactive')).toEqual({ closed_after: '07/10/2026', blockers: ['tem sumário ou preparação escritos'] });
+    });
+
+    it('sem aulas fechadas depois, abre o diálogo normal (sem retroativo)', async () => {
+        vi.stubGlobal('fetch', answer(null));
+        const wrapper = mountPage([started()], { notHeldOptions });
+
+        await wrapper.get('[data-testid="quick-not-held"]').trigger('click');
+        await flushPromises();
+
+        const dialog = wrapper.findComponent(LessonOutcomeDialog);
+        expect(dialog.props('open')).toBe(true);
+        expect(dialog.props('retroactive')).toBeNull();
+    });
+
+    it('as outras ações não pedem nada ao servidor', async () => {
+        vi.stubGlobal('fetch', answer(null));
+        const wrapper = mountPage([started()], { notHeldOptions });
+
+        await wrapper.get('[data-testid="quick-teacher-absent"]').trigger('click');
+        await flushPromises();
+
+        expect(fetch).not.toHaveBeenCalled();
+        expect(wrapper.findComponent(LessonOutcomeDialog).props('open')).toBe(true);
+    });
+
+    it('se o pedido falha, abre o diálogo normal e é o servidor que recusa', async () => {
+        vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('offline'))));
+        const wrapper = mountPage([started()], { notHeldOptions });
+
+        await wrapper.get('[data-testid="quick-not-held"]').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.findComponent(LessonOutcomeDialog).props('open')).toBe(true);
+        expect(wrapper.findComponent(LessonOutcomeDialog).props('retroactive')).toBeNull();
     });
 });

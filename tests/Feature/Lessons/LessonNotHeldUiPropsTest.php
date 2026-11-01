@@ -122,4 +122,31 @@ class LessonNotHeldUiPropsTest extends TestCase
         config(['lapis.lesson_not_held_enabled' => false]);
         $this->assertNull($this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome']);
     }
+
+    #[Test]
+    public function the_week_asks_the_same_retroactive_answer_as_the_lesson_page(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $early = $this->makeLesson(['starts_at' => '2026-10-12 09:30:00']);
+        $late = $this->makeLesson(['starts_at' => '2026-10-13 09:30:00']);
+        $ask = fn (User $user): array => $this->actingAs($user)->withSession(['organization_id' => $this->organization->id])
+            ->getJson("/lessons/{$early->ulid}/retroactive-outcome")->assertOk()->json();
+
+        $this->assertSame(['retroactive' => null], $ask($this->teacher));
+
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($late->id)->update(['status' => LessonStatus::Taught, 'outcome' => 'taught']));
+        $this->inTenant($this->organization, fn () => LessonSummary::query()->create(['lesson_id' => $early->id, 'content' => 'Escrito']));
+
+        // A mesma resposta da página da aula — uma só fonte, também para os obstáculos.
+        $fromPage = $this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome'];
+        $this->assertSame(['retroactive' => $fromPage], $ask($this->teacher));
+        $this->assertSame(['tem sumário ou preparação escritos'], $fromPage['blockers']);
+
+        // Um observador ou quem não é da turma nunca a recebe.
+        $this->assertSame(['retroactive' => null], $ask($this->observer()));
+        $stranger = User::factory()->create();
+        $stranger->organizations()->attach($this->organization, ['joined_at' => now()]);
+        $this->actingAs($stranger)->withSession(['organization_id' => $this->organization->id])
+            ->getJson("/lessons/{$early->ulid}/retroactive-outcome")->assertForbidden();
+    }
 }
