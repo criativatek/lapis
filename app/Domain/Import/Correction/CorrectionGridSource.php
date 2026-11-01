@@ -85,16 +85,17 @@ enum CorrectionGridSource: string
      * which one is right most of the time.
      *
      * Plickers states one score per student and usually assesses one thing at a
-     * time, so it opens on the global result. Intuitivo states the test's
-     * sections and what each is worth, and a Português paper routinely assesses
-     * Leitura, Educação Literária, Gramática and Escrita in one sitting — so it
-     * opens on the sections, which is both the most faithful reading of the file
-     * and the least work for the teacher.
+     * time, so it opens on the global result. Intuitivo states every question,
+     * what each is worth and the sections they belong to — so it opens on the
+     * questions, the one reading that reproduces the file in full: each student's
+     * mark on each question, the subtotal of each section and the total. Opening
+     * on the sections kept only five numbers per student and left the individual
+     * classifications of the file out of the grid, with no way to get them back.
      */
     public function defaultResultMode(): string
     {
         return match ($this) {
-            self::Intuitivo => ImportMapping::RESULT_PER_GROUP,
+            self::Intuitivo => ImportMapping::RESULT_PER_QUESTION,
             self::Plickers, self::Generic => ImportMapping::RESULT_OVERALL,
         };
     }
