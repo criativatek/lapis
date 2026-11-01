@@ -398,11 +398,11 @@ class LessonNotHeldTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Privacidade: a causa é do titular
+    // Privacidade: a causa é da turma; a especificação e a descrição são do titular
     // ------------------------------------------------------------------
 
     #[Test]
-    public function a_colleague_sees_that_the_lesson_was_not_held_but_never_why(): void
+    public function a_colleague_sees_the_cause_but_never_the_specification_or_the_description(): void
     {
         $slot = $this->makeSlot();
         [$a] = $this->thursdays($slot, ['08']);
@@ -423,7 +423,9 @@ class LessonNotHeldTest extends TestCase
         $response = $this->actingAs($colleague)->withSession(['organization_id' => $this->organization->id])->get("/lessons/{$a->ulid}")->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->where('lesson.outcome', 'not_held')
-            ->where('lesson.outcome_cause_label', null)
+            // A causa descreve o que aconteceu à turma: lê-a toda a turma.
+            ->where('lesson.outcome_cause_label', 'Greve')
+            // O que é pessoal fica reservado ao titular.
             ->where('lesson.outcome_teacher_situation_label', null)
             ->where('lesson.outcome_cause_note', null)
             ->where('lesson.outcome_reason_reserved', true)

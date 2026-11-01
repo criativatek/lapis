@@ -65,6 +65,7 @@ use App\Http\Controllers\LessonInsertionController;
 use App\Http\Controllers\LessonNumberController;
 use App\Http\Controllers\LessonScheduleController;
 use App\Http\Controllers\LessonSequenceController;
+use App\Http\Controllers\LessonServiceReportController;
 use App\Http\Controllers\LessonWeekController;
 use App\Http\Controllers\MarketingController;
 use App\Http\Controllers\NationalHolidaySuggestionController;
@@ -628,6 +629,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // as a lesson ulid.
         // `lessons/next-day` pela mesma razão: leitura JSON do atalho «Aulas de
         // hoje» (próximo dia com aula), que o wildcard engoliria como uma aula.
+        // `lessons/service-report`: o relatório pessoal do serviço letivo. ANTES do
+        // wildcard `lessons/{lesson}`, que o tomaria por uma aula.
+        Route::get('lessons/service-report', [LessonServiceReportController::class, 'index'])->name('lessons.service-report');
         Route::get('lessons/next-day', [LessonWeekController::class, 'nextDay'])->name('lessons.next-day');
         // `lessons/search` pela mesma razão: pesquisa só de leitura nos sumários
         // do ano letivo, e o wildcard `lessons/{lesson}` tomá-la-ia por uma aula.
