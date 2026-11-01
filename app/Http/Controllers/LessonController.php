@@ -10,6 +10,7 @@ use App\Actions\Lessons\RectifyLessonOutcome;
 use App\Actions\Lessons\SaveLessonSummary;
 use App\Actions\Lessons\SetLessonNumber;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
+use App\Http\Requests\Lessons\AdministrativeRectifyLessonOutcomeRequest;
 use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
@@ -567,6 +568,27 @@ class LessonController extends Controller implements HasMiddleware
         );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Resultado corrigido. A correção fica no histórico da aula.')]);
+
+        return back();
+    }
+
+    /**
+     * Correção ADMINISTRATIVA da causa (a direção, com o titular fora da turma). Não abre a aula nem devolve
+     * detalhe nenhum: responde só que foi feito. Ver LessonPolicy::rectifyOutcomeAsAdministrator.
+     */
+    public function rectifyOutcomeAsAdministrator(AdministrativeRectifyLessonOutcomeRequest $request, Lesson $lesson): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $this->rectifyLessonOutcome->executeAsAdministrator(
+            $lesson,
+            $this->user($request),
+            $request->cause(),
+            $request->motive(),
+            $request->causeNote(),
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Causa corrigida. A correção fica registada.')]);
 
         return back();
     }

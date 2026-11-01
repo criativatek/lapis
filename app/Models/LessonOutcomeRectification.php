@@ -23,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property int $lesson_id
  * @property int|null $rectified_by
  * @property Carbon $rectified_at
- * @property string $kind `outcome` | `details`
+ * @property string $kind `outcome` | `details` | `administrative`
  * @property array<string, string|null> $previous
  * @property array<string, string|null> $current
  * @property string $motive
@@ -36,6 +36,9 @@ class LessonOutcomeRectification extends Model
     public const string KIND_OUTCOME = 'outcome';
 
     public const string KIND_DETAILS = 'details';
+
+    /** Correção da causa feita pela direção, com o titular fora da turma (RectifyLessonOutcome::executeAsAdministrator). */
+    public const string KIND_ADMINISTRATIVE = 'administrative';
 
     /** Os campos do resultado que uma correção pode mudar, pela ordem em que se mostram. */
     public const array FIELDS = ['outcome', 'reason', 'note', 'cause', 'situation', 'cause_note'];
