@@ -471,6 +471,50 @@ class LessonAttendanceRoundTripTest extends TestCase
     }
 
     /**
+     * «Greve — escola encerrada» descreve a escola, não uma pessoa: viaja SEM redução na exportação de um colega
+     * (e não conta como aula reduzida), ao contrário da declaração individual «Greve do professor», que não sai.
+     */
+    #[Test]
+    public function school_closed_travels_intact_in_a_colleagues_export_while_the_individual_declaration_does_not(): void
+    {
+        $class = $this->scenario();
+        $colleague = User::factory()->create(['email' => 'colega-escola-encerrada@example.test']);
+
+        $this->inTenant(function () use ($class, $colleague): void {
+            $colleague->organizations()->attach($this->teacher->personalOrganization(), ['joined_at' => now()]);
+            $class->teachers()->attach($colleague, ['role' => 'co_teacher']);
+
+            foreach ([['11-06', TeacherStrikeSituation::SchoolClosed], ['11-13', TeacherStrikeSituation::Adhered], ['11-20', null]] as [$day, $situation]) {
+                Lesson::create([
+                    'class_id' => $class->id, 'starts_at' => "2025-{$day} 09:00:00", 'ends_at' => "2025-{$day} 10:00:00",
+                    'status' => LessonStatus::Prepared, 'outcome' => LessonOutcome::NotHeld, 'outcome_cause' => LessonNotHeldCause::Strike,
+                    'outcome_teacher_situation' => $situation, 'outcome_recorded_at' => "2025-{$day} 10:00:00",
+                    'outcome_recorded_by' => $colleague->id, 'created_by' => $this->teacher->id,
+                ]);
+            }
+        });
+
+        $mine = $this->backupJson($this->backupUploadAs($this->teacher));
+        $byDay = fn (array $json, string $day) => collect($json['lessons'])->first(fn (array $row): bool => str_starts_with($row['starts_at'], "2025-{$day}"));
+
+        // Não é dado reservado: chega inteira ao outro professor da turma.
+        $this->assertSame('school_closed', $byDay($mine, '11-06')['outcome_teacher_situation']);
+        // A declaração individual do colega não sai (viaja reduzida), e o registo genérico continua sem especificação.
+        $this->assertNull($byDay($mine, '11-13')['outcome_teacher_situation']);
+        $this->assertNull($byDay($mine, '11-20')['outcome_teacher_situation']);
+        $this->assertSame(1, $mine['reduced_lessons'], 'Só a declaração individual conta como reduzida.');
+        $this->assertStringNotContainsString('"adhered"', (string) json_encode($mine['lessons']));
+
+        // E restaura-se sem perder a escola encerrada.
+        $import = $this->uploadIntoAs($this->teacher->personalOrganization(), $this->teacher, $this->backupUploadAs($this->teacher));
+        $this->confirmAs($this->teacher->personalOrganization(), $this->teacher, $import);
+        $this->inTenant(fn () => $this->assertSame(
+            TeacherStrikeSituation::SchoolClosed,
+            Lesson::where('class_id', $class->id)->where('starts_at', 'like', '2025-11-06%')->firstOrFail()->outcome_teacher_situation,
+        ));
+    }
+
+    /**
      * @return array<string, array{array<string, mixed>}>
      */
     public static function incoherentNotHeldRows(): array

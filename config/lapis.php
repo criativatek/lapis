@@ -524,11 +524,15 @@ return [
     'lesson_not_held_enabled' => (bool) env('LAPIS_LESSON_NOT_HELD_ENABLED', false),
 
     /*
-    | «Aderi à greve»: especificação OPCIONAL da situação do próprio numa aula
-    | não realizada por greve (`outcome_teacher_situation = adhered`). Desligado
-    | por defeito até a Política de Privacidade e o Acordo o descreverem e a
-    | validação jurídica estar concluída. Sem a chave, a especificação não se
-    | oferece nem se aceita (a greve sem especificação funciona sempre).
+    | «Greve do professor»: declaração VOLUNTÁRIA e INDIVIDUAL da adesão do próprio
+    | numa aula não realizada por greve (`outcome_teacher_situation = adhered`).
+    | Desligado por defeito até a Política de Privacidade e o Acordo o descreverem
+    | e a validação jurídica estar concluída. Controla SÓ esta opção: sem a chave
+    | não se oferece nem se aceita «Greve do professor», mas «Greve» (sem
+    | especificação) e «Greve — escola encerrada» funcionam sempre que
+    | `lesson_not_held_enabled` estiver ligada. Desligá-la depois de haver
+    | registos não apaga nem esconde nenhum: o que já foi gravado lê-se sempre
+    | (ao titular) e mantém-se ao corrigir outra coisa.
     */
     'strike_adhesion_recording' => (bool) env('LAPIS_STRIKE_ADHESION_RECORDING', false),
 

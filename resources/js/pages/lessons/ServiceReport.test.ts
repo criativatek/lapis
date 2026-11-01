@@ -43,7 +43,7 @@ function report(overrides: Record<string, unknown> = {}): NonNullable<Props['rep
             not_held_recorded: 1,
             not_held_by_others: 0,
             causes: [{ cause: 'strike', label: 'Greve', count: 1 }],
-            strike: { total: 1, unspecified: 0, adhered: 1, not_adhered: 0, not_informed: 0 },
+            strike: { total: 1, unspecified: 0, adhered: 1, school_closed: 0, not_adhered: 0, not_informed: 0 },
             teacher_absent: 0,
         },
         ...overrides,
@@ -112,8 +112,26 @@ describe('lessons/ServiceReport', () => {
         const wrapper = mountPage();
 
         expect(wrapper.get('[data-testid="causes"]').text()).toContain('Greve');
-        expect(wrapper.get('[data-testid="strike-lines"]').text()).toContain('Aderi à greve');
+        expect(wrapper.get('[data-testid="strike-lines"]').text()).toContain('Greve do professor');
         expect(wrapper.get('[data-testid="strike-lines"]').text()).not.toContain('Não aderi');
+    });
+
+    it('mostra «Greve — escola encerrada» na sua linha, distinta do legado «Não aderi»', () => {
+        const wrapper = mountPage({
+            report: report({
+                personal: {
+                    not_held_recorded: 2,
+                    not_held_by_others: 0,
+                    causes: [{ cause: 'strike', label: 'Greve', count: 2 }],
+                    strike: { total: 2, unspecified: 0, adhered: 0, school_closed: 1, not_adhered: 1, not_informed: 0 },
+                    teacher_absent: 0,
+                },
+            }),
+        });
+
+        const lines = wrapper.get('[data-testid="strike-lines"]').text();
+        expect(lines).toContain('Greve — escola encerrada');
+        expect(lines).toContain('Não aderi à greve (registos anteriores)');
     });
 
     it('shows no strike specification and no personal block for a colleague who recorded nothing', () => {
@@ -123,7 +141,7 @@ describe('lessons/ServiceReport', () => {
                     not_held_recorded: 0,
                     not_held_by_others: 1,
                     causes: [],
-                    strike: { total: 0, unspecified: 0, adhered: 0, not_adhered: 0, not_informed: 0 },
+                    strike: { total: 0, unspecified: 0, adhered: 0, school_closed: 0, not_adhered: 0, not_informed: 0 },
                     teacher_absent: 0,
                 },
             }),
@@ -141,7 +159,7 @@ describe('lessons/ServiceReport', () => {
                     not_held_recorded: 1,
                     not_held_by_others: 0,
                     causes: [{ cause: 'strike', label: 'Greve', count: 1 }],
-                    strike: { total: 1, unspecified: 1, adhered: 0, not_adhered: 0, not_informed: 0 },
+                    strike: { total: 1, unspecified: 1, adhered: 0, school_closed: 0, not_adhered: 0, not_informed: 0 },
                     teacher_absent: 0,
                 },
             }),
