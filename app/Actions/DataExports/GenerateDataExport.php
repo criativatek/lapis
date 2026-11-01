@@ -47,6 +47,7 @@ use App\Models\SelfAssessmentTemplate;
 use App\Models\Student;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
+use App\Models\TeacherAbsenceReason;
 use App\Models\TimetableActivity;
 use App\Models\TimetableActivitySession;
 use App\Models\User;
@@ -59,6 +60,7 @@ use App\Services\Reporting\Export\ReportDocumentBuilder;
 use App\Services\Timetable\ActivitySessionsXlsxWriter;
 use App\Support\Assessment\DecisionScale;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
+use App\Support\Lessons\LessonOutcomeDetails;
 use App\Support\Retention\RetentionPolicy;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -2205,8 +2207,16 @@ class GenerateDataExport
      * @param  BackupRefs  $refs
      * @return array<string, mixed>
      */
-    protected function lessonRow(Lesson $lesson, array $refs): array
+    protected function lessonRow(Lesson $lesson, array $refs, User $user): array
     {
+        // O backup é DE QUEM O DESCARREGA: leva inteiro o que esse utilizador registou, mas o que
+        // um colega registou e lhe está reservado (motivo de ausência, especificação perante a
+        // greve, descrição de «Outra causa») viaja no valor válido menos específico, para a linha
+        // continuar restaurável sem entregar o dado. A causa («Greve») é da turma e viaja.
+        $class = $refs['classesById']->get($lesson->class_id);
+        $teacherIds = $class === null ? [] : array_values($class->teachers->pluck('id')->map(fn (mixed $id): int => (int) $id)->all());
+        $mayRead = LessonOutcomeDetails::mayRead($lesson->outcome_recorded_by === null ? null : (int) $lesson->outcome_recorded_by, (int) $user->getKey(), $teacherIds);
+
         return [
             'ulid' => $lesson->ulid,
             'class_ulid' => $this->classUlidRef($lesson->class_id, $refs),
@@ -2223,13 +2233,13 @@ class GenerateDataExport
             'status' => $lesson->status->value,
             // v11 (0.146.0): o resultado real da ocorrência.
             'outcome' => $lesson->outcome?->value,
-            'outcome_reason' => $lesson->outcome_reason?->value,
+            'outcome_reason' => $mayRead ? $lesson->outcome_reason?->value : ($lesson->outcome_reason === null ? null : TeacherAbsenceReason::Other->value),
             'outcome_note' => $lesson->outcome_note,
             // v21: a causa de uma aula não realizada. Reservada ao titular na
             // interface; aqui viaja inteira, porque sem ela o restauro invalidaria a linha.
             'outcome_cause' => $lesson->outcome_cause?->value,
-            'outcome_teacher_situation' => $lesson->outcome_teacher_situation?->value,
-            'outcome_cause_note' => $lesson->outcome_cause_note,
+            'outcome_teacher_situation' => $mayRead ? $lesson->outcome_teacher_situation?->value : null,
+            'outcome_cause_note' => $mayRead || $lesson->outcome_cause_note === null ? $lesson->outcome_cause_note : __('Reservado'),
             'outcome_recorded_at' => $lesson->outcome_recorded_at?->toIso8601String(),
             'outcome_recorded_by_email' => $this->authorEmail($lesson->outcome_recorded_by, $refs),
             'attendance_recorded_at' => $lesson->attendance_recorded_at?->toIso8601String(),
@@ -2478,7 +2488,7 @@ class GenerateDataExport
             'class_group_memberships' => $classGroupMemberships->map(fn (ClassGroupMembership $membership): array => $this->classGroupMembershipRow($membership, $refs))->values(),
             'recurring_lesson_slots' => $recurringLessonSlots->map(fn (RecurringLessonSlot $slot): array => $this->recurringLessonSlotRow($slot, $refs))->values(),
             'cancelled_lesson_occurrences' => $cancelledLessonOccurrences->map(fn (CancelledLessonOccurrence $occurrence): array => $this->cancelledLessonOccurrenceRow($occurrence, $refs))->values(),
-            'lessons' => $lessons->map(fn (Lesson $lesson): array => $this->lessonRow($lesson, $refs))->values(),
+            'lessons' => $lessons->map(fn (Lesson $lesson): array => $this->lessonRow($lesson, $refs, $user))->values(),
             'lesson_summaries' => $lessonSummaries->map(fn (LessonSummary $summary): array => $this->lessonSummaryRow($summary, $refs))->values(),
             'lesson_plans' => $lessonPlans->map(fn (LessonPlan $plan): array => $this->lessonPlanRow($plan, $refs))->values(),
             'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),

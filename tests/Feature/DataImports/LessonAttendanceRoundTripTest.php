@@ -273,6 +273,65 @@ class LessonAttendanceRoundTripTest extends TestCase
     }
 
     /**
+     * O backup é DE QUEM O DESCARREGA: leva inteiro o que esse utilizador registou, e o que um
+     * colega registou e lhe está reservado viaja no valor válido menos específico — a linha
+     * continua restaurável, o dado reservado não sai. A causa («Greve») é da turma e viaja.
+     */
+    #[Test]
+    public function a_colleagues_backup_never_carries_what_another_teacher_reserved_but_still_restores(): void
+    {
+        $class = $this->scenario();
+        $colleague = User::factory()->create(['email' => 'colega-backup-privado@example.test']);
+
+        $this->inTenant(function () use ($class, $colleague): void {
+            $colleague->organizations()->attach($this->teacher->personalOrganization(), ['joined_at' => now()]);
+            $class->teachers()->attach($colleague, ['role' => 'co_teacher']);
+
+            $make = fn (string $day, int $author, array $outcome) => Lesson::create([
+                'class_id' => $class->id, 'starts_at' => "2025-{$day} 09:00:00", 'ends_at' => "2025-{$day} 10:00:00",
+                'status' => LessonStatus::Prepared, 'outcome_recorded_at' => "2025-{$day} 10:00:00",
+                'outcome_recorded_by' => $author, 'created_by' => $this->teacher->id,
+            ] + $outcome);
+
+            $make('10-30', $this->teacher->id, ['outcome' => LessonOutcome::TeacherAbsent, 'outcome_reason' => 'official_duty']);
+            $make('11-06', $this->teacher->id, ['outcome' => LessonOutcome::NotHeld, 'outcome_cause' => LessonNotHeldCause::Strike, 'outcome_teacher_situation' => TeacherStrikeSituation::Adhered]);
+            $make('11-13', $this->teacher->id, ['outcome' => LessonOutcome::NotHeld, 'outcome_cause' => LessonNotHeldCause::Other, 'outcome_cause_note' => 'Assunto reservado do professor']);
+            $make('11-20', $colleague->id, ['outcome' => LessonOutcome::NotHeld, 'outcome_cause' => LessonNotHeldCause::Strike, 'outcome_teacher_situation' => TeacherStrikeSituation::NotAdhered]);
+        });
+
+        $own = $this->backupJson($this->backupUpload());
+        $theirs = $this->backupJson($this->backupUploadAs($colleague));
+
+        $byDay = fn (array $json, string $day) => collect($json['lessons'])->first(fn (array $row): bool => str_starts_with($row['starts_at'], "2025-{$day}"));
+
+        // Quem registou lê tudo o que é seu, e a especificação do colega vem reduzida.
+        $this->assertSame('official_duty', $byDay($own, '10-30')['outcome_reason']);
+        $this->assertSame('adhered', $byDay($own, '11-06')['outcome_teacher_situation']);
+        $this->assertSame('Assunto reservado do professor', $byDay($own, '11-13')['outcome_cause_note']);
+        $this->assertNull($byDay($own, '11-20')['outcome_teacher_situation']);
+
+        // O colega não recebe nada reservado, mas recebe as causas da turma e o que é seu.
+        $this->assertSame('other', $byDay($theirs, '10-30')['outcome_reason']);
+        $this->assertNull($byDay($theirs, '11-06')['outcome_teacher_situation']);
+        $this->assertSame('strike', $byDay($theirs, '11-06')['outcome_cause']);
+        $this->assertSame('Reservado', $byDay($theirs, '11-13')['outcome_cause_note']);
+        $this->assertSame('not_adhered', $byDay($theirs, '11-20')['outcome_teacher_situation']);
+        $raw = json_encode($theirs);
+        foreach (['official_duty', 'Assunto reservado do professor', '"adhered"'] as $secret) {
+            $this->assertStringNotContainsString($secret, (string) $raw);
+        }
+
+        // E o backup reduzido restaura-se sem perder nenhuma linha.
+        $target = $colleague->personalOrganization();
+        $import = $this->uploadIntoAs($target, $colleague, $this->backupUploadAs($colleague));
+        $this->confirmAs($target, $colleague, $import);
+        $this->inOrganization($target, fn () => $this->assertSame(
+            [LessonOutcome::TeacherAbsent->value, LessonOutcome::NotHeld->value, LessonOutcome::NotHeld->value, LessonOutcome::NotHeld->value],
+            Lesson::where('class_id', SchoolClass::firstOrFail()->id)->where('starts_at', '>=', '2025-10-30')->whereIn('outcome', [LessonOutcome::TeacherAbsent->value, LessonOutcome::NotHeld->value])->orderBy('starts_at')->pluck('outcome')->map(fn ($outcome) => $outcome instanceof LessonOutcome ? $outcome->value : $outcome)->all(),
+        ));
+    }
+
+    /**
      * @return array<string, array{array<string, mixed>}>
      */
     public static function incoherentNotHeldRows(): array
@@ -1136,6 +1195,16 @@ class LessonAttendanceRoundTripTest extends TestCase
         $this->actingAs($this->teacher)->withSession(['organization_id' => $organization->id])
             ->post('/data-exports')->assertRedirect();
         $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $this->teacher->id)->latest('id')->firstOrFail();
+
+        return new UploadedFile(Storage::disk('local')->path($export->disk_path), 'backup.zip', 'application/zip', null, true);
+    }
+
+    private function backupUploadAs(User $user): UploadedFile
+    {
+        $organization = $this->teacher->personalOrganization();
+        $this->actingAs($user)->withSession(['organization_id' => $organization->id])
+            ->post('/data-exports')->assertRedirect();
+        $export = DataExport::withoutGlobalScope('organization')->where('requested_by', $user->id)->latest('id')->firstOrFail();
 
         return new UploadedFile(Storage::disk('local')->path($export->disk_path), 'backup.zip', 'application/zip', null, true);
     }
