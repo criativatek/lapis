@@ -134,6 +134,9 @@ class LessonController extends Controller implements HasMiddleware
                     TeacherAbsenceReason::cases(),
                 ),
                 'not_held_options' => NotHeldOptions::forPage(),
+                // Registo retroativo: só quando a única coisa que impede o registo é haver
+                // aulas posteriores já fechadas. As razões vão já, para o ecrã as dizer.
+                'retroactive_outcome' => $this->retroactiveOutcome($request, $lesson),
                 // Planeamento que desceu até aqui e já não coube em nenhuma
                 // ocorrência até ao fim do ano (ShiftLessonPlanning).
                 'pending_plan' => $lesson->plan?->planned_summary,
@@ -529,11 +532,36 @@ class LessonController extends Controller implements HasMiddleware
         // seguinte» às cegas deixava o professor sem saber para onde foi o plano.
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => __($recorded)
-                .' '.ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson']),
+            'message' => __($recorded).' '.($request->retroactive()
+                ? __('Nenhuma aula lecionada mudou de número.')
+                : ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson'])),
         ]);
 
         return back()->with('success', $message);
+    }
+
+    /**
+     * @return array{closed_after: string, blockers: list<string>}|null
+     */
+    private function retroactiveOutcome(Request $request, Lesson $lesson): ?array
+    {
+        if (! config('lapis.lesson_not_held_enabled', false)
+            || ! $this->user($request)->can('recordOutcome', $lesson)
+            || $lesson->isClosed()
+            || $lesson->attendanceRecorded()) {
+            return null;
+        }
+
+        $closedAfter = $this->lessonPlanning->closedLessonAfter($lesson);
+
+        if ($closedAfter === null) {
+            return null;
+        }
+
+        return [
+            'closed_after' => $closedAfter->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
+            'blockers' => $this->recordLessonOutcome->retroactiveObstacles($lesson),
+        ];
     }
 
     /**

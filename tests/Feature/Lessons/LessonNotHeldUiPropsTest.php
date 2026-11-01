@@ -3,6 +3,8 @@
 namespace Tests\Feature\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonStatus;
+use App\Models\LessonSummary;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,5 +95,31 @@ class LessonNotHeldUiPropsTest extends TestCase
         $this->assertTrue(collect($teacherWeek)->every(fn (array $row): bool => $row['can_record_outcome'] === true));
         $this->assertNotEmpty($observerWeek);
         $this->assertTrue(collect($observerWeek)->every(fn (array $row): bool => $row['can_record_outcome'] === false));
+    }
+
+    #[Test]
+    public function the_retroactive_option_appears_only_for_an_open_lesson_before_a_closed_one_and_lists_the_blockers(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $early = $this->makeLesson(['starts_at' => '2026-10-12 09:30:00']);
+        $late = $this->makeLesson(['starts_at' => '2026-10-13 09:30:00']);
+
+        // Sem aulas fechadas depois: nada de retroativo.
+        $this->assertNull($this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome']);
+
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($late->id)->update(['status' => LessonStatus::Taught, 'outcome' => 'taught']));
+
+        $retro = $this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome'];
+        $this->assertSame(['closed_after' => '13/10/2026', 'blockers' => []], $retro);
+        $this->assertFalse($this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['can_record_outcome']);
+
+        $this->inTenant($this->organization, fn () => LessonSummary::query()->create(['lesson_id' => $early->id, 'content' => 'Escrito']));
+        $blocked = $this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome'];
+        $this->assertSame(['tem sumário ou preparação escritos'], $blocked['blockers']);
+
+        // Observador e funcionalidade desligada: nunca.
+        $this->assertNull($this->props($this->observer(), "/lessons/{$early->ulid}")['lesson']['retroactive_outcome']);
+        config(['lapis.lesson_not_held_enabled' => false]);
+        $this->assertNull($this->props($this->teacher, "/lessons/{$early->ulid}")['lesson']['retroactive_outcome']);
     }
 }

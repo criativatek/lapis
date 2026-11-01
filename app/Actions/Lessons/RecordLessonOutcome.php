@@ -371,10 +371,37 @@ class RecordLessonOutcome
      */
     private function guardRetroactive(Lesson $locked, Lesson $closedAfter): void
     {
+        $reasons = $this->retroactiveObstacles($locked, true);
+
+        if ($reasons === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'outcome' => __(
+                'A aula de :date, depois desta, já está fechada, e esta aula :reasons. Só uma aula vazia pode ser registada como não realizada depois de aulas fechadas: trata-a individualmente.',
+                [
+                    'date' => $closedAfter->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
+                    'reasons' => implode(', ', $reasons),
+                ],
+            ),
+        ]);
+    }
+
+    /**
+     * Porque é que esta aula NÃO pode ser registada retroativamente (vazio =
+     * pode). A MESMA lista que a recusa do servidor e que o ecrã mostra antes
+     * de o professor tentar — uma só fonte. `$lock` bloqueia o sumário dentro
+     * da transação do registo.
+     *
+     * @return list<string>
+     */
+    public function retroactiveObstacles(Lesson $locked, bool $lock = false): array
+    {
         $reasons = [];
 
         /** @var LessonSummary|null $summary */
-        $summary = $locked->summary()->lockForUpdate()->first();
+        $summary = ($lock ? $locked->summary()->lockForUpdate() : $locked->summary())->first();
 
         if ($summary !== null && collect(['content', 'resources', 'homework', 'private_notes'])
             ->contains(fn (string $field): bool => is_string($summary->getAttribute($field)) && trim((string) $summary->getAttribute($field)) !== '')) {
@@ -397,19 +424,7 @@ class RecordLessonOutcome
             $reasons[] = __('partilha a lição com outro grupo');
         }
 
-        if ($reasons === []) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'outcome' => __(
-                'A aula de :date, depois desta, já está fechada, e esta aula :reasons. Só uma aula vazia pode ser registada como não realizada depois de aulas fechadas: trata-a individualmente.',
-                [
-                    'date' => $closedAfter->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
-                    'reasons' => implode(', ', $reasons),
-                ],
-            ),
-        ]);
+        return $reasons;
     }
 
     /**

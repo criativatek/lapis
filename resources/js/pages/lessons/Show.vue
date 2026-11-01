@@ -86,6 +86,7 @@ type Lesson = {
     can_record_outcome: boolean;
     absence_reasons: { value: string; label: string }[];
     not_held_options?: NotHeldOptions | null;
+    retroactive_outcome?: { closed_after: string; blockers: string[] } | null;
     pending_plan: string | null;
     /** Decididos no servidor — ver LessonController::show(). */
     can_delete: boolean;
@@ -794,6 +795,8 @@ function goBack(event: MouseEvent): void {
             :outcome-teacher-situation-label="lesson.outcome_teacher_situation_label"
             :outcome-cause-note="lesson.outcome_cause_note"
             :not-held-options="lesson.not_held_options"
+            :retroactive-outcome="lesson.retroactive_outcome"
+            :lesson-context="lesson.context_label"
             :can-record="lesson.can_record_outcome"
             :reasons="lesson.absence_reasons"
             :pending-plan="lesson.pending_plan"

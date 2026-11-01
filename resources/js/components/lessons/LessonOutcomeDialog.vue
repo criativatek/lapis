@@ -34,6 +34,12 @@ const props = defineProps<{
     reasons: { value: string; label: string }[];
     /** «Aula não realizada»: causas e especificações. `null`/ausente = funcionalidade desligada. */
     notHeldOptions?: NotHeldOptions | null;
+    /**
+     * Registo RETROATIVO: a aula é anterior a aulas já fechadas. O diálogo só oferece «Aula não
+     * realizada», diz o que acontece à numeração, mostra as razões que impedem (vindas do
+     * servidor) e pede confirmação antes de guardar.
+     */
+    retroactive?: { closed_after: string; blockers: string[] } | null;
     initialOutcome?: SpecialLessonOutcome;
     /** «8.º F · 09:30–10:20» — para o professor saber que aula está a fechar. */
     lessonContext?: string | null;
@@ -55,6 +61,7 @@ const open = defineModel<boolean>('open', { default: false });
 const emit = defineEmits<{ submitting: [boolean]; recorded: [] }>();
 
 const savingFirst = ref(false);
+const confirming = ref(false);
 
 async function saveBeforeRecording(): Promise<void> {
     if (props.saveFirst === undefined || savingFirst.value) {
@@ -80,7 +87,7 @@ const form = useForm<{
     situation: string;
     cause_note: string;
 }>({
-    outcome: 'teacher_absent',
+    outcome: props.retroactive ? 'not_held' : 'teacher_absent',
     reason: '',
     note: '',
     cause: '',
@@ -104,7 +111,11 @@ watch(
 );
 
 watch(open, (value) => {
-    if (value && props.initialOutcome) {
+    confirming.value = false;
+
+    if (value && props.retroactive) {
+        form.outcome = 'not_held';
+    } else if (value && props.initialOutcome) {
         form.outcome = props.initialOutcome;
     }
 });
@@ -112,6 +123,19 @@ watch(open, (value) => {
 function submit(): void {
     if (props.lessonUlid === null || props.unsavedChanges) {
         return;
+    }
+
+    if (props.retroactive) {
+        if (props.retroactive.blockers.length > 0) {
+            return;
+        }
+
+        // Primeiro mostra-se o que vai acontecer; só a segunda confirmação grava.
+        if (!confirming.value) {
+            confirming.value = true;
+
+            return;
+        }
     }
 
     emit('submitting', true);
@@ -126,6 +150,7 @@ function submit(): void {
                 cause: data.cause,
                 ...(data.cause === 'strike' && data.situation !== '' ? { situation: data.situation } : {}),
                 ...(data.cause === 'other' ? { cause_note: data.cause_note.trim() } : {}),
+                ...(props.retroactive ? { retroactive: true } : {}),
             };
         }
 
@@ -174,7 +199,26 @@ function submit(): void {
                     </Button>
                 </div>
 
-                <fieldset class="grid gap-2">
+                <div
+                    v-if="retroactive"
+                    :class="['space-y-2 rounded-xl border p-4 text-sm', SURFACE.sky]"
+                    data-testid="retroactive-info"
+                >
+                    <p>
+                        A aula de {{ retroactive.closed_after }}, depois desta, já está fechada. Podes registar esta aula como
+                        não realizada: nenhuma aula já lecionada muda de número, e fica uma lacuna na numeração no sítio
+                        onde esta aula estava.
+                    </p>
+                    <div v-if="retroactive.blockers.length > 0" data-testid="retroactive-blockers">
+                        <p class="font-medium">Não é possível porque esta aula:</p>
+                        <ul class="list-disc pl-5">
+                            <li v-for="blocker in retroactive.blockers" :key="blocker">{{ blocker }}</li>
+                        </ul>
+                        <p>Trata-a individualmente.</p>
+                    </div>
+                </div>
+
+                <fieldset v-if="!retroactive" class="grid gap-2">
                     <legend class="sr-only">Resultado</legend>
                     <label class="flex min-h-9 items-center gap-2">
                         <input v-model="form.outcome" type="radio" name="outcome" value="teacher_absent" />
@@ -259,13 +303,25 @@ function submit(): void {
                     <InputError :message="form.errors.note" />
                 </div>
 
+                <div v-if="confirming" :class="['space-y-1 rounded-xl border p-4 text-sm', SURFACE.amber]" data-testid="retroactive-confirm">
+                    <p class="font-medium">Confirmas?</p>
+                    <p>
+                        {{ lessonContext }} fica «Aula não realizada» e sem número. Nenhuma aula lecionada muda de número.
+                    </p>
+                    <Button type="button" variant="ghost" class="min-h-11" @click="confirming = false">Rever</Button>
+                </div>
+
                 <DialogFooter class="gap-2">
                     <DialogClose as-child>
                         <Button type="button" variant="outline" class="min-h-11">Cancelar</Button>
                     </DialogClose>
-                    <Button type="submit" class="min-h-11" :disabled="form.processing || lessonUlid === null || unsavedChanges === true">
+                    <Button
+                        type="submit"
+                        class="min-h-11"
+                        :disabled="form.processing || lessonUlid === null || unsavedChanges === true || (retroactive?.blockers.length ?? 0) > 0"
+                    >
                         <Spinner v-if="form.processing" />
-                        Registar
+                        {{ retroactive ? (confirming ? 'Confirmar registo' : 'Continuar') : 'Registar' }}
                     </Button>
                 </DialogFooter>
             </form>

@@ -34,6 +34,10 @@ defineProps<{
     outcomeTeacherSituationLabel?: string | null;
     outcomeCauseNote?: string | null;
     notHeldOptions?: NotHeldOptions | null;
+    /** A aula é anterior a aulas já fechadas: o registo retroativo, com as razões que o impedem. */
+    retroactiveOutcome?: { closed_after: string; blockers: string[] } | null;
+    /** «8.º F · 09:30–10:20» — identifica a aula no diálogo. */
+    lessonContext?: string | null;
     canRecord: boolean;
     reasons: { value: string; label: string }[];
     pendingPlan: string | null;
@@ -46,6 +50,7 @@ defineProps<{
 const emit = defineEmits<{ submitting: [boolean] }>();
 
 const dialogOpen = ref(false);
+const retroactiveOpen = ref(false);
 </script>
 
 <template>
@@ -101,6 +106,23 @@ const dialogOpen = ref(false);
     >
         <Button type="button" variant="outline" class="min-h-11" data-testid="open-outcome-dialog" @click="dialogOpen = true">
             <CalendarX2 class="size-4" /> Não houve aula
+        </Button>
+    </LessonOutcomeDialog>
+
+    <LessonOutcomeDialog
+        v-else-if="retroactiveOutcome && notHeldOptions"
+        v-model:open="retroactiveOpen"
+        :lesson-ulid="lessonUlid"
+        :reasons="reasons"
+        :not-held-options="notHeldOptions"
+        :retroactive="retroactiveOutcome"
+        :lesson-context="lessonContext ?? null"
+        :unsaved-changes="unsavedChanges === true"
+        :save-first="saveFirst"
+        @submitting="(value) => emit('submitting', value)"
+    >
+        <Button type="button" variant="outline" class="min-h-11" data-testid="open-retroactive-dialog" @click="retroactiveOpen = true">
+            <CalendarX2 class="size-4" /> Registar como não realizada
         </Button>
     </LessonOutcomeDialog>
 </template>
