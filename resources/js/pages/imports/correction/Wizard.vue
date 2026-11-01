@@ -28,6 +28,8 @@ type StudentRow = {
     lapis_percentage: string | null;
     group_results?: GroupResult[];
     lapis_total?: string | null;
+    /** Question source key → the mark the file states, or null for a blank cell. Never a zero for a blank. */
+    marks?: Record<string, string | null>;
     participated: boolean;
     enrollment_id: number | null;
     status: 'matched' | 'ambiguous' | 'unmatched' | 'ignored';
@@ -38,6 +40,7 @@ type StudentRow = {
 type ItemRow = {
     source_key: string;
     sequence: number;
+    group_source_key?: string | null;
     code: string | null;
     label: string | null;
     question_text: string | null;
@@ -986,6 +989,7 @@ const REASONS: Record<string, string> = {
     exact_name: 'Nome exato',
     normalised_name: 'Nome normalizado',
     class_number: 'Número da turma',
+    first_and_last_name: 'Primeiro nome e último apelido',
     confirmed_by_teacher: 'Confirmado por si',
     ignored_by_teacher: 'Ignorado por si',
     already_taken: 'Já associado a outra linha',
@@ -1003,6 +1007,106 @@ function matchLabel(student: StudentRow): string {
     }
 
     return reason ?? statusLabel[student.status];
+}
+
+/**
+ * The review grid of a detailed import: every question under its section, a
+ * subtotal after each section, a total at the end — the same shape the grid
+ * will have once confirmed (instruments/Grid.vue draws its sections the same
+ * way). Sections exist only when the file states more than one; a test with a
+ * single section is one row of questions and a total.
+ */
+type ReviewSection = {
+    source_key: string;
+    label: string;
+    items: ItemRow[];
+    possible: string;
+};
+type ReviewColumn = {
+    key: string;
+    item: ItemRow | null;
+    section: ReviewSection | null;
+};
+
+const reviewSections = computed<ReviewSection[]>(() => {
+    if (props.preview.groups.length < 2) {
+        return [];
+    }
+
+    return props.preview.groups
+        .map((group, index) => ({
+            source_key: group.source_key,
+            label: group.label?.trim() || `Grupo ${index + 1}`,
+            items: props.preview.items.filter(
+                (item) => item.group_source_key === group.source_key,
+            ),
+            possible: group.points_possible,
+        }))
+        .filter((section) => section.items.length > 0);
+});
+
+const reviewColumns = computed<ReviewColumn[]>(() => {
+    if (reviewSections.value.length === 0) {
+        return props.preview.items.map((item) => ({
+            key: `item-${item.source_key}`,
+            item,
+            section: null,
+        }));
+    }
+
+    const columns: ReviewColumn[] = [];
+
+    for (const section of reviewSections.value) {
+        for (const item of section.items) {
+            columns.push({
+                key: `item-${item.source_key}`,
+                item,
+                section: null,
+            });
+        }
+
+        columns.push({
+            key: `subtotal-${section.source_key}`,
+            item: null,
+            section,
+        });
+    }
+
+    return columns;
+});
+
+/** What the whole test is worth: the cotações of its questions, as decided so far. */
+const reviewTotalPossible = computed<string>(() => {
+    let total = 0;
+
+    for (const item of props.preview.items) {
+        const points = Number(item.points);
+
+        if (
+            item.points !== null &&
+            item.points !== '' &&
+            Number.isFinite(points)
+        ) {
+            total += points;
+        }
+    }
+
+    return String(Number(total.toFixed(4)));
+});
+
+function reviewSubtotal(
+    student: StudentRow,
+    section: ReviewSection,
+): string | null {
+    return (
+        student.group_results?.find(
+            (result) => result.source_key === section.source_key,
+        )?.earned ?? null
+    );
+}
+
+function reviewHeading(item: ItemRow): string {
+    return item.label?.trim() || item.code?.trim() || `Q${item.sequence}`;
 }
 
 /** «11 certas · 20 respondidas», and never a zero dressed up as a mark. */
@@ -2681,7 +2785,167 @@ const typeName = computed(
                 </div>
             </dl>
 
-            <div class="overflow-x-auto rounded-lg border border-border">
+            <!--
+              A detailed import is reviewed as the grid it is about to become:
+              every mark of every student under its question, the subtotal of
+              each section, the total. A teacher reads a row against the paper
+              and only then confirms. The table scrolls on its own and the
+              student's name stays put, because twenty-three columns do not fit
+              on any screen and the name is what one is looking for.
+            -->
+            <div
+                v-if="detailed && preview.items.length > 0"
+                class="overflow-x-auto rounded-lg border border-border"
+                data-testid="review-grid"
+            >
+                <table class="w-max min-w-full text-sm">
+                    <thead class="bg-muted/50 text-left">
+                        <tr>
+                            <th
+                                rowspan="2"
+                                class="sticky left-0 z-10 bg-muted px-3 py-2 align-bottom font-medium"
+                            >
+                                Aluno
+                            </th>
+                            <template v-if="reviewSections.length">
+                                <th
+                                    v-for="section in reviewSections"
+                                    :key="section.source_key"
+                                    :colspan="section.items.length + 1"
+                                    class="border-l border-border px-2 py-1 text-center font-medium whitespace-nowrap"
+                                >
+                                    {{ section.label }}
+                                    <span
+                                        class="font-normal text-muted-foreground"
+                                        >({{ section.possible }})</span
+                                    >
+                                </th>
+                            </template>
+                            <th
+                                v-else
+                                :colspan="preview.items.length"
+                                class="border-l border-border px-2 py-1 text-center font-medium"
+                            >
+                                Perguntas
+                            </th>
+                            <th
+                                rowspan="2"
+                                class="border-l border-border px-3 py-2 text-right align-bottom font-medium whitespace-nowrap"
+                            >
+                                Total
+                                <span class="font-normal text-muted-foreground"
+                                    >/{{ reviewTotalPossible }}</span
+                                >
+                            </th>
+                            <th
+                                rowspan="2"
+                                class="px-3 py-2 text-right align-bottom font-medium whitespace-nowrap"
+                            >
+                                {{ sourceResultLabel }}
+                            </th>
+                            <th
+                                rowspan="2"
+                                class="px-3 py-2 align-bottom font-medium"
+                            >
+                                Estado
+                            </th>
+                        </tr>
+                        <tr>
+                            <template
+                                v-for="column in reviewColumns"
+                                :key="column.key"
+                            >
+                                <th
+                                    v-if="column.item"
+                                    class="px-2 py-1 text-right font-normal whitespace-nowrap"
+                                    :title="column.item.question_text ?? undefined"
+                                >
+                                    {{ reviewHeading(column.item) }}
+                                    <span class="text-muted-foreground"
+                                        >({{ column.item.points || '—' }})</span
+                                    >
+                                </th>
+                                <th
+                                    v-else
+                                    class="bg-muted/70 px-2 py-1 text-right font-medium"
+                                >
+                                    Subtotal
+                                </th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <tr
+                            v-for="student in preview.students"
+                            :key="student.source_key"
+                            data-testid="review-row"
+                        >
+                            <td
+                                class="sticky left-0 z-10 bg-background px-3 py-2 font-medium whitespace-nowrap"
+                            >
+                                {{ student.display_name ?? '—' }}
+                            </td>
+                            <template
+                                v-for="column in reviewColumns"
+                                :key="column.key"
+                            >
+                                <!-- A blank cell is a blank, never a zero (§5). -->
+                                <td
+                                    v-if="column.item"
+                                    class="px-2 py-2 text-right tabular-nums"
+                                    :class="
+                                        (student.marks?.[column.item.source_key] ?? null) === null
+                                            ? 'text-muted-foreground'
+                                            : ''
+                                    "
+                                    data-testid="review-mark"
+                                >
+                                    {{ student.marks?.[column.item.source_key] ?? '—' }}
+                                </td>
+                                <td
+                                    v-else-if="column.section"
+                                    class="bg-muted/30 px-2 py-2 text-right font-semibold tabular-nums"
+                                    data-testid="review-subtotal"
+                                >
+                                    {{ reviewSubtotal(student, column.section) ?? '—'
+                                    }}<span class="font-normal text-muted-foreground"
+                                        >/{{ column.section.possible }}</span
+                                    >
+                                </td>
+                            </template>
+                            <td
+                                class="border-l border-border px-3 py-2 text-right font-semibold tabular-nums"
+                                data-testid="review-total"
+                            >
+                                {{ student.lapis_total ?? '—'
+                                }}<span class="font-normal text-muted-foreground"
+                                    >/{{ reviewTotalPossible }}</span
+                                >
+                            </td>
+                            <td
+                                class="px-3 py-2 text-right tabular-nums"
+                                :class="
+                                    student.source_score === null
+                                        ? 'text-muted-foreground'
+                                        : ''
+                                "
+                            >
+                                {{ student.source_score ?? '—' }}
+                            </td>
+                            <td class="px-3 py-2 whitespace-nowrap">
+                                <span
+                                    v-if="statesParticipation && !student.participated"
+                                    class="text-amber-700"
+                                    >Não participou nesta aplicação</span
+                                >
+                                <span v-else>{{ matchLabel(student) }}</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div v-else class="overflow-x-auto rounded-lg border border-border">
                 <table class="w-full text-sm">
                     <thead class="bg-muted/50 text-left">
                         <tr>

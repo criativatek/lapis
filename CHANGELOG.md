@@ -27,8 +27,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ## [0.187.2] — 2026-11-02
 
-> **Hotfix: a importação Intuitivo já não falha com um 500 no último passo.**
-> **Sem migrations, sem seeder, sem alterações às aulas não realizadas.**
+> **Importação Intuitivo: o 500 do último passo corrigido, a revisão mostra
+> todas as classificações e os alunos identificam-se pelo primeiro nome e
+> último apelido.** **Sem migrations, sem seeder, sem alterações às aulas não
+> realizadas.**
+
+### Alterado
+
+- **«Rever e importar» é a grelha que vai ser criada.** Num detalhe por
+  perguntas, a revisão mostra, para cada aluno, a classificação de cada
+  pergunta debaixo do seu grupo, o subtotal de cada grupo e o total com a
+  cotação global — em vez de uma percentagem e do número de perguntas. Uma
+  célula em branco é um traço, nunca um zero; um grupo com uma célula em branco
+  não tem subtotal, e o aluno não tem total. A tabela tem o seu próprio scroll
+  horizontal e o nome do aluno fica fixo.
+- **Identificação dos alunos pelo primeiro nome e último apelido.** Quando a
+  plataforma escreve menos nome do que a escola («João Manuel Cunha» contra
+  «João Pedro Cunha»), o aluno é associado automaticamente desde que seja o
+  único da turma com esse primeiro nome e esse último apelido; as partículas
+  («de», «da», «dos», «e») não contam como apelido, e um nome de uma só palavra
+  nunca é associado por esta regra. Dois alunos nessas condições continuam a
+  ser uma pergunta ao professor. Depois de guardar, a revisão continua a dizer
+  por que razão cada par foi feito («Primeiro nome e último apelido»,
+  «Confirmado por si»).
 
 ### Corrigido
 

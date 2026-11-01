@@ -34,6 +34,9 @@ class MatchSourceStudents
 
     public const STATUS_IGNORED = 'ignored';
 
+    /** Words that join Portuguese surnames and are never a surname themselves. */
+    protected const PARTICLES = ['de', 'da', 'do', 'das', 'dos', 'e', 'd'];
+
     /**
      * @param  array<string, int|null>  $alreadyDecided  decisions the teacher already made, which always win
      * @param  string|null  $referenceDate  the date the grid/application itself refers to (M6) — an
@@ -50,6 +53,7 @@ class MatchSourceStudents
         $byNumber = [];
         $byName = [];
         $byNormalised = [];
+        $byFirstAndLast = [];
 
         foreach ($enrollments as $enrollment) {
             if ($enrollment['class_number'] !== null) {
@@ -59,6 +63,12 @@ class MatchSourceStudents
             if ($enrollment['name'] !== null) {
                 $byName[$enrollment['name']][] = $enrollment;
                 $byNormalised[$this->normalise($enrollment['name'])][] = $enrollment;
+
+                $firstAndLast = $this->firstAndLast($enrollment['name']);
+
+                if ($firstAndLast !== null) {
+                    $byFirstAndLast[$firstAndLast][] = $enrollment;
+                }
             }
         }
 
@@ -85,7 +95,7 @@ class MatchSourceStudents
         $rows = [];
 
         foreach ($grid->students as $student) {
-            $row = $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $taken, $everyone);
+            $row = $this->row($student, $alreadyDecided, $byNumber, $byName, $byNormalised, $byFirstAndLast, $taken, $everyone);
 
             if ($row['enrollment_id'] !== null) {
                 $taken[] = $row['enrollment_id'];
@@ -102,11 +112,12 @@ class MatchSourceStudents
      * @param  array<int|string, list<array<string, mixed>>>  $byNumber
      * @param  array<string, list<array<string, mixed>>>  $byName
      * @param  array<string, list<array<string, mixed>>>  $byNormalised
+     * @param  array<string, list<array<string, mixed>>>  $byFirstAndLast
      * @param  list<int>  $taken
      * @param  list<array<string, mixed>>  $everyone  the whole class, so a manual choice is always possible
      * @return array<string, mixed>
      */
-    protected function row(CanonicalStudent $student, array $alreadyDecided, array $byNumber, array $byName, array $byNormalised, array $taken, array $everyone = []): array
+    protected function row(CanonicalStudent $student, array $alreadyDecided, array $byNumber, array $byName, array $byNormalised, array $byFirstAndLast, array $taken, array $everyone = []): array
     {
         $base = [
             'source_key' => $student->sourceKey,
@@ -132,18 +143,28 @@ class MatchSourceStudents
 
         // A decision already taken always wins, including the decision to leave
         // a row out — which is why null is checked with array_key_exists.
+        $ladder = $this->ladder($student, $byNumber, $byName, $byNormalised, $byFirstAndLast);
+
         if (array_key_exists($student->sourceKey, $alreadyDecided)) {
             $chosen = $alreadyDecided[$student->sourceKey];
 
+            // Saving the step keeps what was pre-filled, and what was pre-filled
+            // was the automatic answer. The review still says WHY the pair was
+            // made — «primeiro nome e último apelido» is worth a second look,
+            // «confirmado por si» is a choice the teacher actually made — so an
+            // automatic pair keeps its reason unless the teacher picked someone
+            // else.
             return [
                 ...$base,
                 'enrollment_id' => $chosen,
                 'status' => $chosen === null ? self::STATUS_IGNORED : self::STATUS_MATCHED,
-                'reason' => $chosen === null ? 'ignored_by_teacher' : 'confirmed_by_teacher',
+                'reason' => $chosen === null
+                    ? 'ignored_by_teacher'
+                    : ($this->automaticReasonFor($chosen, $ladder) ?? 'confirmed_by_teacher'),
             ];
         }
 
-        foreach ($this->ladder($student, $byNumber, $byName, $byNormalised) as $reason => $candidates) {
+        foreach ($ladder as $reason => $candidates) {
             if ($candidates === []) {
                 continue;
             }
@@ -190,20 +211,71 @@ class MatchSourceStudents
      * practice it starts at the name — but the rung exists because Intuitivo and
      * a teacher's own spreadsheet routinely do carry one.
      *
+     * The last rung is the first name together with the last surname. A
+     * platform rarely holds the whole name the school holds — Intuitivo writes
+     * «João Manuel Cunha» where Lapispro has «João Pedro Cunha» — and asking the
+     * teacher to pair twenty rows by hand for the sake of middle names is the
+     * afternoon of clicking this class exists to spare. The rung is still exact:
+     * it matches one student or nobody, a second «João Cunha» in the class turns
+     * it into a question, and a name with a single word never reaches it.
+     *
      * @param  array<int|string, list<array<string, mixed>>>  $byNumber
      * @param  array<string, list<array<string, mixed>>>  $byName
      * @param  array<string, list<array<string, mixed>>>  $byNormalised
+     * @param  array<string, list<array<string, mixed>>>  $byFirstAndLast
      * @return array<string, list<array<string, mixed>>>
      */
-    protected function ladder(CanonicalStudent $student, array $byNumber, array $byName, array $byNormalised): array
+    protected function ladder(CanonicalStudent $student, array $byNumber, array $byName, array $byNormalised, array $byFirstAndLast = []): array
     {
         $name = $student->displayName;
+        $firstAndLast = $name === null ? null : $this->firstAndLast($name);
 
         return [
             'class_number' => $student->classNumber === null ? [] : ($byNumber[$student->classNumber] ?? []),
             'exact_name' => $name === null ? [] : ($byName[$name] ?? []),
             'normalised_name' => $name === null ? [] : ($byNormalised[$this->normalise($name)] ?? []),
+            'first_and_last_name' => $firstAndLast === null ? [] : ($byFirstAndLast[$firstAndLast] ?? []),
         ];
+    }
+
+    /**
+     * The rung that would have paired this row with the student the teacher
+     * kept — or null when the automatic answer was somebody else, nobody, or a
+     * question.
+     *
+     * @param  array<string, list<array<string, mixed>>>  $ladder
+     */
+    protected function automaticReasonFor(int $chosen, array $ladder): ?string
+    {
+        foreach ($ladder as $reason => $candidates) {
+            if ($candidates === []) {
+                continue;
+            }
+
+            return count($candidates) === 1 && $candidates[0]['id'] === $chosen ? $reason : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * «joao cunha» for «João Manuel de Sousa Cunha»: the first word and the last
+     * word of the normalised name, with the particles that join Portuguese
+     * surnames («de», «da», «dos», «e»…) never counting as a word. Null for a
+     * name with fewer than two words, which has no surname to go by.
+     */
+    protected function firstAndLast(string $name): ?string
+    {
+        $words = array_values(array_filter(
+            explode(' ', $this->normalise($name)),
+            fn (string $word): bool => $word !== '' && ! in_array($word, self::PARTICLES, true),
+        ));
+
+        if (count($words) < 2) {
+            return null;
+        }
+
+        return $words[0].' '.$words[count($words) - 1];
     }
 
     /**
