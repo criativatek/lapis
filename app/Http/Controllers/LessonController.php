@@ -124,7 +124,8 @@ class LessonController extends Controller implements HasMiddleware
                 'outcome_note' => $lesson->outcome_note,
                 // As mesmas três recusas de RecordLessonOutcome::guard(), para
                 // que o botão não prometa o que o servidor recusa.
-                'can_record_outcome' => ! $lesson->isClosed()
+                'can_record_outcome' => $this->user($request)->can('recordOutcome', $lesson)
+                    && ! $lesson->isClosed()
                     && ! $lesson->attendanceRecorded()
                     && $this->lessonPlanning->closedLessonAfter($lesson) === null,
                 'absence_reasons' => array_map(

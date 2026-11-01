@@ -231,7 +231,7 @@ class LessonNotHeldTest extends TestCase
     // ------------------------------------------------------------------
 
     #[Test]
-    public function a_strike_defaults_to_adhesion_not_confirmed_and_the_teacher_may_declare_not_adhered(): void
+    public function a_strike_alone_is_the_default_and_leaves_the_specification_empty(): void
     {
         $slot = $this->makeSlot();
         [$a, $b] = $this->thursdays($slot, ['08', '15']);
@@ -240,9 +240,85 @@ class LessonNotHeldTest extends TestCase
         $this->record($b, LessonNotHeldCause::Strike, TeacherStrikeSituation::NotAdhered);
 
         $this->inTenant($this->organization, function () use ($a, $b): void {
-            $this->assertSame(TeacherStrikeSituation::NotInformed, $a->refresh()->outcome_teacher_situation);
+            // `null` = o professor não quis especificar; não é «desconhecido» e nada se infere.
+            $this->assertNull($a->refresh()->outcome_teacher_situation);
+            $this->assertSame(LessonNotHeldCause::Strike, $a->outcome_cause);
             $this->assertSame(TeacherStrikeSituation::NotAdhered, $b->refresh()->outcome_teacher_situation);
         });
+    }
+
+    #[Test]
+    public function adhesion_is_an_optional_specification_available_only_behind_the_flag(): void
+    {
+        $slot = $this->makeSlot();
+        [$a, $b] = $this->thursdays($slot, ['08', '15']);
+
+        $this->assertSame(['not_adhered'], array_column(TeacherStrikeSituation::available(), 'value'));
+
+        try {
+            $this->record($a, LessonNotHeldCause::Strike, TeacherStrikeSituation::Adhered);
+            $this->fail('devia recusar');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('situation', $exception->errors());
+        }
+        $this->inTenant($this->organization, fn () => $this->assertNull($a->refresh()->outcome));
+
+        config(['lapis.strike_adhesion_recording' => true]);
+        $this->assertSame(['adhered', 'not_adhered'], array_column(TeacherStrikeSituation::available(), 'value'));
+
+        $this->record($b, LessonNotHeldCause::Strike, TeacherStrikeSituation::Adhered);
+        $this->inTenant($this->organization, function () use ($b): void {
+            $this->assertSame(LessonOutcome::NotHeld, $b->refresh()->outcome);
+            $this->assertSame(TeacherStrikeSituation::Adhered, $b->outcome_teacher_situation);
+            $this->assertNull($b->lesson_number);
+            $this->assertNull($b->outcome_reason);
+        });
+    }
+
+    #[Test]
+    public function the_http_request_takes_the_strike_shapes_and_refuses_the_rest(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $slot = $this->makeSlot();
+        [$a, $b, $c, $d] = $this->thursdays($slot, ['08', '15', '22', '29']);
+
+        // Sem a chave, «aderi» e o legado «not_informed» não se aceitam.
+        $this->asTeacher()->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'adhered'])->assertSessionHasErrors('situation');
+        $this->asTeacher()->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'not_informed'])->assertSessionHasErrors('situation');
+        $this->asTeacher()->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'weather_closure', 'situation' => 'not_adhered'])->assertSessionHasErrors('situation');
+
+        $this->asTeacher()->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike'])->assertSessionHasNoErrors();
+        $this->asTeacher()->post("/lessons/{$b->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'not_adhered'])->assertSessionHasNoErrors();
+
+        config(['lapis.strike_adhesion_recording' => true]);
+        $this->asTeacher()->post("/lessons/{$c->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'adhered'])->assertSessionHasNoErrors();
+
+        $this->inTenant($this->organization, function () use ($a, $b, $c, $d): void {
+            $this->assertNull($a->refresh()->outcome_teacher_situation);
+            $this->assertSame(TeacherStrikeSituation::NotAdhered, $b->refresh()->outcome_teacher_situation);
+            $this->assertSame(TeacherStrikeSituation::Adhered, $c->refresh()->outcome_teacher_situation);
+            $this->assertNull($d->refresh()->outcome);
+        });
+    }
+
+    #[Test]
+    public function a_legacy_not_informed_record_is_still_read_and_is_distinct_from_no_specification(): void
+    {
+        $slot = $this->makeSlot();
+        [$a, $b] = $this->thursdays($slot, ['08', '15']);
+        $this->record($a, LessonNotHeldCause::Strike);
+        $this->record($b, LessonNotHeldCause::Strike);
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($b->id)->update(['outcome_teacher_situation' => 'not_informed']));
+
+        $this->inTenant($this->organization, function () use ($a, $b): void {
+            $this->assertNull($a->refresh()->outcome_teacher_situation);
+            $this->assertSame(TeacherStrikeSituation::NotInformed, $b->refresh()->outcome_teacher_situation);
+        });
+
+        $this->asTeacher()->get("/lessons/{$b->ulid}")->assertOk()
+            ->assertInertia(fn ($page) => $page->where('lesson.outcome_teacher_situation_label', 'Adesão não confirmada')->etc());
+        $this->asTeacher()->get("/lessons/{$a->ulid}")->assertOk()
+            ->assertInertia(fn ($page) => $page->where('lesson.outcome_teacher_situation_label', null)->where('lesson.outcome_cause_label', 'Greve')->etc());
     }
 
     #[Test]
@@ -253,12 +329,20 @@ class LessonNotHeldTest extends TestCase
         $this->inTenant($this->organization, fn () => $this->schoolClass->teachers()->attach($observer, ['role' => 'observer']));
         $slot = $this->makeSlot();
         [$a] = $this->thursdays($slot, ['08']);
+        config(['lapis.lesson_not_held_enabled' => true]);
 
+        // Pelo pedido, um observador nem sequer regista resultados.
+        $this->actingAs($observer)->withSession(['organization_id' => $this->organization->id])
+            ->post("/lessons/{$a->ulid}/outcome", ['outcome' => 'not_held', 'cause' => 'strike', 'situation' => 'not_adhered'])
+            ->assertForbidden();
+        $this->inTenant($this->organization, fn () => $this->assertNull($a->refresh()->outcome));
+
+        // E, mesmo chamando a ação diretamente, a declaração não lhe é atribuída.
         $this->inTenant($this->organization, fn () => app(RecordLessonOutcome::class)->execute(
             $a, LessonOutcome::NotHeld, $observer, null, null, LessonNotHeldCause::Strike, TeacherStrikeSituation::NotAdhered,
         ));
 
-        $this->inTenant($this->organization, fn () => $this->assertSame(TeacherStrikeSituation::NotInformed, $a->refresh()->outcome_teacher_situation));
+        $this->inTenant($this->organization, fn () => $this->assertNull($a->refresh()->outcome_teacher_situation));
     }
 
     #[Test]
@@ -332,7 +416,7 @@ class LessonNotHeldTest extends TestCase
         $own->assertInertia(fn ($page) => $page
             ->where('lesson.outcome', 'not_held')
             ->where('lesson.outcome_cause_label', 'Greve')
-            ->where('lesson.outcome_teacher_situation_label', 'Não aderi')
+            ->where('lesson.outcome_teacher_situation_label', 'Não aderi à greve')
             ->where('lesson.outcome_reason_reserved', false)
             ->etc());
 

@@ -127,7 +127,10 @@ class LessonOutcomePrivacyTest extends TestCase
     {
         $observer = $this->member('observer');
         $theirs = $this->absentLesson(null, '2026-10-14 09:30:00');
-        $mine = $this->absentLesson($observer);
+        // Um observador já não regista resultados (LessonPolicy::recordOutcome), mas
+        // há registos anteriores feitos por quem o era: continua a lê-los.
+        $mine = $this->absentLesson(null, '2026-10-16 09:30:00');
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($mine->id)->update(['outcome_recorded_by' => $observer->id]));
 
         $this->assertSame('Serviço oficial', $this->showProps($observer, $mine)['outcome_reason_label']);
         $this->assertNull($this->showProps($observer, $theirs)['outcome_reason_label']);

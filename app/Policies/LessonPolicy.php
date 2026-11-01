@@ -23,6 +23,19 @@ class LessonPolicy
         return $this->teaches($user, $lesson->schoolClass);
     }
 
+    /**
+     * Registar o resultado de uma aula (ausência, atividade, não realizada).
+     * Um observador acompanha a turma mas não declara o que aconteceu numa
+     * aula: a pertença não chega, como em SubjectParticipationPolicy::manage.
+     */
+    public function recordOutcome(User $user, Lesson $lesson): bool
+    {
+        return $lesson->schoolClass->teachers()
+            ->whereKey($user->getKey())
+            ->wherePivot('role', '!=', 'observer')
+            ->exists();
+    }
+
     public function delete(User $user, Lesson $lesson): bool
     {
         return $this->teaches($user, $lesson->schoolClass);
