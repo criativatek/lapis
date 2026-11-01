@@ -690,16 +690,37 @@ final class LessonNumbering
         // A corrida inicial: para trás a partir da primeira fixa.
         if ($first !== null) {
             $anchor = (int) $starts[$first];
+            // Âncora HISTÓRICA (aula fechada e numerada): as abertas anteriores
+            // CONSERVAM o número que o professor já viu, desde que continue livre,
+            // ordenado e abaixo da seguinte. Contar para trás a partir dela
+            // deslocava a aula 1 para a 2 sempre que uma aula do meio deixava de
+            // numerar (uma «não realizada»), e a lacuna aparecia no INÍCIO em vez
+            // de onde a aula estava. Com âncora MANUAL conta-se para trás, como
+            // sempre: o professor acabou de indicar o número e o resto deriva dele.
+            $keepStored = $kinds[$first] === self::HISTORY;
+            $limit = $anchor;
 
             for ($distance = 1; $first - $distance >= 0; $distance++) {
                 $index = $first - $distance;
-                $candidate = $anchor - $distance;
+                $candidate = $keepStored ? min($anchor - $distance, $limit - 1) : $anchor - $distance;
+
+                if ($keepStored) {
+                    $stored = $this->storedNumber($units[$index]);
+
+                    if ($stored !== null && $stored >= 1 && $stored < $limit && ! isset($occupied[$stored])) {
+                        $candidate = $stored;
+                    }
+                }
 
                 $starts[$index] = $this->assign(
                     $units[$index],
                     $candidate >= 1 && ! isset($occupied[$candidate]) ? $candidate : null,
                     $occupied,
                 );
+
+                if ($keepStored && $starts[$index] !== null) {
+                    $limit = $starts[$index];
+                }
             }
         }
 
@@ -745,6 +766,22 @@ final class LessonNumbering
         }
 
         return $records;
+    }
+
+    /**
+     * O número já gravado numa unidade (a primeira aula que o tem).
+     *
+     * @param  list<Lesson>  $unit
+     */
+    private function storedNumber(array $unit): ?int
+    {
+        foreach ($unit as $lesson) {
+            if ($lesson->lesson_number !== null) {
+                return (int) $lesson->lesson_number;
+            }
+        }
+
+        return null;
     }
 
     /**

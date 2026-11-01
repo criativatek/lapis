@@ -349,7 +349,7 @@ class ReconcileLessonsWithCalendarExceptionsTest extends TestCase
     }
 
     #[Test]
-    public function open_lessons_before_a_taught_one_close_the_hole_and_leave_the_gap_up_front(): void
+    public function open_lessons_before_a_taught_one_keep_their_numbers_and_the_gap_stays_where_the_lesson_was(): void
     {
         $this->thursdaySlot();
         $this->materialize('2026-10-01', '2026-11-05');
@@ -359,10 +359,11 @@ class ReconcileLessonsWithCalendarExceptionsTest extends TestCase
 
         $plan = $this->runTeacher();
 
-        // As abertas anteriores à fixa (01 e 08) derivam para trás a partir da lecionada.
-        $this->assertSame(['2026-10-01' => 2, '2026-10-08' => 3, '2026-10-22' => 4, '2026-10-29' => 5, '2026-11-05' => 6], $this->numberByDay());
-        $this->assertSame([1], array_values($plan->gaps)[0]);
-        $this->assertSame(2, $plan->classes[0]['renumbered']);
+        // As abertas anteriores à lecionada (01 e 08) conservam o número que o
+        // professor já via: a lacuna fica onde a aula 15 estava, não no início.
+        $this->assertSame(['2026-10-01' => 1, '2026-10-08' => 2, '2026-10-22' => 4, '2026-10-29' => 5, '2026-11-05' => 6], $this->numberByDay());
+        $this->assertSame([3], array_values($plan->gaps)[0]);
+        $this->assertSame(0, $plan->classes[0]['renumbered']);
     }
 
     #[Test]
@@ -560,8 +561,8 @@ class ReconcileLessonsWithCalendarExceptionsTest extends TestCase
         $this->assertSame(2, $plan->totals['retired']);
         $this->assertCount(2, $plan->classes);
         $this->assertSame([1, 2, 3, 4, 5], $this->classNumbers($this->schoolClass));
-        $this->assertSame([2, 3, 4, 5, 6], $this->classNumbers($support));
-        $this->assertSame([$support->id => [1]], $plan->gaps);
+        $this->assertSame([1, 2, 4, 5, 6], $this->classNumbers($support));
+        $this->assertSame([$support->id => [3]], $plan->gaps);
     }
 
     // ------------------------------------------------------------------
