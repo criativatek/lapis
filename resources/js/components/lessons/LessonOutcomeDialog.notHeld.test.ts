@@ -146,3 +146,69 @@ describe('LessonOutcomeDialog — aula não realizada', () => {
         expect(posted[0].data).toEqual({ outcome: 'class_external_activity', note: null });
     });
 });
+
+describe('LessonOutcomeDialog — registo retroativo', () => {
+    beforeEach(() => {
+        posted.length = 0;
+    });
+
+    function mountRetro(blockers: string[] = []) {
+        return mount(LessonOutcomeDialog, {
+            props: {
+                open: true,
+                lessonUlid: 'lesson-a',
+                lessonContext: '7.º A · 09:30–10:20',
+                reasons: [],
+                notHeldOptions: options,
+                retroactive: { closed_after: '22/10/2026', blockers },
+            },
+            global: { stubs: { teleport: true } },
+        });
+    }
+
+    it('só oferece «Aula não realizada», diz a data da aula fechada e o efeito na numeração', () => {
+        const wrapper = mountRetro();
+
+        expect(wrapper.find('input[value="teacher_absent"]').exists()).toBe(false);
+        expect(wrapper.get('[data-testid="retroactive-info"]').text()).toContain('22/10/2026');
+        expect(wrapper.get('[data-testid="retroactive-info"]').text()).toContain('nenhuma aula já lecionada muda de número');
+    });
+
+    it('pede confirmação antes de gravar e envia retroactive só à segunda', async () => {
+        const wrapper = mountRetro();
+        await wrapper.get('#outcome-cause').setValue('strike');
+        await wrapper.get('form').trigger('submit');
+
+        expect(posted).toEqual([]);
+        expect(wrapper.get('[data-testid="retroactive-confirm"]').text()).toContain('7.º A · 09:30–10:20');
+
+        await wrapper.get('form').trigger('submit');
+
+        expect(posted).toEqual([
+            { url: '/lessons/lesson-a/outcome', data: { outcome: 'not_held', cause: 'strike', retroactive: true } },
+        ]);
+    });
+
+    it('«Rever» volta atrás sem gravar', async () => {
+        const wrapper = mountRetro();
+        await wrapper.get('#outcome-cause').setValue('weather_closure');
+        await wrapper.get('form').trigger('submit');
+        await wrapper.get('[data-testid="retroactive-confirm"] button').trigger('click');
+
+        expect(wrapper.find('[data-testid="retroactive-confirm"]').exists()).toBe(false);
+        expect(posted).toEqual([]);
+    });
+
+    it('explica concretamente porque não é possível e não deixa continuar', async () => {
+        const wrapper = mountRetro(['tem sumário ou preparação escritos', 'tem faltas em rascunho']);
+        await wrapper.get('#outcome-cause').setValue('strike');
+
+        const blockers = wrapper.get('[data-testid="retroactive-blockers"]').text();
+        expect(blockers).toContain('tem sumário ou preparação escritos');
+        expect(blockers).toContain('tem faltas em rascunho');
+        expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined();
+
+        await wrapper.get('form').trigger('submit');
+        expect(posted).toEqual([]);
+    });
+});
