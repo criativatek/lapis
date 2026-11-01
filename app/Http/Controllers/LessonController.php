@@ -502,6 +502,7 @@ class LessonController extends Controller implements HasMiddleware
             $request->cause(),
             $request->situation(),
             $request->causeNote(),
+            $request->retroactive(),
         );
 
         $outcomeAfter = $this->usage->attempt(

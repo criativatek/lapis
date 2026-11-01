@@ -5,6 +5,8 @@ namespace App\Actions\Lessons;
 use App\Models\Lesson;
 use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
+use App\Models\LessonPlan;
+use App\Models\LessonSummary;
 use App\Models\SchoolClass;
 use App\Models\TeacherAbsenceReason;
 use App\Models\TeacherStrikeSituation;
@@ -56,8 +58,9 @@ class RecordLessonOutcome
         ?LessonNotHeldCause $cause = null,
         ?TeacherStrikeSituation $situation = null,
         ?string $causeNote = null,
+        bool $retroactive = false,
     ): Lesson {
-        return $this->perform($lesson, $outcome, $actor, $reason, $note, $cause, $situation, $causeNote)['lesson'];
+        return $this->perform($lesson, $outcome, $actor, $reason, $note, $cause, $situation, $causeNote, $retroactive)['lesson'];
     }
 
     /**
@@ -82,24 +85,26 @@ class RecordLessonOutcome
         ?LessonNotHeldCause $cause = null,
         ?TeacherStrikeSituation $situation = null,
         ?string $causeNote = null,
+        bool $retroactive = false,
     ): array {
         if ($outcome === LessonOutcome::Taught) {
             throw new \InvalidArgumentException('Lecionada regista-se em MarkLessonAsTaught.');
         }
 
-        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason, $cause, $situation, $causeNote): array {
+        return DB::transaction(function () use ($actor, $lesson, $note, $outcome, $reason, $cause, $situation, $causeNote, $retroactive): array {
             SchoolClass::query()->whereKey($lesson->class_id)->lockForUpdate()->first();
 
             /** @var Lesson $locked */
             $locked = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
-            $this->guard($locked, $outcome, $reason, $cause, $situation, $causeNote);
+            $isRetroactive = $this->guard($locked, $outcome, $reason, $cause, $situation, $causeNote, $retroactive);
 
             $fromNumber = $locked->lesson_number;
 
             // A FOTOGRAFIA DA GUARDA, antes de fechar a aula e de mexer nas
             // chaves de lição: as lecionadas coerentes agora têm de o continuar.
             $snapshot = $this->numbering->guardSnapshot($locked->class_id);
+            $numbersBefore = $isRetroactive ? $this->numbersOf($locked->class_id) : [];
             $droppedDrafts = $locked->attendances()->delete();
 
             $locked->outcome = $outcome;
@@ -152,7 +157,14 @@ class RecordLessonOutcome
                 $manualHandedOver = $this->numbering->handOverManualNumber($leftover['after'], $leftover['number']) || $manualHandedOver;
             }
 
-            $renumbered = $this->renumber($locked->class_id, $planning['materialized'], $snapshot);
+            // REGISTO RETROATIVO: a aula é vazia e não pertence a nenhuma lição
+            // partilhada (guardRetroactive). As abertas depois dela fecham o
+            // buraco; as FECHADAS, que não mudam de número, deixam uma lacuna —
+            // `resequenceAcceptingGaps` prende, trata o histórico como fixo e
+            // verifica antes e depois.
+            $renumbered = $isRetroactive
+                ? $this->numbering->resequenceAcceptingGaps($locked->class_id)
+                : $this->renumber($locked->class_id, $planning['materialized'], $snapshot);
 
             // ShiftLessonPlanning só retira o sumário da aula fechada quando
             // algum campo tem texto — uma linha totalmente em branco fica
@@ -184,6 +196,10 @@ class RecordLessonOutcome
                     'lesson_units_relinked' => $relinked,
                     'manual_number_handed_over' => $manualHandedOver,
                     'renumbered_lessons' => count($renumbered),
+                    'retroactive' => $isRetroactive,
+                    // De → para dos números que mudaram, e as lacunas que ficaram.
+                    'renumbered_numbers' => $isRetroactive ? $this->numberChanges($numbersBefore, $this->numbersOf($locked->class_id)) : [],
+                    'gaps' => $isRetroactive ? $this->gapsIn($this->numbersOf($locked->class_id)) : [],
                 ],
             );
 
@@ -226,7 +242,8 @@ class RecordLessonOutcome
         ?LessonNotHeldCause $cause,
         ?TeacherStrikeSituation $situation,
         ?string $causeNote,
-    ): void {
+        bool $retroactive,
+    ): bool {
         if ($locked->isClosed()) {
             throw ValidationException::withMessages([
                 'outcome' => __('Esta aula já tem resultado registado.'),
@@ -249,6 +266,12 @@ class RecordLessonOutcome
 
         $closedAfter = $this->planning->closedLessonAfter($locked);
 
+        if ($closedAfter !== null && $outcome === LessonOutcome::NotHeld && $retroactive) {
+            $this->guardRetroactive($locked, $closedAfter);
+
+            return true;
+        }
+
         if ($closedAfter !== null) {
             throw ValidationException::withMessages([
                 'outcome' => __(
@@ -257,6 +280,8 @@ class RecordLessonOutcome
                 ),
             ]);
         }
+
+        return false;
     }
 
     /**
@@ -326,6 +351,106 @@ class RecordLessonOutcome
         }
 
         return ['relinked' => $relinked, 'leftover' => $leftover];
+    }
+
+    /**
+     * O REGISTO RETROATIVO de uma aula não realizada, depois de aulas
+     * posteriores já fechadas. Só uma aula ABERTA E VAZIA: não se perde nada
+     * (sumário, planeamento, assiduidade) nem se mexe em lições partilhadas, e
+     * os números das lecionadas ficam como estão. Tudo o resto recusa com a
+     * razão, e remete para o tratamento individual.
+     *
+     * @throws ValidationException
+     */
+    private function guardRetroactive(Lesson $locked, Lesson $closedAfter): void
+    {
+        $reasons = [];
+
+        /** @var LessonSummary|null $summary */
+        $summary = $locked->summary()->lockForUpdate()->first();
+
+        if ($summary !== null && collect(['content', 'resources', 'homework', 'private_notes'])
+            ->contains(fn (string $field): bool => is_string($summary->getAttribute($field)) && trim((string) $summary->getAttribute($field)) !== '')) {
+            $reasons[] = __('tem sumário ou preparação escritos');
+        }
+
+        if (LessonPlan::query()->where('lesson_id', $locked->getKey())->exists()) {
+            $reasons[] = __('tem um planeamento pendente');
+        }
+
+        if ($locked->attendances()->exists()) {
+            $reasons[] = __('tem faltas em rascunho');
+        }
+
+        if ($locked->lesson_number_manual || $locked->lesson_number_end !== null) {
+            $reasons[] = __('tem um número indicado por si');
+        }
+
+        if ($locked->lesson_unit_key !== null) {
+            $reasons[] = __('partilha a lição com outro grupo');
+        }
+
+        if ($reasons === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'outcome' => __(
+                'A aula de :date, depois desta, já está fechada, e esta aula :reasons. Só uma aula vazia pode ser registada como não realizada depois de aulas fechadas: trata-a individualmente.',
+                [
+                    'date' => $closedAfter->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
+                    'reasons' => implode(', ', $reasons),
+                ],
+            ),
+        ]);
+    }
+
+    /**
+     * @return array<int, int|null> lesson_id => número gravado
+     */
+    private function numbersOf(int $classId): array
+    {
+        return Lesson::query()
+            ->where('class_id', $classId)
+            ->orderBy('id')
+            ->pluck('lesson_number', 'id')
+            ->map(fn (mixed $number): ?int => $number === null ? null : (int) $number)
+            ->all();
+    }
+
+    /**
+     * @param  array<int, int|null>  $before
+     * @param  array<int, int|null>  $after
+     * @return list<array{from: int|null, to: int|null}>
+     */
+    private function numberChanges(array $before, array $after): array
+    {
+        $changes = [];
+
+        foreach ($after as $lessonId => $number) {
+            if (array_key_exists($lessonId, $before) && $before[$lessonId] !== $number) {
+                $changes[] = ['from' => $before[$lessonId], 'to' => $number];
+            }
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Os números que faltam entre o 1 e o maior atribuído.
+     *
+     * @param  array<int, int|null>  $numbers
+     * @return list<int>
+     */
+    private function gapsIn(array $numbers): array
+    {
+        $present = array_values(array_filter($numbers, fn (?int $number): bool => $number !== null));
+
+        if ($present === []) {
+            return [];
+        }
+
+        return array_values(array_diff(range(1, max($present)), $present));
     }
 
     /**

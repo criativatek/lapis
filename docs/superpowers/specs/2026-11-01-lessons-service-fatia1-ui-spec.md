@@ -88,3 +88,22 @@ Campos enviados: `outcome=not_held`, `cause`, `situation?`, `cause_note?`.
    `LessonWeekController` e na regra do pedido, e só avança com (1) e (2) resolvidos.
 4. **Backup/exportação** continuam a levar a causa dos colegas (o validador a exige).
    Restringir a exportação aos dados do próprio é um seguimento ligado à Política.
+
+## 7. Registo retroativo (PR-3, backend feito; interface por fazer)
+
+O pedido aceita `retroactive=true` só com `outcome=not_held` e a funcionalidade ligada. A
+interface deve:
+
+1. Oferecer «Registar mesmo havendo aulas posteriores fechadas» **só** quando
+   `can_record_outcome` for falso por causa de uma aula fechada posterior **e** a aula
+   estiver vazia. O servidor continua a decidir: recusa com a razão («tem sumário…»,
+   «tem faltas em rascunho», «número indicado por si», «partilha a lição com outro
+   grupo», «planeamento pendente») e remete para o tratamento individual.
+2. Dizer antes de confirmar: «Nenhuma aula já lecionada muda de número. As aulas abertas
+   antes de uma lecionada contam para trás a partir dela, por isso pode ficar uma
+   lacuna na numeração.»
+3. Mostrar, depois, as lacunas (`gaps` da auditoria) no toast.
+
+Regra de numeração (não da operação): as abertas anteriores à primeira lecionada
+numeram-se para trás a partir dela; a lacuna fica no início da sequência.
+
