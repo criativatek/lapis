@@ -339,6 +339,7 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                 :lesson-ulid="lesson.ulid"
                 :context-label="lesson.context_label"
                 :time="time"
+                :can-record-outcome="lesson.can_record_outcome !== false"
                 @outcome="(outcome) => emit('outcome', outcome)"
             />
         </div>

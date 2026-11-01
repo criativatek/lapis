@@ -32,6 +32,7 @@ use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Lessons\LessonNumberingFreeze;
 use App\Support\Lessons\LessonOutcomeDetails;
+use App\Support\Lessons\NotHeldOptions;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
@@ -132,6 +133,7 @@ class LessonController extends Controller implements HasMiddleware
                     fn (TeacherAbsenceReason $reason): array => ['value' => $reason->value, 'label' => $reason->label()],
                     TeacherAbsenceReason::cases(),
                 ),
+                'not_held_options' => NotHeldOptions::forPage(),
                 // Planeamento que desceu até aqui e já não coube em nenhuma
                 // ocorrência até ao fim do ano (ShiftLessonPlanning).
                 'pending_plan' => $lesson->plan?->planned_summary,

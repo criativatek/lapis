@@ -3,6 +3,7 @@ import { CalendarX2 } from '@lucide/vue';
 import { ref } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
+import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
 import { statusToneClasses } from '@/lib/statusTone';
 
 export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held';
@@ -28,6 +29,11 @@ defineProps<{
     /** A categoria existe mas é de outro professor: só se diz que está reservada. */
     outcomeReasonReserved?: boolean;
     outcomeNote: string | null;
+    /** «Aula não realizada»: a causa é da turma; a especificação e a descrição só chegam a quem registou. */
+    outcomeCauseLabel?: string | null;
+    outcomeTeacherSituationLabel?: string | null;
+    outcomeCauseNote?: string | null;
+    notHeldOptions?: NotHeldOptions | null;
     canRecord: boolean;
     reasons: { value: string; label: string }[];
     pendingPlan: string | null;
@@ -53,6 +59,11 @@ const dialogOpen = ref(false);
         <p v-else-if="outcomeReasonReserved" class="text-sm" data-testid="lesson-outcome-reason-reserved">
             O motivo está reservado a quem registou este resultado.
         </p>
+        <p v-if="outcomeCauseLabel" class="text-sm" data-testid="lesson-outcome-cause">Causa: {{ outcomeCauseLabel }}</p>
+        <p v-if="outcomeTeacherSituationLabel" class="text-sm" data-testid="lesson-outcome-situation">
+            A tua situação: {{ outcomeTeacherSituationLabel }}
+        </p>
+        <p v-if="outcomeCauseNote" class="text-sm">{{ outcomeCauseNote }}</p>
         <p v-if="outcomeNote" class="text-sm">{{ outcomeNote }}</p>
         <p class="text-sm">
             <template v-if="outcome === 'teacher_absent' || outcome === 'not_held'">
@@ -83,6 +94,7 @@ const dialogOpen = ref(false);
         v-model:open="dialogOpen"
         :lesson-ulid="lessonUlid"
         :reasons="reasons"
+        :not-held-options="notHeldOptions ?? null"
         :unsaved-changes="unsavedChanges === true"
         :save-first="saveFirst"
         @submitting="(value) => emit('submitting', value)"

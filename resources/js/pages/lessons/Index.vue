@@ -45,6 +45,7 @@ import {
     nextTick,
     onBeforeUnmount,
     onMounted,
+    provide,
     ref,
     watch,
 } from 'vue';
@@ -127,6 +128,8 @@ import type {
     LessonNumberErrors,
     LessonNumberPreview,
 } from '@/lib/lessonNumber';
+import type { NotHeldOptions } from '@/lib/lessonOutcomeOptions';
+import { notHeldEnabledKey } from '@/lib/lessonOutcomeOptions';
 import { projectionFor } from '@/lib/lessonProjection';
 import {
     isQuickClosable,
@@ -187,6 +190,8 @@ const props = withDefaults(
         insertableClasses: InsertableClass[];
         /** As categorias de «Professor ausente» — uma lista para a página, não uma por cartão. */
         absenceReasons: { value: string; label: string }[];
+        /** «Aula não realizada»: causas e especificações; NULL com a funcionalidade desligada. */
+        notHeldOptions?: NotHeldOptions | null;
         /** As turmas do professor no ano letivo, com o tom guardado de cada uma. */
         classes?: TeacherClass[];
         /** Só na vista por turma — montada no servidor, só de leitura. */
@@ -1399,6 +1404,12 @@ const outcomeDialogOpen = ref(false);
 const outcomeLesson = ref<WeekLesson | null>(null);
 const outcomeKind = ref<SpecialLessonOutcome>('teacher_absent');
 
+// Os menus rápidos de cada cartão leem se «Aula não realizada» existe sem receberem a prop.
+provide(
+    notHeldEnabledKey,
+    computed(() => props.notHeldOptions != null),
+);
+
 /** O texto do editor desta aula tem alterações por guardar (0.171.0). */
 function editorHasUnsavedChanges(ulid: string | null | undefined): boolean {
     return ulid != null && editor.value?.ulid === ulid && isDirty();
@@ -2569,6 +2580,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                         :context-label="lesson.context_label"
                         :time="time"
                         :variant="variant"
+                        :can-record-outcome="lesson.can_record_outcome !== false"
                         @outcome="(outcome) => openOutcome(lesson, outcome)"
                     />
                 </template>
@@ -2813,6 +2825,7 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
             v-model:open="outcomeDialogOpen"
             :lesson-ulid="outcomeLesson?.ulid ?? null"
             :reasons="absenceReasons"
+            :not-held-options="notHeldOptions ?? null"
             :initial-outcome="outcomeKind"
             :unsaved-changes="editorHasUnsavedChanges(outcomeLesson?.ulid)"
             :save-first="saveSummary"

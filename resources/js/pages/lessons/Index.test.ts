@@ -1940,7 +1940,7 @@ describe('a página arrumada por função (0.162.0)', () => {
         // O menu (no mock, inline): o elemento que envolve o botão «Mais ações» e o conteúdo.
         const moreActions = new DOMWrapper(wrapper.get('[data-testid="more-actions"]').element.parentElement!.parentElement!);
         const menu = moreActions.findAll('[role="menuitem"]').map((item) => item.text());
-        expect(menu).toEqual(['Selecionar aulas', 'Marcar aulas como lecionadas…', 'Atualizar aulas desta semana', 'Sequências de aulas']);
+        expect(menu).toEqual(['Selecionar aulas', 'Marcar aulas como lecionadas…', 'Atualizar aulas desta semana', 'Sequências de aulas', 'Serviço letivo']);
     });
 
     it('a navegação entre semanas fica junto do calendário, com a semana e os factos dela', () => {
