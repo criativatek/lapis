@@ -25,6 +25,49 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.186.3] — 2026-11-01
+
+> **Importar a ficha do Intuitivo reproduz o Excel: cada pergunta, o subtotal de
+> cada grupo e o total.** O assistente abria o Intuitivo em «Resultados por
+> grupos» — guardava cinco números por aluno e pedia um domínio por grupo — e
+> a grelha de correção, mesmo com as perguntas guardadas, não mostrava grupos
+> nem subtotais, e o total saía sem a cotação global. Agora o Intuitivo abre em
+> «Detalhe por perguntas», com as cotações e as classificações vindas do
+> ficheiro (nada é pedido ao professor além do que o ficheiro não traz), e a
+> grelha mostra o que o Excel mostra.
+
+### Corrigido
+
+- **O Intuitivo abre por perguntas.** `CorrectionGridSource::defaultResultMode()`
+  passa a devolver «por perguntas» para o Intuitivo; Plickers e «Folha de
+  cálculo» não mudam. «Resultados por grupos» e «Classificação global» continuam
+  a um clique.
+- **A grelha de correção mostra os grupos do teste.** Com mais de um grupo, uma
+  fila de cabeçalho nomeia cada grupo com a sua cotação; no fim das perguntas de
+  cada grupo há um **subtotal por aluno** (`obtido/máximo`, a soma das
+  classificações individuais) e o **total** vem com a cotação global — a
+  declarada ou, na sua falta (uma ficha importada não a traz), a soma das
+  cotações. As somas não mostram ruído de vírgula flutuante, uma célula vazia
+  mostra «—» (nunca 0) e um teste simples, com um só grupo, fica como estava.
+- Validado de ponta a ponta com a ficha de referência (21 alunos, 17 perguntas,
+  5 grupos): 357 classificações persistidas e visíveis na grelha, 105 subtotais
+  e 21 totais corretos.
+
+### Compatibilidade
+
+- Sem migrations nesta correção e sem alterações ao motor de cálculo, ao contrato
+  de importação ou à gravação. Nunca houve importações do Intuitivo, por isso não
+  há dados anteriores a migrar.
+- **Atenção ao compor um pacote a partir de `main`:** `main` contém também, já
+  integradas, as alterações do serviço letivo (aulas não realizadas, correção do
+  resultado, relatório «Serviço letivo», exportação com o histórico das
+  correções). Trazem **duas migrations** (`2026_11_26_000100`,
+  `2026_11_27_000100`) e três mudanças visíveis com as chaves desligadas
+  (observadores deixam de registar resultados, numeração com lacuna onde a aula
+  estava, página «Serviço letivo»). As duas chaves
+  (`LAPIS_LESSON_NOT_HELD_ENABLED`, `LAPIS_STRIKE_ADHESION_RECORDING`) ficam
+  desligadas por defeito e continuam à espera da validação jurídica.
+
 ## [0.186.2] — 2026-11-01
 
 > **Importar do Intuitivo: uma recusa já não parece «0 alunos», e o cabeçalho de
