@@ -76,14 +76,30 @@ final class LessonOutcomeDetails
 
     public static function mayReadReason(Lesson $lesson, User $viewer): bool
     {
-        if (! $lesson->schoolClass->teachers()->whereKey($viewer->getKey())->exists()) {
+        return self::mayRead(
+            $lesson->outcome_recorded_by,
+            (int) $viewer->getKey(),
+            array_values($lesson->schoolClass->teachers()->pluck('users.id')->map(fn (mixed $id): int => (int) $id)->all()),
+        );
+    }
+
+    /**
+     * A regra do titular, sem acesso à base de dados: para quem já tem os
+     * professores da turma carregados (a exportação, que olha milhares de
+     * aulas). `mayReadReason` e a exportação decidem pela MESMA função.
+     *
+     * @param  list<int>  $classTeacherIds
+     */
+    public static function mayRead(?int $recordedBy, int $viewerId, array $classTeacherIds): bool
+    {
+        if (! in_array($viewerId, $classTeacherIds, true)) {
             return false;
         }
 
-        if ($lesson->outcome_recorded_by !== null) {
-            return (int) $lesson->outcome_recorded_by === (int) $viewer->getKey();
+        if ($recordedBy !== null) {
+            return $recordedBy === $viewerId;
         }
 
-        return $lesson->schoolClass->teachers()->count() === 1;
+        return count($classTeacherIds) === 1;
     }
 }
