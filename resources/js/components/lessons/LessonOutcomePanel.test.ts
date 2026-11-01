@@ -138,4 +138,24 @@ describe('LessonOutcomePanel', () => {
         expect(panel.classes().filter((name) => /^(dark:)?(bg|border)-(amber|violet)-(50|300|900)$/.test(name))).toEqual([]);
         wrapper.unmount();
     });
+
+    it('mostra o motivo a quem o registou e só diz que está reservado a quem não o registou', () => {
+        const base = {
+            lessonUlid: 'lesson-a',
+            outcome: 'teacher_absent' as const,
+            outcomeLabel: 'Professor ausente',
+            outcomeNote: null,
+            canRecord: false,
+            reasons: [],
+            pendingPlan: null,
+        };
+
+        const own = mount(LessonOutcomePanel, { props: { ...base, outcomeReasonLabel: 'Formação', outcomeReasonReserved: false } });
+        expect(own.text()).toContain('Motivo: Formação');
+        expect(own.find('[data-testid="lesson-outcome-reason-reserved"]').exists()).toBe(false);
+
+        const colleague = mount(LessonOutcomePanel, { props: { ...base, outcomeReasonLabel: null, outcomeReasonReserved: true } });
+        expect(colleague.text()).not.toContain('Formação');
+        expect(colleague.get('[data-testid="lesson-outcome-reason-reserved"]').text()).toContain('reservado');
+    });
 });

@@ -75,6 +75,8 @@ type Lesson = {
     outcome: LessonOutcomeValue | null;
     outcome_label: string | null;
     outcome_reason_label: string | null;
+    /** A categoria é de outro professor da turma: não viaja, só esta indicação. */
+    outcome_reason_reserved?: boolean;
     outcome_note: string | null;
     can_record_outcome: boolean;
     absence_reasons: { value: string; label: string }[];
@@ -780,6 +782,7 @@ function goBack(event: MouseEvent): void {
             :outcome="lesson.outcome"
             :outcome-label="lesson.outcome_label"
             :outcome-reason-label="lesson.outcome_reason_label"
+            :outcome-reason-reserved="lesson.outcome_reason_reserved"
             :outcome-note="lesson.outcome_note"
             :can-record="lesson.can_record_outcome"
             :reasons="lesson.absence_reasons"
