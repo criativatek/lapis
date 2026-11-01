@@ -153,7 +153,7 @@ class CalendarReconciliationPrerequisitesTest extends TestCase
     }
 
     /**
-     * O professor Y vê, na PÁGINA DA AULA, o resultado, o motivo e a nota que
+     * O professor Y vê, na PÁGINA DA AULA, o resultado e a nota da atividade; o motivo (PR-0) fica reservado a quem o registou. Antes: o motivo e a nota que
      * X registou. Na semana, no dashboard e na pesquisa de sumários chega só o
      * resultado (`outcome`/`outcome_label`): o motivo e a nota NUNCA viajam
      * nessas props.
@@ -183,7 +183,9 @@ class CalendarReconciliationPrerequisitesTest extends TestCase
         // Página da aula: tudo chega a Y.
         $show = $this->props($this->actingAsMember($colleague)->get("/lessons/{$absent->ulid}"))['lesson'];
         $this->assertSame('teacher_absent', $show['outcome']);
-        $this->assertSame(TeacherAbsenceReason::Training->label(), $show['outcome_reason_label']);
+        // PR-0: a categoria da ausência já NÃO chega a um colega — só «reservado».
+        $this->assertNull($show['outcome_reason_label']);
+        $this->assertTrue($show['outcome_reason_reserved']);
         $this->assertNull($show['outcome_note']);
         $showActivity = $this->props($this->actingAsMember($colleague)->get("/lessons/{$activity->ulid}"))['lesson'];
         $this->assertSame('class_external_activity', $showActivity['outcome']);

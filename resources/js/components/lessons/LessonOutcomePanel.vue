@@ -25,6 +25,8 @@ defineProps<{
     outcome: LessonOutcomeValue | null;
     outcomeLabel: string | null;
     outcomeReasonLabel: string | null;
+    /** A categoria existe mas é de outro professor: só se diz que está reservada. */
+    outcomeReasonReserved?: boolean;
     outcomeNote: string | null;
     canRecord: boolean;
     reasons: { value: string; label: string }[];
@@ -48,6 +50,9 @@ const dialogOpen = ref(false);
     >
         <p class="font-semibold">{{ outcomeLabel }}</p>
         <p v-if="outcomeReasonLabel" class="text-sm">Motivo: {{ outcomeReasonLabel }}</p>
+        <p v-else-if="outcomeReasonReserved" class="text-sm" data-testid="lesson-outcome-reason-reserved">
+            O motivo está reservado a quem registou este resultado.
+        </p>
         <p v-if="outcomeNote" class="text-sm">{{ outcomeNote }}</p>
         <p class="text-sm">
             <template v-if="outcome === 'teacher_absent'">

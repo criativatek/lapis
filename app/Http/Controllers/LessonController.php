@@ -31,6 +31,7 @@ use App\Services\Lessons\NonTeachingDayConflicts;
 use App\Services\Lessons\ShiftLessonPlanning;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Lessons\LessonNumberingFreeze;
+use App\Support\Lessons\LessonOutcomeDetails;
 use App\Support\Usage\UsageEventType;
 use App\Support\Usage\UsageRecorder;
 use Carbon\CarbonImmutable;
@@ -116,7 +117,10 @@ class LessonController extends Controller implements HasMiddleware
                 // O resultado real da ocorrência (0.146.0) — NULL enquanto aberta.
                 'outcome' => $lesson->outcome?->value,
                 'outcome_label' => $lesson->outcome?->label(),
-                'outcome_reason_label' => $lesson->outcome_reason?->label(),
+                // A categoria da ausência é um dado sobre o professor que a
+                // registou: só a ele chega (LessonOutcomeDetails). Um colega,
+                // observador incluído, vê o resultado e «reservado».
+                ...LessonOutcomeDetails::for($lesson, $this->user($request)),
                 'outcome_note' => $lesson->outcome_note,
                 // As mesmas três recusas de RecordLessonOutcome::guard(), para
                 // que o botão não prometa o que o servidor recusa.
