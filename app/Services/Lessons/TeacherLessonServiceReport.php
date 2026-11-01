@@ -109,6 +109,21 @@ final class TeacherLessonServiceReport
 
         ksort($months);
 
+        // Os meses SEM aulas entre o primeiro e o último aparecem a zero (férias, interrupções):
+        // a evolução lê-se sem buracos, e um mês vazio não é um mês omitido.
+        if ($months !== []) {
+            $cursor = CarbonImmutable::parse(array_key_first($months).'-01');
+            $last = CarbonImmutable::parse(array_key_last($months).'-01');
+
+            while ($cursor->lessThanOrEqualTo($last)) {
+                $key = $cursor->format('Y-m');
+                $months[$key] ??= ['month' => $key, 'planned' => 0, 'given' => 0, 'not_held' => 0, 'not_recorded' => 0, 'given_percentage' => null];
+                $cursor = $cursor->addMonth();
+            }
+
+            ksort($months);
+        }
+
         return array_values(array_map(function (array $month): array {
             $month['given_percentage'] = $this->percentage($month['given'], $month['planned']);
 

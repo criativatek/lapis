@@ -75,6 +75,12 @@ describe('lessons/ServiceReport', () => {
         expect(wrapper.get('[data-testid="summary"]').text()).toContain('Mais 2 aulas previstas');
     });
 
+    it('separates the lessons actually taught from the class activities inside «dadas»', () => {
+        const wrapper = mountPage();
+
+        expect(wrapper.get('[data-testid="given-breakdown"]').text()).toBe('Dadas = 2 lecionadas + 1 com a turma noutra atividade letiva.');
+    });
+
     it('hides the unrecorded note when every lesson is recorded', () => {
         const wrapper = mountPage({
             report: report({ totals: { ...report().totals, not_recorded: 0 } }),
