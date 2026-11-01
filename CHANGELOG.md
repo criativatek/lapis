@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.187.2] — 2026-11-02
+
+> **Hotfix: a importação Intuitivo já não falha com um 500 no último passo.**
+> **Sem migrations, sem seeder, sem alterações às aulas não realizadas.**
+
+### Corrigido
+
+- Confirmar a importação de uma ficha cujo último grupo é uma só coluna com o
+  título completo no cabeçalho (por exemplo «GRUPO V - Expressão escrita»)
+  terminava em `500`: esse texto era usado como código da pergunta e a coluna
+  `instrument_items.code` tem 16 caracteres. O código passa a ser a posição da
+  pergunta (`Q17`) quando o original não cabe; o texto inteiro fica como rótulo.
+  A transação foi sempre revertida, por isso a tentativa falhada não deixou
+  instrumento, grelha nem classificações.
+
 ## [0.187.1] — 2026-11-02
 
 > **«Aula não realizada» — as três opções de uma greve.** Numa aula não realizada

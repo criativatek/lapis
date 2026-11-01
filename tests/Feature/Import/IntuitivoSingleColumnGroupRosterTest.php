@@ -26,6 +26,9 @@ use Tests\Fixtures\Import\IntuitivoWorkbookBuilder;
  */
 class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
 {
+    /** O cabeçalho do grupo de uma só coluna; as fichas reais trazem-no com o título («GRUPO V - Expressão escrita»). */
+    protected string $lastGroupLabel = 'GRUPO V';
+
     protected function maxima(): array
     {
         return [4, 4, 4, 4, 4, 4, 4, 6, 5, 5, 5, 5, 6, 7, 4, 5, 24];
@@ -38,7 +41,7 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
             ->group('GRUPO II', [4, 4, 4, 6])
             ->group('GRUPO III', [5, 5, 5, 5])
             ->group('GRUPO IV', [6, 7, 4, 5])
-            ->singleColumnGroup('GRUPO V', 24);
+            ->singleColumnGroup($this->lastGroupLabel, 24);
     }
 
     protected function domainNameFor(int $question): string
@@ -332,6 +335,40 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $last = $after['items'][16];
         $this->assertSame('GRUPO V', $last['label']);
         $this->assertSame($this->domains['Escrita'], $last['domains'][0]['domain_id']);
+    }
+
+    // ------------------------- produção 2026-11-01: o cabeçalho do GRUPO V é mais comprido do que o código de um item
+
+    #[Test]
+    public function a_long_header_on_the_single_column_group_does_not_break_the_confirmation(): void
+    {
+        // `instrument_items.code` tem 16 caracteres; o cabeçalho real tem 27. Foi um 500 no último passo.
+        $this->lastGroupLabel = 'GRUPO V - Expressão escrita';
+
+        $import = $this->uploadWorkbook();
+        $mapping = $this->createMapping($this->preview($import));
+        unset($mapping['domains']);
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $mapping);
+        $this->assertTrue($this->preview($import)['can_confirm']);
+        $this->actingAs($this->teacher)->post("/imports/correction/{$import->ulid}/confirm")->assertRedirect();
+
+        $instrument = $this->instrument();
+        $items = app(CurrentOrganization::class)->runFor(
+            $this->organization,
+            fn () => InstrumentItem::where('instrument_id', $instrument->getKey())->orderBy('sequence')->get(),
+        );
+
+        $this->assertCount(17, $items);
+        // O texto inteiro não se perde: fica como rótulo; o código é a posição, que é única.
+        $this->assertSame('GRUPO V - Expressão escrita', $items[16]->label);
+        $this->assertSame('Q17', $items[16]->code);
+        $this->assertLessThanOrEqual(16, max(array_map(fn ($code): int => mb_strlen((string) $code), $items->pluck('code')->all())));
+        // As perguntas com código curto mantêm o que o ficheiro trazia.
+        $this->assertSame('Item 1', $items[0]->code);
+
+        $scores = $this->scoresOf($instrument);
+        $this->assertCount(21 * 17, $scores);
     }
 
     // ------------------------- e. a grelha reproduz o ficheiro: cada pergunta, cada subtotal, o total
