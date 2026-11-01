@@ -37,7 +37,7 @@ class WeekRowAndClassViewTest extends TestCase
     use BuildsLessonFixtures, RefreshDatabase;
 
     private const ROW_KEYS = [
-        'absent_count', 'absent_numbers', 'absent_unnumbered', 'attendance_recorded', 'can_clear_summary', 'can_delete', 'class_group_id', 'class_group_label',
+        'absent_count', 'absent_numbers', 'absent_unnumbered', 'attendance_recorded', 'can_clear_summary', 'can_delete', 'can_record_outcome', 'class_group_id', 'class_group_label',
         'context_label', 'day_events', 'ends_at', 'has_summary', 'identity_tone', 'lesson_number', 'lesson_number_end',
         'lesson_number_manual', 'numbering_frozen', 'outcome',
         'outcome_label', 'school_class', 'starts_at', 'status', 'status_label', 'subject', 'summary',
