@@ -3,6 +3,7 @@
 namespace App\Services\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonNotHeldCause;
 use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\SchoolClass;
@@ -12,7 +13,7 @@ use Carbon\CarbonImmutable;
  * «Quantas aulas houve, e de que espécie» (0.146.0) — a contagem das
  * ocorrências de uma turma num intervalo, para o relatório de turma.
  *
- * SETE NÚMEROS, NENHUM INFERIDO:
+ * SETE NÚMEROS, NENHUM INFERIDO (e a causa agregada das não realizadas):
  *  - previstas: todas as ocorrências gravadas no intervalo (até hoje);
  *  - contabilizadas como lecionadas: lecionadas + turma noutra atividade;
  *  - com desenvolvimento efetivo da disciplina: só as lecionadas;
@@ -27,8 +28,9 @@ use Carbon\CarbonImmutable;
  * futura sem resultado não está «por registar»: ainda não aconteceu, e não
  * entra em nenhum dos números.
  *
- * O motivo de uma ausência e a causa de uma aula não realizada NUNCA saem
- * daqui: são dados sobre o professor, e o relatório de turma não precisa deles.
+ * O motivo de uma ausência, a especificação perante a greve e a descrição de
+ * «Outra causa» NUNCA saem daqui: são dados sobre o professor. Sai a causa
+ * agregada de uma aula não realizada («Greve: 2»), que descreve a turma.
  */
 final class ClassLessonRecord
 {
@@ -38,6 +40,7 @@ final class ClassLessonRecord
      * @return array{
      *     totals: array{planned: int, counted_as_taught: int, subject_development: int, teacher_absent: int, class_external_activity: int, not_held: int, not_recorded: int},
      *     rows: list<array{date: string, context_label: string, lesson_number: int|null, lesson_number_end: int|null, outcome: string, note: string|null}>,
+     *     causes: list<array{cause: string, label: string, count: int}>,
      * }
      */
     public function for(SchoolClass $class, ?string $from = null, ?string $to = null, ?CarbonImmutable $now = null): array
@@ -57,6 +60,7 @@ final class ClassLessonRecord
 
         $totals = ['planned' => 0, 'counted_as_taught' => 0, 'subject_development' => 0, 'teacher_absent' => 0, 'class_external_activity' => 0, 'not_held' => 0, 'not_recorded' => 0];
         $rows = [];
+        $causes = [];
 
         foreach ($lessons as $lesson) {
             $outcome = $lesson->outcome ?? ($lesson->status === LessonStatus::Taught ? LessonOutcome::Taught : null);
@@ -75,6 +79,12 @@ final class ClassLessonRecord
                 $totals['teacher_absent'] += $outcome === LessonOutcome::TeacherAbsent ? 1 : 0;
                 $totals['class_external_activity'] += $outcome === LessonOutcome::ClassExternalActivity ? 1 : 0;
                 $totals['not_held'] += $outcome === LessonOutcome::NotHeld ? 1 : 0;
+
+                // Só a CAUSA agregada («Greve»): nunca quem a registou, a
+                // especificação perante a greve nem a descrição de «Outra causa».
+                if ($outcome === LessonOutcome::NotHeld && $lesson->outcome_cause !== null) {
+                    $causes[$lesson->outcome_cause->value] = ($causes[$lesson->outcome_cause->value] ?? 0) + 1;
+                }
             }
 
             $rows[] = [
@@ -87,6 +97,16 @@ final class ClassLessonRecord
             ];
         }
 
-        return ['totals' => $totals, 'rows' => $rows];
+        arsort($causes);
+
+        return [
+            'totals' => $totals,
+            'rows' => $rows,
+            'causes' => array_map(
+                fn (string $cause, int $count): array => ['cause' => $cause, 'label' => LessonNotHeldCause::from($cause)->label(), 'count' => $count],
+                array_keys($causes),
+                $causes,
+            ),
+        ];
     }
 }

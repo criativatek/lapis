@@ -29,6 +29,7 @@ import {
     CalendarDays,
     CheckCheck,
     CheckSquare,
+    ClipboardList,
     ChevronLeft,
     ChevronRight,
     Ellipsis,
@@ -2132,6 +2133,15 @@ function onViewKeydown(event: KeyboardEvent, index: number): void {
                                     aria-hidden="true"
                                 />
                                 Sequências de aulas</Link
+                            >
+                        </DropdownMenuItem>
+                        <DropdownMenuItem as-child class="min-h-11 sm:min-h-9">
+                            <Link href="/lessons/service-report"
+                                ><ClipboardList
+                                    class="size-4"
+                                    aria-hidden="true"
+                                />
+                                Serviço letivo</Link
                             >
                         </DropdownMenuItem>
                         <template v-if="!searching && view !== 'horario'">

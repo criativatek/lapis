@@ -95,6 +95,10 @@ class SectionTables
                 ['Professor ausente', (string) ($totals['teacher_absent'] ?? 0)],
                 ['Turma em outras atividades letivas', (string) ($totals['class_external_activity'] ?? 0)],
                 ...(($totals['not_held'] ?? 0) > 0 ? [['Aula não realizada', (string) $totals['not_held']]] : []),
+                ...array_map(
+                    fn (array $cause): array => ['— '.(string) ($cause['label'] ?? ''), (string) ($cause['count'] ?? 0)],
+                    self::listOf($data, 'causes'),
+                ),
                 ['Por registar', (string) ($totals['not_recorded'] ?? 0)],
             ],
         ]];

@@ -123,6 +123,10 @@ const classLessonRows = computed<Row[]>(() =>
     props.sectionKey === 'class_lessons' && Array.isArray(props.data?.rows) ? (props.data.rows as Row[]) : [],
 );
 
+const classLessonCauses = computed<Row[]>(() =>
+    props.sectionKey === 'class_lessons' && Array.isArray(props.data?.causes) ? (props.data.causes as Row[]) : [],
+);
+
 const classLessonTotalLines = computed(() => {
     const totals = classLessonTotals.value;
 
@@ -135,6 +139,8 @@ const classLessonTotalLines = computed(() => {
               ['Professor ausente', totals.teacher_absent],
               ['Turma em outras atividades letivas', totals.class_external_activity],
               ...(Number(totals.not_held ?? 0) > 0 ? [['Aula não realizada', totals.not_held]] : []),
+              // A causa agregada («Greve»): nunca quem a registou nem a especificação.
+              ...classLessonCauses.value.map((cause) => [`— ${String(cause.label ?? '')}`, cause.count]),
               ['Por registar', totals.not_recorded],
           ];
 });

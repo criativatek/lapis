@@ -27,10 +27,10 @@ use App\Models\User;
 final class LessonOutcomeDetails
 {
     /**
-     * Tudo o que é reservado ao titular: a categoria da ausência e, numa aula
-     * não realizada, a causa, a situação individual perante a greve e a
-     * descrição de «outra causa». Para quem não é o titular não viaja nada
-     * disto: só `outcome_reason_reserved`.
+     * Reservado ao titular: a categoria da ausência e, numa aula não realizada,
+     * a especificação individual perante a greve e a descrição de «outra
+     * causa». A causa em si (`outcome_cause_label`) é da turma. Para quem não é
+     * o titular não viaja nada do reservado: só `outcome_reason_reserved`.
      *
      * @return array{
      *     outcome_reason_label: string|null,
@@ -42,15 +42,18 @@ final class LessonOutcomeDetails
      */
     public static function for(Lesson $lesson, User $viewer): array
     {
+        // A CAUSA («Greve», «Encerramento por mau tempo»…) descreve o que
+        // aconteceu à turma e lê-a toda a turma, como o resultado. O que é
+        // pessoal fica reservado: o motivo de uma ausência, a especificação
+        // perante a greve e a descrição de «Outra causa».
         $none = [
             'outcome_reason_label' => null,
-            'outcome_cause_label' => null,
+            'outcome_cause_label' => $lesson->outcome_cause?->label(),
             'outcome_teacher_situation_label' => null,
             'outcome_cause_note' => null,
         ];
 
         $hasProtected = $lesson->outcome_reason !== null
-            || $lesson->outcome_cause !== null
             || $lesson->outcome_teacher_situation !== null
             || $lesson->outcome_cause_note !== null;
 

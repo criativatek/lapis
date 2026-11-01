@@ -32,6 +32,7 @@ class ClassLessonsComposer implements SectionComposer
         /** @var array<string, int> $totals */
         $totals = is_array($lessons['totals'] ?? null) ? $lessons['totals'] : [];
         $rows = is_array($lessons['rows'] ?? null) ? array_values($lessons['rows']) : [];
+        $causes = is_array($lessons['causes'] ?? null) ? array_values($lessons['causes']) : [];
 
         if (($totals['planned'] ?? 0) === 0) {
             return ComposedSection::of(Absence::noLessons(), [ContentSource::Lessons]);
@@ -54,7 +55,7 @@ class ClassLessonsComposer implements SectionComposer
         return ComposedSection::of(
             $sentence,
             [ContentSource::Lessons],
-            ['totals' => $totals, 'rows' => $rows],
+            ['totals' => $totals, 'rows' => $rows, 'causes' => $causes],
         );
     }
 }
