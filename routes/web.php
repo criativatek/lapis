@@ -686,6 +686,10 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::delete('lessons/{lesson}', [LessonController::class, 'destroy'])->name('lessons.destroy');
         Route::post('lessons/{lesson}/mark-taught', [LessonController::class, 'markTaught'])->name('lessons.mark-taught');
         Route::post('lessons/{lesson}/outcome', [LessonController::class, 'recordOutcome'])->name('lessons.outcome');
+        // O registo retroativo a partir da semana: o MESMO cálculo da página da aula (`retroactiveOutcome`),
+        // pedido só quando o professor escolhe «Aula não realizada», para a semana não pagar uma
+        // consulta por cartão.
+        Route::get('lessons/{lesson}/retroactive-outcome', [LessonController::class, 'retroactiveOutcomeInfo'])->name('lessons.retroactive-outcome');
         // «Registar e adiar a preparação» (0.171.0): uma atividade do calendário
         // ocupa a aula. A pré-visualização só lê (transação revertida) e calcula o
         // mesmo plano que a execução; esta exige o `plan_token` dela.

@@ -541,6 +541,17 @@ class LessonController extends Controller implements HasMiddleware
     }
 
     /**
+     * O registo retroativo de UMA aula, para a vista semanal: a mesma resposta que a página da aula
+     * dá em `retroactive_outcome`, com as mesmas razões. `null` = o registo normal basta.
+     */
+    public function retroactiveOutcomeInfo(Request $request, Lesson $lesson): JsonResponse
+    {
+        Gate::authorize('view', $lesson);
+
+        return response()->json(['retroactive' => $this->retroactiveOutcome($request, $lesson)]);
+    }
+
+    /**
      * @return array{closed_after: string, blockers: list<string>}|null
      */
     private function retroactiveOutcome(Request $request, Lesson $lesson): ?array
