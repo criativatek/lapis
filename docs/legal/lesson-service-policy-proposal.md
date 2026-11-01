@@ -101,6 +101,24 @@ anteriores. **[A VALIDAR]**
    da publicação do texto.
 3. Ligar `LAPIS_LESSON_NOT_HELD_ENABLED` e, só depois, `LAPIS_STRIKE_ADHESION_RECORDING`.
 
+## 3b. Estado do texto (0.187.x)
+
+O texto concreto desta proposta está implementado em `LegalDocuments` (Política: «Dados do professor», «Dados dos alunos»,
+«Durante quanto tempo», «Os seus direitos»; Acordo: «Objeto, duração e natureza do tratamento»), com o `LessonOutcomeLegalTest`
+alterado **na mesma alteração**. **Não está publicado**: a data de entrada em vigor (`LAPIS_LEGAL_PRIVACY_DATE`,
+`LAPIS_LEGAL_PROCESSING_DATE`) é um ato deliberado, a definir quando a validação estiver feita e com o aviso prévio que a
+Política promete («procuraremos avisar … antes de produzir efeitos»). O texto **não afirma** nenhum fundamento de licitude nem
+a classificação de «Greve do professor» como (não) categoria especial — o teste proíbe essas expressões nas secções alteradas.
+Pontos que continuam por validar por quem tem competência, e que **não estão resolvidos** por este texto:
+
+1. enquadramento de «Greve do professor» (dado operacional ou categoria especial) e fundamento do tratamento;
+2. conservação do histórico de correções e do motivo textual (hoje: enquanto a aula existir, sem prazo automático);
+3. se a correção administrativa da direção deve ser comunicada ao titular;
+4. prazo da cópia diária de segurança, que contém os dados reservados;
+5. data de entrada em vigor e forma do aviso prévio.
+
+Só depois disto se liga `LAPIS_LESSON_NOT_HELD_ENABLED` e, em separado, `LAPIS_STRIKE_ADHESION_RECORDING`.
+
 ## 4. Perguntas em aberto para quem valida
 
 1. A indicação «Aderi à greve» é dado pessoal de que natureza? Pode ser recolhida com

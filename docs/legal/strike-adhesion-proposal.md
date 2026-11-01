@@ -8,18 +8,22 @@ jurídica**. A funcionalidade está desligada em produção (`LAPIS_STRIKE_ADHES
 
 Numa aula **não realizada** com a causa «Greve», o professor pode, **se quiser**, especificar:
 
-| Valor | Significado | Oferecido |
-|---|---|---|
-| `null` | Só «Greve» — não especificou (opção por defeito) | sempre |
-| `not_adhered` | «Não aderi à greve» | sempre |
-| `adhered` | «Aderi à greve» | só com `lapis.strike_adhesion_recording` |
-| `not_informed` | Situação desconhecida (registos anteriores à especificação facultativa) | nunca; lê-se sempre |
+| Opção no ecrã | Valor | Significado | Oferecida |
+|---|---|---|---|
+| «Greve» | `null` | Só «Greve» — sem especificação (opção por defeito) | sempre |
+| «Greve do professor» | `adhered` | O próprio aderiu: declaração **voluntária e individual**, reservada ao titular | só com `lapis.strike_adhesion_recording` |
+| «Greve — escola encerrada» | `school_closed` | A escola estava encerrada por causa da greve: **circunstância da escola**, não declaração de ninguém; lê-se como a causa, por toda a turma | sempre (não depende da chave da adesão) |
+| — | `not_adhered`, `not_informed` | Valores de registos anteriores | nunca se oferecem; lêem-se sempre, sem conversão. `school_closed` **não** é `not_adhered` |
+
+A chave `lapis.strike_adhesion_recording` controla **só** «Greve do professor»; «Greve» e «Greve — escola encerrada»
+dependem apenas de `lapis.lesson_not_held_enabled`. Desligar qualquer chave depois de existirem registos não apaga nem
+esconde nada: o que está gravado lê-se, e a declaração gravada mantém-se ao corrigir outra coisa.
 
 - Nunca se infere (nem da falta de sumário, nem das faltas, nem da própria não realização).
 - Nunca se atribui a outro professor: só quem registou o resultado a declara, e um observador
   não regista resultados.
-- Só o professor que registou a lê (`LessonOutcomeDetails`); colegas veem «Aula não realizada»
-  e que o motivo está reservado.
+- «Greve do professor» só o professor que registou a lê (`LessonOutcomeDetails`); colegas veem «Aula não realizada»,
+  a causa («Greve» ou «Greve — escola encerrada») e que o resto está reservado.
 - Não vai para a auditoria, para a IA, para pesquisas, painéis nem relatórios gerais da turma.
 - O relatório geral mostra apenas a causa agregada «Greve». O relatório pessoal mostra a
   especificação do próprio, quando existe.
