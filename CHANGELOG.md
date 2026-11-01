@@ -25,6 +25,37 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.186.2] — 2026-11-01
+
+> **Importar do Intuitivo: uma recusa já não parece «0 alunos», e o cabeçalho de
+> grupo com nome é lido.** Dois defeitos do mesmo ficheiro real: «GRUPO V (Máximo:
+> 24.00)- Expressão escrita» deixava a coluna sem cotação e o ficheiro inteiro
+> era recusado — e o assistente abria na mesma, a dizer «0 alunos no ficheiro»,
+> o que se lia como um facto sobre a turma. **Sem migrations, sem seeder, sem
+> alterações ao motor de cálculo, ao contrato de importação, ao Plickers nem à
+> «Folha de cálculo».**
+
+### Corrigido
+
+- **Uma recusa do Intuitivo diz-se no formulário de upload.** Quando a origem
+  descreve-se a si própria e o ficheiro volta recusado e sem nenhum aluno, o
+  upload falha no próprio formulário, com a causa e a saída («Folha de cálculo»,
+  que lê as notas por pergunta mas sem grupos nem cotações), e nada é guardado.
+  Antes abria o assistente com «0 alunos no ficheiro» e escondia a frase que diz
+  o que corrigir.
+- **Cabeçalho de grupo com nome depois do máximo.** Aceita-se exatamente um
+  «(Máximo: X)» em qualquer posição do cabeçalho — «GRUPO V (Máximo: 24.00)-
+  Expressão escrita» lê-se como grupo «GRUPO V - Expressão escrita», com cotação
+  24. O ficheiro de referência passa a ler 21 alunos, 17 perguntas, 5 grupos e
+  357 resultados, pronto a confirmar.
+
+### Compatibilidade
+
+- Um cabeçalho com **dois** «(Máximo: …)» era aceite (valia o último, com um
+  rótulo estranho) e passa a ser recusado como ambíguo, com a mensagem que já
+  existia para uma cotação em falta. Espaços repetidos dentro do rótulo do grupo
+  passam a um só.
+
 ## [0.186.1] — 2026-10-30
 
 > **Importar um ficheiro que não traz a turma toda.** Quando o ficheiro do
