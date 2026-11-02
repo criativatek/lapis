@@ -5,6 +5,7 @@ namespace Tests\Feature\Import;
 use App\Domain\Import\Correction\ImportMapping;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
+use App\Models\ItemDomainAllocation;
 use App\Models\StudentItemScore;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
 use App\Services\Assessment\RecordScores;
@@ -456,6 +457,120 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $this->assertSame('0', $zero['marks'][$keys[1]]);
         $this->assertNotNull($zero['group_results'][0]['earned']);
         $this->assertNotNull($zero['lapis_total']);
+    }
+
+    // ------------------------- produção 2026-11-02: a grelha importada dizia «Por classificar» em todas as linhas
+
+    #[Test]
+    public function a_grid_imported_without_domains_offers_one_domain_per_group_and_then_produces_results(): void
+    {
+        $import = $this->uploadWorkbook();
+        $mapping = $this->createMapping($this->preview($import));
+        unset($mapping['domains']);
+
+        $this->actingAs($this->teacher)->patch("/imports/correction/{$import->ulid}", $mapping);
+        $this->actingAs($this->teacher)->post("/imports/correction/{$import->ulid}/confirm")->assertRedirect();
+
+        $instrument = $this->instrument();
+        $props = fn (): array => $this->actingAs($this->teacher)->get("/instruments/{$instrument->ulid}")->assertOk()->viewData('page')['props'];
+        $before = $props();
+
+        // O que aconteceu em produção: 17 perguntas, 357 classificações, nenhum domínio — e o motor não vê nada.
+        $this->assertTrue($before['domainAssignment']['needed']);
+        $this->assertTrue($before['domainAssignment']['can_assign']);
+        $this->assertSame(17, $before['domainAssignment']['items_without_domain']);
+        $this->assertCount(5, $before['domainAssignment']['groups']);
+        $this->assertSame([4, 4, 4, 4, 1], array_column($before['domainAssignment']['groups'], 'items_without_domain'));
+        $this->assertSame(['Leitura', 'Gramática', 'Escrita'], array_column($before['domainAssignment']['domains'], 'name'));
+        $this->assertNull($before['domainAssignment']['groups'][0]['suggested_domain_id'], '«GRUPO I» não nomeia domínio nenhum: nada a sugerir.');
+
+        // Um grupo cujo nome já diz o domínio («GRUPO II - Leitura», como na ficha real) vem pré-sugerido —
+        // sugerido, não decidido: continua a ser o professor a confirmar.
+        app(CurrentOrganization::class)->runFor($this->organization, function () use ($instrument): void {
+            $instrument->groups()->orderBy('sequence')->skip(1)->first()->update(['label' => 'GRUPO II - Leitura']);
+        });
+        $this->assertSame($this->domains['Leitura'], $props()['domainAssignment']['groups'][1]['suggested_domain_id']);
+
+        foreach ($before['official']['students'] as $cell) {
+            $this->assertSame('pending', $cell['status'], 'Sem domínios, toda a gente está «Por classificar».');
+        }
+
+        // Um domínio fora do perfil é recusado antes de tocar em seja o que for.
+        $groups = array_column($before['domainAssignment']['groups'], 'ulid');
+        $this->actingAs($this->teacher)
+            ->post("/instruments/{$instrument->ulid}/domains", ['assignments' => [['group' => $groups[0], 'domain_id' => 999999]]])
+            ->assertSessionHasErrors('assignments');
+        $this->assertSame(0, $this->allocationsOf($instrument));
+
+        // O passo em falta: um domínio por grupo, uma vez.
+        $assignments = [];
+
+        foreach ($this->groupDomainIds() as $index => $domainId) {
+            $assignments[] = ['group' => $groups[$index], 'domain_id' => $domainId];
+        }
+
+        $this->actingAs($this->teacher)->post("/instruments/{$instrument->ulid}/domains", ['assignments' => $assignments])->assertRedirect();
+        $this->assertSame(17, $this->allocationsOf($instrument), 'Cada pergunta ficou com exatamente uma alocação a 100 %.');
+
+        $after = $props();
+        $this->assertFalse($after['domainAssignment']['needed']);
+        $this->assertSame(0, $after['domainAssignment']['items_without_domain']);
+        $this->assertCount(3, $after['official']['domains']);
+
+        foreach ($this->enrollmentByNumber as $number => $enrollmentId) {
+            $cell = $after['official']['students'][$enrollmentId];
+
+            if (in_array($number, self::PAPER_NUMBERS, true)) {
+                $this->assertSame('pending', $cell['status'], 'Quem fez em papel continua sem classificação — nunca um zero.');
+
+                continue;
+            }
+
+            $this->assertNotSame('pending', $cell['status'], "aluno {$number}");
+            $this->assertNotNull($cell['global']['value'], "aluno {$number}: a classificação global passou a existir");
+
+            foreach ($after['official']['domains'] as $domain) {
+                $this->assertNotNull($cell['domains'][$domain['key']]['value'] ?? null, "aluno {$number}, domínio {$domain['name']}");
+            }
+        }
+
+        // As classificações originais não mexeram: continuam 357, iguais ao ficheiro.
+        $scores = $this->scoresOf($instrument);
+        $items = $this->itemIds($instrument);
+        $this->assertCount(21 * 17, $scores);
+
+        foreach ($this->names as $number => $name) {
+            if (in_array($number, self::PAPER_NUMBERS, true)) {
+                continue;
+            }
+
+            foreach ($items as $question => $itemId) {
+                $this->assertEqualsWithDelta($this->markFor($number, $question), (float) $scores[$this->enrollmentByNumber[$number].':'.$itemId]->points_earned, 0.0001);
+            }
+        }
+
+        // Repetir com outros domínios não mexe em nada: só perguntas SEM alocação recebem uma.
+        $this->actingAs($this->teacher)
+            ->post("/instruments/{$instrument->ulid}/domains", ['assignments' => [['group' => $groups[0], 'domain_id' => $this->domains['Escrita']]]])
+            ->assertRedirect();
+        $this->assertSame(17, $this->allocationsOf($instrument));
+        $this->assertSame(
+            $this->domains['Leitura'],
+            (int) app(CurrentOrganization::class)->runFor($this->organization, fn () => ItemDomainAllocation::where('instrument_item_id', $items[0])->value('domain_id')),
+        );
+
+        // E o separador Resultados passa a ter as colunas dos domínios.
+        $results = $this->actingAs($this->teacher)->get("/instruments/{$instrument->ulid}/resultados")->assertOk()->viewData('page')['props'];
+        $this->assertFalse($results['domainAssignment']['needed']);
+        $this->assertSame(['Leitura', 'Gramática', 'Escrita'], array_column($results['context']['domains'], 'name'));
+    }
+
+    protected function allocationsOf(Instrument $instrument): int
+    {
+        return app(CurrentOrganization::class)->runFor(
+            $this->organization,
+            fn () => ItemDomainAllocation::whereIn('instrument_item_id', InstrumentItem::where('instrument_id', $instrument->getKey())->select('id'))->count(),
+        );
     }
 
     // ------------------------- produção 2026-11-01: o cabeçalho do GRUPO V é mais comprido do que o código de um item

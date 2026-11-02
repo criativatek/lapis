@@ -15,6 +15,7 @@ use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\User;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
+use App\Services\Assessment\AssignGroupDomains;
 use App\Services\Assessment\CompleteCorrection;
 use App\Services\Assessment\InstrumentBuilder;
 use App\Services\Assessment\InstrumentCompleteness;
@@ -502,7 +503,7 @@ class InstrumentController extends Controller
     /**
      * The grading grid: students in rows, items in columns (§12.4).
      */
-    public function show(Instrument $instrument): Response|RedirectResponse
+    public function show(Instrument $instrument, AssignGroupDomains $domainAssignment): Response|RedirectResponse
     {
         Gate::authorize('view', $instrument->schoolClass);
 
@@ -575,6 +576,11 @@ class InstrumentController extends Controller
         ];
 
         return Inertia::render('instruments/Grid', [
+            // Questions without a domain never reach the engine, so a grid full
+            // of marks can still say «Por classificar» on every row. The grid
+            // says why and offers the one step that fixes it — a domain per
+            // section — instead of leaving the teacher to guess.
+            'domainAssignment' => $domainAssignment->state($instrument),
             'instrument' => [
                 'ulid' => $instrument->ulid,
                 'title' => $instrument->title,
@@ -704,6 +710,51 @@ class InstrumentController extends Controller
                     : "{$count} alterações não foram guardadas porque a grelha tinha sido alterada entretanto — os valores foram atualizados.",
             ]);
         }
+
+        return back();
+    }
+
+    /**
+     * Gives the questions of each section the domain they are missing. Only
+     * questions without any allocation are touched, and no mark changes; the
+     * official classification, Resultados and the class follow-up are
+     * computed live and simply start seeing the questions (AssignGroupDomains).
+     */
+    public function assignDomains(Request $request, Instrument $instrument, AssignGroupDomains $assigner): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
+
+        $data = $request->validate([
+            'assignments' => ['required', 'array', 'min:1'],
+            'assignments.*.group' => ['required', 'string', 'max:40'],
+            'assignments.*.domain_id' => ['required', 'integer'],
+        ]);
+
+        $map = [];
+
+        foreach ($data['assignments'] as $assignment) {
+            $map[(string) $assignment['group']] = (int) $assignment['domain_id'];
+        }
+
+        $created = $assigner->assign($instrument, $map);
+
+        $this->audit->record(
+            'instrument.domains_assigned',
+            $instrument,
+            $this->user(),
+            "{$created} pergunta(s) associada(s) a domínios em ".count($map).' grupo(s).',
+            ['questions' => $created, 'groups' => count($map)],
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => match (true) {
+                $created === 0 => 'Nenhuma pergunta estava por associar — nada foi alterado.',
+                $created === 1 => '1 pergunta associada ao seu domínio. Os resultados foram recalculados.',
+                default => "{$created} perguntas associadas aos seus domínios. Os resultados foram recalculados.",
+            },
+        ]);
 
         return back();
     }

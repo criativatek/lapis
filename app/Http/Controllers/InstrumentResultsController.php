@@ -8,6 +8,7 @@ use App\Models\ResultsAnalysisNote;
 use App\Models\User;
 use App\Rules\ResultsAnalysisNoteBody;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
+use App\Services\Assessment\AssignGroupDomains;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,9 @@ class InstrumentResultsController extends Controller
         }
 
         $props = $this->builder->forInstrument($instrument, Gate::allows('update', $instrument->schoolClass), includeIndividual: true);
+        // Same reason as the grid: questions without a domain produce no result,
+        // and this page is where «Por classificar» is read as a verdict.
+        $props['domainAssignment'] = app(AssignGroupDomains::class)->state($instrument);
 
         return Inertia::render('instruments/Results', $props);
     }

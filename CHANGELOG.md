@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.188.0] — 2026-11-02
+
+> **Uma grelha cheia de classificações já não fica «Por classificar».** Quando
+> as perguntas de uma grelha não têm domínio — o que acontece a uma importação
+> Intuitivo pergunta a pergunta — a grelha e o separador Resultados dizem-no e
+> oferecem o passo em falta: **associar cada grupo a um domínio do perfil da
+> turma, uma vez**, sem voltar a introduzir uma única classificação. A partir
+> daí a classificação oficial, os resultados por domínio e o acompanhamento da
+> turma são calculados como sempre. **Sem migrations.**
+
+### Adicionado
+
+- **«Associar domínios»** na grelha de correção e nos Resultados, visível só
+  quando há perguntas sem domínio: um diálogo com um domínio por grupo
+  (pré-sugerido quando o nome do grupo já o diz — «GRUPO II - Leitura») e
+  `POST /instruments/{ulid}/domains`. Só as perguntas sem alocação recebem uma,
+  a 100 %; classificações, cotações e alocações existentes não mudam; um
+  domínio fora do perfil ativo é recusado. Registado na auditoria.
+
 ## [0.187.2] — 2026-11-02
 
 > **Importação Intuitivo: o 500 do último passo corrigido, a revisão mostra
