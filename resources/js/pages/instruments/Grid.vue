@@ -1458,9 +1458,11 @@ function revertCancellation(): void {
                                 <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
                             </template>
                         </td>
-                        <td class="px-3 py-0.5 text-left">
+<!-- Largura mínima e linhas sem quebra: com cinco domínios, uma coluna estreita partia cada linha
+                             («Educação Literária 15,83/20 79,2 % Bom») em duas ou três e cada aluno passava a ocupar 300 px. -->
+                        <td class="min-w-80 px-3 py-0.5 text-left">
                             <div class="flex flex-col gap-1">
-                                <div class="flex flex-wrap items-center gap-1.5 border-b border-border/40 pb-1">
+                                <div class="flex items-center gap-1.5 border-b border-border/40 pb-1 whitespace-nowrap">
                                     <span class="w-16 shrink-0 text-xs font-medium text-muted-foreground">Global</span>
                                     <template v-if="officialFor(student)">
                                         <template v-if="officialFor(student)!.global.value !== null || officialFor(student)!.global.value_precise !== null">
@@ -1478,7 +1480,7 @@ function revertCancellation(): void {
                                         title="Os valores oficiais só refletem o que está guardado."
                                     >guarde para recalcular</span>
                                 </div>
-                                <div v-for="domain in official.domains" :key="domain.key" class="flex flex-wrap items-center gap-1.5">
+                                <div v-for="domain in official.domains" :key="domain.key" class="flex items-center gap-1.5 whitespace-nowrap">
                                     <span class="w-16 shrink-0 truncate text-xs text-muted-foreground" :title="domain.name">{{ domain.name }}</span>
                                     <template v-if="officialFor(student)?.domains[domain.key]">
                                         <span class="flex items-center gap-1.5 whitespace-nowrap">
