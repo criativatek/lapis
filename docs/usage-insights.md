@@ -343,7 +343,14 @@ com auditoria.
 
 A tabela `sessions` também não serve: só guarda a sessão ativa.
 
-## Classificação das organizações e segmentos
+## Classificação das contas (organizações) e segmentos
+
+> **«Conta» no painel.** No ecrã do painel «conta» é a organização pessoal de
+> um professor ou uma instituição: em produção cada organização pessoal é uma
+> pessoa, e «organização» confundia. O esquema (`organizations`,
+> `usage_classification`), a regra por omissão e os segmentos não mudaram — só a
+> apresentação. No filtro «Conta», uma conta pessoal aparece com o nome do
+> professor (o nome da organização é interno) e uma instituição com o seu.
 
 O painel separa a atividade por **classificação explícita** de cada organização
 (`organizations.usage_classification`), decidida por uma pessoa:
@@ -353,7 +360,7 @@ O painel separa a atividade por **classificação explícita** de cada organiza�
 | `unclassified` — Por classificar | Ninguém decidiu ainda. É o valor de todas as organizações, existentes e novas. |
 | `real` — Utilização real | Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais. |
 | `test` — Teste e demonstração | Dados fictícios, QA, demonstrações e ensaios. |
-| `internal` — Interna | Organizações da própria equipa, usadas para operação. |
+| `internal` — Interna | Contas da própria equipa, usadas para operação. |
 
 **`is_test_account` não é lido.** Essa marca é comercial («ninguém prometeu nada
 a esta conta») e só o pré-voo comercial a usa; «teste» comercial não quer dizer
@@ -372,13 +379,13 @@ organização.
 
 Os segmentos do painel são quatro e não se sobrepõem (inicial: `real`):
 
-- **Utilização real** — organizações `real`, sem o pessoal interno;
-- **Teste e demonstração** — organizações `test`;
-- **Interno** — organizações `internal` e a atividade do pessoal interno
+- **Utilização real** — contas `real`, sem o pessoal interno;
+- **Teste e demonstração** — contas `test`;
+- **Interno** — contas `internal` e a atividade do pessoal interno
   (`is_platform_admin` ou `is_support_technician`) em qualquer organização;
-- **Por classificar** — organizações `unclassified`, sem o pessoal interno.
+- **Por classificar** — contas `unclassified`, sem o pessoal interno.
 
-O painel avisa quando há organizações por classificar («N organizações estão por
+O painel avisa quando há contas por classificar («N contas estão por
 classificar e não entram na utilização real»). A classificação é lida no momento
 da consulta: reclassificar uma organização muda o segmento de todo o seu
 histórico.
@@ -388,13 +395,38 @@ agendadas, jobs, comandos, pedidos automáticos e pré-carregamentos, nem a
 atividade de quem se opôs à recolha (`usage_opted_out_at`) ou pediu o
 encerramento da conta.
 
-> Em produção, até alguém classificar as organizações, o segmento «Utilização
+> Em produção, até alguém classificar as contas, o segmento «Utilização
 > real» fica vazio e os dados aparecem em «Por classificar».
+
+## Ligados agora
+
+A visão geral abre com um cartão nominal: quem tem uma sessão iniciada neste
+momento. É independente dos filtros — uma sessão não pertence a nenhuma conta
+nem segmento.
+
+- **Fonte:** a tabela `sessions` (driver `database`) e mais nada. Não há recolha
+  nova, migração, evento nem histórico: quando a sessão expira, a pessoa deixa
+  de aparecer. Sessão viva = atividade dentro de `session.lifetime` (120 minutos
+  em produção); «ativo agora» = atividade nos últimos 15 minutos.
+- **Uma entrada por pessoa**, com a atividade mais recente das suas sessões.
+  A lista mostra nome (com ligação à ficha quando a pessoa já tem estado
+  agregado), email, a etiqueta «Interno» para o pessoal interno e «há N min».
+- **Exclusões**, como no resto do painel: contas anonimizadas, quem se opôs à
+  recolha (`usage_opted_out_at`) e quem pediu o encerramento. Uma sessão sem
+  utilizador não conta.
+- **Acesso técnico não conta.** Uma sessão cujo payload tem `impersonator_id`
+  é do suporte a trabalhar na conta de outra pessoa: fica de fora, e a pessoa
+  impersonada não aparece como ligada. A sessão própria do técnico conta como
+  dele. Se o payload não se conseguir descodificar, trata-se como sessão normal.
+- **Atualização:** o botão «Atualizar» faz uma visita parcial que volta a ler só
+  esta secção; não há atualização automática.
+- A Política de Privacidade descreve esta vista na secção das métricas de
+  utilização (aparece com a ativação da recolha).
 
 ## Filtros
 
 Período (últimos 7, 30 ou 90 dias, ou intervalo personalizado até 366 dias,
-nunca anterior ao prazo de conservação), plano, organização e segmento. O
+nunca anterior ao prazo de conservação), plano, conta e segmento. O
 plano é o **plano em vigor hoje** em cada organização; mudanças de plano
 passadas não são reconstruídas.
 

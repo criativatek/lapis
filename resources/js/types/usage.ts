@@ -39,7 +39,7 @@ export type UsageFilters = {
 
 export type UsageFilterOptions = {
     plans: { key: string; label: string }[];
-    organizations: { ulid: string; name: string; classification: UsageClassificationKey }[];
+    organizations: { ulid: string; name: string; type: 'personal' | 'institutional'; classification: UsageClassificationKey }[];
     segments: { key: UsageSegmentKey; label: string; description: string }[];
     signal_options: { key: string; label: string }[];
 };
@@ -143,6 +143,15 @@ export type UsageCohort = {
     weeks: { offset: number; status: 'complete' | 'partial_coverage' | 'in_progress' | 'no_coverage' | 'not_started'; returned: number | null }[];
 };
 
+/** Quem tem sessão iniciada neste momento (tabela `sessions`; sem histórico, independente dos filtros). */
+export type UsageOnline = {
+    as_of: string;
+    window_minutes: number;
+    session_minutes: number;
+    active_count: number;
+    people: { ulid: string | null; name: string; email: string; internal: boolean; minutes_ago: number; active: boolean }[];
+};
+
 export type UsageOverviewProps = UsageCommonProps & {
     headline: UsageHeadline;
     weeks: UsageWeek[];
@@ -150,6 +159,7 @@ export type UsageOverviewProps = UsageCommonProps & {
     features: UsageFeatureRow[];
     signals: UsageSignalSummary[];
     cohorts: UsageCohort[];
+    online: UsageOnline;
 };
 
 // --- Acompanhamento --------------------------------------------------------

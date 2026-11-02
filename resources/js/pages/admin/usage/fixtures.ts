@@ -1,4 +1,4 @@
-import type { UsageCommonProps, UsageSignal } from '@/types/usage';
+import type { UsageCommonProps, UsageOnline, UsageSignal } from '@/types/usage';
 
 export function common(overrides: Partial<UsageCommonProps> = {}): UsageCommonProps {
     return {
@@ -18,11 +18,11 @@ export function common(overrides: Partial<UsageCommonProps> = {}): UsageCommonPr
         },
         options: {
             plans: [{ key: 'pro', label: 'Pro' }],
-            organizations: [{ ulid: 'o1', name: 'Escola Azul', classification: 'test' }],
+            organizations: [{ ulid: 'o1', name: 'Escola Azul', type: 'institutional', classification: 'test' }],
             segments: [
-                { key: 'real', label: 'Utilização real', description: 'Organizações classificadas como utilização real.' },
+                { key: 'real', label: 'Utilização real', description: 'Contas classificadas como utilização real.' },
                 { key: 'test', label: 'Teste e demonstração', description: 'Dados fictícios, QA, ensaios.' },
-                { key: 'internal', label: 'Interno', description: 'Organizações internas e pessoal interno.' },
+                { key: 'internal', label: 'Interno', description: 'Contas internas e pessoal interno.' },
                 { key: 'unclassified', label: 'Por classificar', description: 'Ninguém classificou ainda.' },
             ],
             signal_options: [{ key: 'no_return', label: 'Sem regresso' }],
@@ -49,3 +49,17 @@ export const signal: UsageSignal = {
     window_from: '2026-09-28',
     window_to: '2026-10-11',
 };
+
+export function online(overrides: Partial<UsageOnline> = {}): UsageOnline {
+    return {
+        as_of: '10:00',
+        window_minutes: 15,
+        session_minutes: 120,
+        active_count: 1,
+        people: [
+            { ulid: 'u1', name: 'Ana Silva', email: 'ana@exemplo.pt', internal: false, minutes_ago: 3, active: true },
+            { ulid: null, name: 'Rui Costa', email: 'rui@exemplo.pt', internal: true, minutes_ago: 47, active: false },
+        ],
+        ...overrides,
+    };
+}

@@ -63,6 +63,7 @@ class UsageMetricsLegalTest extends TestCase
         $this->assertSame([], $this->sectionBody('Métricas de utilização do serviço'));
         $this->assertStringNotContainsString('Métricas de utilização', $this->privacyText());
         $this->assertStringNotContainsString('medir a utilização do serviço', $this->privacyText());
+        $this->assertStringNotContainsString('têm uma sessão iniciada', $this->privacyText());
     }
 
     #[Test]
@@ -145,6 +146,18 @@ class UsageMetricsLegalTest extends TestCase
         $this->assertStringContainsString('não há decisões automatizadas', $text);
         $this->assertStringContainsString('expressamente autorizadas', $text);
         $this->assertStringContainsString('quem administre a organização', $text);
+    }
+
+    #[Test]
+    public function the_online_now_view_is_described_once_the_collection_is_active(): void
+    {
+        $sentence = 'podem ver, no momento, que contas têm uma sessão iniciada e há quanto tempo foi a última atividade de cada uma';
+
+        $this->activateAt('2026-10-20 14:00:00');
+        $text = implode(' ', $this->sectionBody('Métricas de utilização do serviço'));
+
+        $this->assertStringContainsString($sentence, $text);
+        $this->assertStringContainsString('lê o registo de sessão já descrito em «Dados técnicos», não cria nenhum registo novo e não guarda histórico: deixa de mostrar a sessão quando ela expira.', $text);
     }
 
     #[Test]

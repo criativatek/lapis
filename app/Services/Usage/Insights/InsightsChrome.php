@@ -3,6 +3,7 @@
 namespace App\Services\Usage\Insights;
 
 use App\Models\Organization;
+use App\Models\OrganizationType;
 use App\Models\Plan;
 use App\Support\Retention\RetentionPolicy;
 use App\Support\Usage\UsageCoverage;
@@ -35,7 +36,7 @@ final class InsightsChrome
     }
 
     /**
-     * @return array{plans: list<array{key: string, label: string}>, organizations: list<array{ulid: string, name: string, classification: string}>, segments: list<array{key: string, label: string, description: string}>, signal_options: list<array{key: string, label: string}>}
+     * @return array{plans: list<array{key: string, label: string}>, organizations: list<array{ulid: string, name: string, type: string, classification: string}>, segments: list<array{key: string, label: string, description: string}>, signal_options: list<array{key: string, label: string}>}
      */
     public function options(): array
     {
@@ -43,13 +44,7 @@ final class InsightsChrome
             'plans' => array_values(Plan::query()->orderBy('sort_order')->orderBy('id')->get(['key', 'name'])
                 ->map(fn (Plan $plan): array => ['key' => $plan->key, 'label' => $plan->name])
                 ->all()),
-            'organizations' => array_values(Organization::query()->orderBy('name')->get(['ulid', 'name', 'usage_classification'])
-                ->map(fn (Organization $organization): array => [
-                    'ulid' => $organization->ulid,
-                    'name' => $organization->name,
-                    'classification' => (string) $organization->usage_classification,
-                ])
-                ->all()),
+            'organizations' => $this->accountOptions(),
             'segments' => array_map(
                 fn (UsageSegment $segment): array => ['key' => $segment->value, 'label' => $segment->label(), 'description' => $segment->description()],
                 UsageSegment::cases(),
@@ -59,6 +54,34 @@ final class InsightsChrome
                 FollowUpSignals::enabledKeys(),
             ),
         ];
+    }
+
+    /**
+     * As contas do filtro. Em produção cada conta é uma pessoa: o nome de uma
+     * conta pessoal é o do professor (o da organização é um nome interno que
+     * ninguém reconhece); uma instituição mantém o seu. `type` deixa a página
+     * distinguir as duas.
+     *
+     * @return list<array{ulid: string, name: string, type: string, classification: string}>
+     */
+    private function accountOptions(): array
+    {
+        $accounts = Organization::query()
+            ->with('owner:id,name')
+            ->get(['ulid', 'name', 'type', 'owner_id', 'usage_classification'])
+            ->map(fn (Organization $organization): array => [
+                'ulid' => $organization->ulid,
+                'name' => $organization->type === OrganizationType::Personal
+                    ? ($organization->owner->name !== '' ? $organization->owner->name : $organization->name)
+                    : $organization->name,
+                'type' => $organization->type->value,
+                'classification' => (string) $organization->usage_classification,
+            ])
+            ->all();
+
+        usort($accounts, fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']) ?: strcmp($a['ulid'], $b['ulid']));
+
+        return $accounts;
     }
 
     /**
@@ -87,8 +110,8 @@ final class InsightsChrome
 
         if ($unclassified > 0) {
             $notes[] = $unclassified === 1
-                ? '1 organização está por classificar e não entra na utilização real.'
-                : $unclassified.' organizações estão por classificar e não entram na utilização real.';
+                ? '1 conta está por classificar e não entra na utilização real.'
+                : $unclassified.' contas estão por classificar e não entram na utilização real.';
         }
 
         if ($startedAt !== null && $startDay !== null && $filters->from->lessThanOrEqualTo($startDay) && $filters->to->greaterThanOrEqualTo($startDay)) {
@@ -176,13 +199,13 @@ final class InsightsChrome
     public function definitions(): array
     {
         return [
-            ['term' => 'Utilizador ativo', 'text' => 'Pessoa com pelo menos uma interação elegível no intervalo: consultou deliberadamente uma funcionalidade ou concluiu uma ação. Conta uma só vez, mesmo em várias organizações. Uma falha técnica sozinha não torna ninguém ativo.'],
+            ['term' => 'Utilizador ativo', 'text' => 'Pessoa com pelo menos uma interação elegível no intervalo: consultou deliberadamente uma funcionalidade ou concluiu uma ação. Conta uma só vez, mesmo em várias contas. Uma falha técnica sozinha não torna ninguém ativo.'],
             ['term' => 'Dia ativo', 'text' => 'Dia (de calendário, no fuso da aplicação) com pelo menos uma interação elegível. As semanas vão de segunda a domingo.'],
             ['term' => 'Última atividade observada', 'text' => 'O dia da última interação elegível registada. Não é o último login: o Lapispro não guarda essa data e o painel não a deduz de nada.'],
             ['term' => 'Ação concluída', 'text' => 'Operação confirmada pelo servidor sobre um registo, contada uma vez por registo e por dia. Gravar sem alterar nada, uma tentativa falhada ou um erro de validação não contam.'],
             ['term' => 'Elementos afetados', 'text' => 'Quantos registos uma ação tocou (alunos importados, células alteradas). Mostra-se à parte e nunca se soma às ações.'],
             ['term' => 'Falha técnica', 'text' => 'Operação que terminou com erro do servidor. Erros de validação, recusas de permissão, sessões expiradas e limites de pedidos não são falhas técnicas.'],
-            ['term' => 'Segmentos', 'text' => 'Cada organização é classificada à mão (utilização real, teste e demonstração, interna); nada é inferido da atividade nem da marca comercial de conta de teste. «Por classificar» mostra as que ninguém classificou e não entram na utilização real. O pessoal interno conta sempre como interno.'],
+            ['term' => 'Segmentos', 'text' => 'Cada conta é classificada à mão (utilização real, teste e demonstração, interna); nada é inferido da atividade nem da marca comercial de conta de teste. «Por classificar» mostra as que ninguém classificou e não entram na utilização real. O pessoal interno conta sempre como interno.'],
             ['term' => 'Sinais', 'text' => 'Sugestões de verificação para a equipa interna, não diagnósticos: não dizem que alguém abandonou ou precisa de formação. Com recolha insuficiente para a janela da regra não há sinal: a pessoa fica «por avaliar».'],
         ];
     }

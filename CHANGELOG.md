@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.189.0] — 2026-11-02
+
+> **Painel de utilização: «Ligados agora» e linguagem de «contas».** A visão
+> geral passa a mostrar, no momento, quem tem uma sessão iniciada, e o painel
+> deixa de falar de «organizações» (em produção cada organização é um
+> professor): fala de **contas**. É só apresentação — a regra por omissão
+> (conta nova «Por classificar»), os segmentos e o esquema ficam como estavam.
+> **Sem migrations. A vista «Ligados agora» lê a tabela de sessões que já
+> existe, sem criar nenhum registo nem histórico: deixa de mostrar a sessão
+> quando ela expira.**
+
+### Adicionado
+
+- **«Ligados agora»** na visão geral de `/admin/usage`, antes dos filtros e
+  independente deles: quantas pessoas estiveram ativas nos últimos 15 minutos,
+  quantas têm sessão nas últimas 2 horas (`session.lifetime`) e a lista nominal
+  (ligação à ficha quando a pessoa já tem estado agregado, etiqueta «Interno»,
+  «há N min»), com um botão «Atualizar» que volta a ler só esta secção. Uma
+  entrada por pessoa; ficam de fora quem se opôs à recolha, quem pediu o
+  encerramento e as contas anonimizadas; o acesso técnico (impersonação) não
+  conta como a pessoa estar ligada. Serviço `OnlineNow`.
+- A Política de Privacidade, na secção das métricas de utilização, diz que a
+  equipa autorizada pode ver no momento que contas têm sessão iniciada, que a
+  vista lê o registo de sessão já descrito, não cria registos novos nem guarda
+  histórico. A versão da Política não muda (a validação jurídica das métricas
+  continua pendente).
+
+### Alterado
+
+- O painel de utilização fala de **contas** em vez de organizações: o filtro
+  «Conta» (as contas pessoais aparecem com o nome do professor, e as opções
+  trazem o `type`), o aviso «N contas estão por classificar e não entram na
+  utilização real.», as descrições dos segmentos e das classificações, a
+  definição de «Segmentos», a ficha de uma pessoa («Contas») e a ficha da conta.
+  `docs/usage-insights.md` explica que «conta» é a organização pessoal de um
+  professor ou uma instituição.
+
 ## [0.188.1] — 2026-11-02
 
 > **Textos legais das aulas não realizadas, prontos mas por publicar.** A

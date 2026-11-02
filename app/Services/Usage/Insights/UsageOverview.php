@@ -29,6 +29,7 @@ final class UsageOverview
         private readonly ScopePeople $people,
         private readonly FollowUpSignals $signals,
         private readonly UsageCoverage $coverage,
+        private readonly OnlineNow $onlineNow,
     ) {}
 
     /**
@@ -46,6 +47,8 @@ final class UsageOverview
             'features' => $this->features($scope, $filters),
             'signals' => $this->signalSummary($scope, $now),
             'cohorts' => $this->cohorts($scope, $filters),
+            // Independente dos filtros: uma sessão não pertence a conta nem segmento.
+            'online' => $this->onlineNow->build($now),
         ];
     }
 

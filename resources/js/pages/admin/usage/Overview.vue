@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import type { ChartConfiguration } from 'chart.js';
 import { computed, defineAsyncComponent } from 'vue';
 import UsageCoverageNotice from '@/components/admin/usage/UsageCoverageNotice.vue';
@@ -8,6 +8,7 @@ import UsageFilters from '@/components/admin/usage/UsageFilters.vue';
 import UsageHeader from '@/components/admin/usage/UsageHeader.vue';
 import UsageTile from '@/components/admin/usage/UsageTile.vue';
 import TableShell from '@/components/TableShell.vue';
+import { Button } from '@/components/ui/button';
 import { categoryAxis, chromeColours } from '@/lib/chartTheme';
 import { commonQuery, dash, formatNumber, formatRange, itemsBreakdown, ofTotal, statusLabel, withQuery } from '@/lib/usageFormat';
 import type { UsageOverviewProps, WeekStatus } from '@/types/usage';
@@ -23,6 +24,22 @@ const props = defineProps<UsageOverviewProps>();
 const StatChart = defineAsyncComponent(() => import('@/components/charts/StatChart.vue'));
 
 const query = computed(() => commonQuery(props.filters));
+
+// --- Ligados agora --------------------------------------------------------
+
+/** «agora» para menos de um minuto; senão «há N min». */
+function agoLabel(minutes: number): string {
+    return minutes <= 0 ? 'agora' : `há ${minutes} min`;
+}
+
+function userHref(ulid: string): string {
+    return `/admin/usage/users/${ulid}`;
+}
+
+/** Visita parcial: só volta a ler a prop `online`, sem tocar nos filtros nem nos gráficos. */
+function refreshOnline(): void {
+    router.reload({ only: ['online'] });
+}
 
 // --- Mosaicos -------------------------------------------------------------
 
@@ -128,6 +145,40 @@ const headCell = 'px-3 py-2 font-medium';
 
     <div class="space-y-6 p-4 md:p-6">
         <UsageHeader :filters="filters" active="overview" />
+
+        <!-- Ligados agora -->
+        <section aria-labelledby="online-title" class="space-y-3">
+            <h2 id="online-title" class="text-lg font-semibold">Ligados agora</h2>
+            <p class="text-sm text-muted-foreground">Independente dos filtros abaixo: uma sessão não pertence a nenhuma conta nem segmento.</p>
+            <div class="space-y-4 rounded-xl border border-border bg-card p-4">
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <p class="text-3xl font-semibold tabular-nums" data-test="online-active">{{ online.active_count }}</p>
+                        <p class="text-sm text-muted-foreground">ativos nos últimos {{ online.window_minutes }} min</p>
+                        <p class="text-sm text-muted-foreground">
+                            {{ online.people.length }} com sessão nas últimas {{ online.session_minutes / 60 }} h · às {{ online.as_of }}
+                        </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" @click="refreshOnline">Atualizar</Button>
+                </div>
+                <p v-if="online.people.length === 0" class="text-sm text-muted-foreground">Ninguém com sessão iniciada neste momento.</p>
+                <ul v-else class="divide-y divide-border text-sm">
+                    <li
+                        v-for="person in online.people"
+                        :key="person.email"
+                        class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2"
+                        :class="person.active ? '' : 'text-muted-foreground'"
+                    >
+                        <Link v-if="person.ulid" :href="userHref(person.ulid)" class="font-medium underline-offset-2 hover:underline">{{ person.name }}</Link>
+                        <span v-else class="font-medium">{{ person.name }}</span>
+                        <span class="text-muted-foreground">{{ person.email }}</span>
+                        <span v-if="person.internal" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Interno</span>
+                        <span class="ml-auto tabular-nums">{{ agoLabel(person.minutes_ago) }}</span>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
         <UsageFilters path="/admin/usage" :filters="filters" :options="options" />
         <UsageCoverageNotice :coverage="coverage" />
         <UsageDefinitions :definitions="definitions" />

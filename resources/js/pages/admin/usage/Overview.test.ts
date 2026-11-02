@@ -2,13 +2,13 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import type { UsageOverviewProps } from '@/types/usage';
-import { common } from './fixtures';
+import { common, online } from './fixtures';
 import Overview from './Overview.vue';
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: defineComponent({ setup: () => () => null }),
     Link: defineComponent({ inheritAttrs: false, setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()) }),
-    router: { get: vi.fn() },
+    router: { get: vi.fn(), reload: vi.fn() },
     usePage: () => ({ props: { errors: {} } }),
 }));
 
@@ -54,6 +54,7 @@ function props(overrides: Partial<UsageOverviewProps> = {}): UsageOverviewProps 
                 ],
             },
         ],
+        online: online(),
         ...overrides,
     };
 }
@@ -67,6 +68,59 @@ async function render(overrides: Partial<UsageOverviewProps> = {}) {
 }
 
 describe('Utilização — visão geral', () => {
+    it('mostra o cartão «Ligados agora» com a contagem e a lista', async () => {
+        const wrapper = await render();
+        const text = wrapper.text();
+
+        expect(text).toContain('Ligados agora');
+        expect(text).toContain('Independente dos filtros abaixo');
+        expect(wrapper.get('[data-test="online-active"]').text()).toBe('1');
+        expect(text).toContain('ativos nos últimos 15 min');
+        expect(text).toContain('2 com sessão nas últimas 2 h');
+        expect(text).toContain('às 10:00');
+        expect(text).toContain('Ana Silva');
+        expect(text).toContain('ana@exemplo.pt');
+        expect(text).toContain('há 3 min');
+        expect(text).toContain('há 47 min');
+    });
+
+    it('liga à ficha só quando a pessoa tem estado agregado e marca o pessoal interno', async () => {
+        const wrapper = await render();
+
+        const ana = wrapper.findAll('a').find((link) => link.text() === 'Ana Silva');
+        expect(ana?.attributes('href')).toBe('/admin/usage/users/u1');
+        expect(wrapper.findAll('a').some((link) => link.text() === 'Rui Costa')).toBe(false);
+        const rows = wrapper.findAll('section[aria-labelledby="online-title"] li');
+
+        expect(rows).toHaveLength(2);
+        expect(rows[0].text()).not.toContain('Interno');
+        expect(rows[1].text()).toContain('Interno');
+    });
+
+    it('diz «agora» para menos de um minuto', async () => {
+        const wrapper = await render({
+            online: online({ active_count: 1, people: [{ ulid: null, name: 'Bia', email: 'bia@exemplo.pt', internal: false, minutes_ago: 0, active: true }] }),
+        });
+
+        expect(wrapper.text()).toContain('agora');
+    });
+
+    it('com ninguém ligado diz-o, em vez de mostrar uma lista vazia', async () => {
+        const wrapper = await render({ online: online({ active_count: 0, people: [] }) });
+
+        expect(wrapper.text()).toContain('Ninguém com sessão iniciada neste momento.');
+        expect(wrapper.get('[data-test="online-active"]').text()).toBe('0');
+    });
+
+    it('«Atualizar» recarrega só a prop online', async () => {
+        const wrapper = await render();
+        const { router } = await import('@inertiajs/vue3');
+
+        await wrapper.findAll('button').find((button) => button.text() === 'Atualizar')!.trigger('click');
+
+        expect(router.reload).toHaveBeenCalledWith({ only: ['online'] });
+    });
+
     it('mostra a discriminação dos elementos afetados quando as ações a trazem', async () => {
         const wrapper = await render({
             features: [{ key: 'import_export', label: 'Importar', users: 1, users_with_actions: 1, actions: 1, items: 3, items_created: 2, items_changed: 1, items_unchanged: 3, failures: 0 }],

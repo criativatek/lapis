@@ -103,7 +103,7 @@ const fieldClass =
             </label>
 
             <label class="space-y-1 text-sm">
-                <span class="font-medium">Organização</span>
+                <span class="font-medium">Conta</span>
                 <select v-model="form.organization" :class="fieldClass" @change="apply">
                     <option value="">Todas</option>
                     <option v-for="organization in options.organizations" :key="organization.ulid" :value="organization.ulid">
