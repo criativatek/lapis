@@ -1227,6 +1227,57 @@ const isCancelled = computed(() => props.instrument.status === 'cancelled');
 // well — disabling inputs is presentation, never access control.
 const isReadOnly = computed(() => isCancelled.value || props.instrument.is_completed);
 
+// ------------------------------------------------------- «Conteúdo» de cada pergunta
+//
+// O que cada pergunta avalia («Texto narrativo», «Inferências»…), em instrument_items.label. É metadado
+// pedagógico e não classificação: por isso pode registar-se com a correção concluída (a gravação é um PUT
+// à parte, uma pergunta de cada vez, ao sair da célula) e só o elemento anulado fica de fora, onde a linha
+// mostra o que já estava registado, sem inputs. Não entra em `cells`, subtotais, totais nem `dirty`.
+//
+// Numa importação do Intuitivo o rótulo é igual ao código («Item 1»): isso não é conteúdo, e a célula
+// começa vazia; só um rótulo diferente do código conta como conteúdo registado.
+function initialContent(item: Item): string {
+    return item.label !== null && item.label !== item.code ? item.label : '';
+}
+
+const contentLabels = reactive<Record<number, string>>(Object.fromEntries(props.items.map((item) => [item.id, initialContent(item)])));
+const contentSaved = reactive<Record<number, string>>({ ...contentLabels });
+const contentBusy = reactive<Record<number, boolean>>({});
+const contentError = ref<string | null>(null);
+
+function saveContent(item: Item): void {
+    const value = (contentLabels[item.id] ?? '').trim();
+
+    contentLabels[item.id] = value;
+
+    if (value === (contentSaved[item.id] ?? '') || contentBusy[item.id]) {
+        return;
+    }
+
+    contentBusy[item.id] = true;
+    contentError.value = null;
+
+    router.put(`/instruments/${props.instrument.ulid}/items/labels`, { labels: { [item.id]: value } }, {
+        preserveScroll: true,
+        preserveState: true,
+        only: [],
+        onSuccess: () => {
+            contentSaved[item.id] = value;
+        },
+        onError: (errors) => {
+            contentLabels[item.id] = contentSaved[item.id] ?? '';
+            contentError.value = Object.values(errors)[0] ?? 'Não foi possível guardar o conteúdo.';
+        },
+        onFinish: () => {
+            contentBusy[item.id] = false;
+        },
+    });
+}
+
+function leaveContentInput(event: Event): void {
+    (event.target as HTMLInputElement).blur();
+}
+
 const cancelDialogOpen = ref(false);
 const cancelForm = useForm<{ reason: string }>({ reason: '' });
 
@@ -1599,6 +1650,8 @@ function revertCancellation(): void {
             :can-edit="!isCancelled"
         />
 
+        <InputError :message="contentError ?? undefined" />
+
         <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." />
 
         <div
@@ -1672,6 +1725,34 @@ function revertCancellation(): void {
                             </div>
                         </th>
                         </template>
+                    </tr>
+                    <!-- «Conteúdo»: o que cada pergunta avalia; fora das células de classificação (sem data-cell). -->
+                    <tr data-testid="content-row">
+                        <th scope="row" class="sticky left-0 z-10 bg-muted/50 px-3 py-1 text-left text-xs font-medium">Conteúdo</th>
+                        <template v-for="column in columns" :key="column.key">
+                            <td v-if="column.item" class="px-1.5 py-1">
+                                <input
+                                    v-if="!isCancelled"
+                                    v-model="contentLabels[column.item.id]"
+                                    type="text"
+                                    maxlength="500"
+                                    placeholder="Conteúdo…"
+                                    :aria-label="`Conteúdo avaliado em ${column.item.code}`"
+                                    :aria-busy="contentBusy[column.item.id] ? 'true' : undefined"
+                                    :data-content-item="column.item.id"
+                                    class="h-7 w-full min-w-28 rounded border border-input bg-transparent px-1.5 text-xs"
+                                    data-testid="content-input"
+                                    @blur="saveContent(column.item)"
+                                    @keydown.enter.prevent="leaveContentInput"
+                                >
+                                <span v-else class="block min-w-28 px-1.5 text-center text-xs text-muted-foreground" data-testid="content-text">
+                                    {{ contentLabels[column.item.id] || '—' }}
+                                </span>
+                            </td>
+                            <td v-else class="bg-muted/70" />
+                        </template>
+                        <td />
+                        <td />
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
