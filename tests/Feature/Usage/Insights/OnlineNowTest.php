@@ -14,15 +14,23 @@ use PHPUnit\Framework\Attributes\Test;
  */
 class OnlineNowTest extends InsightsTestCase
 {
-    /** @param array<string, mixed> $payload */
+    /**
+     * Uma sessão como a aplicação a grava: base64 do payload no formato de
+     * `session.serialization` — JSON por omissão (`config/session.php`), que é
+     * o que está em produção; `serialize()` só se a configuração o pedir.
+     *
+     * @param  array<string, mixed>  $payload
+     */
     private function sessionOf(?User $user, int $minutesAgo, array $payload = []): void
     {
+        $data = $payload + ['_token' => 'x'];
+
         DB::table('sessions')->insert([
             'id' => 'sessao-'.bin2hex(random_bytes(6)),
             'user_id' => $user?->id,
             'ip_address' => '127.0.0.1',
             'user_agent' => 'teste',
-            'payload' => base64_encode(serialize($payload + ['_token' => 'x'])),
+            'payload' => base64_encode(config('session.serialization') === 'json' ? (string) json_encode($data) : serialize($data)),
             'last_activity' => now()->subMinutes($minutesAgo)->getTimestamp(),
         ]);
     }
@@ -124,6 +132,37 @@ class OnlineNowTest extends InsightsTestCase
         $people = collect($this->online()['people'])->keyBy('name');
         $this->assertSame(['Técnica', 'Professora'], $this->names());
         $this->assertSame(20, $people['Professora']['minutes_ago']);
+    }
+
+    #[Test]
+    public function the_application_stores_sessions_as_json_and_that_is_what_is_read(): void
+    {
+        // A 0.189.0 lia `serialize()` e, em produção (JSON), nunca via a impersonação.
+        $this->assertSame('json', config('session.serialization'));
+
+        $teacher = $this->person('Impersonada');
+        DB::table('sessions')->insert([
+            'id' => 'sessao-json',
+            'user_id' => $teacher->id,
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'teste',
+            'payload' => base64_encode('{"_token":"x","impersonator_id":7}'),
+            'last_activity' => now()->subMinutes(2)->getTimestamp(),
+        ]);
+
+        $this->assertSame([], $this->names());
+    }
+
+    #[Test]
+    public function a_php_serialized_payload_is_read_when_the_configuration_asks_for_it(): void
+    {
+        config(['session.serialization' => 'php']);
+
+        $teacher = $this->person('Impersonada PHP');
+        $this->sessionOf($teacher, 1, ['impersonator_id' => 7]);
+        $this->sessionOf($this->person('Normal PHP'), 2);
+
+        $this->assertSame(['Normal PHP'], $this->names());
     }
 
     #[Test]
