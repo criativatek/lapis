@@ -72,6 +72,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   global»; cada domínio mostra pontos/cotação, percentagem e menção, e a
   classificação global mostra também a soma dos pontos sobre a cotação total.
   Só os domínios tocados pelo instrumento, agregados pelo motor.
+- **Linha «Conteúdo» na grelha de correção:** por baixo dos cabeçalhos das
+  perguntas, uma célula facultativa por pergunta para o conteúdo avaliado
+  («Texto narrativo», «Inferências»…), guardada ao sair da célula no campo da
+  pergunta que a impressão (legenda «Descrição») e o Excel já mostravam. Não é
+  uma linha de avaliação: não toca em classificações, subtotais nem totais, e
+  fica fora da navegação por setas. Editável mesmo com a correção concluída;
+  só de leitura num elemento anulado.
 
 ### Alterado
 
