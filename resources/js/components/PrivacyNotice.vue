@@ -24,6 +24,8 @@ const dismissedNow = ref(false);
 type PrivacyNoticeAuth = {
     should_see_privacy_notice?: boolean;
     privacy_notice_topic?: 'general' | 'usage_metrics' | 'lesson_service' | null;
+    /** A versão do serviço letivo: anunciada (`in_force` false) ou já em vigor. */
+    privacy_notice_lesson_service?: { effective_from: string; in_force: boolean } | null;
 };
 
 const auth = computed(
@@ -45,6 +47,28 @@ const aboutLessonService = computed(
     () => auth.value?.privacy_notice_topic === 'lesson_service',
 );
 
+// Anunciada com antecedência (a Política promete avisar ANTES de produzir efeitos): a faixa diz a data e dá a
+// ler a versão que vem; só na data passa a dizer que está em vigor.
+const lessonServiceUpcoming = computed(() => {
+    const version = auth.value?.privacy_notice_lesson_service;
+
+    return aboutLessonService.value && version && !version.in_force ? version : null;
+});
+
+const upcomingDate = computed(() => {
+    const iso = lessonServiceUpcoming.value?.effective_from;
+
+    if (!iso) {
+        return '';
+    }
+
+    const parsed = new Date(`${iso}T00:00:00`);
+
+    return Number.isNaN(parsed.getTime())
+        ? iso
+        : new Intl.DateTimeFormat('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed);
+});
+
 function dismiss(): void {
     dismissedNow.value = true;
     router.post('/avisos/privacidade', {}, { preserveScroll: true });
@@ -65,6 +89,11 @@ function dismiss(): void {
             associadas à sua conta são eliminadas, sem afetar o acesso às
             funcionalidades do Lapispro.
         </span>
+        <span v-else-if="lessonServiceUpcoming" data-test="privacy-notice-lesson-service-upcoming">
+            A partir de {{ upcomingDate }}, a Política de Privacidade e o Acordo
+            de Tratamento de Dados passam a descrever o registo de aulas não
+            realizadas, as suas causas, as correções e quem pode ver o quê.
+        </span>
         <span v-else-if="aboutLessonService" data-test="privacy-notice-lesson-service">
             Atualizámos a Política de Privacidade e o Acordo de Tratamento de
             Dados: passam a descrever o registo de aulas não realizadas, as suas
@@ -75,7 +104,13 @@ function dismiss(): void {
             de contacto e suporte e explicar os respetivos prazos de
             conservação.
         </span>
-        <a href="/privacidade" class="font-medium underline">Ver a Política</a>
+        <a
+            v-if="lessonServiceUpcoming"
+            href="/privacidade?versao=proxima"
+            class="font-medium underline"
+            >Ler a nova versão</a
+        >
+        <a v-else href="/privacidade" class="font-medium underline">Ver a Política</a>
         <a
             v-if="aboutUsageMetrics"
             href="/settings/profile#metricas-de-utilizacao"

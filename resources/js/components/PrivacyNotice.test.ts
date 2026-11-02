@@ -59,4 +59,26 @@ describe('PrivacyNotice', () => {
         expect(text).not.toContain('métricas de utilização');
         expect(wrapper.find('[data-test="privacy-notice-lesson-service"]').exists()).toBe(true);
     });
+
+    it('announces the lesson service version in advance, with the date and a way to read the coming text', () => {
+        const wrapper = mountWith({
+            should_see_privacy_notice: true,
+            privacy_notice_topic: 'lesson_service',
+            privacy_notice_lesson_service: { effective_from: '2026-11-10', in_force: false },
+        });
+        const text = wrapper.text();
+
+        expect(text).toContain('A partir de 10 de novembro de 2026');
+        expect(text).not.toContain('Atualizámos');
+        expect(wrapper.find('[data-test="privacy-notice-lesson-service-upcoming"]').exists()).toBe(true);
+        expect(wrapper.find('a[href="/privacidade?versao=proxima"]').text()).toBe('Ler a nova versão');
+
+        const inForce = mountWith({
+            should_see_privacy_notice: true,
+            privacy_notice_topic: 'lesson_service',
+            privacy_notice_lesson_service: { effective_from: '2026-11-10', in_force: true },
+        });
+        expect(inForce.text()).toContain('Atualizámos a Política de Privacidade e o Acordo');
+        expect(inForce.find('a[href="/privacidade"]').exists()).toBe(true);
+    });
 });

@@ -153,11 +153,68 @@ class LegalDocuments
 
     /**
      * O texto do serviço letivo (aulas não realizadas, greve, correções) só aparece quando a versão que o descreve
-     * está EM VIGOR (PrivacyVersion::lessonServiceAt): com a data dessa versão e nunca com a anterior.
+     * está EM VIGOR (PrivacyVersion::lessonServiceAt): com a data dessa versão e nunca com a anterior. A única
+     * excepção é a PRÉ-VISUALIZAÇÃO da versão anunciada (`?versao=proxima`), que a página diz ser a que vem.
      */
     private static function describesLessonService(): bool
     {
-        return PrivacyVersion::describesLessonService();
+        return self::$previewUpcoming || PrivacyVersion::describesLessonService();
+    }
+
+    /** Verdadeiro só enquanto se constrói a pré-visualização da versão anunciada. */
+    private static bool $previewUpcoming = false;
+
+    /**
+     * A Política de Privacidade em vigor — ou, com `$upcoming` e uma versão do serviço letivo ANUNCIADA, a versão
+     * que entra em vigor na data anunciada, marcada como pré-visualização. Fora do anúncio, `$upcoming` é ignorado.
+     *
+     * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>, upcoming: array{effective_from: string, href: string}|null, preview: bool}
+     */
+    public static function privacy(bool $upcoming = false): array
+    {
+        return self::versioned(fn (): array => self::privacyDocument(), $upcoming, '/privacidade');
+    }
+
+    /**
+     * O Acordo de Tratamento de Dados em vigor — ou a versão anunciada, como em privacy().
+     *
+     * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>, upcoming: array{effective_from: string, href: string}|null, preview: bool}
+     */
+    public static function processing(bool $upcoming = false): array
+    {
+        return self::versioned(fn (): array => self::processingDocument(), $upcoming, '/tratamento-de-dados');
+    }
+
+    /**
+     * @param  \Closure(): array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>}  $build
+     * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>, upcoming: array{effective_from: string, href: string}|null, preview: bool}
+     */
+    private static function versioned(\Closure $build, bool $upcoming, string $path): array
+    {
+        $announced = PrivacyVersion::announcesLessonService();
+        $preview = $upcoming && $announced;
+
+        self::$previewUpcoming = $preview;
+
+        try {
+            $document = $build();
+        } finally {
+            self::$previewUpcoming = false;
+        }
+
+        if ($preview) {
+            // A versão que vem, com a SUA data — nunca a anterior.
+            $document['effective_from'] = (string) PrivacyVersion::lessonServiceDate()?->toDateString();
+        }
+
+        return [
+            ...$document,
+            // Enquanto a versão nova está anunciada, a página em vigor diz-o e dá a ler a que vem.
+            'upcoming' => $announced && ! $preview
+                ? ['effective_from' => (string) PrivacyVersion::lessonServiceDate()?->toDateString(), 'href' => $path.'?versao=proxima']
+                : null,
+            'preview' => $preview,
+        ];
     }
 
     /*
@@ -312,7 +369,7 @@ class LegalDocuments
     /**
      * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>}
      */
-    public static function privacy(): array
+    private static function privacyDocument(): array
     {
         return [
             'title' => 'Política de Privacidade',
@@ -622,7 +679,7 @@ class LegalDocuments
      *
      * @return array{title: string, effective_from: string, intro: string, sections: list<array{heading: string, body: list<string>}>, related: list<array{label: string, href: string}>}
      */
-    public static function processing(): array
+    private static function processingDocument(): array
     {
         return [
             'title' => 'Acordo de Tratamento de Dados',

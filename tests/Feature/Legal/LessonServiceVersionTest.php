@@ -137,6 +137,63 @@ class LessonServiceVersionTest extends TestCase
     }
 
     #[Test]
+    public function the_version_is_announced_seven_days_before_it_applies_and_the_announced_text_can_be_read(): void
+    {
+        // Hoje é 2026-11-15; a data é 2026-11-20: anunciada desde 2026-11-13, ainda não em vigor.
+        config(['lapis.legal.lesson_service_effective_from' => '2026-11-20']);
+
+        $this->assertTrue(PrivacyVersion::announcesLessonService());
+        $this->assertFalse(PrivacyVersion::describesLessonService());
+        $this->assertSame('2026-11-13', PrivacyVersion::lessonServiceNoticeAt()?->toDateString());
+
+        // Os documentos em vigor continuam os antigos, com a data antiga — mas dizem que vem uma versão nova.
+        $this->assertStringNotContainsString(self::NEW_SENTENCE, $this->everything());
+        $this->get('/privacidade')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('document.effective_from', '2026-09-15')
+            ->where('document.preview', false)
+            ->where('document.upcoming.effective_from', '2026-11-20')
+            ->where('document.upcoming.href', '/privacidade?versao=proxima'));
+
+        // A versão anunciada lê-se inteira, com a SUA data e marcada como pré-visualização.
+        foreach (['/privacidade', '/tratamento-de-dados'] as $path) {
+            $this->get($path.'?versao=proxima')->assertOk()->assertInertia(fn ($page) => $page
+                ->where('document.effective_from', '2026-11-20')
+                ->where('document.preview', true)
+                ->where('document.upcoming', null));
+        }
+        $this->assertStringContainsString(self::NEW_SENTENCE, json_encode(LegalDocuments::privacy(upcoming: true), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+
+        // A faixa aparece a quem fechou o aviso antes do anúncio, a dizer a data e a dar a ler a versão que vem.
+        $closedBefore = User::factory()->create(['privacy_notice_dismissed_at' => '2026-11-12 09:00:00']);
+        $closedDuring = User::factory()->create(['privacy_notice_dismissed_at' => '2026-11-14 09:00:00']);
+        $this->assertTrue($closedBefore->shouldSeePrivacyNotice());
+        $this->assertFalse($closedDuring->shouldSeePrivacyNotice());
+        $this->actingAs($closedBefore)->get('/dashboard')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('auth.privacy_notice_topic', 'lesson_service')
+            ->where('auth.privacy_notice_lesson_service.in_force', false)
+            ->where('auth.privacy_notice_lesson_service.effective_from', '2026-11-20'));
+
+        // Antes dos 7 dias não há anúncio nenhum, e o parâmetro não dá a ler nada.
+        config(['lapis.legal.lesson_service_effective_from' => '2026-11-30']);
+        $this->assertFalse(PrivacyVersion::announcesLessonService());
+        $this->assertFalse($closedBefore->shouldSeePrivacyNotice());
+        $this->get('/privacidade?versao=proxima')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('document.effective_from', '2026-09-15')->where('document.preview', false)->where('document.upcoming', null));
+
+        // Chegada a data: em vigor, sem pré-visualização, e quem fechou a faixa durante o anúncio não a volta a ver.
+        config(['lapis.legal.lesson_service_effective_from' => '2026-11-20']);
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 08:00:00', (string) config('app.timezone')));
+        $this->assertTrue(PrivacyVersion::describesLessonService());
+        $this->assertFalse(PrivacyVersion::announcesLessonService());
+        $this->get('/privacidade?versao=proxima')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('document.effective_from', '2026-11-20')->where('document.preview', false)->where('document.upcoming', null));
+        $this->assertFalse($closedDuring->fresh()->shouldSeePrivacyNotice());
+        $this->assertTrue($closedBefore->fresh()->shouldSeePrivacyNotice());
+        $this->actingAs($closedBefore)->get('/dashboard')->assertOk()->assertInertia(fn ($page) => $page
+            ->where('auth.privacy_notice_lesson_service.in_force', true));
+    }
+
+    #[Test]
     public function the_pages_show_the_version_that_is_in_force(): void
     {
         config(['lapis.legal.lesson_service_effective_from' => null]);

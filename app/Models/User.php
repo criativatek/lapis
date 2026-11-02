@@ -207,7 +207,8 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
      */
     public function shouldSeePrivacyNotice(): bool
     {
-        $emVigor = PrivacyVersion::effectiveAt();
+        // noticeAt(), não effectiveAt(): a versão do serviço letivo anuncia-se 7 dias antes de valer.
+        $emVigor = PrivacyVersion::noticeAt();
 
         if ($emVigor === null) {
             return false;

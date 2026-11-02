@@ -128,6 +128,13 @@ class HandleInertiaRequests extends Middleware
                 'privacy_notice_topic' => ($user?->shouldSeePrivacyNotice() ?? false)
                     ? PrivacyVersion::latestChange()
                     : null,
+                // A versão do serviço letivo anuncia-se antes de valer: a faixa diz
+                // a data e dá a ler a versão que vem (`in_force` false) ou diz que
+                // já está em vigor (`in_force` true).
+                'privacy_notice_lesson_service' => PrivacyVersion::lessonServiceDate() === null ? null : [
+                    'effective_from' => PrivacyVersion::lessonServiceDate()->toDateString(),
+                    'in_force' => PrivacyVersion::describesLessonService(),
+                ],
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,
