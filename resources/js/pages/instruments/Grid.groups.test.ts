@@ -96,7 +96,7 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
         const subtotals = row.findAll('[data-testid="subtotal-cell"]').map((td) => td.text().replace(/\s+/g, ''));
 
         // 4+0+4+4=12 · 3.33+3.33+3.34+6=16 · 2.5+5+5+0=12.5 · 6+7+4+5=22 · 19.5
-        expect(subtotals).toEqual(['12/16', '16/18', '12,5/20', '22/22', '19,5/24']);
+        expect(subtotals.map((text) => text.split('·')[0])).toEqual(['12/16', '16/18', '12,5/20', '22/22', '19,5/24']);
     });
 
     it('o total é a soma dos cinco subtotais, com a cotação global, sem ruído de vírgula flutuante', () => {
@@ -132,7 +132,7 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
 
         const first = wrapper.findAll('tbody tr')[0].findAll('[data-testid="subtotal-cell"]')[0].text().replace(/\s+/g, '');
 
-        expect(first).toBe('7/16');
+        expect(first.startsWith('7/16')).toBe(true);
     });
 
     it('um teste simples (um só grupo) continua uma só fila de perguntas, sem grupos nem subtotais', () => {
@@ -141,5 +141,97 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
         expect(wrapper.find('[data-testid="group-header-row"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="subtotal-cell"]').exists()).toBe(false);
         expect(wrapper.findAll('thead tr')).toHaveLength(1);
+    });
+});
+
+const scaleBands = [
+    { label: 'Insuficiente', band_min: '0', band_max: '49.49', sequence: 1, is_negative: true },
+    { label: 'Suficiente', band_min: '49.5', band_max: '74.99', sequence: 2, is_negative: false },
+    { label: 'Bom', band_min: '75', band_max: '89.99', sequence: 3, is_negative: false },
+    { label: 'Muito Bom', band_min: '90', band_max: '100', sequence: 4, is_negative: false },
+];
+const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
+/** Aluno 2 com a linha completa a zeros: uma secção ou um total a meio não têm menção nem cor, nem entram na média. */
+const scoresOfTwo = fullRow.map((_, index) => score(2, index, 0));
+
+describe('instruments/Grid — menções indicativas e cores', () => {
+    it('cada subtotal mostra pontos/cotação, percentagem e menção da escala numa só linha', () => {
+        const wrapper = build({ scaleBands }, scoresOfOne);
+
+        const cells = wrapper.findAll('tbody tr')[0].findAll('[data-testid="subtotal-cell"]').map((td) => flat(td.text()));
+
+        expect(cells[0]).toContain('12/16 · 75,0 % · Bom');
+        expect(cells[1]).toContain('16/18 · 88,9 % · Bom');
+        expect(cells[2]).toContain('12,5/20 · 62,5 % · Suficiente');
+        expect(cells[3]).toContain('22/22 · 100,0 % · Muito Bom');
+    });
+
+    it('a menção é indicativa: tem title explicativo e não é uma badge', () => {
+        const wrapper = build({ scaleBands }, scoresOfOne);
+
+        const mention = wrapper.get('[data-testid="subtotal-mention"]');
+
+        expect(mention.attributes('title')).toContain('Menção indicativa pela escala do perfil');
+        expect(mention.classes()).toContain('text-xs');
+        expect(wrapper.get('[data-testid="subtotal-cell"]').find('[class*="bg-"]').exists()).toBe(false);
+    });
+
+    it('o total mostra pontos/cotação, percentagem e menção', () => {
+        const wrapper = build({ scaleBands }, scoresOfOne);
+
+        expect(flat(wrapper.findAll('tbody tr')[0].get('[data-testid="total-cell"]').text())).toContain('82/100 · 82,0 % · Bom');
+    });
+
+    it('sem bandas (turma sem perfil) mostra a percentagem sem menção', () => {
+        const wrapper = build({ scaleBands: [] }, scoresOfOne);
+
+        const text = flat(wrapper.findAll('tbody tr')[0].findAll('[data-testid="subtotal-cell"]')[0].text());
+
+        expect(text).toContain('12/16 · 75,0 %');
+        expect(text).not.toContain('Bom');
+    });
+
+    it('vermelho abaixo de 49,5 % e verde acima da média da turma, nos subtotais e no total', () => {
+        const wrapper = build({ scaleBands }, [...scoresOfOne, ...scoresOfTwo]);
+        const rows = wrapper.findAll('tbody tr');
+
+        const first = rows[0].get('[data-testid="subtotal-mention"]');
+        const second = rows[1].get('[data-testid="subtotal-mention"]');
+        expect(first.classes()).toContain('text-green-700');
+        expect(second.classes()).toContain('text-red-700');
+        expect(rows[1].get('[data-testid="subtotal-cell"]').text()).toContain('Inferior a 49,5 %');
+        expect(rows[0].get('[data-testid="subtotal-cell"]').text()).toContain('Superior à média da turma');
+
+        expect(rows[0].get('[data-testid="total-mention"]').classes()).toContain('text-green-700');
+        expect(rows[1].get('[data-testid="total-mention"]').classes()).toContain('text-red-700');
+    });
+
+    it('um valor igual à média da turma não é verde', () => {
+        const wrapper = build({ scaleBands }, [...scoresOfOne, ...fullRow.map((points, index) => score(2, index, points))]);
+
+        expect(wrapper.findAll('tbody tr')[0].get('[data-testid="subtotal-mention"]').classes()).not.toContain('text-green-700');
+        expect(wrapper.findAll('tbody tr')[0].get('[data-testid="total-mention"]').classes()).not.toContain('text-green-700');
+    });
+
+    it('colore o valor da coluna oficial pelo valor exato e pela média exata entre os alunos com valor', () => {
+        const cell = (exact: string) => ({ value: Number(exact).toFixed(1), value_precise: null, exact, band: null, below_threshold: null, is_partial: false });
+        const official = {
+            status: 'official',
+            label: 'Classificação oficial',
+            threshold: null,
+            domains: [{ key: 'd1', id: 1, name: 'Leitura' }],
+            students: {
+                1: { status: 'classified', status_label: 'Classificado', global: cell('49.499999'), domains: { d1: cell('80.000000') } },
+                2: { status: 'classified', status_label: 'Classificado', global: cell('90.000000'), domains: { d1: cell('60.000000') } },
+            },
+        };
+        const wrapper = build({ official });
+
+        const rows = wrapper.findAll('tbody tr');
+        expect(rows[0].get('[data-testid="official-global-value"]').classes()).toContain('text-red-700');
+        expect(rows[1].get('[data-testid="official-global-value"]').classes()).toContain('text-green-700');
+        expect(rows[0].get('[data-testid="official-value-d1"]').classes()).toContain('text-green-700');
+        expect(rows[1].get('[data-testid="official-value-d1"]').classes()).not.toContain('text-green-700');
+        expect(rows[0].text()).toContain('Inferior a 49,5 %');
     });
 });

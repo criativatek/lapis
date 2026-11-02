@@ -19,8 +19,10 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { computeStructuralFingerprint, useGridDraft } from '@/composables/useGridDraft';
-import { percentFor as computePercentFor } from '@/lib/instrumentQualitativeRating';
+import { scaleBandFor } from '@/lib/instrumentQualitativeRating';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import { meanOf, resultTone, resultToneClasses, resultToneTitle } from '@/lib/resultTone';
+import type { ResultTone } from '@/lib/resultTone';
 import { formatScoreInput, parseScore } from '@/lib/scoreInput';
 import { statusToneClasses } from '@/lib/statusTone';
 import type { Cell as OfficialCell } from '@/types/resultsAnalysis';
@@ -814,23 +816,122 @@ function subtotalFor(student: Student, section: Section): number | null {
     return assessed === 0 ? null : sum;
 }
 
+// ------------------------------------------------- menções indicativas e cores
+
+const MENTION_TITLE =
+    'Menção indicativa pela escala do perfil, calculada sobre os pontos desta secção; a classificação oficial está na coluna da direita.';
+
 /**
- * The percentage, over only the items already graded — never the
- * instrument's full total_points as a fixed denominator, so an ungraded
- * item never drags the percentage down (CLAUDE.md §13.3, "vazio não é
- * zero"). Bonus items add to the numerator but not the denominator,
- * mirroring CalculationEngine::calculateDomain()'s treatment of bonus
- * items. Returns null under the same condition totalFor() does (nothing
- * graded yet), or if every graded item happened to be bonus (denominator
- * would be zero).
- *
- * This is a per-instrument indicator only — it does not mirror domain
- * weighting, eligibility/late-entry rules, or absence_mode from
- * CalculationEngine. See instrumentQualitativeRating.ts for the extracted,
- * independently testable implementation.
+ * «75,0 %» — 1 casa, vírgula decimal, arredondamento half-up como o motor (Bc::round … 'half_up'):
+ * 15,83/20 é 79,15 %, que o `toFixed` do JavaScript mostrava como 79,1 % ao lado dos 79,2 % da coluna
+ * oficial. Só para mostrar: as decisões usam sempre o valor exato.
  */
-function percentFor(student: Student): number | null {
-    return computePercentFor(props.items, (itemId) => cells[cellKey(student.enrollment_id, itemId)]);
+function formatPercent(value: number): string {
+    // 1e-7 absorve o erro binário de 15,83/20 (79,149999…); muito abaixo de meia décima, nunca muda um
+    // valor que não esteja já na fronteira.
+    const rounded = Math.round(value * 10 + 1e-7) / 10;
+
+    return `${rounded.toFixed(1).replace('.', ',')} %`;
+}
+
+/** A menção da escala do perfil para uma percentagem exata; null sem bandas ou sem banda correspondente. */
+function mentionFor(percentExact: number | null): string | null {
+    return scaleBandFor(percentExact, props.scaleBands)?.label ?? null;
+}
+
+/**
+ * Percentagem exata do aluno numa secção: subtotal sobre a cotação da secção, sem arredondar.
+ *
+ * Só quando a secção está COMPLETA (nenhuma pergunta por avaliar): um subtotal parcial — 7 em 16 com
+ * duas perguntas ainda em branco — não é 43,8 % nem «Insuficiente», é uma soma a meio. Sem percentagem
+ * não há menção, não há cor, e o aluno não entra na média da turma dessa secção.
+ */
+function subtotalPercentExact(student: Student, section: Section): number | null {
+    const subtotal = subtotalFor(student, section);
+    const complete = section.items.every((item) => {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
+
+        return current !== undefined && current.state !== 'pending';
+    });
+
+    return subtotal === null || section.max <= 0 || !complete ? null : (subtotal / section.max) * 100;
+}
+
+/**
+ * A percentagem do total sobre as perguntas já classificadas (vazio não é zero; bónus soma ao numerador mas
+ * não ao denominador) — a mesma regra de percentFor() em instrumentQualitativeRating.ts, mas sem arredondar,
+ * porque é com o valor exato que se decide a menção e a cor. null quando nada está classificado — e null
+ * enquanto a correção do aluno estiver parcial (ver subtotalPercentExact: uma soma a meio não tem menção).
+ */
+function totalPercentExact(student: Student): number | null {
+    if (isPartial(student)) {
+        return null;
+    }
+
+    let earned = 0;
+    let possible = 0;
+    let assessed = 0;
+
+    for (const item of props.items) {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
+
+        if (current?.state === 'assessed' && current.points !== null) {
+            earned += current.points;
+
+            if (!item.is_bonus) {
+                possible += item.points_possible ?? 0;
+            }
+
+            assessed += 1;
+        }
+    }
+
+    return assessed === 0 || possible === 0 ? null : (earned / possible) * 100;
+}
+
+const subtotalMeans = computed(
+    () =>
+        new Map<number, number | null>(
+            sections.value.map((section) => [
+                section.index,
+                meanOf(props.students.map((student) => subtotalPercentExact(student, section))),
+            ]),
+        ),
+);
+
+const totalMean = computed(() => meanOf(props.students.map((student) => totalPercentExact(student))));
+
+/** Média exata da turma (só alunos com valor oficial) por «global» e por cada domínio. */
+const officialMeans = computed(() => {
+    const exactOf = (student: Student, key: string): number | null => {
+        const official = officialFor(student);
+        const cell = key === 'global' ? official?.global : official?.domains[key];
+
+        return cell?.exact != null ? Number(cell.exact) : null;
+    };
+    const means: Record<string, number | null> = {};
+
+    for (const key of ['global', ...props.official.domains.map((domain) => domain.key)]) {
+        means[key] = meanOf(props.students.map((student) => exactOf(student, key)));
+    }
+
+    return means;
+});
+
+function subtotalTone(student: Student, section: Section): ResultTone | null {
+    return resultTone(subtotalPercentExact(student, section), subtotalMeans.value.get(section.index) ?? null);
+}
+
+function totalTone(student: Student): ResultTone | null {
+    return resultTone(totalPercentExact(student), totalMean.value);
+}
+
+function officialTone(cell: OfficialCell | null | undefined, key: string): ResultTone | null {
+    return resultTone(cell?.exact != null ? Number(cell.exact) : null, officialMeans.value[key] ?? null);
+}
+
+function toneClass(tone: ResultTone | null): string {
+    return tone === null ? '' : resultToneClasses[tone];
 }
 
 // ------------------------------------------------- classificação oficial
@@ -1644,7 +1745,17 @@ function revertCancellation(): void {
                                 <span class="text-muted-foreground" title="Sem classificações neste grupo — não é zero.">—</span>
                             </template>
                             <template v-else>
-                                {{ formatPoints(subtotalFor(student, section)!) }}<span class="font-normal text-muted-foreground">/{{ formatPoints(section.max) }}</span>
+                                <span class="whitespace-nowrap">
+                                    {{ formatPoints(subtotalFor(student, section)!) }}<span class="font-normal text-muted-foreground">/{{ formatPoints(section.max) }}</span>
+                                    <span
+                                        v-if="subtotalPercentExact(student, section) !== null"
+                                        class="text-xs font-normal"
+                                        :class="toneClass(subtotalTone(student, section))"
+                                        :title="MENTION_TITLE"
+                                        data-testid="subtotal-mention"
+                                    > · {{ formatPercent(subtotalPercentExact(student, section)!) }}<template v-if="mentionFor(subtotalPercentExact(student, section))"> · {{ mentionFor(subtotalPercentExact(student, section)) }}</template></span>
+                                    <span v-if="subtotalTone(student, section)" class="sr-only">{{ resultToneTitle[subtotalTone(student, section)!] }}</span>
+                                </span>
                             </template>
                         </td>
                         <td v-else-if="item" class="px-1 py-0.5 text-center">
@@ -1729,7 +1840,14 @@ function revertCancellation(): void {
                             </template>
                             <template v-else>
                                 {{ formatPoints(totalFor(student)!) }}<span v-if="totalMax" class="font-normal text-muted-foreground">/{{ formatPoints(totalMax) }}</span>
-                                <span v-if="percentFor(student) !== null" class="font-normal text-muted-foreground"> · {{ percentFor(student) }}%</span>
+                                <span
+                                    v-if="totalPercentExact(student) !== null"
+                                    class="text-xs font-normal"
+                                    :class="toneClass(totalTone(student)) || 'text-muted-foreground'"
+                                    :title="MENTION_TITLE"
+                                    data-testid="total-mention"
+                                > · {{ formatPercent(totalPercentExact(student)!) }}<template v-if="mentionFor(totalPercentExact(student))"> · {{ mentionFor(totalPercentExact(student)) }}</template></span>
+                                <span v-if="totalTone(student)" class="sr-only">{{ resultToneTitle[totalTone(student)!] }}</span>
                                 <span v-if="isPartial(student)" class="ml-1 text-xs font-normal text-amber-600" title="Ainda há questões por avaliar.">parcial</span>
                             </template>
                         </td>
@@ -1741,7 +1859,8 @@ function revertCancellation(): void {
                                     <span class="w-16 shrink-0 text-xs font-medium text-muted-foreground">Global</span>
                                     <template v-if="officialFor(student)">
                                         <template v-if="officialFor(student)!.global.value !== null || officialFor(student)!.global.value_precise !== null">
-                                            <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.global) }}</span>
+                                            <span class="text-xs tabular-nums" :class="toneClass(officialTone(officialFor(student)!.global, 'global'))" :title="officialTone(officialFor(student)!.global, 'global') ? resultToneTitle[officialTone(officialFor(student)!.global, 'global')!] : undefined" data-testid="official-global-value">{{ officialCellDisplay(officialFor(student)!.global) }}</span>
+                                            <span v-if="officialTone(officialFor(student)!.global, 'global')" class="sr-only">{{ resultToneTitle[officialTone(officialFor(student)!.global, 'global')!] }}</span>
                                             <Badge v-if="officialFor(student)!.global.band" :class="officialToneClass(officialFor(student)!.global)" class="text-[10px]">
                                                 {{ officialFor(student)!.global.band!.label }}
                                             </Badge>
@@ -1764,7 +1883,13 @@ function revertCancellation(): void {
                                                 class="text-xs font-medium tabular-nums"
                                                 :data-testid="`domain-points-${domain.key}`"
                                             >{{ officialPointsDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
-                                            <span class="text-xs tabular-nums">{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                            <span
+                                                class="text-xs tabular-nums"
+                                                :class="toneClass(officialTone(officialFor(student)!.domains[domain.key], domain.key))"
+                                                :title="officialTone(officialFor(student)!.domains[domain.key], domain.key) ? resultToneTitle[officialTone(officialFor(student)!.domains[domain.key], domain.key)!] : undefined"
+                                                :data-testid="`official-value-${domain.key}`"
+                                            >{{ officialCellDisplay(officialFor(student)!.domains[domain.key]!) }}</span>
+                                            <span v-if="officialTone(officialFor(student)!.domains[domain.key], domain.key)" class="sr-only">{{ resultToneTitle[officialTone(officialFor(student)!.domains[domain.key], domain.key)!] }}</span>
                                         </span>
                                         <Badge
                                             v-if="officialFor(student)!.domains[domain.key]!.band"

@@ -53,6 +53,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - **Barra de deslocação horizontal sempre à mão:** fixa ao fundo da janela
   enquanto a grelha está à vista, sincronizada com a tabela nos dois sentidos,
   sem scroll horizontal da página; a coluna do aluno continua fixa.
+- **Menções qualitativas nos subtotais e no total da grelha:** cada subtotal
+  mostra «12/16 · 75,0 % · Suficiente» e o total «68/100 · 68,0 % · Bom», com
+  a escala do perfil da turma (sem escala paralela, mesmo arredondamento
+  half-up do motor para mostrar, valor exato para decidir). São menções
+  indicativas da pontuação bruta — a classificação oficial continua a ser a do
+  motor, na coluna da direita — e só existem com a secção (ou a linha) completa:
+  uma soma a meio não tem menção nem cor.
+- **Cores das classificações**, na grelha (subtotais, total e coluna oficial) e
+  nos Resultados: **vermelho** abaixo de 49,5 % (49,5 exato não é vermelho),
+  **verde** acima da média da turma nesse grupo/domínio ou no global (igual à
+  média não é verde; alunos sem avaliação ficam fora da média, um zero conta);
+  o vermelho prevalece; nada é decidido sobre valores arredondados. Temas claro
+  e escuro; o significado nunca depende só da cor (texto para leitores de ecrã e
+  `title`).
+- **Resultados por domínio no separador Resultados:** a tabela por aluno passa a
+  «Nº · Aluno · um domínio por coluna · Classificação global · Apreciação
+  global»; cada domínio mostra pontos/cotação, percentagem e menção, e a
+  classificação global mostra também a soma dos pontos sobre a cotação total.
+  Só os domínios tocados pelo instrumento, agregados pelo motor.
 
 ### Alterado
 
