@@ -484,12 +484,16 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         $this->assertSame(['Leitura', 'Gramática', 'Escrita'], array_column($before['domainAssignment']['domains'], 'name'));
         $this->assertNull($before['domainAssignment']['groups'][0]['suggested_domain_id'], '«GRUPO I» não nomeia domínio nenhum: nada a sugerir.');
 
+        // Os ids dos domínios DO PERFIL, pelo nome, tal como a grelha os oferece. Em MySQL pode haver mais do que um
+        // «Leitura» visível (`Domain::where('name')->first()` sem ordem não é determinista), e só estes contam.
+        $profile = array_column($before['domainAssignment']['domains'], 'id', 'name');
+
         // Um grupo cujo nome já diz o domínio («GRUPO II - Leitura», como na ficha real) vem pré-sugerido —
         // sugerido, não decidido: continua a ser o professor a confirmar.
         app(CurrentOrganization::class)->runFor($this->organization, function () use ($instrument): void {
             $instrument->groups()->orderBy('sequence')->skip(1)->first()->update(['label' => 'GRUPO II - Leitura']);
         });
-        $this->assertSame($this->domains['Leitura'], $props()['domainAssignment']['groups'][1]['suggested_domain_id']);
+        $this->assertSame($profile['Leitura'], $props()['domainAssignment']['groups'][1]['suggested_domain_id']);
 
         foreach ($before['official']['students'] as $cell) {
             $this->assertSame('pending', $cell['status'], 'Sem domínios, toda a gente está «Por classificar».');
@@ -505,8 +509,8 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
         // O passo em falta: um domínio por grupo, uma vez.
         $assignments = [];
 
-        foreach ($this->groupDomainIds() as $index => $domainId) {
-            $assignments[] = ['group' => $groups[$index], 'domain_id' => $domainId];
+        foreach (['Leitura', 'Gramática', 'Escrita', 'Leitura', 'Escrita'] as $index => $name) {
+            $assignments[] = ['group' => $groups[$index], 'domain_id' => $profile[$name]];
         }
 
         $this->actingAs($this->teacher)->post("/instruments/{$instrument->ulid}/domains", ['assignments' => $assignments])->assertRedirect();
@@ -551,11 +555,11 @@ class IntuitivoSingleColumnGroupRosterTest extends IntuitivoPartialRosterTest
 
         // Repetir com outros domínios não mexe em nada: só perguntas SEM alocação recebem uma.
         $this->actingAs($this->teacher)
-            ->post("/instruments/{$instrument->ulid}/domains", ['assignments' => [['group' => $groups[0], 'domain_id' => $this->domains['Escrita']]]])
+            ->post("/instruments/{$instrument->ulid}/domains", ['assignments' => [['group' => $groups[0], 'domain_id' => $profile['Escrita']]]])
             ->assertRedirect();
         $this->assertSame(17, $this->allocationsOf($instrument));
         $this->assertSame(
-            $this->domains['Leitura'],
+            $profile['Leitura'],
             (int) app(CurrentOrganization::class)->runFor($this->organization, fn () => ItemDomainAllocation::where('instrument_item_id', $items[0])->value('domain_id')),
         );
 

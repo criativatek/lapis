@@ -311,7 +311,7 @@ describe('Grid local protection integration', () => {
      * Centred digits shifted sideways as a value's width changed, while the
      * browser's spin arrows stayed pinned to the box's right inner edge — which
      * reads as the arrows moving about. Right-aligned, the last digit holds its
-     * position whatever the value. The spinners are kept on purpose.
+     * position whatever the value. The box is a text field now (no spinners).
      */
     describe('score input alignment', () => {
         function scoreCell(wrapper: VueWrapper) {
@@ -325,16 +325,14 @@ describe('Grid local protection integration', () => {
             expect(classes).not.toContain('text-center');
         });
 
-        it('keeps a fixed box width and pads the digits clear of the spin arrows', () => {
+        it('keeps a fixed box width', () => {
             const classes = scoreCell(trackedMount()).classes();
 
             // w-20, not the original w-16: a manually typed value like
             // "10,25" was clipping inside the narrower box.
             expect(classes).toContain('w-20');
             expect(classes).not.toContain('w-16');
-            expect(classes).toContain('pr-5');
-            expect(classes).toContain('pl-1.5');
-            expect(classes).not.toContain('px-1.5');
+            expect(classes).toContain('px-1.5');
         });
 
         it.each(['5', '5.5', '5.25', '10', '100'])(
@@ -353,37 +351,18 @@ describe('Grid local protection integration', () => {
             },
         );
 
-        it('keeps the native spinners rather than suppressing them', () => {
+        it('is a decimal text box, so a comma can be typed and there are no spin arrows', () => {
             const input = scoreCell(trackedMount());
 
-            expect(input.attributes('type')).toBe('number');
-            expect(input.attributes('step')).toBe('0.5');
-            expect(input.classes().join(' ')).not.toContain('appearance-none');
+            expect(input.attributes('type')).toBe('text');
+            expect(input.attributes('inputmode')).toBe('decimal');
+            expect(input.attributes('autocomplete')).toBe('off');
+            expect(input.attributes('step')).toBeUndefined();
         });
 
-        it('steps the spin arrows by 0.5, matching how a grade is actually given', () => {
-            const input = scoreCell(trackedMount()).element as HTMLInputElement;
-
-            input.value = '4';
-            input.stepUp();
-            expect(input.value).toBe('4.5');
-            input.stepUp();
-            expect(input.value).toBe('5');
-
-            input.stepDown();
-            expect(input.value).toBe('4.5');
-            input.stepDown();
-            expect(input.value).toBe('4');
-        });
-
-        it('never lets the spin arrows step past the cotação máxima', () => {
-            const input = scoreCell(trackedMount()).element as HTMLInputElement;
-
-            // item.points_possible is 20 in this fixture — the input's own
-            // max, so the browser's native stepUp() refuses to cross it.
-            input.value = '19.5';
-            input.stepUp();
-            expect(input.value).toBe('20');
+        it('keeps the cotação máxima as the ceiling (data-max), now that the browser no longer enforces it', () => {
+            // item.points_possible is 20 in this fixture.
+            expect(scoreCell(trackedMount()).attributes('data-max')).toBe('20');
         });
 
         it('still accepts a manually typed value off the 0.5 grid', async () => {
@@ -392,6 +371,7 @@ describe('Grid local protection integration', () => {
             await editPoints(wrapper, '4.25');
 
             expect((scoreCell(wrapper).element as HTMLInputElement).value).toBe('4.25');
+            expect(wrapper.text()).not.toContain('Há classificações inválidas');
         });
 
         it('still composes with the normal, over-max and disabled styling', async () => {

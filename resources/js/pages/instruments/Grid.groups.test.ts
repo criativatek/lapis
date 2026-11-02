@@ -111,9 +111,9 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
     it('mostra cada classificação individual no seu campo, incluindo os zeros reais', () => {
         const wrapper = build({}, scoresOfOne);
 
-        const values = wrapper.findAll('tbody tr')[0].findAll('input[type="number"]').map((input) => (input.element as HTMLInputElement).value);
+        const values = wrapper.findAll('tbody tr')[0].findAll('input[data-cell]').map((input) => (input.element as HTMLInputElement).value);
 
-        expect(values).toEqual(fullRow.map(String));
+        expect(values).toEqual(fullRow.map((points) => String(points).replace('.', ',')));
         expect(values.filter((value) => value === '0')).toHaveLength(2);
     });
 
@@ -121,7 +121,7 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
         const wrapper = build({}, scoresOfOne);
 
         const empty = wrapper.findAll('tbody tr')[1];
-        const inputs = empty.findAll('input[type="number"]').map((input) => (input.element as HTMLInputElement).value);
+        const inputs = empty.findAll('input[data-cell]').map((input) => (input.element as HTMLInputElement).value);
         expect(inputs.every((value) => value === '')).toBe(true);
         expect(empty.findAll('[data-testid="subtotal-cell"]').map((td) => td.text().trim())).toEqual(['—', '—', '—', '—', '—']);
         expect(empty.get('[data-testid="total-cell"]').text().trim()).toBe('—');
