@@ -130,7 +130,7 @@ class InsightsOverviewTest extends InsightsTestCase
     }
 
     #[Test]
-    public function the_chrome_describes_the_four_segments_and_notes_unclassified_organizations(): void
+    public function the_chrome_describes_the_four_segments_and_notes_unclassified_accounts(): void
     {
         $this->person('Uma');
         $this->classify($this->organizationOf($this->person('Outra')), 'unclassified');
@@ -142,7 +142,7 @@ class InsightsOverviewTest extends InsightsTestCase
             $this->assertNotSame('', $segment['description']);
         }
         // A de «Outra» e a do próprio operador.
-        $this->assertContains('2 organizações estão por classificar e não entram na utilização real.', $props['coverage']['notes']);
+        $this->assertContains('2 contas estão por classificar e não entram na utilização real.', $props['coverage']['notes']);
 
         Organization::query()->update(['usage_classification' => 'real']);
         $notes = $this->props('admin.usage.overview')['coverage']['notes'];
@@ -497,10 +497,28 @@ class InsightsOverviewTest extends InsightsTestCase
             array_column($options['signal_options'], 'key'),
         );
 
+        $this->assertSame(['personal'], array_values(array_unique(array_column($options['organizations'], 'type'))));
+
         $names = array_column($options['organizations'], 'name');
         $sorted = $names;
         usort($sorted, 'strcasecmp');
         $this->assertSame($sorted, $names);
+    }
+
+    #[Test]
+    public function a_personal_account_is_listed_by_its_teachers_name_and_an_institution_by_its_own(): void
+    {
+        $teacher = $this->person('Beatriz Ramos');
+        $teacher->personalOrganization()->forceFill(['name' => 'Espaço de trabalho interno'])->save();
+        $school = Organization::factory()->institutional()->withMember($teacher)->create(['name' => 'Escola Azul']);
+
+        $accounts = collect($this->props('admin.usage.overview')['options']['organizations'])->keyBy('ulid');
+
+        $personal = $accounts[$teacher->personalOrganization()->ulid];
+        $this->assertSame('Beatriz Ramos', $personal['name']);
+        $this->assertSame('personal', $personal['type']);
+        $this->assertSame('Escola Azul', $accounts[$school->ulid]['name']);
+        $this->assertSame('institutional', $accounts[$school->ulid]['type']);
     }
 
     #[Test]

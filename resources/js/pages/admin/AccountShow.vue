@@ -661,7 +661,7 @@ function destroy(): void {
             </div>
             <p class="text-sm text-muted-foreground">
                 Serve só para o painel de utilização, é independente da «conta de teste» comercial e <strong>não</strong> altera nada na
-                conta. Nada é inferido: quem decide é uma pessoa, e uma organização por classificar não entra na utilização real.
+                conta. Nada é inferido: quem decide é uma pessoa, e uma conta por classificar não entra na utilização real.
             </p>
             <form class="space-y-3" @submit.prevent="saveClassification">
                 <fieldset class="space-y-2">

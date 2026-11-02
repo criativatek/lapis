@@ -59,7 +59,7 @@ const headCell = 'px-3 py-2 font-medium';
                     <dd>{{ user.status }}</dd>
                 </div>
                 <div class="sm:col-span-2">
-                    <dt class="text-xs text-muted-foreground">Organizações</dt>
+                    <dt class="text-xs text-muted-foreground">Contas</dt>
                     <dd>
                         <ul v-if="user.organizations.length" class="space-y-0.5">
                             <li v-for="(organization, index) in user.organizations" :key="index">
@@ -127,7 +127,7 @@ const headCell = 'px-3 py-2 font-medium';
                 <UsageTile label="Ações concluídas" :value="formatNumber(summary.actions)" />
                 <UsageTile label="Elementos afetados" :value="formatNumber(summary.items)" hint="contados à parte das ações" />
                 <UsageTile label="Falhas técnicas" :value="formatNumber(summary.failures)" />
-                <UsageTile label="Última atividade observada (todas as organizações)" :value="lastActivity" />
+                <UsageTile label="Última atividade observada (todas as contas)" :value="lastActivity" />
             </div>
         </section>
 
