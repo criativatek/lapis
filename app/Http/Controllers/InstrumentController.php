@@ -35,6 +35,7 @@ use App\Support\Usage\UsageRecorder;
 use App\Support\Usage\UsageSnapshots;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -710,6 +711,63 @@ class InstrumentController extends Controller
                     : "{$count} alterações não foram guardadas porque a grelha tinha sido alterada entretanto — os valores foram atualizados.",
             ]);
         }
+
+        return back();
+    }
+
+    /**
+     * Saves the «Conteúdo» row of the grid: the content assessed by each
+     * question, kept in instrument_items.label. It is pedagogical metadata, not
+     * a classification, so it is allowed once the correction is concluded; only
+     * a cancelled instrument refuses it.
+     */
+    public function updateItemLabels(Request $request, Instrument $instrument): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
+
+        $data = $request->validate([
+            'labels' => ['required', 'array', 'min:1'],
+            'labels.*' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $items = $instrument->items()->get()->keyBy('id');
+
+        foreach (array_keys($data['labels']) as $itemId) {
+            abort_unless(is_int($itemId) || ctype_digit((string) $itemId), 422);
+            abort_unless($items->has((int) $itemId), 422);
+        }
+
+        $changed = 0;
+
+        DB::transaction(function () use ($data, $items, &$changed): void {
+            foreach ($data['labels'] as $itemId => $value) {
+                $label = trim((string) $value);
+                $label = $label === '' ? null : $label;
+
+                /** @var InstrumentItem $item */
+                $item = $items->get((int) $itemId);
+
+                if ($item->label === $label) {
+                    continue;
+                }
+
+                $item->update(['label' => $label]);
+                $changed++;
+            }
+        });
+
+        if ($changed > 0) {
+            $this->audit->record(
+                'instrument.item_labels_updated',
+                $instrument,
+                $this->user(),
+                "Conteúdo das perguntas de «{$instrument->title}» atualizado ({$changed}) — {$instrument->schoolClass->label}.",
+                ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id, 'changed' => $changed],
+            );
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Conteúdo das perguntas guardado.']);
 
         return back();
     }

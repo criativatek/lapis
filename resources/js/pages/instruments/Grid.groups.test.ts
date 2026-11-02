@@ -140,7 +140,7 @@ describe('instruments/Grid — grupos, subtotais e total', () => {
 
         expect(wrapper.find('[data-testid="group-header-row"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="subtotal-cell"]').exists()).toBe(false);
-        expect(wrapper.findAll('thead tr')).toHaveLength(1);
+        expect(wrapper.findAll('thead tr:not([data-testid="content-row"])')).toHaveLength(1);
     });
 });
 
