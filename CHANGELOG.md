@@ -43,6 +43,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   `POST /instruments/{ulid}/domains`. Só as perguntas sem alocação recebem uma,
   a 100 %; classificações, cotações e alocações existentes não mudam; um
   domínio fora do perfil ativo é recusado. Registado na auditoria.
+- **Setas do teclado na grelha de correção**, como numa folha de cálculo: ← →
+  mudam de pergunta na mesma linha (só entre células editáveis; subtotais e
+  totais saltam-se), ↑ ↓ mudam de aluno na mesma pergunta, Enter confirma e
+  desce, Esc repõe o que a célula tinha ao entrar. ← e → só mudam de célula com
+  o cursor no início/fim do texto — a meio, movem o cursor. A célula de destino
+  fica selecionada e visível; Tab e o rato continuam a funcionar; numa grelha
+  concluída o foco move-se mas nada é editável.
+- **Barra de deslocação horizontal sempre à mão:** fixa ao fundo da janela
+  enquanto a grelha está à vista, sincronizada com a tabela nos dois sentidos,
+  sem scroll horizontal da página; a coluna do aluno continua fixa.
+
+### Alterado
+
+- **Vírgula ou ponto na classificação:** `3,5` e `3.5` valem o mesmo; o valor
+  mostra-se sempre com vírgula depois de confirmado, sem arredondar. Um texto
+  que não é um número (`3,5,1`, `abc`) fica assinalado, não entra na grelha e
+  bloqueia o Guardar até ser corrigido ou reposto com Esc. O campo deixou de
+  ser numérico (sem setas de incremento); a cotação máxima continua validada.
+- A coluna da classificação oficial tem largura mínima e linhas sem quebra: com
+  cinco domínios, cada aluno chegava a ocupar 300 px de altura.
 
 ## [0.187.2] — 2026-11-02
 
