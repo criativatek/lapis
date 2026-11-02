@@ -821,9 +821,17 @@ function subtotalFor(student: Student, section: Section): number | null {
 const MENTION_TITLE =
     'Menção indicativa pela escala do perfil, calculada sobre os pontos desta secção; a classificação oficial está na coluna da direita.';
 
-/** «75,0 %» — 1 casa, vírgula decimal. Só para mostrar: as decisões usam sempre o valor exato. */
+/**
+ * «75,0 %» — 1 casa, vírgula decimal, arredondamento half-up como o motor (Bc::round … 'half_up'):
+ * 15,83/20 é 79,15 %, que o `toFixed` do JavaScript mostrava como 79,1 % ao lado dos 79,2 % da coluna
+ * oficial. Só para mostrar: as decisões usam sempre o valor exato.
+ */
 function formatPercent(value: number): string {
-    return `${value.toFixed(1).replace('.', ',')} %`;
+    // 1e-7 absorve o erro binário de 15,83/20 (79,149999…); muito abaixo de meia décima, nunca muda um
+    // valor que não esteja já na fronteira.
+    const rounded = Math.round(value * 10 + 1e-7) / 10;
+
+    return `${rounded.toFixed(1).replace('.', ',')} %`;
 }
 
 /** A menção da escala do perfil para uma percentagem exata; null sem bandas ou sem banda correspondente. */
@@ -831,19 +839,35 @@ function mentionFor(percentExact: number | null): string | null {
     return scaleBandFor(percentExact, props.scaleBands)?.label ?? null;
 }
 
-/** Percentagem exata do aluno numa secção: subtotal sobre a cotação da secção, sem arredondar. */
+/**
+ * Percentagem exata do aluno numa secção: subtotal sobre a cotação da secção, sem arredondar.
+ *
+ * Só quando a secção está COMPLETA (nenhuma pergunta por avaliar): um subtotal parcial — 7 em 16 com
+ * duas perguntas ainda em branco — não é 43,8 % nem «Insuficiente», é uma soma a meio. Sem percentagem
+ * não há menção, não há cor, e o aluno não entra na média da turma dessa secção.
+ */
 function subtotalPercentExact(student: Student, section: Section): number | null {
     const subtotal = subtotalFor(student, section);
+    const complete = section.items.every((item) => {
+        const current = cells[cellKey(student.enrollment_id, item.id)];
 
-    return subtotal === null || section.max <= 0 ? null : (subtotal / section.max) * 100;
+        return current !== undefined && current.state !== 'pending';
+    });
+
+    return subtotal === null || section.max <= 0 || !complete ? null : (subtotal / section.max) * 100;
 }
 
 /**
  * A percentagem do total sobre as perguntas já classificadas (vazio não é zero; bónus soma ao numerador mas
  * não ao denominador) — a mesma regra de percentFor() em instrumentQualitativeRating.ts, mas sem arredondar,
- * porque é com o valor exato que se decide a menção e a cor. null quando nada está classificado.
+ * porque é com o valor exato que se decide a menção e a cor. null quando nada está classificado — e null
+ * enquanto a correção do aluno estiver parcial (ver subtotalPercentExact: uma soma a meio não tem menção).
  */
 function totalPercentExact(student: Student): number | null {
+    if (isPartial(student)) {
+        return null;
+    }
+
     let earned = 0;
     let possible = 0;
     let assessed = 0;

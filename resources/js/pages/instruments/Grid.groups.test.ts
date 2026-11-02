@@ -151,8 +151,8 @@ const scaleBands = [
     { label: 'Muito Bom', band_min: '90', band_max: '100', sequence: 4, is_negative: false },
 ];
 const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
-/** Aluno 2 só com o grupo I classificado, a zero. */
-const scoresOfTwo = [0, 1, 2, 3].map((index) => score(2, index, 0));
+/** Aluno 2 com a linha completa a zeros: uma secção ou um total a meio não têm menção nem cor, nem entram na média. */
+const scoresOfTwo = fullRow.map((_, index) => score(2, index, 0));
 
 describe('instruments/Grid — menções indicativas e cores', () => {
     it('cada subtotal mostra pontos/cotação, percentagem e menção da escala numa só linha', () => {
