@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Legal\LegalDocuments;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -29,10 +30,12 @@ class LegalController extends Controller
         ]);
     }
 
-    public function privacy(): Response
+    public function privacy(Request $request): Response
     {
         return Inertia::render('legal/Document', [
-            'document' => LegalDocuments::privacy(),
+            // `?versao=proxima`: a versão anunciada, enquanto o estiver (LegalDocuments::privacy). Fora do anúncio
+            // o parâmetro não faz nada — a página mostra sempre a versão em vigor.
+            'document' => LegalDocuments::privacy($request->query('versao') === 'proxima'),
             'controller' => LegalDocuments::controller(),
         ]);
     }
@@ -46,10 +49,10 @@ class LegalController extends Controller
      * subcontratação que só se lê depois de aceite é um acordo que ninguém
      * leu.
      */
-    public function processing(): Response
+    public function processing(Request $request): Response
     {
         return Inertia::render('legal/Document', [
-            'document' => LegalDocuments::processing(),
+            'document' => LegalDocuments::processing($request->query('versao') === 'proxima'),
             'controller' => LegalDocuments::controller(),
         ]);
     }

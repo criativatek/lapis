@@ -101,6 +101,43 @@ anteriores. **[A VALIDAR]**
    da publicação do texto.
 3. Ligar `LAPIS_LESSON_NOT_HELD_ENABLED` e, só depois, `LAPIS_STRIKE_ADHESION_RECORDING`.
 
+## 3b. Estado do texto e da vigência (0.187.x)
+
+O texto concreto desta proposta está em `LegalDocuments` (Política: «Dados do professor», «Dados dos alunos», «Durante quanto
+tempo», «Os seus direitos»; Acordo: «Objeto, duração e natureza do tratamento»), com o `LessonOutcomeLegalTest` alterado na mesma
+alteração. **Está pronto mas NÃO publicado**, e a vigência funciona assim:
+
+- A versão tem a sua **própria data**, `lapis.legal.lesson_service_effective_from` (`LAPIS_LEGAL_LESSON_SERVICE_DATE`), **vazia
+  por defeito**. Definir essa data é o ato deliberado de publicar. Sem data — ou com uma data futura, inválida ou inexistente — os
+  dois documentos mostram o **texto anterior com a data anterior** (2026-09-15); a partir da data chegada mostram o texto novo
+  **com essa data**. O texto novo nunca aparece sob uma data antiga, e nenhuma frase ou secção anterior é removida.
+- **Aviso prévio, como a Política promete** («avisar através da aplicação ou por email antes de produzir efeitos»): a versão é
+  **anunciada na aplicação 7 dias antes da data** (`PrivacyVersion::ADVANCE_NOTICE_DAYS`). Durante o anúncio a faixa não
+  bloqueante diz «A partir de <data> … passam a descrever …» e dá a ler a versão que vem (`/privacidade?versao=proxima`,
+  `/tratamento-de-dados?versao=proxima`, marcadas «versão que entra em vigor em …»); a página em vigor diz que vem uma versão
+  nova. Na data, os documentos passam a ser os novos e a faixa diz «Atualizámos …». Quem fechar a faixa durante o anúncio não a
+  volta a ver na data (`PrivacyVersion::noticeAt`). **Fechar o aviso não é aceitar** — a Política informa; não se aceita.
+- Os **Termos** não mudam (hash fixado em teste) e a aceitação já dada (`users.terms_version`, registada na criação da conta) **não
+  é alterada nem presumida**: nada se regista como aceite em nome de ninguém. **Decisão do responsável (2026-11-02):** manter os
+  mecanismos de aceitação existentes, sem fluxo de reaceitação, por não ter sido identificada obrigação concreta que o exija —
+  a alteração descreve um tratamento novo de dados operacionais do próprio professor e dos factos da escola, com as mesmas
+  finalidades e o mesmo fundamento contratual já descritos; a aplicação continua a informar, não a presumir aceitação.
+
+Calendário proposto (proporcional à fase atual, com um grupo restrito de professores convidados): deploy da 0.188.1 com
+`LAPIS_LEGAL_LESSON_SERVICE_DATE = deploy + 7 dias` (o anúncio começa no próprio dia do deploy); na data, os textos entram em
+vigor e liga-se `LAPIS_LESSON_NOT_HELD_ENABLED=true` (mantendo `LAPIS_STRIKE_ADHESION_RECORDING=false`). Nada é retroativo: as
+aulas não realizadas só podem ser registadas depois de os textos estarem em vigor.
+
+Pontos que **continuam por validar por quem tem competência**, e que NÃO bloqueiam o registo geral (só a chave da adesão):
+
+1. enquadramento de «Greve do professor» (dado operacional ou categoria especial) e fundamento do tratamento — o texto **não afirma**
+   nenhum (o teste proíbe «categoria especial», «consentimento» e «interesse legítimo» nas secções alteradas); enquanto não estiver
+   validado, `LAPIS_STRIKE_ADHESION_RECORDING` fica desligada e a opção não é oferecida;
+2. conservação do histórico de correções e do motivo textual — o texto diz o que a aplicação faz (enquanto a aula existir, sem
+   prazo automático) e não promete prazo que não exista;
+3. se a correção administrativa da direção deve ser comunicada ao titular (hoje: não é; o texto descreve-o);
+4. prazo da cópia diária de segurança, que contém os dados reservados.
+
 ## 4. Perguntas em aberto para quem valida
 
 1. A indicação «Aderi à greve» é dado pessoal de que natureza? Pode ser recolhida com

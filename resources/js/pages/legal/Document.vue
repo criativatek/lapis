@@ -31,6 +31,10 @@ type LegalDocument = {
     intro: string;
     sections: Section[];
     related: Related[];
+    /** Uma versão nova já anunciada, com a data em que entra em vigor e onde a ler. */
+    upcoming?: { effective_from: string; href: string } | null;
+    /** Esta página É a versão anunciada (ainda não em vigor). */
+    preview?: boolean;
 };
 
 type Controller = {
@@ -52,6 +56,18 @@ const authenticated = computed(() => page.props.auth.user !== null);
 useLightThemeLock();
 
 /** «27 de agosto de 2026», a partir de «2026-08-27». */
+function longDate(iso: string): string {
+    const parsed = new Date(`${iso}T00:00:00`);
+
+    return Number.isNaN(parsed.getTime())
+        ? iso
+        : new Intl.DateTimeFormat('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }).format(parsed);
+}
+
+const upcomingFrom = computed(() =>
+    props.document.upcoming ? longDate(props.document.upcoming.effective_from) : null,
+);
+
 const effectiveFrom = computed(() => {
     const parsed = new Date(`${props.document.effective_from}T00:00:00`);
 
@@ -109,7 +125,32 @@ const identity = computed(() =>
                 </h1>
 
                 <p class="mt-3 text-sm text-muted-foreground">
-                    Em vigor desde {{ effectiveFrom }}
+                    <template v-if="document.preview">
+                        Versão que entra em vigor em {{ effectiveFrom }}. Até lá,
+                        vale a
+                        <a
+                            :href="$page.url.split('?')[0]"
+                            class="underline underline-offset-4"
+                            >versão atual</a
+                        >.
+                    </template>
+                    <template v-else>Em vigor desde {{ effectiveFrom }}</template>
+                </p>
+
+                <!-- A versão nova anunciada com antecedência: diz-se aqui, na página em vigor, e dá-se a ler. -->
+                <p
+                    v-if="document.upcoming"
+                    class="mt-3 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm"
+                    role="status"
+                    data-test="legal-upcoming"
+                >
+                    Uma nova versão entra em vigor em
+                    <strong>{{ upcomingFrom }}</strong>:
+                    <a
+                        :href="document.upcoming.href"
+                        class="font-medium underline underline-offset-4"
+                        >ler a nova versão</a
+                    >.
                 </p>
 
                 <p

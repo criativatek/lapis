@@ -25,6 +25,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.188.1] — 2026-11-02
+
+> **Textos legais das aulas não realizadas, prontos mas por publicar.** A
+> Política de Privacidade e o Acordo de Tratamento de Dados passam a descrever
+> o registo de aulas não realizadas (causas fechadas, as três opções de greve,
+> quem vê o quê, correções) — mas só a partir de uma data própria,
+> `LAPIS_LEGAL_LESSON_SERVICE_DATE`, vazia por defeito. Sem essa data, ou com
+> uma data futura, os documentos continuam a mostrar o texto anterior com a
+> data anterior. **Nada é dado como aceite em nome de ninguém; sem migrations;
+> as duas chaves das aulas não realizadas continuam desligadas por defeito.**
+
+### Adicionado
+
+- `lapis.legal.lesson_service_effective_from` (`LAPIS_LEGAL_LESSON_SERVICE_DATE`,
+  `Y-m-d`): a data da versão da Política/Acordo que descreve o serviço letivo.
+  Chegada a data, os dois documentos mostram o texto novo com essa data e o
+  aviso da Política volta a aparecer a quem o tinha fechado antes, com mensagem
+  própria. Fechar o aviso não é aceitar; os Termos não mudam.
+- **Aviso prévio, como a Política promete:** a versão nova é anunciada na
+  aplicação **7 dias antes** da data — a faixa diz «A partir de … passam a
+  descrever …» e dá a ler a versão que vem (`/privacidade?versao=proxima` e
+  `/tratamento-de-dados?versao=proxima`, marcadas como «versão que entra em
+  vigor em …»); a página em vigor diz que vem uma versão nova. Quem fechar a
+  faixa durante o anúncio não a volta a ver na data. Fora do anúncio, o
+  parâmetro não mostra nada.
+- `docs/legal/lesson-service-policy-proposal.md` §3b: o que continua por
+  validar por quem tem competência (enquadramento da adesão, conservação do
+  histórico, comunicação das correções, retenção dos backups, se uma alteração
+  material exige nova aceitação, aviso prévio, a própria data).
+
 ## [0.188.0] — 2026-11-02
 
 > **Uma grelha cheia de classificações já não fica «Por classificar».** Quando

@@ -126,8 +126,19 @@ class HandleInertiaRequests extends Middleware
                 // métricas de utilização traz o seu próprio aviso (com a forma de
                 // se opor), e não o texto de uma versão anterior.
                 'privacy_notice_topic' => ($user?->shouldSeePrivacyNotice() ?? false)
-                    ? (PrivacyVersion::latestChangeIsUsageMetrics() ? 'usage_metrics' : 'general')
+                    ? PrivacyVersion::latestChange()
                     : null,
+                // A versão do serviço letivo anuncia-se antes de valer: a faixa diz
+                // a data e dá a ler a versão que vem (`in_force` false) ou diz que
+                // já está em vigor (`in_force` true).
+                // A chave só existe com uma data definida: sem ela, as props
+                // partilhadas ficam byte a byte como eram (BaseSurfacesUnchangedTest).
+                ...(PrivacyVersion::lessonServiceDate() === null ? [] : [
+                    'privacy_notice_lesson_service' => [
+                        'effective_from' => PrivacyVersion::lessonServiceDate()->toDateString(),
+                        'in_force' => PrivacyVersion::describesLessonService(),
+                    ],
+                ]),
                 'organization' => $hasOrganization ? [
                     'ulid' => $currentOrganization->get()->ulid,
                     'name' => $currentOrganization->get()->name,
