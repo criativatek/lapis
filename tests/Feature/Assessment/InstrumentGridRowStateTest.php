@@ -420,7 +420,11 @@ class InstrumentGridRowStateTest extends TestCase
             "if (state === 'assessed' && ! Number.isFinite(current.points))",
             $grid,
         );
-        $this->assertStringContainsString('if (parsed === null || ! Number.isFinite(parsed))', $grid);
+        // The typed text goes through parseScore(): «3,5» and «3.5» are numbers, «3,» and «abc» are
+        // invalid and never reach `cells` (lib/scoreInput.ts refuses them with its own tests).
+        $this->assertStringContainsString("if (parsed.kind === 'invalid')", $grid);
+        $this->assertStringContainsString("if (parsed.kind === 'empty')", $grid);
+        $this->assertStringContainsString('current.points = parsed.value;', $grid);
 
         // Number.isFinite and never truthiness, because 0 is a mark.
         $this->assertStringNotContainsString('current.points ?', $grid);
@@ -433,9 +437,12 @@ class InstrumentGridRowStateTest extends TestCase
 
         // `min="0"` made the one value a deduction holds impossible to type, and
         // a half-typed «-» was how the empty cells became «assessed» in the
-        // first place.
-        $this->assertStringContainsString(':min="minimumFor(item)"', $grid);
-        $this->assertStringNotContainsString('type="number" step="0.25" min="0"', $grid);
+        // first place. The box is text now (comma or point), so the floor
+        // travels as `data-min` and is enforced by parseScore + isOverMax, not
+        // by the browser.
+        $this->assertStringContainsString(':data-min="minimumFor(item)"', $grid);
+        $this->assertStringContainsString('type="text" inputmode="decimal"', $grid);
+        $this->assertStringNotContainsString(':min="0"', $grid);
         $this->assertStringContainsString(
             'return item.is_bonus && item.points_possible === 0;',
             $grid,
