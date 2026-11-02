@@ -5,6 +5,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
+import type { DomainAssignment } from '@/components/instruments/DomainAssignmentCallout.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -96,6 +98,8 @@ const props = defineProps<{
         class_ulid: string;
         period: string;
     };
+    /** Perguntas ainda sem domínio e o passo que o resolve (ver DomainAssignmentCallout). */
+    domainAssignment?: DomainAssignment;
     /** As secções do teste; só se desenham quando há mais do que uma (um teste simples não mostra estrutura). */
     groups?: { ulid: string; label: string | null }[];
     items: Item[];
@@ -1211,6 +1215,13 @@ function revertCancellation(): void {
                 Reverter anulação
             </Button>
         </div>
+
+        <DomainAssignmentCallout
+            v-if="domainAssignment"
+            :post-url="`/instruments/${instrument.ulid}/domains`"
+            :assignment="domainAssignment"
+            :can-edit="!isCancelled"
+        />
 
         <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." />
 

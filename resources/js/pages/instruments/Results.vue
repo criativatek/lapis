@@ -5,6 +5,7 @@ import DataTable from '@/components/analysis/DataTable.vue';
 import LabelledBarChart from '@/components/analysis/LabelledBarChart.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -263,6 +264,15 @@ const noteUpdatedLabel = computed(() => {
                 Imprimir / PDF
             </Link>
         </nav>
+
+        <!-- Perguntas sem domínio: «Por classificar» em todas as linhas não é um veredicto, é uma
+             associação em falta — e resolve-se aqui, sem voltar à grelha nem repetir classificações. -->
+        <DomainAssignmentCallout
+            v-if="domainAssignment"
+            :post-url="`${links.grid}/domains`"
+            :assignment="domainAssignment"
+            :can-edit="can_edit"
+        />
 
         <!-- Estado não oficial: nada de indicadores, gráficos, tabelas ou números -->
         <div

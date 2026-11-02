@@ -9,6 +9,8 @@
  * valor, nunca zero.
  */
 
+import type { DomainAssignment } from '@/components/instruments/DomainAssignmentCallout.vue';
+
 export type Band = {
     key: string;
     code: string;
@@ -146,6 +148,8 @@ export type ResultsAvailability = {
 };
 
 export type ResultsAnalysisProps = {
+    /** Perguntas ainda sem domínio e o passo que o resolve (DomainAssignmentCallout). */
+    domainAssignment?: DomainAssignment;
     availability: ResultsAvailability;
     context: ResultsContext;
     students: ResultsStudent[];
