@@ -291,7 +291,7 @@ describe('instruments/Grid — coerência dos resultados com o motor', () => {
 
         expect(wrapper.text()).not.toContain('guarde para recalcular');
 
-        const input = wrapper.find('input[type="number"]');
+        const input = wrapper.find('input[data-cell]');
         await input.setValue('15');
 
         expect(wrapper.text()).toContain('guarde para recalcular');
@@ -323,7 +323,7 @@ describe('instruments/Grid — correção concluída', () => {
             props: props({ is_completed: true, can_complete: false, pending_count: 0 }),
         });
 
-        const pointsInput = wrapper.find('input[type="number"]');
+        const pointsInput = wrapper.find('input[data-cell]');
         expect(pointsInput.attributes('readonly')).toBeDefined();
 
         const stateSelect = wrapper

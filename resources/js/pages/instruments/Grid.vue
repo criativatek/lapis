@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, ChevronDown, CircleAlert, Save, WifiOff } from '@lucide/vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -21,6 +21,7 @@ import {
 import { computeStructuralFingerprint, useGridDraft } from '@/composables/useGridDraft';
 import { percentFor as computePercentFor } from '@/lib/instrumentQualitativeRating';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import { formatScoreInput, parseScore } from '@/lib/scoreInput';
 import { statusToneClasses } from '@/lib/statusTone';
 import type { Cell as OfficialCell } from '@/types/resultsAnalysis';
 
@@ -146,6 +147,13 @@ const dirty = reactive(new Set<string>());
 
 const cells = reactive<Record<string, Cell>>({});
 
+// O texto da célula que está a ser escrita. Fica fora de `cells` para não se perderem dígitos
+// («3,» ainda não é um número) nem se trocar o separador a meio da escrita.
+const editing = ref<{ key: string; raw: string } | null>(null);
+
+// Células cujo texto não é um número: nunca entram em `cells`, nem contam como alteração.
+const invalidRaw = reactive<Record<string, string>>({});
+
 for (const score of props.scores) {
     cells[cellKey(score.enrollment_id, score.instrument_item_id)] = {
         state: score.result_state,
@@ -262,7 +270,63 @@ function handleChannelMessage(event: MessageEvent<EditingChannelMessage>): void 
     }
 }
 
+// Barra de deslocação horizontal colada ao fundo da janela. A tabela é larga e o fim do contentor pode
+// estar muito abaixo do ecrã; a barra nativa do contentor só se vê aí. Quando há overflow, a barra
+// nativa é escondida (só a colada existe, sem duplicar) e as duas são mantidas em sincronia. O
+// toque continua a deslocar o contentor de forma nativa.
+const scrollContainer = ref<HTMLElement | null>(null);
+const scrollTable = ref<HTMLElement | null>(null);
+const scrollBar = ref<HTMLElement | null>(null);
+const scrollBarWidth = ref(0);
+const hasHorizontalOverflow = ref(false);
+let layoutObserver: ResizeObserver | null = null;
+
+function measureHorizontalOverflow(): void {
+    const container = scrollContainer.value;
+    const table = scrollTable.value;
+
+    if (container === null || table === null) {
+        hasHorizontalOverflow.value = false;
+
+        return;
+    }
+
+    scrollBarWidth.value = table.scrollWidth;
+    hasHorizontalOverflow.value = table.scrollWidth > container.clientWidth;
+}
+
+// Sem flag: atribuir um scrollLeft igual ao atual não dispara `scroll`, por isso a comparação
+// corta o ciclo contêiner -> barra -> contêiner.
+function syncScroll(from: 'container' | 'bar'): void {
+    const container = scrollContainer.value;
+    const bar = scrollBar.value;
+
+    if (container === null || bar === null) {
+        return;
+    }
+
+    if (from === 'bar' && container.scrollLeft !== bar.scrollLeft) {
+        container.scrollLeft = bar.scrollLeft;
+    } else if (from === 'container' && bar.scrollLeft !== container.scrollLeft) {
+        bar.scrollLeft = container.scrollLeft;
+    }
+}
+
 onMounted(() => {
+    measureHorizontalOverflow();
+
+    if (typeof ResizeObserver !== 'undefined') {
+        layoutObserver = new ResizeObserver(measureHorizontalOverflow);
+
+        if (scrollTable.value !== null) {
+            layoutObserver.observe(scrollTable.value);
+        }
+
+        if (scrollContainer.value !== null) {
+            layoutObserver.observe(scrollContainer.value);
+        }
+    }
+
     const draft = gridDraft.readDraft();
 
     if (draft !== null && Object.keys(draft.cells).length > 0) {
@@ -293,6 +357,7 @@ function handleOffline(): void {
 }
 
 onBeforeUnmount(() => {
+    layoutObserver?.disconnect();
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
 
@@ -330,20 +395,66 @@ function markDirty(enrollmentId: number, itemId: number): void {
  * written zero stays an assessed zero. Only «no number at all» is nothing.
  */
 function onPointsInput(student: Student, item: Item, value: string): void {
+    const key = cellKey(student.enrollment_id, item.id);
     const current = cell(student.enrollment_id, item.id);
-    const parsed = value.trim() === '' ? null : Number(value);
+    const parsed = parseScore(value);
 
-    if (parsed === null || ! Number.isFinite(parsed)) {
-        // Empty, or not yet a number. Either way this is «no data», never a
-        // zero and never an assessment.
+    // O que o professor escreveu fica tal e qual enquanto escreve; só depois de sair da célula
+    // é que passa ao formato com vírgula.
+    editing.value = { key, raw: value };
+
+    if (parsed.kind === 'invalid') {
+        // Texto que não é número («abc», «3,5,1», «3,»): não vai para `cells`, não é uma alteração
+        // e bloqueia o Guardar até ser corrigido ou reposto. A célula guarda o último valor válido.
+        invalidRaw[key] = value;
+
+        return;
+    }
+
+    delete invalidRaw[key];
+
+    if (parsed.kind === 'empty') {
+        // Empty is «no data», never a zero and never an assessment.
         current.state = 'pending';
         current.points = null;
     } else {
         current.state = 'assessed';
-        current.points = parsed;
+        current.points = parsed.value;
     }
 
     markDirty(student.enrollment_id, item.id);
+}
+
+/** O texto de uma célula quando não está a ser editada: o valor confirmado, com vírgula decimal. */
+function confirmedText(student: Student, item: Item): string {
+    const current = cell(student.enrollment_id, item.id);
+
+    return current.state === 'assessed' ? formatScoreInput(current.points) : '';
+}
+
+/** O que a caixa mostra: o texto em edição, o texto inválido que ficou por corrigir, ou o valor confirmado. */
+function displayedText(student: Student, item: Item): string {
+    const key = cellKey(student.enrollment_id, item.id);
+
+    if (editing.value?.key === key) {
+        return editing.value.raw;
+    }
+
+    return invalidRaw[key] ?? confirmedText(student, item);
+}
+
+function isInvalidCell(student: Student, item: Item): boolean {
+    return cellKey(student.enrollment_id, item.id) in invalidRaw;
+}
+
+const hasInvalidCell = computed(() => Object.keys(invalidRaw).length > 0);
+
+function onPointsBlur(student: Student, item: Item): void {
+    if (editing.value?.key === cellKey(student.enrollment_id, item.id)) {
+        // Texto válido: passa a mostrar-se confirmado (com vírgula). Texto inválido continua
+        // visível através de `invalidRaw`.
+        editing.value = null;
+    }
 }
 
 /**
@@ -409,27 +520,123 @@ function onStateChange(student: Student, item: Item, state: string): void {
     markDirty(student.enrollment_id, item.id);
 }
 
-/** Keyboard navigation: Enter/arrows move down a column, Tab moves across. */
-function onKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number): void {
-    const move = (row: number, column: number) => {
-        const next = document.querySelector<HTMLInputElement>(
-            `[data-cell="${row}-${column}"]`,
-        );
+/**
+ * Navegação por teclado, estilo folha de cálculo.
+ *
+ * - Enter e ↓/↑ andam na mesma pergunta, para o aluno seguinte/anterior.
+ * - → e ← andam na mesma linha, para a pergunta seguinte/anterior (as colunas de subtotal e total
+ *   não têm célula e saltam-se). Para não lutar com a edição do texto, só mudam de célula quando o
+ *   cursor já está no início (←) ou no fim (→) do texto, ou o campo está vazio; no resto do tempo
+ *   movem o cursor, como nativo. Com o texto todo selecionado (o que acontece ao entrar na célula)
+ *   as duas setas mudam de célula.
+ * - Esc repõe o texto para o último valor confirmado e mantém o foco.
+ * - Tab e Shift+Tab ficam com o navegador.
+ * - Texto inválido prende o foco: nem as setas nem o Enter saem da célula até ser corrigido ou reposto.
+ * - Nas extremidades nada acontece (não há salto para outra linha ou coluna).
+ */
+function onKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number, student: Student, item: Item): void {
+    const input = event.target as HTMLInputElement;
+    const key = cellKey(student.enrollment_id, item.id);
 
-        if (next) {
-            event.preventDefault();
-            nextTick(() => {
-                next.focus();
-                next.select();
-            });
+    if (event.key === 'Escape') {
+        if (isReadOnly.value) {
+            return;
         }
-    };
 
-    if (event.key === 'Enter' || event.key === 'ArrowDown') {
-        move(rowIndex + 1, columnIndex);
-    } else if (event.key === 'ArrowUp') {
-        move(rowIndex - 1, columnIndex);
+        event.preventDefault();
+        delete invalidRaw[key];
+        editing.value = { key, raw: confirmedText(student, item) };
+
+        return;
     }
+
+    if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+        return;
+    }
+
+    let rowStep = 0;
+    let columnStep = 0;
+
+    switch (event.key) {
+        case 'Enter':
+        case 'ArrowDown':
+            rowStep = 1;
+            break;
+        case 'ArrowUp':
+            rowStep = -1;
+            break;
+        case 'ArrowRight':
+            columnStep = 1;
+            break;
+        case 'ArrowLeft':
+            columnStep = -1;
+            break;
+        default:
+            return;
+    }
+
+    if (columnStep !== 0) {
+        const length = input.value.length;
+        const atEdge = length === 0 || (columnStep < 0 ? input.selectionStart === 0 : input.selectionEnd === length);
+
+        if (! atEdge) {
+            return;
+        }
+    }
+
+    if (key in invalidRaw) {
+        // Fica onde está, com o estado inválido à vista.
+        event.preventDefault();
+
+        return;
+    }
+
+    const next = rowStep !== 0
+        ? findEnabledCell(rowIndex + rowStep, columnIndex, 0)
+        : findEnabledCell(rowIndex, columnIndex, columnStep);
+
+    if (event.key === 'Enter') {
+        // Confirmar é sair do modo de escrita, haja ou não célula abaixo.
+        event.preventDefault();
+        editing.value = null;
+    }
+
+    if (next === null) {
+        return;
+    }
+
+    event.preventDefault();
+    editing.value = null;
+    next.focus();
+    next.select();
+    next.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+}
+
+/**
+ * A célula editável vizinha. `columnStep` 0 é movimento vertical: a mesma pergunta, outra linha.
+ * Horizontal: a pergunta seguinte/anterior pela ordem em que as colunas se desenham (não a de `items`),
+ * a saltar as desativadas (estado «ausente», etc.).
+ */
+function findEnabledCell(row: number, column: number, columnStep: number): HTMLInputElement | null {
+    const query = (r: number, c: number) => document.querySelector<HTMLInputElement>(`[data-cell="${r}-${c}"]`);
+
+    if (columnStep === 0) {
+        const found = query(row, column);
+
+        return found && ! found.disabled ? found : null;
+    }
+
+    const order = columns.value.filter((entry) => entry.item !== null).map((entry) => entry.columnIndex);
+
+    for (let position = order.indexOf(column) + columnStep; position >= 0 && position < order.length; position += columnStep) {
+        const found = query(row, order[position]);
+
+        if (found && ! found.disabled) {
+            return found;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -956,6 +1163,10 @@ const completeHint = computed(() => completeBlockedReason.value ?? 'Declarar a c
 
 /** The other half of the same problem: a disabled Guardar that explains nothing. */
 const saveHint = computed(() => {
+    if (hasInvalidCell.value) {
+        return 'Há classificações inválidas.';
+    }
+
     if (hasOverMaxCell.value) {
         return 'Há notas acima da cotação máxima.';
     }
@@ -1116,13 +1327,16 @@ function revertCancellation(): void {
                         </span>
                         <!-- Said out loud rather than left to a grey button. The
                              smoke read a disabled Guardar as a broken one. -->
-                        <span v-else-if="!hasOverMaxCell" class="text-sm text-muted-foreground">
+                        <span v-else-if="!hasOverMaxCell && !hasInvalidCell" class="text-sm text-muted-foreground">
                             Sem alterações por guardar.
                         </span>
                         <span v-if="hasOverMaxCell" class="text-sm text-destructive">
                             Há notas acima da cotação máxima
                         </span>
-                        <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell" :title="saveHint" @click="save">
+                        <span v-if="hasInvalidCell" class="text-sm text-destructive">
+                            Há classificações inválidas
+                        </span>
+                        <Button :disabled="dirtyCount === 0 || saving || hasOverMaxCell || hasInvalidCell" :title="saveHint" @click="save">
                             <Save class="size-4" /> Guardar
                         </Button>
                         <!-- Deliberately separate from Guardar: saving persists
@@ -1225,8 +1439,17 @@ function revertCancellation(): void {
 
         <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." />
 
-        <div v-else class="overflow-x-auto rounded-lg border border-border">
-            <table class="w-full border-collapse text-sm">
+        <div
+            v-else
+            ref="scrollContainer"
+            :class="[
+                'overflow-x-auto rounded-lg border border-border',
+                hasHorizontalOverflow && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            ]"
+            data-testid="grid-scroll"
+            @scroll="syncScroll('container')"
+        >
+            <table ref="scrollTable" class="w-full border-collapse text-sm">
                 <thead class="bg-muted/50">
                     <!-- Com grupos, uma fila a nomeá-los (com a cotação de cada um) por cima das perguntas. -->
                     <tr v-if="sections.length > 0" data-testid="group-header-row">
@@ -1366,42 +1589,32 @@ function revertCancellation(): void {
                         <td v-else-if="item" class="px-1 py-0.5 text-center">
                             <div class="flex items-center justify-center gap-1">
                                 <!--
-                                  The score box is right-aligned, not centred.
-                                  Its width is fixed and the browser's spin
-                                  arrows sit pinned to its right inner edge, so
-                                  centred digits slid sideways as the value's
-                                  width changed ("5" vs "12.5") — which reads as
-                                  the arrows jumping about. Against the right
-                                  edge the last digit stays put whatever the
-                                  value, so number and arrows hold a constant
-                                  relationship. pr-5 keeps the digits clear of
-                                  the arrows; the spinners themselves are
-                                  deliberately kept, since onKeydown's arrow-key
-                                  stepping makes them a real affordance rather
-                                  than decoration. w-20, not w-16: a manually
-                                  typed value like "10,25" was clipping inside
-                                  the narrower box — text-right just hides the
-                                  overflow instead of scrolling to reveal it,
-                                  so a value the teacher had genuinely typed
-                                  could look shorter than it was.
+                                  A caixa é de texto (`inputmode="decimal"`), não `type="number"`: o
+                                  navegador recusa a vírgula num campo numérico e não expõe a posição
+                                  do cursor, de que as setas ← → dependem. O valor segue alinhado à
+                                  direita e com largura fixa (w-20: «10,25» cabe sem ficar cortado),
+                                  para o último dígito não se deslocar consoante o valor.
                                 -->
                                 <input
                                     :data-cell="`${rowIndex}-${columnIndex}`"
-                                    type="number"
-                                    step="0.5"
-                                    :min="minimumFor(item)"
-                                    :max="item.points_possible"
-                                    :value="cell(student.enrollment_id, item.id).state === 'assessed' ? cell(student.enrollment_id, item.id).points : ''"
+                                    type="text"
+                                    inputmode="decimal"
+                                    autocomplete="off"
+                                    :data-min="minimumFor(item)"
+                                    :data-max="item.points_possible"
+                                    :aria-invalid="isInvalidCell(student, item) ? 'true' : undefined"
+                                    :value="displayedText(student, item)"
                                     :readonly="isReadOnly"
                                     :disabled="!isReadOnly && cell(student.enrollment_id, item.id).state !== 'assessed' && cell(student.enrollment_id, item.id).state !== 'pending'"
                                     :class="[
-                                        'h-7 w-20 rounded border bg-transparent pl-1.5 pr-5 text-right font-normal tabular-nums',
-                                        isReadOnly ? 'cursor-default border-transparent opacity-100' : 'border-input disabled:opacity-40',
+                                        'h-7 w-20 rounded border bg-transparent px-1.5 text-right font-normal tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                        isReadOnly ? 'cursor-default border-transparent opacity-100' : isInvalidCell(student, item) ? 'border-destructive' : 'border-input disabled:opacity-40',
                                     ]"
                                     :aria-label="`Nota de ${student.name}${items.length > 1 ? ' em ' + item.code : ''}`"
-                                    :title="isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
+                                    :title="isInvalidCell(student, item) ? 'Escreva um número, com vírgula ou ponto decimal.' : isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
                                     @input="onPointsInput(student, item, ($event.target as HTMLInputElement).value)"
-                                    @keydown="onKeydown($event, rowIndex, columnIndex)"
+                                    @keydown="onKeydown($event, rowIndex, columnIndex, student, item)"
+                                    @blur="onPointsBlur(student, item)"
                                 />
                                 <!-- Sinal sempre visível, não só cor/hover: a regra da
                                      casa não deixa o vermelho tocar numa nota (por
@@ -1506,12 +1719,27 @@ function revertCancellation(): void {
             </table>
         </div>
 
+        <div
+            v-show="hasHorizontalOverflow"
+            ref="scrollBar"
+            class="sticky bottom-0 z-20 h-4 overflow-x-auto overflow-y-hidden bg-background"
+            data-testid="grid-scrollbar"
+            aria-hidden="true"
+            @scroll="syncScroll('bar')"
+        >
+            <div class="h-px" :style="{ width: `${scrollBarWidth}px` }" />
+        </div>
+
         <p
             v-if="official.status === 'provisional'"
             class="text-xs text-muted-foreground"
         >
             Valores provisórios: a correção ainda não está concluída. Os resultados oficiais e as
             estatísticas ficam disponíveis no separador Resultados depois de concluir a correção.
+        </p>
+
+        <p v-if="!isReadOnly" class="text-xs text-muted-foreground">
+            Setas: mover entre células (← → no início/fim do texto) · Enter: confirmar e descer · Esc: repor
         </p>
 
         <p class="flex items-start gap-2 text-xs text-muted-foreground">
