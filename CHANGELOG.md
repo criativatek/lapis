@@ -25,6 +25,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.189.1] — 2026-11-02
+
+> **Correção do «Ligados agora»: as sessões são JSON.** A 0.189.0 lia o payload
+> da sessão como `serialize()`, mas `config/session.php` guarda as sessões em
+> JSON — em produção a deteção do acesso técnico (impersonação) nunca
+> funcionava e a pessoa impersonada aparecia como ligada. Sem migrations.
+
+### Corrigido
+
+- `OnlineNow` descodifica o payload no formato de `session.serialization`
+  (JSON por omissão; `serialize()` só se a configuração o pedir). Os testes
+  passam a gravar as sessões como a aplicação as grava, e um teste afirma o
+  formato JSON explicitamente.
+
 ## [0.189.0] — 2026-11-02
 
 > **Painel de utilização: «Ligados agora» e linguagem de «contas».** A visão

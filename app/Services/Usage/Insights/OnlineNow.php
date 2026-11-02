@@ -101,9 +101,11 @@ final class OnlineNow
     }
 
     /**
-     * O payload é `base64(serialize(array))`. Se não se conseguir descodificar,
-     * a sessão conta como normal: é preferível mostrar uma pessoa a mais do que
-     * esconder uma que está mesmo ligada.
+     * O payload é base64 do que `session.serialization` manda: JSON (o que a
+     * aplicação usa — `config/session.php`) ou `serialize()`. A 0.189.0 só lia
+     * o segundo e, em produção, nunca via a impersonação. Se não se conseguir
+     * descodificar, a sessão conta como normal: é preferível mostrar uma pessoa
+     * a mais do que esconder uma que está mesmo ligada.
      */
     private function isImpersonated(string $payload): bool
     {
@@ -113,7 +115,9 @@ final class OnlineNow
                 return false;
             }
 
-            $data = @unserialize($decoded, ['allowed_classes' => false]);
+            $data = config('session.serialization') === 'json'
+                ? json_decode($decoded, true)
+                : @unserialize($decoded, ['allowed_classes' => false]);
 
             return is_array($data) && ! empty($data['impersonator_id']);
         } catch (Throwable) {
