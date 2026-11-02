@@ -300,6 +300,24 @@ describe('instruments/Grid — setas entre células', () => {
         expect(saveButton(wrapper).attributes('title')).not.toBe('Há classificações inválidas.');
     });
 
+    it('Esc desfaz tudo o que se escreveu desde que se entrou na célula, não só o último carácter', async () => {
+        const wrapper = build({ scores: [score(1, 201, 'assessed', 7.5)] });
+
+        // «3,5» é válido e entra em `cells`; «,1» a seguir torna o texto inválido. Esc tem de voltar ao
+        // 7,5 que lá estava ao entrar — e, como é o valor guardado, deixa de haver alterações por guardar.
+        // Foco a sério (não um `trigger('focus')`): é ao entrar na célula que a origem fica registada, e o
+        // `press` abaixo não volta a disparar `focus` num elemento que já o tem — como num browser.
+        (box(wrapper, 0, 0).element as HTMLInputElement).focus();
+        await type(wrapper, 0, 0, '3,5');
+        expect(wrapper.text()).toContain('1 alteração por guardar');
+        await type(wrapper, 0, 0, '3,5,1');
+        await press(wrapper, 0, 0, 'Escape');
+
+        expect(value(wrapper, 0, 0)).toBe('7,5');
+        expect(box(wrapper, 0, 0).attributes('aria-invalid')).toBeUndefined();
+        expect(wrapper.text()).toContain('Sem alterações por guardar');
+    });
+
     it('com texto inválido nem as setas nem o Enter saem da célula', async () => {
         const wrapper = build();
 
@@ -356,7 +374,8 @@ describe('instruments/Grid — barra de deslocação horizontal', () => {
 
         const bar = wrapper.get('[data-testid="grid-scrollbar"]');
         expect(bar.attributes('style') ?? '').not.toContain('display: none');
-        expect(bar.classes()).toContain('sticky');
+        // `fixed`, não `sticky`: o <main> da aplicação tem overflow e prenderia um sticky ao seu fundo.
+        expect(bar.classes()).toContain('fixed');
         expect(bar.classes()).toContain('bottom-0');
         expect(bar.get('div').attributes('style')).toContain('width: 1600px');
         expect(wrapper.get('[data-testid="grid-scroll"]').classes()).toContain('[scrollbar-width:none]');

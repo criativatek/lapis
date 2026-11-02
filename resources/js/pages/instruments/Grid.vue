@@ -154,6 +154,15 @@ const editing = ref<{ key: string; raw: string } | null>(null);
 // Células cujo texto não é um número: nunca entram em `cells`, nem contam como alteração.
 const invalidRaw = reactive<Record<string, string>>({});
 
+// O que a célula tinha quando ganhou o foco: é para AÍ que o Esc volta — cancelar uma edição é
+// desfazer tudo o que se escreveu desde que se entrou na célula, não só o último carácter
+// inválido (escrever «3,5» e depois «,1» e carregar Esc não pode deixar 3,5).
+const editingOrigin = ref<{ key: string; state: string; points: number | null } | null>(null);
+
+// As classificações tal como vieram do servidor, para uma célula reposta ao que estava deixar de
+// contar como alteração por guardar.
+const savedByKey = new Map(props.scores.map((score) => [cellKey(score.enrollment_id, score.instrument_item_id), score]));
+
 for (const score of props.scores) {
     cells[cellKey(score.enrollment_id, score.instrument_item_id)] = {
         state: score.result_state,
@@ -281,6 +290,13 @@ const scrollBarWidth = ref(0);
 const hasHorizontalOverflow = ref(false);
 let layoutObserver: ResizeObserver | null = null;
 
+// A barra é `position: fixed`, não `sticky`: o <main> da aplicação tem `overflow-y: auto`, e um
+// antepassado com overflow passa a ser a referência do sticky — a barra ficava presa ao fundo do
+// <main> (lá em baixo, fora do ecrã) em vez do fundo da janela. Fixa ao fundo da janela, alinhada
+// com a grelha (left/width medidos) e só visível enquanto a tabela estiver no ecrã.
+const barStyle = ref<Record<string, string>>({});
+const barInView = ref(true);
+
 function measureHorizontalOverflow(): void {
     const container = scrollContainer.value;
     const table = scrollTable.value;
@@ -293,7 +309,14 @@ function measureHorizontalOverflow(): void {
 
     scrollBarWidth.value = table.scrollWidth;
     hasHorizontalOverflow.value = table.scrollWidth > container.clientWidth;
+
+    const rect = container.getBoundingClientRect();
+    barStyle.value = { left: `${rect.left}px`, width: `${rect.width}px` };
+    // Sem layout (jsdom) o retângulo é todo zeros: considera-se à vista.
+    barInView.value = rect.height === 0 || (rect.top < window.innerHeight && rect.bottom > 0);
 }
+
+const barVisible = computed(() => hasHorizontalOverflow.value && barInView.value);
 
 // Sem flag: atribuir um scrollLeft igual ao atual não dispara `scroll`, por isso a comparação
 // corta o ciclo contêiner -> barra -> contêiner.
@@ -314,6 +337,8 @@ function syncScroll(from: 'container' | 'bar'): void {
 
 onMounted(() => {
     measureHorizontalOverflow();
+    window.addEventListener('scroll', measureHorizontalOverflow, { passive: true });
+    window.addEventListener('resize', measureHorizontalOverflow, { passive: true });
 
     if (typeof ResizeObserver !== 'undefined') {
         layoutObserver = new ResizeObserver(measureHorizontalOverflow);
@@ -358,6 +383,8 @@ function handleOffline(): void {
 
 onBeforeUnmount(() => {
     layoutObserver?.disconnect();
+    window.removeEventListener('scroll', measureHorizontalOverflow);
+    window.removeEventListener('resize', measureHorizontalOverflow);
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
 
@@ -448,6 +475,41 @@ function isInvalidCell(student: Student, item: Item): boolean {
 }
 
 const hasInvalidCell = computed(() => Object.keys(invalidRaw).length > 0);
+
+function onPointsFocus(student: Student, item: Item): void {
+    const current = cell(student.enrollment_id, item.id);
+
+    editingOrigin.value = { key: cellKey(student.enrollment_id, item.id), state: current.state, points: current.points };
+}
+
+/** Esc: a célula volta ao que tinha quando ganhou o foco; se isso for o que está guardado, deixa de ser uma alteração. */
+function restoreEditingOrigin(student: Student, item: Item): void {
+    const key = cellKey(student.enrollment_id, item.id);
+    const origin = editingOrigin.value?.key === key ? editingOrigin.value : null;
+
+    delete invalidRaw[key];
+
+    if (origin !== null) {
+        const current = cell(student.enrollment_id, item.id);
+        current.state = origin.state as typeof current.state;
+        current.points = origin.points;
+
+        const saved = savedByKey.get(key);
+        const sameAsSaved = saved === undefined
+            ? current.state === 'pending' && current.points === null
+            : saved.result_state === current.state && (saved.points_earned ?? null) === current.points;
+
+        if (sameAsSaved) {
+            dirty.delete(key);
+        } else {
+            dirty.add(key);
+        }
+
+        writeCurrentDraft();
+    }
+
+    editing.value = { key, raw: confirmedText(student, item) };
+}
 
 function onPointsBlur(student: Student, item: Item): void {
     if (editing.value?.key === cellKey(student.enrollment_id, item.id)) {
@@ -544,8 +606,7 @@ function onKeydown(event: KeyboardEvent, rowIndex: number, columnIndex: number, 
         }
 
         event.preventDefault();
-        delete invalidRaw[key];
-        editing.value = { key, raw: confirmedText(student, item) };
+        restoreEditingOrigin(student, item);
 
         return;
     }
@@ -1614,6 +1675,7 @@ function revertCancellation(): void {
                                     :title="isInvalidCell(student, item) ? 'Escreva um número, com vírgula ou ponto decimal.' : isOverMax(student, item) ? `Excede a cotação máxima (${item.points_possible} pts).` : undefined"
                                     @input="onPointsInput(student, item, ($event.target as HTMLInputElement).value)"
                                     @keydown="onKeydown($event, rowIndex, columnIndex, student, item)"
+                                    @focus="onPointsFocus(student, item)"
                                     @blur="onPointsBlur(student, item)"
                                 />
                                 <!-- Sinal sempre visível, não só cor/hover: a regra da
@@ -1720,9 +1782,10 @@ function revertCancellation(): void {
         </div>
 
         <div
-            v-show="hasHorizontalOverflow"
+            v-show="barVisible"
             ref="scrollBar"
-            class="sticky bottom-0 z-20 h-4 overflow-x-auto overflow-y-hidden bg-background"
+            class="fixed bottom-0 z-20 h-4 overflow-x-auto overflow-y-hidden border-t border-border bg-background"
+            :style="barStyle"
             data-testid="grid-scrollbar"
             aria-hidden="true"
             @scroll="syncScroll('bar')"
