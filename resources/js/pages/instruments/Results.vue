@@ -11,8 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
+import { meanOf, resultTone, resultToneClasses, resultToneTitle } from '@/lib/resultTone';
 import { statusToneClasses } from '@/lib/statusTone';
-import type { Analysis, Cell, ResultsAnalysisProps } from '@/types/resultsAnalysis';
+import type { Analysis, Cell, ResultsAnalysisProps, ResultsStudent } from '@/types/resultsAnalysis';
 
 const props = defineProps<ResultsAnalysisProps>();
 
@@ -64,6 +65,73 @@ function displayValue(cell: Cell): string {
 
 function hasPreciseFootnote(cell: Cell): boolean {
     return cell.value_precise !== null;
+}
+
+// ------------------------------------------------------------- cores e pontos
+
+/** Média exata da turma por «global» e por domínio — nunca a média já arredondada das dimensões. */
+const exactMeans = computed<Record<string, number | null>>(() => {
+    const exactOf = (cell: Cell | null | undefined): number | null => (cell?.exact != null ? Number(cell.exact) : null);
+    const means: Record<string, number | null> = { global: meanOf(props.students.map((student) => exactOf(student.global))) };
+
+    for (const domain of props.context.domains) {
+        means[domain.key] = meanOf(props.students.map((student) => exactOf(student.domains[domain.key])));
+    }
+
+    return means;
+});
+
+function toneOf(cell: Cell, key: string) {
+    return resultTone(cell.exact != null ? Number(cell.exact) : null, exactMeans.value[key] ?? null);
+}
+
+function toneClass(cell: Cell, key: string): string {
+    const tone = toneOf(cell, key);
+
+    return tone === null ? '' : resultToneClasses[tone];
+}
+
+function toneTitle(cell: Cell, key: string): string | undefined {
+    const tone = toneOf(cell, key);
+
+    return tone === null ? undefined : resultToneTitle[tone];
+}
+
+/** «15,83» — sem zeros à direita, vírgula decimal. */
+function formatPointsValue(value: number): string {
+    return String(Number(value.toFixed(4))).replace('.', ',');
+}
+
+/** «15,83/20»; null quando o servidor não enviou os pontos do domínio. */
+function pointsLabel(cell: Cell): string | null {
+    if (cell.points_earned == null || cell.points_possible == null) {
+        return null;
+    }
+
+    return `${formatPointsValue(Number(cell.points_earned))}/${formatPointsValue(Number(cell.points_possible))}`;
+}
+
+/** Σ pontos / Σ cotações dos domínios — só quando TODOS os domínios da tabela têm pontos. */
+function globalPointsLabel(student: ResultsStudent): string | null {
+    if (props.context.domains.length === 0) {
+        return null;
+    }
+
+    let earned = 0;
+    let possible = 0;
+
+    for (const domain of props.context.domains) {
+        const cell = student.domains[domain.key];
+
+        if (!cell || cell.points_earned == null || cell.points_possible == null) {
+            return null;
+        }
+
+        earned += Number(cell.points_earned);
+        possible += Number(cell.points_possible);
+    }
+
+    return `${formatPointsValue(earned)}/${formatPointsValue(possible)}`;
 }
 
 // ------------------------------------------------------------- dimensão selecionada
@@ -309,16 +377,16 @@ const noteUpdatedLabel = computed(() => {
                     <tr>
                         <th scope="col" class="px-3 py-2 font-medium">Nº</th>
                         <th scope="col" class="px-3 py-2 text-left font-medium">Aluno</th>
-                        <th scope="col" class="px-3 py-2 text-right font-medium">Classificação global</th>
-                        <th scope="col" class="px-3 py-2 text-left font-medium">Apreciação</th>
                         <th
                             v-for="domain in context.domains"
                             :key="domain.key"
                             scope="col"
-                            class="px-3 py-2 text-left font-medium"
+                            class="px-3 py-2 text-left font-medium whitespace-nowrap"
                         >
                             {{ domain.name }}
                         </th>
+                        <th scope="col" class="px-3 py-2 text-right font-medium whitespace-nowrap">Classificação global</th>
+                        <th scope="col" class="px-3 py-2 text-left font-medium whitespace-nowrap">Apreciação global</th>
                     </tr>
                 </template>
                 <template #body>
@@ -331,47 +399,65 @@ const noteUpdatedLabel = computed(() => {
                         <td class="px-3 py-1.5 font-medium">{{ student.name }}</td>
 
                         <template v-if="student.status === 'out_of_scope'">
+                            <td v-if="context.domains.length > 0" class="px-3 py-1.5" :colspan="context.domains.length">—</td>
                             <td class="px-3 py-1.5 text-right" colspan="1">Não abrangido</td>
-                            <td class="px-3 py-1.5" :colspan="1 + context.domains.length">—</td>
+                            <td class="px-3 py-1.5">—</td>
                         </template>
                         <template v-else-if="student.global.value === null">
+                            <td v-if="context.domains.length > 0" class="px-3 py-1.5" :colspan="context.domains.length">—</td>
                             <td class="px-3 py-1.5 text-right">{{ student.status_label }}</td>
-                            <td class="px-3 py-1.5" :colspan="1 + context.domains.length">—</td>
+                            <td class="px-3 py-1.5">—</td>
                         </template>
                         <template v-else>
-                            <td class="px-3 py-1.5 text-right tabular-nums">
-                                {{ displayValue(student.global) }}
-                                <sup
-                                    v-if="hasPreciseFootnote(student.global)"
-                                    class="cursor-help text-amber-600"
-                                    title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
-                                    aria-describedby="precise-footnote"
-                                >*</sup>
-                                <span v-if="student.global.is_partial" class="ml-1 text-xs font-normal text-amber-600">parcial</span>
+                            <td v-for="domain in context.domains" :key="domain.key" class="px-3 py-1.5 align-top" :data-testid="`domain-cell-${domain.key}`">
+                                <template v-if="student.domains[domain.key] && student.domains[domain.key]!.value !== null">
+                                    <div class="flex flex-col gap-0.5 text-xs tabular-nums whitespace-nowrap">
+                                        <span
+                                            v-if="pointsLabel(student.domains[domain.key]!)"
+                                            class="font-medium"
+                                            data-testid="domain-points"
+                                        >{{ pointsLabel(student.domains[domain.key]!) }}</span>
+                                        <span class="text-sm" :class="toneClass(student.domains[domain.key]!, domain.key)" :title="toneTitle(student.domains[domain.key]!, domain.key)" data-testid="domain-percent">
+                                            {{ displayValue(student.domains[domain.key]!) }}<sup
+                                                v-if="hasPreciseFootnote(student.domains[domain.key]!)"
+                                                class="cursor-help text-amber-600"
+                                                title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
+                                            >*</sup>
+                                            <span v-if="toneTitle(student.domains[domain.key]!, domain.key)" class="sr-only">{{ toneTitle(student.domains[domain.key]!, domain.key) }}</span>
+                                        </span>
+                                        <span class="flex items-center gap-1">
+                                            <Badge
+                                                v-if="student.domains[domain.key]!.band"
+                                                :class="toneClassFor(student.domains[domain.key]!.band)"
+                                                class="text-[10px]"
+                                            >
+                                                {{ student.domains[domain.key]!.band!.label }}
+                                            </Badge>
+                                            <span v-if="student.domains[domain.key]!.is_partial" class="text-xs font-normal text-amber-600">parcial</span>
+                                        </span>
+                                    </div>
+                                </template>
+                                <span v-else class="text-xs text-muted-foreground">—</span>
                             </td>
-                            <td class="px-3 py-1.5">
+                            <td class="px-3 py-1.5 text-right align-top tabular-nums">
+                                <div class="flex flex-col items-end gap-0.5 whitespace-nowrap">
+                                    <span v-if="globalPointsLabel(student)" class="text-xs font-medium" data-testid="global-points">{{ globalPointsLabel(student) }}</span>
+                                    <span :class="toneClass(student.global, 'global')" :title="toneTitle(student.global, 'global')" data-testid="global-percent">
+                                        {{ displayValue(student.global) }}<sup
+                                            v-if="hasPreciseFootnote(student.global)"
+                                            class="cursor-help text-amber-600"
+                                            title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
+                                            aria-describedby="precise-footnote"
+                                        >*</sup>
+                                        <span v-if="toneTitle(student.global, 'global')" class="sr-only">{{ toneTitle(student.global, 'global') }}</span>
+                                    </span>
+                                    <span v-if="student.global.is_partial" class="text-xs font-normal text-amber-600">parcial</span>
+                                </div>
+                            </td>
+                            <td class="px-3 py-1.5 align-top">
                                 <Badge v-if="student.global.band" :class="toneClassFor(student.global.band)" class="text-[10px]">
                                     {{ student.global.band.label }}
                                 </Badge>
-                                <span v-else class="text-xs text-muted-foreground">—</span>
-                            </td>
-                            <td v-for="domain in context.domains" :key="domain.key" class="px-3 py-1.5">
-                                <template v-if="student.domains[domain.key] && student.domains[domain.key]!.value !== null">
-                                    <span class="tabular-nums">{{ displayValue(student.domains[domain.key]!) }}</span>
-                                    <sup
-                                        v-if="hasPreciseFootnote(student.domains[domain.key]!)"
-                                        class="cursor-help text-amber-600"
-                                        title="Valor apresentado com duas casas: o arredondamento a uma casa sugeriria outra apreciação ou o outro lado do limiar; a apreciação usa o valor exato."
-                                    >*</sup>
-                                    <Badge
-                                        v-if="student.domains[domain.key]!.band"
-                                        :class="toneClassFor(student.domains[domain.key]!.band)"
-                                        class="ml-1 text-[10px]"
-                                    >
-                                        {{ student.domains[domain.key]!.band!.label }}
-                                    </Badge>
-                                    <span v-if="student.domains[domain.key]!.is_partial" class="ml-1 text-xs font-normal text-amber-600">parcial</span>
-                                </template>
                                 <span v-else class="text-xs text-muted-foreground">—</span>
                             </td>
                         </template>

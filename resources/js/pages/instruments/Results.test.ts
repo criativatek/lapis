@@ -301,3 +301,100 @@ describe('Results.vue', () => {
         expect(form.lock_version).toBe(1);
     });
 });
+
+describe('Results.vue — tabela por aluno: domínios, pontos e cores', () => {
+    const band = { key: 'bom', code: 'Bom', label: 'Bom', sequence: 3, is_negative: false };
+    const cellOf = (exact: string, extra: Record<string, unknown> = {}) => ({
+        value: Number(exact).toFixed(1), value_precise: null, exact, band, below_threshold: false, is_partial: false, ...extra,
+    });
+
+    function twoDomains() {
+        const props = baseProps();
+        props.context.domains = [
+            { key: 'd1', id: 1, name: 'Leitura', weight_percent: '50.0' },
+            { key: 'd2', id: 2, name: 'Escrita', weight_percent: '50.0' },
+        ];
+        props.students = [
+            {
+                enrollment_id: 1, class_number: 1, name: 'Ana Martins', status: 'classified', status_label: 'Classificado',
+                global: cellOf('79.2'),
+                domains: {
+                    d1: cellOf('79.15', { points_earned: '15.83', points_possible: '20.00' }),
+                    d2: cellOf('80', { points_earned: '8', points_possible: '10' }),
+                },
+            },
+            {
+                enrollment_id: 2, class_number: 2, name: 'Rui Santos', status: 'classified', status_label: 'Classificado',
+                global: cellOf('40'),
+                domains: {
+                    d1: cellOf('40', { points_earned: '8', points_possible: '20' }),
+                    d2: cellOf('40'),
+                },
+            },
+        ];
+
+        return props;
+    }
+
+    it('ordena as colunas: Nº | Aluno | domínios | Classificação global | Apreciação global', () => {
+        const wrapper = mount(Results, { props: twoDomains() });
+
+        const headers = wrapper.findAll('thead th').map((th) => th.text());
+
+        expect(headers.slice(0, 6)).toEqual(['Nº', 'Aluno', 'Leitura', 'Escrita', 'Classificação global', 'Apreciação global']);
+    });
+
+    it('mostra pontos/cotação, percentagem e menção em cada domínio', () => {
+        const wrapper = mount(Results, { props: twoDomains() });
+
+        const cell = wrapper.findAll('tbody tr')[0].get('[data-testid="domain-cell-d1"]');
+
+        expect(cell.get('[data-testid="domain-points"]').text()).toBe('15,83/20');
+        expect(cell.text()).toContain('79,2 %');
+        expect(cell.text()).toContain('Bom');
+    });
+
+    it('a classificação global soma os pontos quando todos os domínios os têm, e omite-os senão', () => {
+        const wrapper = mount(Results, { props: twoDomains() });
+        const rows = wrapper.findAll('tbody tr');
+
+        expect(rows[0].get('[data-testid="global-points"]').text()).toBe('23,83/30');
+        expect(rows[1].find('[data-testid="global-points"]').exists()).toBe(false);
+        expect(rows[1].get('[data-testid="domain-points"]').text()).toBe('8/20');
+    });
+
+    it('colore a percentagem: vermelho abaixo de 49,5 %, verde acima da média, e diz porquê', () => {
+        const wrapper = mount(Results, { props: twoDomains() });
+        const rows = wrapper.findAll('tbody tr');
+
+        expect(rows[0].get('[data-testid="global-percent"]').classes()).toContain('text-green-700');
+        expect(rows[0].get('[data-testid="global-percent"]').text()).toContain('Superior à média da turma');
+        expect(rows[1].get('[data-testid="global-percent"]').classes()).toContain('text-red-700');
+        expect(rows[1].get('[data-testid="global-percent"]').attributes('title')).toBe('Inferior a 49,5 %');
+        expect(rows[0].get('[data-testid="domain-cell-d1"] [data-testid="domain-percent"]').classes()).toContain('text-green-700');
+    });
+
+    it('o limiar usa o valor exato: 49,5 exato não é vermelho, 49,499999 é', () => {
+        const props = twoDomains();
+        props.students[0].global = cellOf('49.5');
+        props.students[1].global = cellOf('49.499999');
+
+        const wrapper = mount(Results, { props });
+        const rows = wrapper.findAll('tbody tr');
+
+        expect(rows[0].get('[data-testid="global-percent"]').classes()).not.toContain('text-red-700');
+        expect(rows[1].get('[data-testid="global-percent"]').classes()).toContain('text-red-700');
+    });
+
+    it('mantém os ramos «Não abrangido» e sem valor com o colspan dos domínios', () => {
+        const props = twoDomains();
+        props.students[0] = { ...props.students[0], status: 'out_of_scope', status_label: 'Não abrangido', global: { ...cellOf('0'), value: null, exact: null, band: null }, domains: {} };
+
+        const wrapper = mount(Results, { props });
+        const row = wrapper.findAll('tbody tr').find((tr) => tr.text().includes('Ana Martins'))!;
+        const cells = row.findAll('td');
+
+        expect(cells[2].attributes('colspan')).toBe('2');
+        expect(cells[3].text()).toBe('Não abrangido');
+    });
+});
