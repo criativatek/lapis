@@ -205,7 +205,7 @@ final class InsightsChrome
             ['term' => 'Ação concluída', 'text' => 'Operação confirmada pelo servidor sobre um registo, contada uma vez por registo e por dia. Gravar sem alterar nada, uma tentativa falhada ou um erro de validação não contam.'],
             ['term' => 'Elementos afetados', 'text' => 'Quantos registos uma ação tocou (alunos importados, células alteradas). Mostra-se à parte e nunca se soma às ações.'],
             ['term' => 'Falha técnica', 'text' => 'Operação que terminou com erro do servidor. Erros de validação, recusas de permissão, sessões expiradas e limites de pedidos não são falhas técnicas.'],
-            ['term' => 'Segmentos', 'text' => 'Cada conta é classificada à mão (utilização real, teste e demonstração, interna); nada é inferido da atividade nem da marca comercial de conta de teste. «Por classificar» mostra as que ninguém classificou e não entram na utilização real. O pessoal interno conta sempre como interno.'],
+            ['term' => 'Segmentos', 'text' => 'Toda a conta nova conta como utilização real até ser marcada como teste e demonstração ou interna; nada é inferido da atividade nem da marca comercial de conta de teste. «Por classificar» mostra as que um operador marcou assim, de propósito, e não entram na utilização real. O pessoal interno conta sempre como interno.'],
             ['term' => 'Sinais', 'text' => 'Sugestões de verificação para a equipa interna, não diagnósticos: não dizem que alguém abandonou ou precisa de formação. Com recolha insuficiente para a janela da regra não há sinal: a pessoa fica «por avaliar».'],
         ];
     }

@@ -106,6 +106,10 @@ class FounderSeatsRollbackSafetyTest extends TestCase
     public function a_refused_rollback_leaves_a_database_that_still_works(): void
     {
         $organization = $this->organization();
+        // Criada antes do rollback recusado: este já desfez as migrations
+        // posteriores (a coluna de classificação das métricas incluída), e o
+        // modelo escreve essa coluna ao criar uma organização.
+        $outra = $this->organization();
         app(FounderSeats::class)->claim($organization);
 
         $this->refusedRollback();
@@ -119,7 +123,7 @@ class FounderSeatsRollbackSafetyTest extends TestCase
             'a migração recusou e manteve-se aplicada',
         );
 
-        $novo = app(FounderSeats::class)->claim($this->organization());
+        $novo = app(FounderSeats::class)->claim($outra);
 
         $this->assertSame(2, $novo?->seat_number);
         $this->assertSame(2, FounderSeat::count());

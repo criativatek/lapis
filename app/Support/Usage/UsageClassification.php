@@ -3,8 +3,8 @@
 namespace App\Support\Usage;
 
 /**
- * Para que serve uma conta (organização) nas métricas de utilização. Decidido por uma
- * pessoa, nunca inferido; independente da marca comercial `is_test_account`.
+ * Para que serve uma conta (organização) nas métricas de utilização. O valor de origem é
+ * `Real`; só uma pessoa o muda, e nunca é inferido; independente da marca comercial `is_test_account`.
  */
 enum UsageClassification: string
 {
@@ -26,8 +26,8 @@ enum UsageClassification: string
     public function description(): string
     {
         return match ($this) {
-            self::Unclassified => 'Ninguém decidiu ainda. Não entra na utilização real.',
-            self::Real => 'Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais.',
+            self::Unclassified => 'Um operador olhou e ainda não decidiu. Não entra na utilização real.',
+            self::Real => 'Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais. É o valor de origem de toda a conta nova, até um operador a marcar de outra forma.',
             self::Test => 'Dados fictícios, QA, demonstrações e ensaios.',
             self::Internal => 'Contas da própria equipa, usadas para operação.',
         };

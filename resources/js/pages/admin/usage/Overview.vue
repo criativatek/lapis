@@ -10,7 +10,7 @@ import UsageTile from '@/components/admin/usage/UsageTile.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Button } from '@/components/ui/button';
 import { categoryAxis, chromeColours } from '@/lib/chartTheme';
-import { commonQuery, dash, formatNumber, formatRange, itemsBreakdown, ofTotal, statusLabel, withQuery } from '@/lib/usageFormat';
+import { commonQuery, dash, formatNumber, listQuery, formatRange, itemsBreakdown, ofTotal, statusLabel, withQuery } from '@/lib/usageFormat';
 import type { UsageOverviewProps, WeekStatus } from '@/types/usage';
 
 /**
@@ -30,6 +30,11 @@ const query = computed(() => commonQuery(props.filters));
 /** «agora» para menos de um minuto; senão «há N min». */
 function agoLabel(minutes: number): string {
     return minutes <= 0 ? 'agora' : `há ${minutes} min`;
+}
+
+/** A ficha de uma pessoa a partir de um cartão, com os filtros do painel (como em `Users.vue`). */
+function tileUserHref(ulid: string): string {
+    return withQuery(`/admin/usage/users/${ulid}`, listQuery(props.filters));
 }
 
 function userHref(ulid: string): string {
@@ -187,11 +192,26 @@ const headCell = 'px-3 py-2 font-medium';
         <section aria-labelledby="headline-title" class="space-y-3">
             <h2 id="headline-title" class="text-lg font-semibold">Em resumo</h2>
             <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <UsageTile label="Ativos — últimos 7 dias" :value="active7.value" :hint="active7.hint" />
-                <UsageTile label="Ativos — últimos 30 dias" :value="active30.value" :hint="active30.hint" />
-                <UsageTile label="Ativos no período" :value="dash(headline.active_period)" :hint="headline.active_period === null ? 'Sem recolha no período' : undefined" />
-                <UsageTile label="Novas contas no período" :value="formatNumber(headline.new_accounts)" />
-                <UsageTile label="Primeiro registo útil" :value="firstRecord.value" :hint="firstRecord.hint" />
+                <UsageTile label="Ativos — últimos 7 dias" :value="active7.value" :hint="active7.hint" :groups="[{ people: headline.people.active_7 }]" :person-href="tileUserHref" />
+                <UsageTile label="Ativos — últimos 30 dias" :value="active30.value" :hint="active30.hint" :groups="[{ people: headline.people.active_30 }]" :person-href="tileUserHref" />
+                <UsageTile
+                    label="Ativos no período"
+                    :value="dash(headline.active_period)"
+                    :hint="headline.active_period === null ? 'Sem recolha no período' : undefined"
+                    :groups="[{ people: headline.people.active_period }]"
+                    :person-href="tileUserHref"
+                />
+                <UsageTile label="Novas contas no período" :value="formatNumber(headline.new_accounts)" :groups="[{ people: headline.people.new_accounts }]" :person-href="tileUserHref" />
+                <UsageTile
+                    label="Primeiro registo útil"
+                    :value="firstRecord.value"
+                    :hint="firstRecord.hint"
+                    :groups="[
+                        { title: 'Chegaram', people: headline.people.first_useful_done },
+                        { title: 'Ainda não', people: headline.people.first_useful_pending },
+                    ]"
+                    :person-href="tileUserHref"
+                />
             </div>
         </section>
 

@@ -32,6 +32,7 @@ function props(overrides: Partial<UsageOverviewProps> = {}): UsageOverviewProps 
             active_period: 6,
             new_accounts: 9,
             first_useful_record: { done: 4, of: 9, before_collection: 3 },
+            people: { active_7: [], active_30: [], active_period: [], new_accounts: [], first_useful_done: [], first_useful_pending: [] },
         },
         weeks: [
             { start: '2026-09-07', end: '2026-09-13', status: 'no_coverage', active_users: null, active_user_days: null, actions: null, items: null },
@@ -164,6 +165,38 @@ describe('Utilização — visão geral', () => {
 
         expect(empty.text()).not.toContain('0 de 0');
         expect(empty.text()).not.toContain('· 0%');
+    });
+
+    it('mostra quem são as pessoas de um cartão, com ligação à ficha', async () => {
+        const base = props();
+        const wrapper = await render({
+            headline: {
+                ...base.headline,
+                people: {
+                    ...base.headline.people,
+                    active_7: [
+                        { ulid: '01JABC', name: 'Ana Silva', email: 'ana@exemplo.pt', internal: false },
+                        { ulid: null, name: 'Rui Costa', email: 'rui@exemplo.pt', internal: true },
+                    ],
+                },
+            },
+        });
+
+        const details = wrapper.findAll('details');
+
+        expect(details).toHaveLength(1);
+        expect(details[0].find('summary').text()).toBe('Ver quem');
+        expect(details[0].find('a').attributes('href')).toContain('/admin/usage/users/01JABC');
+        expect(details[0].find('a').text()).toBe('Ana Silva');
+        expect(details[0].text()).toContain('Rui Costa');
+        expect(details[0].text()).toContain('Interno');
+        expect(details[0].findAll('a')).toHaveLength(1);
+    });
+
+    it('sem pessoas não mostra «Ver quem»', async () => {
+        const wrapper = await render();
+
+        expect(wrapper.text()).not.toContain('Ver quem');
     });
 
     it('explica a cobertura parcial dos mosaicos', async () => {

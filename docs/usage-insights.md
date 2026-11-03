@@ -357,8 +357,8 @@ O painel separa a atividade por **classificação explícita** de cada organiza�
 
 | Classificação | Quer dizer |
 |---|---|
-| `unclassified` — Por classificar | Ninguém decidiu ainda. É o valor de todas as organizações, existentes e novas. |
-| `real` — Utilização real | Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais. |
+| `unclassified` — Por classificar | Um operador olhou e ainda não decidiu. Estado explícito: já não é o valor de origem. |
+| `real` — Utilização real | Professores a usar o produto no seu trabalho, incluindo convidados e períodos experimentais. **Valor de origem de toda a conta nova** (desde 2026-11-03). |
 | `test` — Teste e demonstração | Dados fictícios, QA, demonstrações e ensaios. |
 | `internal` — Interna | Contas da própria equipa, usadas para operação. |
 
@@ -368,9 +368,12 @@ dados fictícios (em produção as organizações estão todas marcadas, incluin
 professores parceiros que usam o produto a sério). A classificação das métricas
 é independente dela e não altera nada na conta.
 
-**Nada é inferido.** Não há backfill nem dedução a partir do nome, do email, do
-plano ou da atividade: todas as organizações nascem `unclassified` e só uma
-pessoa as classifica, na ficha da conta («Classificação para métricas de
+**Nada é inferido, mas há um valor de origem.** Uma conta conta como utilização
+real até prova em contrário: todas as organizações nascem `real`, e a migration
+`2026_11_28_000100_default_usage_classification_to_real` passou a `real` as
+existentes que nenhuma pessoa tinha classificado (`usage_classified_at` nulo; as
+postas explicitamente em `unclassified` ficam). Não há dedução a partir do nome,
+do email, do plano ou da atividade: só uma pessoa muda o valor, na ficha da conta («Classificação para métricas de
 utilização», só para quem tem `can_view_usage_insights`) ou por
 `php artisan lapis:usage-classify` (`--list` para ver; `{organização}
 {classificação} --operator=<email> --note=` para aplicar). Cada decisão fica na
@@ -383,9 +386,9 @@ Os segmentos do painel são quatro e não se sobrepõem (inicial: `real`):
 - **Teste e demonstração** — contas `test`;
 - **Interno** — contas `internal` e a atividade do pessoal interno
   (`is_platform_admin` ou `is_support_technician`) em qualquer organização;
-- **Por classificar** — contas `unclassified`, sem o pessoal interno.
+- **Por classificar** — contas que um operador pôs explicitamente em `unclassified`, sem o pessoal interno.
 
-O painel avisa quando há contas por classificar («N contas estão por
+O painel avisa quando há contas postas por classificar («N contas estão por
 classificar e não entram na utilização real»). A classificação é lida no momento
 da consulta: reclassificar uma organização muda o segmento de todo o seu
 histórico.
@@ -395,8 +398,13 @@ agendadas, jobs, comandos, pedidos automáticos e pré-carregamentos, nem a
 atividade de quem se opôs à recolha (`usage_opted_out_at`) ou pediu o
 encerramento da conta.
 
-> Em produção, até alguém classificar as contas, o segmento «Utilização
-> real» fica vazio e os dados aparecem em «Por classificar».
+> Em produção as contas de QA e de teste têm de ser marcadas como `test` à mão;
+> até lá contam como utilização real.
+
+Cada cartão de «Em resumo» permite ver quem são as pessoas contadas («Ver quem»),
+por ordem de nome e com ligação à ficha de cada uma (o «Primeiro registo útil»
+separa quem chegou de quem ainda não). A lista sai da mesma consulta e do mesmo
+intervalo da contagem, sem recolha nova.
 
 ## Ligados agora
 

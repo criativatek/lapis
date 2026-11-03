@@ -7,6 +7,7 @@ use App\Support\Commercial\CurrentSubscriptions;
 use App\Support\Usage\UsageCoverage;
 use App\Support\Usage\UsageMilestone;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /**
  * As props de `admin/usage/Overview`.
@@ -75,17 +76,25 @@ final class UsageOverview
         // Não há nenhum cálculo do painel que leia a DATA de um primeiro passo
         // para o situar num intervalo — e, de qualquer modo, uma conta criada no
         // período (no máximo o prazo dos agregados) ainda tem a data guardada.
-        $done = 0;
+        $doneIds = [];
         if ($afterStart !== []) {
-            $done = UsageUserState::query()
+            $doneIds = UsageUserState::query()
                 ->whereIn('user_id', array_column($afterStart, 'id'))
                 ->where(fn ($query) => $query
                     ->where(UsageMilestone::FirstUsefulRecord->reachedColumn(), true)
                     ->orWhereNotNull(UsageMilestone::FirstUsefulRecord->stateColumn()))
-                ->count();
+                ->pluck('user_id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
         }
+        $done = count($doneIds);
+        $pendingIds = array_values(array_diff(array_column($afterStart, 'id'), $doneIds));
 
         $coveredPeriod = $this->coverage->coveredDaysIn($filters->from, $filters->to);
+
+        $from7 = $filters->today->subDays(6);
+        $from30 = $filters->today->subDays(29);
 
         return [
             'active_7' => $this->window($scope, $filters, 7),
@@ -97,7 +106,66 @@ final class UsageOverview
                 'of' => count($afterStart),
                 'before_collection' => count($newAccounts) - count($afterStart),
             ],
+            // QUEM são as pessoas de cada cartão. Fica ao lado das métricas (e não
+            // dentro delas) para não mudar a forma de `active_*` e `new_accounts`.
+            // Mesma query e mesmo intervalo das contagens; `[]` quando a métrica
+            // é nula (sem recolha), como o cartão que não mostra «Ver quem».
+            'people' => [
+                'active_7' => $this->coveredDays($from7, $filters->today) ? $this->activePeople($scope, $from7, $filters->today) : [],
+                'active_30' => $this->coveredDays($from30, $filters->today) ? $this->activePeople($scope, $from30, $filters->today) : [],
+                'active_period' => $coveredPeriod === [] ? [] : $this->activePeople($scope, $filters->from, $filters->to),
+                'new_accounts' => $this->describe(array_column($newAccounts, 'id')),
+                'first_useful_done' => $this->describe(array_values($doneIds)),
+                'first_useful_pending' => $this->describe($pendingIds),
+            ],
         ];
+    }
+
+    private function coveredDays(CarbonImmutable $from, CarbonImmutable $to): bool
+    {
+        return $this->coverage->coveredDaysIn($from, $to) !== [];
+    }
+
+    /**
+     * @return list<array{ulid: string|null, name: string, email: string, internal: bool}>
+     */
+    private function activePeople(InsightsScope $scope, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $ids = array_values(array_unique(array_column($this->activity->activeDayRows($scope, $from, $to), 'user_id')));
+
+        return $this->describe($ids);
+    }
+
+    /**
+     * Nome, email e chave do detalhe de cada pessoa, por ordem de nome. Só `users`
+     * e `usage_user_states` são lidos, como no «Ligados agora».
+     *
+     * @param  list<int>  $ids
+     * @return list<array{ulid: string|null, name: string, email: string, internal: bool}>
+     */
+    private function describe(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $people = [];
+        foreach (array_chunk($ids, 800) as $chunk) {
+            $ulids = DB::table('usage_user_states')->whereIn('user_id', $chunk)->pluck('ulid', 'user_id')->all();
+
+            foreach (DB::table('users')->whereIn('id', $chunk)->get(['id', 'name', 'email', 'is_platform_admin', 'is_support_technician']) as $user) {
+                $people[] = [
+                    'ulid' => isset($ulids[$user->id]) ? (string) $ulids[$user->id] : null,
+                    'name' => (string) $user->name,
+                    'email' => (string) $user->email,
+                    'internal' => (bool) $user->is_platform_admin || (bool) $user->is_support_technician,
+                ];
+            }
+        }
+
+        usort($people, fn (array $a, array $b): int => strcmp(mb_strtolower($a['name']), mb_strtolower($b['name'])) ?: strcmp($a['email'], $b['email']));
+
+        return $people;
     }
 
     /**

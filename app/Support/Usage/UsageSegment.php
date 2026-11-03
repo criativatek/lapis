@@ -30,7 +30,7 @@ enum UsageSegment: string
             self::Real => 'Contas classificadas como utilização real, sem o pessoal interno.',
             self::Test => 'Contas classificadas como teste e demonstração: dados fictícios, QA, ensaios.',
             self::Internal => 'Contas internas e toda a atividade do pessoal interno, onde quer que seja.',
-            self::Unclassified => 'Contas que ninguém classificou ainda; não entram na utilização real.',
+            self::Unclassified => 'Contas que um operador pôs explicitamente por classificar; não entram na utilização real.',
         };
     }
 }

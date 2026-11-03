@@ -89,12 +89,24 @@ export type UsagePaginated<T> = {
 
 // --- Visão geral -----------------------------------------------------------
 
+/** Uma pessoa contada num cartão da visão geral; `ulid` nulo = ainda sem ficha. */
+export type UsagePerson = { ulid: string | null; name: string; email: string; internal: boolean };
+
 export type UsageHeadline = {
     active_7: { value: number | null; observed_days: number; window_days: 7 };
     active_30: { value: number | null; observed_days: number; window_days: 30 };
     active_period: number | null;
     new_accounts: number;
     first_useful_record: { done: number; of: number; before_collection: number };
+    /** Quem são as pessoas de cada cartão, por ordem de nome; vazio quando não há recolha. */
+    people: {
+        active_7: UsagePerson[];
+        active_30: UsagePerson[];
+        active_period: UsagePerson[];
+        new_accounts: UsagePerson[];
+        first_useful_done: UsagePerson[];
+        first_useful_pending: UsagePerson[];
+    };
 };
 
 export type UsageWeek = {

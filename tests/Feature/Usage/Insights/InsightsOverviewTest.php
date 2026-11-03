@@ -3,6 +3,7 @@
 namespace Tests\Feature\Usage\Insights;
 
 use App\Models\Organization;
+use App\Models\User;
 use App\Support\Usage\UsageFeature;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -124,6 +125,59 @@ class InsightsOverviewTest extends InsightsTestCase
     }
 
     #[Test]
+    public function a_brand_new_person_with_activity_counts_as_real_and_nothing_warns_about_unclassified_accounts(): void
+    {
+        // Sem `person()`/`classify()`: a organização pessoal fica com o valor de origem.
+        $teacher = User::factory()->create(['name' => 'Recém Chegada', 'email' => 'recem-chegada@exemplo.pt']);
+        $this->assertSame('real', $this->organizationOf($teacher)->usage_classification);
+        $this->rollup($teacher, '2026-10-10');
+
+        $this->assertSame(1, $this->props('admin.usage.overview')['headline']['active_period']);
+        $this->assertSame(0, $this->props('admin.usage.overview', ['segment' => 'unclassified'])['headline']['active_period']);
+
+        $notes = $this->props('admin.usage.overview')['coverage']['notes'];
+        $this->assertSame([], array_values(array_filter($notes, fn (string $note): bool => str_contains($note, 'por classificar'))));
+    }
+
+    #[Test]
+    public function the_summary_cards_say_who_the_people_are(): void
+    {
+        $this->startUsageCollectionAt('2026-09-01 00:00:00');
+
+        $recent = $this->person('Beatriz Recente', '2026-09-10 10:00:00');
+        $older = $this->person('Ana Antiga', '2026-09-12 10:00:00');
+        $trial = $this->person('Teste Fora', '2026-09-14 10:00:00');
+        $this->markTest($this->organizationOf($trial));
+        $this->state($recent, ['first_useful_record_on' => '2026-09-20']);
+
+        $this->rollup($recent, '2026-10-10');
+        $this->rollup($older, '2026-10-02');
+        $this->rollup($trial, '2026-10-10');
+
+        $props = $this->props('admin.usage.overview', ['period' => 'custom', 'from' => '2026-09-01', 'to' => '2026-10-12']);
+        $names = fn (array $people): array => array_column($people, 'name');
+        $people = $props['headline']['people'];
+
+        // Por ordem de nome; quem está fora do segmento não aparece.
+        $this->assertSame(['Beatriz Recente'], $names($people['active_7']));
+        $this->assertSame(['Ana Antiga', 'Beatriz Recente'], $names($people['active_30']));
+        $this->assertSame(['Ana Antiga', 'Beatriz Recente'], $names($people['active_period']));
+        $this->assertSame(['Ana Antiga', 'Beatriz Recente'], $names($people['new_accounts']));
+        $this->assertSame(['Beatriz Recente'], $names($people['first_useful_done']));
+        $this->assertSame(['Ana Antiga'], $names($people['first_useful_pending']));
+
+        // A lista e a contagem saem da mesma consulta e batem certo.
+        $this->assertSame($props['headline']['active_7']['value'], count($people['active_7']));
+        $this->assertSame($props['headline']['active_30']['value'], count($people['active_30']));
+        $this->assertSame($props['headline']['active_period'], count($people['active_period']));
+        $this->assertSame($props['headline']['new_accounts'], count($people['new_accounts']));
+        $this->assertSame($props['headline']['first_useful_record']['done'], count($people['first_useful_done']));
+        $this->assertSame(['ulid', 'name', 'email', 'internal'], array_keys($people['active_7'][0]));
+        $this->assertSame('beatriz-recente@exemplo.pt', $people['active_7'][0]['email']);
+        $this->assertFalse($people['active_7'][0]['internal']);
+    }
+
+    #[Test]
     public function the_main_segment_value_is_no_longer_accepted(): void
     {
         $this->actingAs($this->operator)->get(route('admin.usage.overview', ['segment' => 'main']))->assertSessionHasErrors('segment');
@@ -141,8 +195,8 @@ class InsightsOverviewTest extends InsightsTestCase
         foreach ($props['options']['segments'] as $segment) {
             $this->assertNotSame('', $segment['description']);
         }
-        // A de «Outra» e a do próprio operador.
-        $this->assertContains('2 contas estão por classificar e não entram na utilização real.', $props['coverage']['notes']);
+        // Só a de «Outra»: a do operador e a de «Uma» nasceram `real`.
+        $this->assertContains('1 conta está por classificar e não entra na utilização real.', $props['coverage']['notes']);
 
         Organization::query()->update(['usage_classification' => 'real']);
         $notes = $this->props('admin.usage.overview')['coverage']['notes'];

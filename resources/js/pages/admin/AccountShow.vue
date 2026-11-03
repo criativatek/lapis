@@ -98,8 +98,22 @@ function setCollectionControl(granted: boolean): void {
 }
 
 const classificationForm = useForm({
-    classification: props.usage_classification?.value ?? 'unclassified',
+    classification: props.usage_classification?.value ?? 'real',
     note: '',
+});
+
+// Distingue o valor de origem («por defeito, ninguém decidiu») de uma decisão
+// tomada por uma pessoa, que o servidor data em `classified_at`.
+const classificationOrigin = computed(() => {
+    const classifiedAt = props.usage_classification?.classified_at;
+
+    if (!classifiedAt) {
+        return props.usage_classification?.value === 'real' ? 'por defeito, ninguém decidiu' : '';
+    }
+
+    const [year, month, day] = classifiedAt.slice(0, 10).split('-');
+
+    return `decidido em ${day}/${month}/${year}`;
 });
 
 const classificationLabel = computed(
@@ -658,10 +672,11 @@ function destroy(): void {
             <div class="flex flex-wrap items-center gap-2">
                 <h2 class="text-sm font-medium">Classificação para métricas de utilização</h2>
                 <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ classificationLabel }}</span>
+                <span v-if="classificationOrigin" class="text-xs text-muted-foreground">{{ classificationOrigin }}</span>
             </div>
             <p class="text-sm text-muted-foreground">
                 Serve só para o painel de utilização, é independente da «conta de teste» comercial e <strong>não</strong> altera nada na
-                conta. Nada é inferido: quem decide é uma pessoa, e uma conta por classificar não entra na utilização real.
+                conta. Nada é inferido: quem decide é uma pessoa, toda a conta nova começa como utilização real, e uma conta posta por classificar não entra nela.
             </p>
             <form class="space-y-3" @submit.prevent="saveClassification">
                 <fieldset class="space-y-2">
