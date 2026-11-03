@@ -30,7 +30,7 @@ use Illuminate\Support\Carbon;
  *                                 to which nothing was ever promised. Says nothing
  *                                 about what it may do — see `SetTestAccount`.
  * @property string $usage_classification Para as métricas de utilização (`UsageClassification`);
- *                                        nasce `unclassified` e só `SetUsageClassification` a escreve.
+ *                                        nasce `real` e só `SetUsageClassification` a escreve.
  * @property Carbon|null $usage_classified_at
  * @property Carbon|null $closure_requested_at
  * @property Carbon|null $scheduled_deletion_at
@@ -48,6 +48,18 @@ class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory, HasUlids;
+
+    /**
+     * O valor de origem de toda a conta é «utilização real» até prova em contrário
+     * (decisão de 2026-11-03, docs/usage-insights-decisions.md). Fica aqui, e não só
+     * no DEFAULT da coluna, para que `Organization::create()` o devolva sem `fresh()`.
+     * A coluna continua fora do `#[Fillable]`: só `SetUsageClassification` a muda.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'usage_classification' => 'real',
+    ];
 
     /**
      * Keep the auto-increment id as the primary key for foreign keys and joins,

@@ -343,8 +343,9 @@ ponderação em [usage-insights.md](usage-insights.md); desenho técnico em
 - **Segmentos:** quatro, por classificação explícita da organização
   (`usage_classification`: por classificar, real, teste e demonstração, interna),
   independente da marca comercial `is_test_account`, que o painel não lê. «Utilização
-  real» é o inicial; o pessoal interno (`is_platform_admin`/`is_support_technician`)
-  conta sempre como «Interno». Todas as organizações nascem «Por classificar» e nada é
+  real» é o inicial e o valor de origem; o pessoal interno (`is_platform_admin`/`is_support_technician`)
+  conta sempre como «Interno». Todas as organizações nascem «Utilização real» (desde 2026-11-03; «Por classificar» é um
+  estado explícito) e nada é
   inferido: classifica-se na ficha da conta («Classificação para métricas de
   utilização») ou com `php artisan lapis:usage-classify` (`--list`; auditado como
   evento de plataforma, não na auditoria da organização).

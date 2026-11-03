@@ -64,17 +64,22 @@ da organização: acesso, plano, recolha, conservação e Política não mudam.
 
 ### Decidido
 
-- **Contas novas nascem «Por classificar»** (decisão fechada). Nada é presumido
-  da origem do registo nem da atividade.
+- **Contas novas nascem «Utilização real»** (decisão de 2026-11-03, substitui a
+  anterior, «Por classificar»): nada é inferido da atividade, do nome, do email,
+  do plano nem de `is_test_account`; o que muda é o valor de origem. «Por
+  classificar» passa a estado explícito («um operador olhou e ainda não
+  decidiu»). As organizações existentes nunca decididas (`usage_classified_at`
+  nulo) passaram a «real» por backfill único.
 
 ### Decisão que precisa da tua resposta
 
-1. **Classificar as organizações de produção.** A lista atual foi obtida só em
+1. **Marcar as contas de teste e internas.** Com a regra de 2026-11-03 tudo conta
+   como «real»; falta marcar as de QA/teste e as internas. A lista foi obtida só em
    leitura (consulta `SELECT` numa transação `READ ONLY`, compatível com a
    versão instalada, sem publicar código nem migrar) e entregue **fora do
    repositório**: este documento, a PR e os testes não têm nomes de
-   organizações reais. Para cada uma: «real», «teste» ou «interna». Até lá
-   ficam «Por classificar». Depois do deploy desta versão, a classificação faz-se
+   organizações reais. Para cada uma: «teste» ou «interna». Até lá
+   contam como «Utilização real». Depois do deploy, a classificação faz-se
    na ficha da conta ou com `lapis:usage-classify {ulid} {classificação}
    --operator=<email> --note="…"`.
 

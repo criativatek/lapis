@@ -25,6 +25,39 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.190.0] — 2026-11-03
+
+> **Uma conta conta como «Utilização real» até prova em contrário.** Até aqui
+> toda a organização nascia «Por classificar» e o segmento «Utilização real» do
+> painel ficava a zeros até alguém classificar à mão. Em produção só há contas
+> pessoais de professores; as de QA e de teste marcam-se como `test` à mão.
+> Uma migration (só metadados da coluna e um backfill), sem alteração de acesso,
+> plano ou recolha.
+
+### Alterado
+
+- O valor de origem de `organizations.usage_classification` passa de
+  `unclassified` a `real` (DEFAULT da coluna e `Organization::$attributes`).
+  Continua a não haver inferência: nada é derivado de `is_test_account`, do nome,
+  do email, do plano ou da atividade.
+- Backfill único (`2026_11_28_000100_default_usage_classification_to_real`): as
+  organizações `unclassified` com `usage_classified_at` nulo, que nenhuma pessoa
+  decidiu, passam a `real`. As que um operador pôs em «Por classificar» ficam. O
+  `down()` repõe o DEFAULT mas não desfaz o backfill.
+- «Por classificar» passa a ser um estado explícito («um operador olhou e ainda
+  não decidiu»); o aviso do painel só aparece se houver contas postas assim. Os
+  textos dos segmentos, das definições do painel e da documentação acompanham.
+- Ficha da conta: ao lado da classificação indica-se «por defeito, ninguém
+  decidiu» ou «decidido em {data}».
+
+### Adicionado
+
+- Os cinco cartões de «Em resumo» do painel de utilização dizem QUEM são as
+  pessoas, não só quantas: «Ver quem» abre a lista por ordem de nome, com
+  ligação à ficha de cada uma e a etiqueta «Interno». O «Primeiro registo útil»
+  separa «Chegaram» de «Ainda não». Vem em `headline.people`, da mesma consulta
+  e do mesmo âmbito das contagens; sem recolha nova.
+
 ## [0.189.1] — 2026-11-02
 
 > **Correção do «Ligados agora»: as sessões são JSON.** A 0.189.0 lia o payload

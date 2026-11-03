@@ -52,16 +52,18 @@ class UsageClassificationTest extends TestCase
     // --- Esquema e enum ---------------------------------------------------
 
     #[Test]
-    public function every_organization_is_born_unclassified_even_when_it_is_a_commercial_test_account(): void
+    public function every_organization_is_born_real_even_when_it_is_a_commercial_test_account(): void
     {
         $this->assertTrue(Schema::hasColumns('organizations', ['usage_classification', 'usage_classified_at']));
 
         $organization = $this->organization();
-        $this->assertSame('unclassified', $organization->usage_classification);
+        $this->assertSame('real', $organization->usage_classification);
         $this->assertNull($organization->usage_classified_at);
 
         $organization->forceFill(['is_test_account' => true])->save();
-        $this->assertSame('unclassified', $organization->fresh()->usage_classification);
+        $fresh = $organization->fresh();
+        $this->assertSame('real', $fresh->usage_classification);
+        $this->assertNull($fresh->usage_classified_at, 'o valor de origem não é uma decisão: nada é datado');
     }
 
     #[Test]
@@ -94,10 +96,10 @@ class UsageClassificationTest extends TestCase
         $operator = $this->admin();
         $organization = $this->organization();
 
-        app(SetUsageClassification::class)->set($organization, $operator, UsageClassification::Real, '  Professora convidada  ');
+        app(SetUsageClassification::class)->set($organization, $operator, UsageClassification::Test, '  Professora convidada  ');
 
         $fresh = $organization->fresh();
-        $this->assertSame('real', $fresh->usage_classification);
+        $this->assertSame('test', $fresh->usage_classification);
         $this->assertSame('2026-10-12 10:00:00', $fresh->usage_classified_at?->toDateTimeString());
 
         $event = AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->sole();
@@ -107,8 +109,8 @@ class UsageClassificationTest extends TestCase
         // reordenadas, e a ordem das chaves não é informação.
         $this->assertEquals([
             'organization_id' => $organization->id,
-            'previous' => 'unclassified',
-            'classification' => 'real',
+            'previous' => 'real',
+            'classification' => 'test',
             'note' => 'Professora convidada',
         ], $event->properties);
 
@@ -122,7 +124,7 @@ class UsageClassificationTest extends TestCase
         $operator = $this->admin();
         $organization = $this->organization();
 
-        app(SetUsageClassification::class)->set($organization, $operator, UsageClassification::Unclassified);
+        app(SetUsageClassification::class)->set($organization, $operator, UsageClassification::Real);
 
         $this->assertNull($organization->fresh()->usage_classified_at);
         $this->assertSame(0, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->count());
@@ -136,6 +138,20 @@ class UsageClassificationTest extends TestCase
         $this->assertSame('2026-10-12 10:00:00', $organization->fresh()->usage_classified_at?->toDateTimeString());
     }
 
+    #[Test]
+    public function an_operator_can_explicitly_put_an_organization_back_to_unclassified(): void
+    {
+        $operator = $this->admin();
+        $organization = $this->organization();
+
+        app(SetUsageClassification::class)->set($organization, $operator, UsageClassification::Unclassified, 'Falta ver');
+
+        $fresh = $organization->fresh();
+        $this->assertSame('unclassified', $fresh->usage_classification);
+        $this->assertSame('2026-10-12 10:00:00', $fresh->usage_classified_at?->toDateTimeString());
+        $this->assertSame('real', AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->sole()->properties['previous']);
+    }
+
     // --- Rota -------------------------------------------------------------
 
     #[Test]
@@ -147,7 +163,7 @@ class UsageClassificationTest extends TestCase
         $this->actingAs(User::factory()->create())->post($url, ['classification' => 'real'])->assertForbidden();
         $this->actingAs($this->admin(false))->post($url, ['classification' => 'real'])->assertForbidden();
 
-        $this->assertSame('unclassified', $organization->fresh()->usage_classification);
+        $this->assertSame('real', $organization->fresh()->usage_classification);
     }
 
     #[Test]
@@ -161,7 +177,7 @@ class UsageClassificationTest extends TestCase
         $this->actingAs($operator)->post($url, [])->assertSessionHasErrors('classification');
         $this->actingAs($operator)->post($url, ['classification' => 'real', 'note' => str_repeat('x', 501)])->assertSessionHasErrors('note');
 
-        $this->assertSame('unclassified', $organization->fresh()->usage_classification);
+        $this->assertSame('real', $organization->fresh()->usage_classification);
     }
 
     #[Test]
@@ -209,7 +225,7 @@ class UsageClassificationTest extends TestCase
             ->expectsOutputToContain($organization->ulid)
             ->assertExitCode(0);
 
-        $this->assertSame('unclassified', $organization->fresh()->usage_classification);
+        $this->assertSame('real', $organization->fresh()->usage_classification);
         $this->assertSame(0, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->count());
     }
 
@@ -221,12 +237,12 @@ class UsageClassificationTest extends TestCase
 
         $this->artisan('lapis:usage-classify', [
             'organization' => $organization->ulid,
-            'classification' => 'real',
+            'classification' => 'test',
             '--operator' => $operator->email,
             '--note' => 'Parceira',
         ])->assertExitCode(0);
 
-        $this->assertSame('real', $organization->fresh()->usage_classification);
+        $this->assertSame('test', $organization->fresh()->usage_classification);
         $this->assertSame('Parceira', AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->sole()->properties['note']);
     }
 
@@ -245,7 +261,7 @@ class UsageClassificationTest extends TestCase
         $this->artisan('lapis:usage-classify', [...$base, 'classification' => 'main', '--operator' => $operator->email])->assertExitCode(1);
         $this->artisan('lapis:usage-classify', [...$base, 'organization' => 'inexistente', '--operator' => $operator->email])->assertExitCode(1);
 
-        $this->assertSame('unclassified', $organization->fresh()->usage_classification);
+        $this->assertSame('real', $organization->fresh()->usage_classification);
         $this->assertSame(0, AuditEvent::withoutGlobalScope('organization')->where('event', 'admin.usage_classification_set')->count());
     }
 }
