@@ -25,6 +25,26 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.190.1] — 2026-11-04
+
+> **Grelha de correção: o cabeçalho fica à vista.** Ao corrigir, descer de
+> aluno em aluno fazia desaparecer a linha com o n.º das perguntas e as
+> cotações, e o professor deixava de saber quanto valia o que estava a
+> classificar. A grelha passa a ser um painel que rola nos dois eixos, com o
+> cabeçalho (grupos, perguntas, cotações, «Conteúdo») preso ao topo — tal
+> como a coluna «Aluno» já o estava à esquerda. Sem migrations.
+
+### Corrigido
+
+- `instruments/Grid`: o contentor da grelha tem altura máxima (75 % do
+  ecrã) e rola na vertical e na horizontal, o mesmo padrão da pauta e da
+  sinopse; o `<thead>` é `sticky` e opaco, para que nada do que desliza por
+  baixo transpareça.
+- A barra de deslocação horizontal colada ao fundo da janela deixa de
+  esconder as barras nativas do painel (a vertical é o único sinal de que há
+  mais alunos abaixo) e só aparece enquanto o fundo do painel está fora do
+  ecrã — quando a barra nativa entra no ecrã, a colada sai; nunca há duas.
+
 ## [0.190.0] — 2026-11-03
 
 > **Uma conta conta como «Utilização real» até prova em contrário.** Até aqui

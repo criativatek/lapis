@@ -347,14 +347,53 @@ describe('instruments/Grid — setas entre células', () => {
     });
 });
 
+describe('instruments/Grid — cabeçalho preso ao topo', () => {
+    it('a grelha é um painel que rola nos dois eixos, com o cabeçalho sticky e opaco', () => {
+        const wrapper = build();
+
+        // Um sticky só prende dentro do contentor que rola: o painel tem de rolar na vertical
+        // (altura máxima) e não apenas na horizontal.
+        const pane = wrapper.get('[data-testid="grid-scroll"]').classes();
+        expect(pane).toContain('overflow-auto');
+        expect(pane.some((c) => c.startsWith('max-h-'))).toBe(true);
+
+        const head = wrapper.get('[data-testid="grid-head"]').classes();
+        expect(head).toContain('sticky');
+        expect(head).toContain('top-0');
+        // Opaco: nada do que desliza por baixo pode transparecer.
+        expect(head).toContain('bg-muted');
+        expect(head.join(' ')).not.toContain('bg-muted/');
+
+        // A célula «Aluno» prende nos dois eixos e também é opaca.
+        const corner = wrapper.get('[data-testid="grid-head"] th').classes();
+        expect(corner).toContain('sticky');
+        expect(corner).toContain('left-0');
+        expect(corner).toContain('bg-muted');
+    });
+});
+
 describe('instruments/Grid — barra de deslocação horizontal', () => {
-    function withLayout(scrollWidth: number, clientWidth: number) {
+    function withLayout(scrollWidth: number, clientWidth: number, rect?: { top: number; bottom: number }) {
         const spyWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(scrollWidth);
         const spyClient = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth);
+        const spyRect = rect === undefined
+            ? null
+            : vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+                x: 0,
+                y: rect.top,
+                top: rect.top,
+                bottom: rect.bottom,
+                left: 0,
+                right: clientWidth,
+                width: clientWidth,
+                height: rect.bottom - rect.top,
+                toJSON: () => ({}),
+            } as DOMRect);
 
         return () => {
             spyWidth.mockRestore();
             spyClient.mockRestore();
+            spyRect?.mockRestore();
         };
     }
 
@@ -363,12 +402,11 @@ describe('instruments/Grid — barra de deslocação horizontal', () => {
         const wrapper = build();
 
         expect(wrapper.get('[data-testid="grid-scrollbar"]').attributes('style')).toContain('display: none');
-        expect(wrapper.get('[data-testid="grid-scroll"]').classes().join(' ')).not.toContain('scrollbar-width');
         restore();
     });
 
-    it('aparece, com a largura da tabela, quando há overflow, e esconde a barra nativa', async () => {
-        const restore = withLayout(1600, 800);
+    it('aparece, com a largura da tabela, quando há overflow e o fundo do painel está abaixo do ecrã', async () => {
+        const restore = withLayout(1600, 800, { top: 300, bottom: window.innerHeight + 400 });
         const wrapper = build();
         await nextTick();
 
@@ -378,7 +416,18 @@ describe('instruments/Grid — barra de deslocação horizontal', () => {
         expect(bar.classes()).toContain('fixed');
         expect(bar.classes()).toContain('bottom-0');
         expect(bar.get('div').attributes('style')).toContain('width: 1600px');
-        expect(wrapper.get('[data-testid="grid-scroll"]').classes()).toContain('[scrollbar-width:none]');
+        // As barras nativas do painel nunca são escondidas: a vertical é o sinal de que há mais
+        // alunos abaixo.
+        expect(wrapper.get('[data-testid="grid-scroll"]').classes().join(' ')).not.toContain('scrollbar-width');
+        restore();
+    });
+
+    it('esconde-se quando o fundo do painel (com a barra nativa) já está no ecrã', async () => {
+        const restore = withLayout(1600, 800, { top: 100, bottom: window.innerHeight - 50 });
+        const wrapper = build();
+        await nextTick();
+
+        expect(wrapper.get('[data-testid="grid-scrollbar"]').attributes('style')).toContain('display: none');
         restore();
     });
 

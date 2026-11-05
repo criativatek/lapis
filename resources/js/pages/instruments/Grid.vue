@@ -281,10 +281,16 @@ function handleChannelMessage(event: MessageEvent<EditingChannelMessage>): void 
     }
 }
 
-// Barra de deslocação horizontal colada ao fundo da janela. A tabela é larga e o fim do contentor pode
-// estar muito abaixo do ecrã; a barra nativa do contentor só se vê aí. Quando há overflow, a barra
-// nativa é escondida (só a colada existe, sem duplicar) e as duas são mantidas em sincronia. O
-// toque continua a deslocar o contentor de forma nativa.
+// A grelha vive num painel com altura máxima que rola nos dois eixos (como a pauta e a sinopse):
+// é o que permite ao cabeçalho (grupos, n.º das perguntas, cotações) ficar `sticky` no topo
+// enquanto se desce pelos alunos — um `sticky` só prende dentro do contentor que rola, e um
+// contentor só com scroll horizontal nunca o prenderia.
+//
+// Barra de deslocação horizontal colada ao fundo da janela. A tabela é larga e o fundo do painel
+// (onde está a barra nativa) pode estar abaixo do ecrã. Enquanto assim for, a barra colada
+// substitui-a e as duas são mantidas em sincronia; quando o fundo do painel entra no ecrã a barra
+// nativa chega e a colada esconde-se (nunca há duas). O toque continua a deslocar o painel de
+// forma nativa.
 const scrollContainer = ref<HTMLElement | null>(null);
 const scrollTable = ref<HTMLElement | null>(null);
 const scrollBar = ref<HTMLElement | null>(null);
@@ -314,8 +320,9 @@ function measureHorizontalOverflow(): void {
 
     const rect = container.getBoundingClientRect();
     barStyle.value = { left: `${rect.left}px`, width: `${rect.width}px` };
-    // Sem layout (jsdom) o retângulo é todo zeros: considera-se à vista.
-    barInView.value = rect.height === 0 || (rect.top < window.innerHeight && rect.bottom > 0);
+    // A barra colada só faz falta enquanto o painel está no ecrã mas o seu fundo (a barra nativa)
+    // ainda não. Sem layout (jsdom) o retângulo é todo zeros: considera-se nesse estado.
+    barInView.value = rect.height === 0 || (rect.top < window.innerHeight && rect.bottom > window.innerHeight);
 }
 
 const barVisible = computed(() => hasHorizontalOverflow.value && barInView.value);
@@ -339,7 +346,9 @@ function syncScroll(from: 'container' | 'bar'): void {
 
 onMounted(() => {
     measureHorizontalOverflow();
-    window.addEventListener('scroll', measureHorizontalOverflow, { passive: true });
+    // Em captura: quem rola a página é o <main> (overflow), não a janela, e um `scroll` de um
+    // elemento não borbulha — sem captura a barra colada nunca saberia que o painel se moveu.
+    window.addEventListener('scroll', measureHorizontalOverflow, { passive: true, capture: true });
     window.addEventListener('resize', measureHorizontalOverflow, { passive: true });
 
     if (typeof ResizeObserver !== 'undefined') {
@@ -385,7 +394,7 @@ function handleOffline(): void {
 
 onBeforeUnmount(() => {
     layoutObserver?.disconnect();
-    window.removeEventListener('scroll', measureHorizontalOverflow);
+    window.removeEventListener('scroll', measureHorizontalOverflow, { capture: true });
     window.removeEventListener('resize', measureHorizontalOverflow);
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
@@ -1654,21 +1663,25 @@ function revertCancellation(): void {
 
         <EmptyState v-if="students.length === 0" title="Esta turma ainda não tem alunos inscritos." />
 
+        <!-- Painel com altura máxima: rola nos dois eixos para o cabeçalho prender no topo (ver nota
+             junto a `scrollContainer`). As barras nativas ficam visíveis — a vertical é o único
+             sinal de que há mais alunos abaixo. -->
         <div
             v-else
             ref="scrollContainer"
-            :class="[
-                'overflow-x-auto rounded-lg border border-border',
-                hasHorizontalOverflow && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-            ]"
+            class="max-h-[75vh] overflow-auto rounded-lg border border-border"
             data-testid="grid-scroll"
             @scroll="syncScroll('container')"
         >
             <table ref="scrollTable" class="w-full border-collapse text-sm">
-                <thead class="bg-muted/50">
+                <!-- Cabeçalho preso ao topo do painel, tal como a coluna «Aluno» o está à esquerda: ao
+                     passar de aluno em aluno, o n.º e a cotação de cada pergunta ficam sempre à vista.
+                     Fundos OPACOS (`bg-muted`, nunca `bg-muted/50`) em tudo o que é sticky: o que
+                     desliza por baixo não pode transparecer. -->
+                <thead class="sticky top-0 z-20 bg-muted" data-testid="grid-head">
                     <!-- Com grupos, uma fila a nomeá-los (com a cotação de cada um) por cima das perguntas. -->
-                    <tr v-if="sections.length > 0" data-testid="group-header-row">
-                        <th rowspan="2" class="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left font-medium">Aluno</th>
+                    <tr v-if="sections.length > 0" class="bg-muted" data-testid="group-header-row">
+                        <th rowspan="2" class="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">Aluno</th>
                         <th
                             v-for="section in sections"
                             :key="section.index"
@@ -1693,8 +1706,8 @@ function revertCancellation(): void {
                             </div>
                         </th>
                     </tr>
-                    <tr>
-                        <th v-if="sections.length === 0" class="sticky left-0 z-10 bg-muted/50 px-3 py-2 text-left font-medium">Aluno</th>
+                    <tr class="bg-muted">
+                        <th v-if="sections.length === 0" class="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">Aluno</th>
                         <template v-for="column in columns" :key="column.key">
                             <th v-if="column.item" class="min-w-24 px-2 py-2 text-center font-medium">
                                 <div>{{ column.item.code }}</div>
@@ -1727,8 +1740,8 @@ function revertCancellation(): void {
                         </template>
                     </tr>
                     <!-- «Conteúdo»: o que cada pergunta avalia; fora das células de classificação (sem data-cell). -->
-                    <tr data-testid="content-row">
-                        <th scope="row" class="sticky left-0 z-10 bg-muted/50 px-3 py-1 text-left text-xs font-medium">Conteúdo</th>
+                    <tr class="bg-muted" data-testid="content-row">
+                        <th scope="row" class="sticky left-0 z-10 bg-muted px-3 py-1 text-left text-xs font-medium">Conteúdo</th>
                         <template v-for="column in columns" :key="column.key">
                             <td v-if="column.item" class="px-1.5 py-1">
                                 <input
