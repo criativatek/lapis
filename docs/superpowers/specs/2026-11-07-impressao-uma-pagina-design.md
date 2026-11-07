@@ -119,7 +119,7 @@ Aplicação:
 
 Uma regra, em TypeScript e em PHP, com os mesmos casos de teste:
 
-- `menuSigla(label)`: iniciais das palavras com maiúscula inicial, sem
+- `mentionSigla(label)`: iniciais das palavras com maiúscula inicial, sem
   partículas («de», «e», «do»): «Muito Bom» → «MB», «Insuficiente» → «I»,
   «Bom» → «B», «Suficiente» → «S», «Não Satisfaz» → «NS».
 - `siglasUnicas(labels, codes)`: se duas menções derem a mesma sigla, **todas**
