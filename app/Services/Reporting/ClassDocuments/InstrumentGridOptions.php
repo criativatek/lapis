@@ -24,6 +24,11 @@ namespace App\Services\Reporting\ClassDocuments;
  *               concluída: antes disso não há estatística oficial (InstrumentGrid
  *               devolve-os `null` e diz-o, mesmo que se peçam)
  *   orientacao  auto | vertical | horizontal
+ *   disposicao  blocos (por omissão aqui) | uma-pagina — um só bloco em paisagem
+ *               que a pré-visualização encolhe até caber numa folha; a legenda
+ *               das questões fica OFF por omissão nessa disposição. O controlador
+ *               pede `uma-pagina` para a pré-visualização e `blocos` para o PDF,
+ *               que não sabe escalar.
  */
 final readonly class InstrumentGridOptions
 {
@@ -35,6 +40,8 @@ final readonly class InstrumentGridOptions
         public bool $charts = false,
         /** @var 'auto'|'portrait'|'landscape' */
         public string $orientation = InstrumentGridLayout::AUTO,
+        /** @var 'blocks'|'one_page' */
+        public string $layout = InstrumentGridLayout::BLOCKS,
     ) {}
 
     /**
@@ -42,24 +49,42 @@ final readonly class InstrumentGridOptions
      */
     public static function fromQuery(array $query): self
     {
+        $layout = match ($query['disposicao'] ?? null) {
+            'uma-pagina' => InstrumentGridLayout::ONE_PAGE,
+            default => InstrumentGridLayout::BLOCKS,
+        };
+
         return new self(
             rawScore: self::flag($query['bruta'] ?? null),
             result: self::flag($query['resultado'] ?? null),
             domains: self::flag($query['dominios'] ?? null),
-            legend: self::flag($query['legenda'] ?? null),
+            // A descrição de cada questão não cabe numa página: fica OFF por
+            // omissão em `uma-pagina`, e a query continua a mandar.
+            legend: self::flag($query['legenda'] ?? null, default: $layout === InstrumentGridLayout::BLOCKS),
             charts: self::flag($query['graficos'] ?? null, default: false),
             orientation: match ($query['orientacao'] ?? null) {
                 'vertical' => InstrumentGridLayout::PORTRAIT,
                 'horizontal' => InstrumentGridLayout::LANDSCAPE,
                 default => InstrumentGridLayout::AUTO,
             },
+            layout: $layout,
         );
+    }
+
+    /**
+     * As mesmas opções com outra disposição — o PDF força sempre os blocos.
+     *
+     * @param  'blocks'|'one_page'  $layout
+     */
+    public function withLayout(string $layout): self
+    {
+        return new self($this->rawScore, $this->result, $this->domains, $this->legend, $this->charts, $this->orientation, $layout);
     }
 
     /**
      * The options as they travel in the document, for the preview's own form.
      *
-     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, charts: bool, orientation: string}
+     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, charts: bool, orientation: string, layout: string}
      */
     public function toArray(): array
     {
@@ -70,6 +95,7 @@ final readonly class InstrumentGridOptions
             'legend' => $this->legend,
             'charts' => $this->charts,
             'orientation' => $this->orientation,
+            'layout' => $this->layout,
         ];
     }
 
