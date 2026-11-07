@@ -155,13 +155,13 @@ function draftKey(instrumentUlid = 'instrument-a', organizationUlid = 'organizat
     return `lapis:grid-draft:${organizationUlid}:${userId}:${instrumentUlid}`;
 }
 
-function storeDraft(options: { instrumentUlid?: string; organizationUlid?: string; userId?: number; fingerprint?: string; points?: number } = {}): void {
+function storeDraft(options: { instrumentUlid?: string; organizationUlid?: string; userId?: number; fingerprint?: string; points?: number; cells?: Record<string, { state: string; points: number | null; reason: string | null }> } = {}): void {
     localStorage.setItem(
         draftKey(options.instrumentUlid, options.organizationUlid, options.userId),
         JSON.stringify({
             savedAt: '2026-08-24T10:30:00.000Z',
             structuralFingerprint: options.fingerprint ?? computeStructuralFingerprint([item]),
-            cells: {
+            cells: options.cells ?? {
                 '11:31': { state: 'assessed', points: options.points ?? 14, reason: null },
             },
         }),
@@ -263,9 +263,29 @@ describe('Grid local protection integration', () => {
         const wrapper = trackedMount();
         await nextTick();
 
-        expect(wrapper.text()).toContain('rascunho de uma versão anterior desta grelha');
-        expect(wrapper.text()).not.toContain('Recuperar alterações');
+        expect(wrapper.text()).toContain('de uma versão anterior do elemento de avaliação');
+        expect(wrapper.text()).toContain('confira os valores antes de guardar');
+        expect(wrapper.find('[role="status"].bg-amber-50').exists()).toBe(true);
         expect((wrapper.get('input[data-cell="0-0"]').element as HTMLInputElement).value).toBe('');
+
+        await button(wrapper, 'Recuperar alterações')!.trigger('click');
+
+        expect((wrapper.get('input[data-cell="0-0"]').element as HTMLInputElement).value).toBe('18');
+        expect(wrapper.text()).toContain('1 alteração por guardar');
+        expect(wrapper.text()).not.toContain('de uma versão anterior do elemento de avaliação');
+    });
+
+    it('keeps the discard-only message when no draft cell belongs to the current grid', async () => {
+        storeDraft({
+            fingerprint: 'old-grid',
+            cells: { '999:999': { state: 'assessed', points: 5, reason: null } },
+        });
+        const wrapper = trackedMount();
+        await nextTick();
+
+        expect(wrapper.text()).toContain('rascunho de uma versão anterior desta grelha');
+        expect(wrapper.text()).toContain('Descartar rascunho');
+        expect(wrapper.text()).not.toContain('Recuperar alterações');
     });
 
     it('updates the offline indicator without preventing edits', async () => {

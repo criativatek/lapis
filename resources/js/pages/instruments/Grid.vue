@@ -190,6 +190,7 @@ type AvailableDraft = NonNullable<ReturnType<typeof gridDraft.readDraft>>;
 
 const recoverableDraft = ref<AvailableDraft | null>(null);
 const incompatibleDraftExists = ref(false);
+const draftStructureChanged = ref(false);
 const isOnline = ref(navigator.onLine);
 const otherEditingTabs = reactive(new Set<string>());
 
@@ -209,6 +210,13 @@ function writeCurrentDraft(): void {
     gridDraft.writeDraft(dirtyDraftCells());
 }
 
+function draftKeyBelongsToCurrentGrid(key: string): boolean {
+    const [enrollmentId, itemId] = key.split(':').map(Number);
+
+    return props.students.some((student) => student.enrollment_id === enrollmentId)
+        && props.items.some((item) => item.id === itemId);
+}
+
 function recoverDraft(): void {
     const draft = recoverableDraft.value;
 
@@ -218,10 +226,8 @@ function recoverDraft(): void {
 
     for (const [key, draftCell] of Object.entries(draft.cells)) {
         const [enrollmentId, itemId] = key.split(':').map(Number);
-        const belongsToCurrentGrid = props.students.some((student) => student.enrollment_id === enrollmentId)
-            && props.items.some((item) => item.id === itemId);
 
-        if (!belongsToCurrentGrid) {
+        if (!draftKeyBelongsToCurrentGrid(key)) {
             continue;
         }
 
@@ -232,6 +238,7 @@ function recoverDraft(): void {
     }
 
     recoverableDraft.value = null;
+    draftStructureChanged.value = false;
     writeCurrentDraft();
 }
 
@@ -239,7 +246,12 @@ function discardDraft(): void {
     gridDraft.clearDraft();
     recoverableDraft.value = null;
     incompatibleDraftExists.value = false;
+    draftStructureChanged.value = false;
 }
+
+const ignoredDraftCount = computed(
+    () => Object.keys(recoverableDraft.value?.cells ?? {}).filter((key) => !draftKeyBelongsToCurrentGrid(key)).length,
+);
 
 const recoverableDraftCount = computed(() => Object.keys(recoverableDraft.value?.cells ?? {}).length);
 const recoverableDraftDate = computed(() => {
@@ -368,6 +380,9 @@ onMounted(() => {
     if (draft !== null && Object.keys(draft.cells).length > 0) {
         if (gridDraft.isCompatible()) {
             recoverableDraft.value = draft;
+        } else if (!isReadOnly.value && Object.keys(draft.cells).some(draftKeyBelongsToCurrentGrid)) {
+            recoverableDraft.value = draft;
+            draftStructureChanged.value = true;
         } else {
             incompatibleDraftExists.value = true;
         }
@@ -1580,10 +1595,22 @@ function revertCancellation(): void {
         <section class="space-y-2" aria-label="Proteção das alterações locais">
             <div
                 v-if="recoverableDraft && !isReadOnly"
-                class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm"
+                :class="draftStructureChanged ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-sky-300 bg-sky-50 text-sky-950'"
                 role="status"
             >
-                <p>
+                <p v-if="draftStructureChanged">
+                    <strong>Encontrámos alterações não guardadas desta grelha, de uma versão anterior do elemento de avaliação.</strong>
+                    {{ recoverableDraftCount }}
+                    {{ recoverableDraftCount === 1 ? 'célula' : 'células' }}, de {{ recoverableDraftDate }}.
+                    A estrutura das perguntas mudou entretanto: pode recuperá-las, mas confira os valores antes de guardar.
+                    <span v-if="ignoredDraftCount > 0">
+                        {{ ignoredDraftCount }}
+                        {{ ignoredDraftCount === 1 ? 'célula pertence' : 'células pertencem' }}
+                        a perguntas ou alunos que já não existem e {{ ignoredDraftCount === 1 ? 'será ignorada' : 'serão ignoradas' }}.
+                    </span>
+                </p>
+                <p v-else>
                     <strong>Encontrámos alterações não guardadas desta grelha.</strong>
                     {{ recoverableDraftCount }}
                     {{ recoverableDraftCount === 1 ? 'célula' : 'células' }}, de {{ recoverableDraftDate }}.
