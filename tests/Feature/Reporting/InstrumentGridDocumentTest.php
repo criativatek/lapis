@@ -27,8 +27,10 @@ use App\Services\Assessment\ProfileBuilder;
 use App\Services\Assessment\RecordScores;
 use App\Services\Documents\Pdf\LetterheadLayout;
 use App\Services\Reporting\ClassDocuments\InstrumentGrid;
+use App\Services\Reporting\ClassDocuments\InstrumentGridLayout;
 use App\Services\Reporting\ClassDocuments\InstrumentGridOptions;
 use App\Services\StudentEnrollmentService;
+use App\Support\Documents\Abbreviations;
 use App\Support\Entitlements\Entitlements;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\InstrumentTypesSeeder;
@@ -181,9 +183,10 @@ class InstrumentGridDocumentTest extends TestCase
     {
         $props = $this->props();
 
+        // The preview opens in «uma-pagina»: the builder with that one option is the whole page.
         $expected = $this->asTenant(fn (): array => app(InstrumentGrid::class)->build(
             Instrument::findOrFail($this->teste1()->id),
-            new InstrumentGridOptions,
+            InstrumentGridOptions::fromQuery(['disposicao' => 'uma-pagina']),
         ));
 
         // Through JSON, the way it travels; nothing recomputed, nothing added, nothing dropped.
@@ -197,17 +200,17 @@ class InstrumentGridDocumentTest extends TestCase
         $props = $this->props('?bruta=0&dominios=0&legenda=0&orientacao=horizontal');
 
         $this->assertSame(
-            ['raw_score' => false, 'result' => true, 'domains' => false, 'legend' => false, 'charts' => false, 'orientation' => 'landscape'],
+            ['raw_score' => false, 'result' => true, 'domains' => false, 'legend' => false, 'charts' => false, 'orientation' => 'landscape', 'layout' => 'one_page'],
             $props['document']['options'],
         );
         $this->assertSame('landscape', $props['document']['orientation']);
         $this->assertSame(['item', 'item', 'result', 'level'], array_column($props['document']['blocks'][0]['columns'], 'kind'));
         $this->assertNull($props['document']['legend']['questions']);
 
-        // The same query through the builder gives the same document.
+        // The same query through the builder gives the same document (the preview adds «uma-pagina»).
         $expected = $this->asTenant(fn (): array => app(InstrumentGrid::class)->build(
             Instrument::findOrFail($this->teste1()->id),
-            InstrumentGridOptions::fromQuery(['bruta' => '0', 'dominios' => '0', 'legenda' => '0', 'orientacao' => 'horizontal']),
+            InstrumentGridOptions::fromQuery(['bruta' => '0', 'dominios' => '0', 'legenda' => '0', 'orientacao' => 'horizontal', 'disposicao' => 'uma-pagina']),
         ));
         $this->assertSame(json_decode(json_encode($expected), true), $props['document']);
     }
@@ -218,9 +221,66 @@ class InstrumentGridDocumentTest extends TestCase
         $props = $this->props('?bruta[]=0&resultado=banana&orientacao=diagonal&inventada=1');
 
         $this->assertSame(
-            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
+            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => false, 'charts' => false, 'orientation' => 'auto', 'layout' => 'one_page'],
             $props['document']['options'],
         );
+    }
+
+    #[Test]
+    public function the_preview_opens_in_one_page_with_shorts_and_their_legend(): void
+    {
+        $document = $this->props()['document'];
+
+        $this->assertSame('one_page', $document['layout']);
+        $this->assertSame('one_page', $document['options']['layout']);
+        $this->assertFalse($document['options']['legend']);
+        $this->assertNull($document['legend']['questions']);
+        $this->assertSame('landscape', $document['orientation']);
+        $this->assertCount(1, $document['blocks']);
+
+        $columns = collect($document['blocks'][0]['columns']);
+        $this->assertSame(['1', '2'], $columns->where('kind', 'item')->pluck('short')->values()->all());
+        $this->assertSame('Bruta', $columns->firstWhere('kind', 'raw')['short']);
+        $this->assertSame('Res.', $columns->firstWhere('kind', 'result')['short']);
+        $this->assertSame('Nív.', $columns->firstWhere('kind', 'level')['short']);
+        $this->assertSame(
+            [Abbreviations::domainShort('Números e Operações'), Abbreviations::domainShort('Geometria')],
+            $columns->where('kind', 'domain')->pluck('short')->values()->all(),
+        );
+
+        $shorts = array_column($document['abbreviations'], 'short');
+        $longs = array_column($document['abbreviations'], 'long');
+        $this->assertContains('Geometria', $longs);
+        $this->assertContains('Pontuação bruta', $longs);
+        $this->assertSame(count($shorts), count(array_unique($shorts)), 'siglas repetidas na legenda');
+
+        // Aluno 1: 17/20 → a level with a short form on the level cell.
+        $row = $document['blocks'][0]['rows'][0];
+        $level = $row['cells'][array_search('level', $columns->pluck('kind')->all(), true)];
+        $this->assertNotNull($level['short']);
+        $this->assertContains($level['short'], $shorts);
+    }
+
+    #[Test]
+    public function blocks_are_still_available_and_keep_the_legend(): void
+    {
+        $document = $this->props('?disposicao=blocos')['document'];
+
+        $this->assertSame('blocks', $document['layout']);
+        $this->assertTrue($document['options']['legend']);
+        $this->assertIsArray($document['legend']['questions']);
+    }
+
+    #[Test]
+    public function the_pdf_always_uses_blocks_whatever_the_query_says(): void
+    {
+        $bytes = $this->pdf('?disposicao=uma-pagina');
+
+        $this->assertStringStartsWith('%PDF', $bytes);
+
+        $exported = AuditEvent::query()->where('event', 'instruments.grid_document.exported')->latest('id')->firstOrFail();
+        $this->assertSame('blocks', $exported->properties['layout']);
+        $this->assertSame(InstrumentGridLayout::BLOCKS, InstrumentGridOptions::fromQuery(['disposicao' => 'uma-pagina'])->withLayout(InstrumentGridLayout::BLOCKS)->layout);
     }
 
     #[Test]
@@ -579,7 +639,7 @@ class InstrumentGridDocumentTest extends TestCase
         $this->assertSameJsonPayload([
             'format' => 'pdf',
             'orientation' => 'portrait',
-            'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
+            'options' => ['raw_score' => false, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto', 'layout' => 'blocks'],
             'provisional' => true,
             'students' => 5,
             'excluded' => 1,
@@ -667,7 +727,9 @@ class InstrumentGridDocumentTest extends TestCase
             foreach ($xpath->query('./thead/tr[contains(@class, "groups")]/th[position() > 1]', $table) as $th) {
                 $spans[] = ['label' => $clean($th->textContent) ?: null, 'span' => (int) $th->getAttribute('colspan')];
             }
-            $this->assertSame($block['group_spans'] ?? [], $spans, "block {$index}");
+            // The short form is for the browser's compact sheet; the Blade draws the label.
+            $expectedSpans = array_map(fn (array $span): array => ['label' => $span['label'], 'span' => $span['span']], $block['group_spans'] ?? []);
+            $this->assertSame($expectedSpans, $spans, "block {$index}");
 
             // Every row, every cell, in order.
             $rows = [];

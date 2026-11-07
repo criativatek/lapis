@@ -54,7 +54,8 @@ class InstrumentGridDocumentController extends Controller
 
     public function show(Request $request, Instrument $instrument): Response|RedirectResponse
     {
-        $document = $this->document($request, $instrument);
+        // A pré-visualização nasce em «uma página»; a query do professor manda.
+        $document = $this->document($request, $instrument, $request->query() + ['disposicao' => 'uma-pagina']);
 
         if ($document instanceof RedirectResponse) {
             return $document;
@@ -77,7 +78,9 @@ class InstrumentGridDocumentController extends Controller
      */
     public function pdf(Request $request, Instrument $instrument, DompdfPrinter $printer): HttpResponse|RedirectResponse
     {
-        $document = $this->document($request, $instrument);
+        // O dompdf não escala nem pagina colunas: o PDF é sempre por blocos,
+        // diga a query o que disser.
+        $document = $this->document($request, $instrument, [...$request->query(), 'disposicao' => 'blocos']);
 
         if ($document instanceof RedirectResponse) {
             return $document;
@@ -104,6 +107,7 @@ class InstrumentGridDocumentController extends Controller
             properties: [
                 'format' => 'pdf',
                 'orientation' => $document['orientation'],
+                'layout' => $document['layout'],
                 'options' => $document['options'],
                 'provisional' => $document['state']['is_provisional'],
                 'students' => $document['summary']['students'],
@@ -133,9 +137,10 @@ class InstrumentGridDocumentController extends Controller
      * instead. Preview and PDF go through here, so they cannot disagree about
      * who may see what, about the options, or about what has no grid.
      *
+     * @param  array<string, mixed>  $query  the options to read — the request's, with the caller's own default or override
      * @return array<string, mixed>|RedirectResponse
      */
-    protected function document(Request $request, Instrument $instrument): array|RedirectResponse
+    protected function document(Request $request, Instrument $instrument, array $query): array|RedirectResponse
     {
         Gate::authorize('view', $instrument->schoolClass);
 
@@ -144,7 +149,7 @@ class InstrumentGridDocumentController extends Controller
         }
 
         try {
-            return $this->grid->build($instrument, InstrumentGridOptions::fromQuery($request->query()));
+            return $this->grid->build($instrument, InstrumentGridOptions::fromQuery($query));
         } catch (InstrumentGridUnavailable $exception) {
             Inertia::flash('toast', ['type' => 'error', 'message' => $exception->getMessage()]);
 
