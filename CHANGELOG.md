@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.191.0] — 2026-11-07
+
+> **Grelha de correção: imprime-se numa página.** Ao imprimir pelo browser, a
+> grelha de um elemento de avaliação saía em várias páginas — as perguntas
+> partidas em blocos, cada bloco na sua folha, e a legenda das questões no
+> fim —, e a leitura de conjunto perdia-se. Passa a sair, por omissão, numa
+> só A4 horizontal: um bloco com todas as colunas, cabeçalhos em sigla (o
+> número da pergunta, «G.V», «Edu. Lit.») com legenda de uma linha, e a letra
+> a encolher até 6 pt. Quando nem assim cabe, as linhas seguem para a página
+> seguinte com o cabeçalho repetido; as colunas nunca se partem. A disposição
+> em blocos continua disponível no seletor «Disposição». O PDF do servidor
+> não muda. Sem migrations.
+
+### Adicionado
+
+- `printFit`: ajuste de uma tabela a uma página (largura e altura, piso de
+  6 pt), em funções puras, para reutilizar na pauta e nas intercalares.
+- `Abbreviations` (PHP) e `abbreviations.ts`: a mesma regra de siglas nos dois
+  lados, com os mesmos casos de teste.
+- `PrintableDocument`: prop `fit` que publica a escala como variável CSS.
+- Grelha do elemento de avaliação: disposição `uma-pagina` (por omissão na
+  pré-visualização) ou `blocos`; siglas e legenda no documento; aviso no ecrã
+  com a escala aplicada.
+
+### Alterado
+
+- Em `uma-pagina` a legenda das questões vem desligada por omissão; em
+  `blocos` continua ligada. O PDF usa sempre `blocos`.
+
 ## [0.190.2] — 2026-11-07
 
 > **Grelha de correção: um rascunho de uma versão anterior já se recupera.**
