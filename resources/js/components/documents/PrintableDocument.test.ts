@@ -163,4 +163,12 @@ describe('PrintableDocument', () => {
 
         expect(pageStyles()[0].textContent).toContain('size: A4 landscape');
     });
+
+    it('publica a escala de ajuste numa variável CSS quando a página a passa, e nada quando não passa', () => {
+        const bare = mountDocument();
+        expect(bare.attributes('style')).toBeUndefined();
+
+        const fitted = mountDocument({ fit: 0.857 });
+        expect(fitted.attributes('style')).toContain('--document-print-zoom: 0.857');
+    });
 });
