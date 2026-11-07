@@ -25,6 +25,24 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.190.2] — 2026-11-07
+
+> **Grelha de correção: um rascunho de uma versão anterior já se recupera.**
+> Quando a estrutura do elemento de avaliação mudava depois de o professor
+> escrever classificações sem as gravar (por exemplo ao associar domínios ou
+> editar cotações), o Lapispro limitava-se a oferecer «Descartar rascunho» e
+> as notas perdiam-se. Passa a oferecer «Recuperar alterações» com um aviso
+> para conferir os valores antes de guardar; as células que já não pertencem
+> a nenhuma pergunta ou aluno da grelha são ignoradas. Sem migrations.
+
+### Corrigido
+
+- `instruments/Grid`: um rascunho cuja estrutura já não coincide com a atual
+  é recuperável se pelo menos uma célula ainda existir na grelha, numa faixa
+  âmbar que indica quantas células serão ignoradas. Só quando nenhuma célula
+  se aplica se mantém a mensagem com «Descartar rascunho». Nunca se oferece
+  em grelhas só de leitura.
+
 ## [0.190.1] — 2026-11-04
 
 > **Grelha de correção: o cabeçalho fica à vista.** Ao corrigir, descer de
