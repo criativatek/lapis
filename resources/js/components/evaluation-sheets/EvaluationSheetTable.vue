@@ -765,7 +765,7 @@ const compactLegend = computed(() => {
             class="sheet-compact-only hidden pt-1 text-[6.5pt] leading-snug text-muted-foreground print:text-black"
             data-abbreviations
         >
-            <strong>Siglas:</strong>
+            <strong>Siglas:</strong>{{ ' ' }}
             <template v-for="(part, index) in compactLegend" :key="part">{{ index > 0 ? ' · ' : '' }}{{ part }}</template>
             <template v-if="compactLegend.length > 0"> · </template>negrito = decisão do professor · itálico = proposta por
             atribuir · * = cobertura parcial ou sem elementos<template v-if="showSelfAssessment">
