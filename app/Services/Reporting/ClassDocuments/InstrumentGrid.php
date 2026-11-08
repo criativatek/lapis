@@ -14,6 +14,7 @@ use App\Services\Assessment\Analysis\BuildResultsAnalysis;
 use App\Services\Assessment\Analysis\InstrumentResultsContext;
 use App\Services\Assessment\ClassCohort;
 use App\Services\Documents\DocumentIdentity;
+use App\Support\Documents\Abbreviations;
 
 /**
  * The printable grid of ONE instrument, as a neutral structure.
@@ -112,6 +113,13 @@ class InstrumentGrid
         $touched = $context->touchedDomains();
         $hasBands = $context->bands() !== [];
 
+        // The short form of each level of the scale («MB», «I»), or its code
+        // when two levels would share a short — for the compact sheet.
+        $mentionShorts = Abbreviations::uniqueMentionShorts(array_map(
+            fn ($band): array => ['code' => (string) $band->code, 'label' => (string) $band->label],
+            $context->bands(),
+        ));
+
         $enrollments = ClassCohort::enrollmentsFor($class);
         $scores = $this->scoresByCell($instrument, array_values($enrollments->keys()->all()));
 
@@ -132,6 +140,7 @@ class InstrumentGrid
         $itemColumns = array_values($items->map(fn (InstrumentItem $item): array => [
             'kind' => 'item',
             'code' => $item->code,
+            'short' => Abbreviations::questionNumber($item->code),
             'group' => $instrument->groups->firstWhere('id', $item->instrument_group_id)?->label,
             'quota' => $this->number($item->points_possible).($item->is_bonus ? ' · '.__('bónus') : ''),
             'bonus' => (bool) $item->is_bonus,
@@ -145,7 +154,7 @@ class InstrumentGrid
 
         foreach ($roster as $enrollment) {
             $enrollmentId = (int) $enrollment->getKey();
-            $row = $this->row($enrollment, array_values($items->all()), $scores[$enrollmentId] ?? [], $summaryColumns, $official['students'][$enrollmentId] ?? null, $instrument, $statesSeen);
+            $row = $this->row($enrollment, array_values($items->all()), $scores[$enrollmentId] ?? [], $summaryColumns, $official['students'][$enrollmentId] ?? null, $instrument, $statesSeen, $mentionShorts);
             $anyPartial = $anyPartial || $row['partial'];
             $rows[] = $row;
         }
@@ -155,6 +164,8 @@ class InstrumentGrid
             $groupIds,
             array_map(fn (array $column): float => $this->widthOf($column['kind']), $summaryColumns),
             $options->orientation,
+            InstrumentGridLayout::ITEM_WIDTH,
+            $options->layout,
         );
 
         $namedGroups = $instrument->groups->contains(fn ($group): bool => $group->label !== null && $group->label !== '');
@@ -209,7 +220,9 @@ class InstrumentGrid
             'charts_available' => $concluded,
             'charts' => $charts,
             'orientation' => $plan['orientation'],
+            'layout' => $options->layout,
             'blocks' => $blocks,
+            'abbreviations' => $this->abbreviations($itemColumns, $summaryColumns, $mentionShorts),
             'summary' => [
                 'students' => count($rows),
                 'excluded' => $excluded,
@@ -257,7 +270,7 @@ class InstrumentGrid
      * The summary columns this document has, in print order.
      *
      * @param  list<array{id: int, name: string, weight_percent: string|null}>  $touched
-     * @return list<array{kind: string, label: string, quota: string|null, domain_key: string|null}>
+     * @return list<array{kind: string, label: string, short: string, quota: string|null, domain_key: string|null}>
      */
     protected function summaryColumns(Instrument $instrument, InstrumentGridOptions $options, array $touched, bool $hasBands): array
     {
@@ -267,24 +280,29 @@ class InstrumentGrid
             $columns[] = [
                 'kind' => 'raw',
                 'label' => __('Pontuação bruta'),
+                'short' => (string) Abbreviations::summaryShort('raw'),
                 'quota' => $instrument->total_points === null ? null : $this->number($instrument->total_points),
                 'domain_key' => null,
             ];
         }
 
         if ($options->result) {
-            $columns[] = ['kind' => 'result', 'label' => __('Resultado'), 'quota' => null, 'domain_key' => null];
+            $columns[] = ['kind' => 'result', 'label' => __('Resultado'), 'short' => (string) Abbreviations::summaryShort('result'), 'quota' => null, 'domain_key' => null];
 
             if ($hasBands) {
-                $columns[] = ['kind' => 'level', 'label' => __('Nível'), 'quota' => null, 'domain_key' => null];
+                $columns[] = ['kind' => 'level', 'label' => __('Nível'), 'short' => (string) Abbreviations::summaryShort('level'), 'quota' => null, 'domain_key' => null];
             }
         }
 
         // With one domain the domain's figure IS the global: printing both would
         // be one number twice.
         if ($options->domains && count($touched) >= 2) {
+            $taken = [];
+
             foreach ($touched as $domain) {
-                $columns[] = ['kind' => 'domain', 'label' => $domain['name'], 'quota' => null, 'domain_key' => 'd'.$domain['id']];
+                $short = Abbreviations::domainShort($domain['name'], $taken);
+                $taken[] = $short;
+                $columns[] = ['kind' => 'domain', 'label' => $domain['name'], 'short' => $short, 'quota' => null, 'domain_key' => 'd'.$domain['id']];
             }
         }
 
@@ -299,6 +317,7 @@ class InstrumentGrid
      * @param  list<array{kind: string, label: string, quota: string|null, domain_key: string|null}>  $summaryColumns
      * @param  array<string, mixed>|null  $officialCells
      * @param  array<string, bool>  $statesSeen  collects the states that appear, for the legend
+     * @param  array<string, string>  $mentionShorts  level label ⇒ its short form
      * @return array{number: string, name: string, cells: list<array<string, mixed>>, partial: bool}
      */
     protected function row(
@@ -309,6 +328,7 @@ class InstrumentGrid
         ?array $officialCells,
         Instrument $instrument,
         array &$statesSeen,
+        array $mentionShorts = [],
     ): array {
         $cells = [];
         $sum = null;
@@ -335,7 +355,7 @@ class InstrumentGrid
                 $sum = Bc::add($sum ?? '0', Bc::of((string) $score->points_earned));
             }
 
-            $cells[] = ['text' => $text, 'detail' => null, 'state' => $state->value, 'negative' => null];
+            $cells[] = ['text' => $text, 'short' => null, 'detail' => null, 'state' => $state->value, 'negative' => null];
         }
 
         // The screen's own rule: some cells dealt with and others still waiting.
@@ -345,8 +365,8 @@ class InstrumentGrid
             $cells[] = match ($column['kind']) {
                 'raw' => $this->rawCell($sum, $instrument, $partial),
                 'result' => $this->resultCell($officialCells),
-                'level' => $this->levelCell($officialCells),
-                default => $this->domainCell($officialCells, (string) $column['domain_key']),
+                'level' => $this->levelCell($officialCells, $mentionShorts),
+                default => $this->domainCell($officialCells, (string) $column['domain_key'], $mentionShorts),
             };
         }
 
@@ -364,7 +384,7 @@ class InstrumentGrid
     protected function rawCell(?string $sum, Instrument $instrument, bool $partial): array
     {
         if ($sum === null) {
-            return ['text' => self::DASH, 'detail' => null, 'state' => null, 'negative' => null];
+            return ['text' => self::DASH, 'short' => null, 'detail' => null, 'state' => null, 'negative' => null];
         }
 
         $text = $this->number($sum);
@@ -373,7 +393,7 @@ class InstrumentGrid
             $text .= '/'.$this->number($instrument->total_points);
         }
 
-        return ['text' => $text.($partial ? ' *' : ''), 'detail' => null, 'state' => null, 'negative' => null];
+        return ['text' => $text.($partial ? ' *' : ''), 'short' => null, 'detail' => null, 'state' => null, 'negative' => null];
     }
 
     /**
@@ -391,6 +411,7 @@ class InstrumentGrid
         if ($percent === null) {
             return [
                 'text' => (string) ($official['status_label'] ?? self::DASH),
+                'short' => null,
                 'detail' => null,
                 'state' => $official['status'] ?? null,
                 'negative' => null,
@@ -399,6 +420,7 @@ class InstrumentGrid
 
         return [
             'text' => $percent.(($global['is_partial'] ?? false) ? ' *' : ''),
+            'short' => null,
             'detail' => null,
             'state' => 'classified',
             'negative' => $global['below_threshold'] ?? null,
@@ -407,15 +429,17 @@ class InstrumentGrid
 
     /**
      * @param  array<string, mixed>|null  $official
+     * @param  array<string, string>  $mentionShorts
      * @return array<string, mixed>
      */
-    protected function levelCell(?array $official): array
+    protected function levelCell(?array $official, array $mentionShorts = []): array
     {
         $global = $official['global'] ?? null;
         $label = is_array($global) ? ($global['band']['label'] ?? null) : null;
 
         return [
             'text' => $label === null ? self::DASH : (string) $label,
+            'short' => $label === null ? null : ($mentionShorts[(string) $label] ?? null),
             'detail' => null,
             'state' => null,
             'negative' => is_array($global) && $label !== null ? ($global['below_threshold'] ?? null) : null,
@@ -424,20 +448,24 @@ class InstrumentGrid
 
     /**
      * @param  array<string, mixed>|null  $official
+     * @param  array<string, string>  $mentionShorts
      * @return array<string, mixed>
      */
-    protected function domainCell(?array $official, string $domainKey): array
+    protected function domainCell(?array $official, string $domainKey, array $mentionShorts = []): array
     {
         $cell = $official['domains'][$domainKey] ?? null;
         $percent = is_array($cell) ? $this->percent($cell) : null;
 
         if ($percent === null) {
-            return ['text' => self::DASH, 'detail' => null, 'state' => null, 'negative' => null];
+            return ['text' => self::DASH, 'short' => null, 'detail' => null, 'state' => null, 'negative' => null];
         }
+
+        $band = $cell['band']['label'] ?? null;
 
         return [
             'text' => $percent.(($cell['is_partial'] ?? false) ? ' *' : ''),
-            'detail' => $cell['band']['label'] ?? null,
+            'short' => $band === null ? null : ($mentionShorts[(string) $band] ?? null),
+            'detail' => $band,
             'state' => 'classified',
             'negative' => $cell['below_threshold'] ?? null,
         ];
@@ -467,7 +495,7 @@ class InstrumentGrid
      *
      * @param  list<array{items: list<int>, summary: list<int>}>  $plan
      * @param  list<array<string, mixed>>  $itemColumns
-     * @param  list<array{kind: string, label: string, quota: string|null, domain_key: string|null}>  $summaryColumns
+     * @param  list<array{kind: string, label: string, short: string, quota: string|null, domain_key: string|null}>  $summaryColumns
      * @param  list<array{number: string, name: string, cells: list<array<string, mixed>>, partial: bool}>  $rows
      * @param  list<int|null>  $groupIds
      * @return list<array<string, mixed>>
@@ -507,12 +535,51 @@ class InstrumentGrid
     }
 
     /**
-     * @param  array{kind: string, label: string, quota: string|null, domain_key: string|null}  $column
+     * @param  array{kind: string, label: string, short: string, quota: string|null, domain_key: string|null}  $column
      * @return array<string, mixed>
      */
     protected function summaryColumnPayload(array $column): array
     {
-        return ['kind' => $column['kind'], 'label' => $column['label'], 'quota' => $column['quota']];
+        return ['kind' => $column['kind'], 'label' => $column['label'], 'short' => $column['short'], 'quota' => $column['quota']];
+    }
+
+    /**
+     * Cada sigla do papel por extenso, uma vez, por ordem de aparecimento:
+     * grupos, colunas-resumo, domínios e menções da escala. O número de uma
+     * pergunta não é uma sigla — é o código sem prefixo — e não entra.
+     *
+     * @param  list<array<string, mixed>>  $itemColumns
+     * @param  list<array{kind: string, label: string, short: string, quota: string|null, domain_key: string|null}>  $summaryColumns
+     * @param  array<string, string>  $mentionShorts
+     * @return list<array{short: string, long: string}>
+     */
+    protected function abbreviations(array $itemColumns, array $summaryColumns, array $mentionShorts): array
+    {
+        $entries = [];
+        $seen = [];
+        $add = function (?string $short, ?string $long) use (&$entries, &$seen): void {
+            if ($short === null || $short === '' || $long === null || $short === $long || isset($seen[$short])) {
+                return;
+            }
+
+            $seen[$short] = true;
+            $entries[] = ['short' => $short, 'long' => $long];
+        };
+
+        foreach ($itemColumns as $column) {
+            $group = is_string($column['group'] ?? null) ? $column['group'] : null;
+            $add(Abbreviations::groupShort($group), $group);
+        }
+
+        foreach ($summaryColumns as $column) {
+            $add($column['short'], $column['label']);
+        }
+
+        foreach ($mentionShorts as $label => $short) {
+            $add($short, (string) $label);
+        }
+
+        return $entries;
     }
 
     /**
@@ -523,7 +590,7 @@ class InstrumentGrid
      * @param  list<int>  $positions
      * @param  list<array<string, mixed>>  $itemColumns
      * @param  list<int|null>  $groupIds
-     * @return list<array{label: string|null, span: int}>
+     * @return list<array{label: string|null, short: string|null, span: int}>
      */
     protected function groupSpans(array $positions, array $itemColumns, array $groupIds): array
     {
@@ -548,7 +615,11 @@ class InstrumentGrid
         }
 
         return array_map(
-            fn (?string $label, int $span): array => ['label' => $label, 'span' => $span],
+            fn (?string $label, int $span): array => [
+                'label' => $label,
+                'short' => $label === null ? null : Abbreviations::groupShort($label),
+                'span' => $span,
+            ],
             $labels,
             $counts,
         );

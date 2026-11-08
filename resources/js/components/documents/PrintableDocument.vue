@@ -51,6 +51,8 @@ const props = withDefaults(
         stamp?: string | null;
         /** «Página N / T» no canto inferior direito de cada folha. */
         pageNumbers?: boolean;
+        /** A escala de ajuste à página (`printFit.ts`): publicada como `--document-print-zoom`. */
+        fit?: number | null;
     }>(),
     {
         orientation: 'portrait',
@@ -58,6 +60,7 @@ const props = withDefaults(
         compact: false,
         stamp: null,
         pageNumbers: false,
+        fit: null,
     },
 );
 
@@ -114,7 +117,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="document-print" :data-orientation="orientation" :data-compact="compact">
+    <div
+        class="document-print"
+        :data-orientation="orientation"
+        :data-compact="compact"
+        :style="fit === null ? undefined : { '--document-print-zoom': String(fit) }"
+    >
         <!-- `document-print` é um GANCHO DE IMPRESSÃO, não estilo: o aspeto no
              ecrã vem da `class` do pai, e um seletor pelas classes utilitárias
              partir-se-ia na primeira vez que alguém as mudasse. -->
@@ -188,6 +196,14 @@ onBeforeUnmount(() => {
     }
     .document-print thead {
         display: table-header-group;
+    }
+    /* AJUSTE A UMA PÁGINA. A página mede a tabela, decide a escala em
+       `printFit.ts` e passa-a na prop `fit`; aqui aplica-se só ao que a página
+       marcou com `document-print-fit` (a tabela e a sua legenda), nunca ao
+       cabeçalho. `zoom` e não `transform`: o `transform` não altera o fluxo e
+       a folha ficaria com o espaço vazio da tabela sem escala. */
+    .document-print .document-print-fit {
+        zoom: var(--document-print-zoom, 1);
     }
     /* Preto sobre branco: um cinzento de ecrã imprime-se ilegível. */
     .document-print,

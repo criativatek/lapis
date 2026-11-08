@@ -21,6 +21,7 @@ const wrappers: VueWrapper[] = [];
 
 const cell = (text: string, overrides: Record<string, unknown> = {}) => ({
     text,
+    short: null,
     detail: null,
     state: null,
     negative: null,
@@ -31,12 +32,12 @@ function makeBlock(overrides: Record<string, unknown> = {}) {
     return {
         caption: null,
         columns: [
-            { kind: 'item', code: 'Q1', group: null, quota: '10', bonus: false },
-            { kind: 'item', code: 'Q2', group: null, quota: '10', bonus: false },
-            { kind: 'raw', label: 'Pontuação bruta', quota: '20' },
-            { kind: 'result', label: 'Resultado', quota: null },
-            { kind: 'level', label: 'Nível', quota: null },
-            { kind: 'domain', label: 'Geometria', quota: null },
+            { kind: 'item', code: 'Q1', short: '1', group: null, quota: '10', bonus: false },
+            { kind: 'item', code: 'Q2', short: '2', group: null, quota: '10', bonus: false },
+            { kind: 'raw', label: 'Pontuação bruta', short: 'Bruta', quota: '20' },
+            { kind: 'result', label: 'Resultado', short: 'Res.', quota: null },
+            { kind: 'level', label: 'Nível', short: 'Nív.', quota: null },
+            { kind: 'domain', label: 'Geometria', short: 'Geom.', quota: null },
         ],
         group_spans: null,
         rows: [
@@ -48,8 +49,8 @@ function makeBlock(overrides: Record<string, unknown> = {}) {
                     cell('8', { state: 'assessed' }),
                     cell('17/20'),
                     cell('85,0 %', { state: 'classified' }),
-                    cell('Muito Bom'),
-                    cell('80,0 %', { detail: 'Bom', state: 'classified' }),
+                    cell('Muito Bom', { short: 'MB' }),
+                    cell('80,0 %', { detail: 'Bom', short: 'B', state: 'classified' }),
                 ],
             },
             {
@@ -72,8 +73,10 @@ function makeDocument(overrides: Record<string, unknown> = {}): Doc {
         meta: { class: '8.º A', subject: 'Matemática', period: '1.º Período', applied_on: '15/10/2026', type: 'Teste', purpose: 'Sumativa', status: 'Em correção' },
         is_diagnostic: false,
         state: { is_provisional: false, label: 'Correção concluída' },
-        options: { raw_score: true, result: true, domains: true, legend: true, charts: false, orientation: 'auto' },
+        options: { raw_score: true, result: true, domains: true, legend: true, charts: false, orientation: 'auto', layout: 'blocks' },
         orientation: 'portrait',
+        layout: 'blocks',
+        abbreviations: [],
         charts_available: true,
         charts: null,
         blocks: [makeBlock()],
@@ -99,7 +102,23 @@ function makeDocument(overrides: Record<string, unknown> = {}): Doc {
     } as Doc;
 }
 
-const chartsOn = { raw_score: true, result: true, domains: true, legend: true, charts: true, orientation: 'auto' };
+const chartsOn = { raw_score: true, result: true, domains: true, legend: true, charts: true, orientation: 'auto', layout: 'blocks' };
+
+/** The document as the preview opens it: «uma página», with the server's shorts and legend. */
+function onePageDocument(overrides: Record<string, unknown> = {}) {
+    return makeDocument({
+        layout: 'one_page',
+        orientation: 'landscape',
+        options: { raw_score: true, result: true, domains: true, legend: false, charts: false, orientation: 'auto', layout: 'one_page' },
+        abbreviations: [
+            { short: 'Bruta', long: 'Pontuação bruta' },
+            { short: 'Geom.', long: 'Geometria' },
+            { short: 'MB', long: 'Muito Bom' },
+        ],
+        legend: { questions: null, states: [{ short: 'Aus', label: 'Ausente' }] },
+        ...overrides,
+    });
+}
 
 function makeCharts() {
     const axis = 'Escala absoluta de 0 a 100 %.';
@@ -162,6 +181,123 @@ describe('instruments/GridDocument.vue', () => {
         wrappers.length = 0;
         routerGet.mockReset();
         vi.restoreAllMocks();
+        localStorage.clear();
+    });
+
+    it('em «uma página» mostra os cabeçalhos em sigla, a legenda das siglas e a tabela marcada para o ajuste', () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+
+        const headers = wrapper.findAll('thead th').map((th) => th.text());
+        expect(headers).toContain('1');
+        expect(headers).toContain('Bruta');
+        expect(headers).toContain('Geom.');
+        expect(headers).not.toContain('Q1');
+        expect(headers).not.toContain('Pontuação bruta');
+
+        const fit = wrapper.find('.document-print-fit');
+        expect(fit.exists()).toBe(true);
+        expect(fit.find('[data-abbreviations]').text()).toContain('Geom. = Geometria');
+        expect(fit.find('[data-abbreviations]').text()).toContain('Bruta = Pontuação bruta');
+        expect(fit.find('table').classes()).toContain('grid-one-page');
+    });
+
+    it('em «uma página» a célula de nível e a menção do domínio saem em sigla', () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+        const cells = wrapper.findAll('tbody td').map((td) => td.text().replace(/\s+/g, ' ').trim());
+
+        expect(cells).toContain('MB');
+        expect(cells).toContain('80,0 % B');
+        expect(cells).not.toContain('Muito Bom');
+    });
+
+    it('em «uma página» a linha dos grupos mostra a sigla do grupo', () => {
+        const wrapper = mountPage({
+            document: onePageDocument({
+                blocks: [makeBlock({ group_spans: [{ label: 'GRUPO V - ESCRITA', short: 'G.V', span: 2 }, { label: null, short: null, span: 4 }] })],
+            }),
+        });
+
+        const groupLine = wrapper.find('[data-block] table thead tr:nth-of-type(1)');
+        expect(groupLine.text()).toContain('G.V');
+        expect(groupLine.text()).not.toContain('GRUPO V');
+    });
+
+    it('em «blocos» mantém os cabeçalhos por extenso e sem legenda das siglas', () => {
+        const wrapper = mountPage();
+        const headers = wrapper.findAll('thead th').map((th) => th.text());
+
+        expect(headers).toContain('Q1');
+        expect(headers).toContain('Pontuação bruta');
+        expect(wrapper.find('[data-abbreviations]').exists()).toBe(false);
+        expect(wrapper.find('.document-print-fit table').classes()).not.toContain('grid-one-page');
+    });
+
+    it('muda a disposição pedindo ao servidor com a palavra que ele lê, e lembra-a neste browser', async () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+
+        await wrapper.find('#grid-doc-layout').setValue('blocks');
+
+        expect(routerGet).toHaveBeenCalledWith(
+            '/instruments/inst-1/impressao',
+            expect.objectContaining({ disposicao: 'blocos' }),
+            expect.objectContaining({ replace: true }),
+        );
+        expect(localStorage.getItem('lapis:print-layout:instrument-grid')).toBe('blocks');
+    });
+
+    it('envia a disposição atual nas outras mudanças de opção e no PDF', async () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+
+        await wrapper.find('#grid-doc-raw').trigger('click');
+        expect(routerGet).toHaveBeenCalledWith(
+            '/instruments/inst-1/impressao',
+            expect.objectContaining({ disposicao: 'uma-pagina', bruta: '0' }),
+            expect.anything(),
+        );
+        expect(wrapper.find('a[href*="/pdf?"]').attributes('href')).toContain('disposicao=uma-pagina');
+    });
+
+    it('ao abrir com uma disposição lembrada diferente da servida, pede-a ao servidor uma vez', () => {
+        localStorage.setItem('lapis:print-layout:instrument-grid', 'blocks');
+        mountPage({ document: onePageDocument() });
+
+        expect(routerGet).toHaveBeenCalledTimes(1);
+        expect(routerGet).toHaveBeenCalledWith(
+            '/instruments/inst-1/impressao',
+            expect.objectContaining({ disposicao: 'blocos' }),
+            expect.objectContaining({ replace: true }),
+        );
+    });
+
+    it('ao abrir com a disposição lembrada igual à servida, não pede nada', () => {
+        localStorage.setItem('lapis:print-layout:instrument-grid', 'one_page');
+        mountPage({ document: onePageDocument() });
+
+        expect(routerGet).not.toHaveBeenCalled();
+    });
+
+    it('a orientação fica inativa em «uma página», que é sempre horizontal e compacta', () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+
+        expect(wrapper.find('#grid-doc-orientation').attributes('disabled')).toBeDefined();
+        expect(wrapper.find('.document-print').attributes('data-compact')).toBe('true');
+    });
+
+    it('no jsdom nada se mede: a escala publicada é 1 e não há aviso', () => {
+        const wrapper = mountPage({ document: onePageDocument() });
+
+        expect(wrapper.find('.document-print').attributes('style') ?? '').toContain('--document-print-zoom: 1');
+        expect(wrapper.find('[data-fit-notice]').exists()).toBe(false);
+    });
+
+    it('em «uma página» a legenda das questões, quando pedida, começa numa folha nova', () => {
+        const wrapper = mountPage({
+            document: onePageDocument({ legend: { questions: makeDocument().legend.questions, states: [] } }),
+        });
+
+        const section = wrapper.findAll('section').find((candidate) => candidate.find('h2').exists() && candidate.find('h2').text() === 'Questões');
+        expect(section).toBeDefined();
+        expect(section?.classes()).toContain('print:break-before-page');
     });
 
     it('prints exactly what the server composed: every cell text, header and note, nothing recomputed', () => {
@@ -239,7 +375,7 @@ describe('instruments/GridDocument.vue', () => {
 
         expect(routerGet).toHaveBeenCalledWith(
             '/instruments/inst-1/impressao',
-            { bruta: '1', resultado: '1', dominios: '1', legenda: '1', graficos: '1', orientacao: 'auto' },
+            { bruta: '1', resultado: '1', dominios: '1', legenda: '1', graficos: '1', orientacao: 'auto', disposicao: 'blocos' },
             { replace: true, preserveScroll: true, preserveState: true },
         );
     });
@@ -392,7 +528,7 @@ describe('instruments/GridDocument.vue', () => {
         expect(routerGet).toHaveBeenCalledTimes(1);
         expect(routerGet).toHaveBeenCalledWith(
             '/instruments/inst-1/impressao',
-            { bruta: '0', resultado: '1', dominios: '1', legenda: '1', graficos: '0', orientacao: 'auto' },
+            { bruta: '0', resultado: '1', dominios: '1', legenda: '1', graficos: '0', orientacao: 'auto', disposicao: 'blocos' },
             { replace: true, preserveScroll: true, preserveState: true },
         );
     });
@@ -424,7 +560,7 @@ describe('instruments/GridDocument.vue', () => {
         const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
         expect(pdfLink?.attributes('href')).toBe(
-            '/instruments/inst-1/impressao/pdf?bruta=1&resultado=1&dominios=1&legenda=1&graficos=0&orientacao=auto',
+            '/instruments/inst-1/impressao/pdf?bruta=1&resultado=1&dominios=1&legenda=1&graficos=0&orientacao=auto&disposicao=blocos',
         );
         expect(pdfLink?.attributes('disabled')).toBeUndefined();
 
@@ -438,7 +574,7 @@ describe('instruments/GridDocument.vue', () => {
     it('asks for the PDF with the options the preview is showing, in the words the server reads', () => {
         const wrapper = mountPage({
             document: makeDocument({
-                options: { raw_score: false, result: true, domains: false, legend: false, charts: false, orientation: 'landscape' },
+                options: { raw_score: false, result: true, domains: false, legend: false, charts: false, orientation: 'landscape', layout: 'blocks' },
                 orientation: 'landscape',
             }),
         });
@@ -446,7 +582,7 @@ describe('instruments/GridDocument.vue', () => {
         const pdfLink = wrapper.findAll('a').find((anchor) => anchor.text() === 'PDF');
 
         expect(pdfLink?.attributes('href')).toBe(
-            '/instruments/inst-1/impressao/pdf?bruta=0&resultado=1&dominios=0&legenda=0&graficos=0&orientacao=horizontal',
+            '/instruments/inst-1/impressao/pdf?bruta=0&resultado=1&dominios=0&legenda=0&graficos=0&orientacao=horizontal&disposicao=blocos',
         );
     });
 

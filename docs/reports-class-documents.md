@@ -318,6 +318,23 @@ a grelha imprime-se completa e com cabeçalhos repetidos, mas com o selo só na
 primeira folha e sem numeração. **O PDF do servidor é o caminho fiável**, em
 particular no telemóvel.
 
+#### Uma página (0.191.0, só no browser)
+
+A pré-visualização abre por omissão em `disposicao=uma-pagina`:
+`InstrumentGridLayout` devolve um só bloco em paisagem, e a página mede a
+tabela e encolhe-a (`resources/js/lib/printFit.ts`, por `zoom` numa variável
+CSS que o `PrintableDocument` publica a partir da prop `fit`) até caber em
+277 × 190 mm (A4 horizontal, margem de 10 mm), nunca abaixo de 6 pt. Abaixo do
+piso as linhas seguem para a página seguinte com o cabeçalho repetido; as
+colunas nunca se partem. Os cabeçalhos usam siglas
+(`App\Support\Documents\Abbreviations`, espelhada em
+`resources/js/lib/abbreviations.ts`): o número da pergunta, «G.V» para um
+grupo, «Edu. Lit.» para um domínio, «MB» para um nível — e o documento traz a
+legenda (`abbreviations`) de uma linha. A legenda das questões fica desligada
+por omissão nesta disposição. O seletor «Disposição» lembra a escolha no
+browser (`lapis:print-layout:instrument-grid`). O PDF do servidor usa sempre
+`disposicao=blocos`: o dompdf não escala nem pagina colunas.
+
 ### PDF
 
 `instruments/grid-document.blade.php`, escrito para o dompdf (tabelas; sem flexbox

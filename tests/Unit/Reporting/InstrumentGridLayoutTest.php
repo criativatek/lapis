@@ -327,4 +327,31 @@ class InstrumentGridLayoutTest extends TestCase
     {
         $this->assertSame([['items' => [], 'summary' => [0, 1]]], InstrumentGridLayout::plan([], [60.0, 55.0], InstrumentGridLayout::PORTRAIT, 30.0)['blocks']);
     }
+
+    #[Test]
+    public function one_page_is_a_single_landscape_block_with_every_column_whatever_the_width(): void
+    {
+        $plan = InstrumentGridLayout::plan($this->ungrouped(40), self::SUMMARY, InstrumentGridLayout::PORTRAIT, InstrumentGridLayout::ITEM_WIDTH, InstrumentGridLayout::ONE_PAGE);
+
+        $this->assertSame(InstrumentGridLayout::LANDSCAPE, $plan['orientation']);
+        $this->assertCount(1, $plan['blocks']);
+        $this->assertSame(range(0, 39), $plan['blocks'][0]['items']);
+        $this->assertSame([0, 1, 2], $plan['blocks'][0]['summary']);
+    }
+
+    #[Test]
+    public function one_page_with_no_questions_still_yields_one_block_with_the_summary(): void
+    {
+        $plan = InstrumentGridLayout::plan([], self::SUMMARY, InstrumentGridLayout::AUTO, InstrumentGridLayout::ITEM_WIDTH, InstrumentGridLayout::ONE_PAGE);
+
+        $this->assertSame([['items' => [], 'summary' => [0, 1, 2]]], $plan['blocks']);
+    }
+
+    #[Test]
+    public function the_default_layout_is_still_blocks(): void
+    {
+        $plan = InstrumentGridLayout::plan($this->ungrouped(40), self::SUMMARY);
+
+        $this->assertGreaterThan(1, count($plan['blocks']));
+    }
 }

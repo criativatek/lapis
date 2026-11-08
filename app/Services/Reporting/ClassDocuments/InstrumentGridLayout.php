@@ -42,6 +42,16 @@ final class InstrumentGridLayout
 
     public const AUTO = 'auto';
 
+    /** Blocos de colunas que cabem na página — o que o PDF precisa. */
+    public const BLOCKS = 'blocks';
+
+    /**
+     * Um só bloco com todas as colunas, em paisagem: a pré-visualização do
+     * browser encolhe-o depois até caber numa página (`printFit.ts`). O dompdf
+     * nunca recebe esta disposição — não sabe escalar e perderia colunas.
+     */
+    public const ONE_PAGE = 'one_page';
+
     /** A4 minus 20 mm of margin on each side, in mm. */
     public const PORTRAIT_WIDTH = 170.0;
 
@@ -66,10 +76,21 @@ final class InstrumentGridLayout
      * @param  list<float>  $summaryWidths  the width of each summary column, in order
      * @param  'auto'|'portrait'|'landscape'  $orientation  `auto` is portrait while everything fits one block in it, landscape otherwise
      * @param  float  $itemWidth  the width of one item in mm — a question's column by default; a grid whose items are wider (or narrower) says so here
+     * @param  'blocks'|'one_page'  $layout  `one_page` ignores every width: one block, landscape
      * @return array{orientation: 'portrait'|'landscape', blocks: list<array{items: list<int>, summary: list<int>}>}
      */
-    public static function plan(array $itemGroups, array $summaryWidths, string $orientation = self::AUTO, float $itemWidth = self::ITEM_WIDTH): array
+    public static function plan(array $itemGroups, array $summaryWidths, string $orientation = self::AUTO, float $itemWidth = self::ITEM_WIDTH, string $layout = self::BLOCKS): array
     {
+        if ($layout === self::ONE_PAGE) {
+            return [
+                'orientation' => self::LANDSCAPE,
+                'blocks' => [[
+                    'items' => $itemGroups === [] ? [] : range(0, count($itemGroups) - 1),
+                    'summary' => array_keys($summaryWidths),
+                ]],
+            ];
+        }
+
         if ($orientation === self::PORTRAIT || $orientation === self::LANDSCAPE) {
             return [
                 'orientation' => $orientation,

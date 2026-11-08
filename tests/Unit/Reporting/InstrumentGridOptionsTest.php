@@ -21,9 +21,37 @@ class InstrumentGridOptionsTest extends TestCase
 
         $this->assertEquals(new InstrumentGridOptions, $options);
         $this->assertSame(
-            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto'],
+            ['raw_score' => true, 'result' => true, 'domains' => true, 'legend' => true, 'charts' => false, 'orientation' => 'auto', 'layout' => 'blocks'],
             $options->toArray(),
         );
+    }
+
+    #[Test]
+    public function one_page_turns_the_questions_legend_off_unless_the_query_says_otherwise(): void
+    {
+        $onePage = InstrumentGridOptions::fromQuery(['disposicao' => 'uma-pagina']);
+
+        $this->assertSame(InstrumentGridLayout::ONE_PAGE, $onePage->layout);
+        $this->assertFalse($onePage->legend);
+        $this->assertSame('one_page', $onePage->toArray()['layout']);
+
+        $this->assertTrue(InstrumentGridOptions::fromQuery(['disposicao' => 'uma-pagina', 'legenda' => '1'])->legend);
+        $this->assertTrue(InstrumentGridOptions::fromQuery(['disposicao' => 'blocos'])->legend);
+        $this->assertFalse(InstrumentGridOptions::fromQuery(['disposicao' => 'blocos', 'legenda' => '0'])->legend);
+    }
+
+    #[Test]
+    public function a_forged_layout_is_blocks_and_with_layout_returns_a_copy(): void
+    {
+        $this->assertSame(InstrumentGridLayout::BLOCKS, InstrumentGridOptions::fromQuery(['disposicao' => 'x'])->layout);
+        $this->assertSame(InstrumentGridLayout::BLOCKS, InstrumentGridOptions::fromQuery(['disposicao' => ['uma-pagina']])->layout);
+
+        $original = InstrumentGridOptions::fromQuery(['bruta' => '0', 'disposicao' => 'uma-pagina']);
+        $pdf = $original->withLayout(InstrumentGridLayout::BLOCKS);
+
+        $this->assertSame(InstrumentGridLayout::BLOCKS, $pdf->layout);
+        $this->assertFalse($pdf->rawScore);
+        $this->assertSame(InstrumentGridLayout::ONE_PAGE, $original->layout);
     }
 
     #[Test]

@@ -616,7 +616,11 @@ class InstrumentGridTest extends TestCase
         $this->assertSame(['Q1', 'Q1'], [$columns[0]['code'], $columns[1]['code']]);
         $this->assertSame(['Oralidade', 'Gramática'], [$columns[0]['group'], $columns[1]['group']]);
         $this->assertSame(
-            [['label' => 'Oralidade', 'span' => 1], ['label' => 'Gramática', 'span' => 1], ['label' => null, 'span' => 3]],
+            [
+                ['label' => 'Oralidade', 'short' => 'O', 'span' => 1],
+                ['label' => 'Gramática', 'short' => 'G', 'span' => 1],
+                ['label' => null, 'short' => null, 'span' => 3],
+            ],
             $grid['blocks'][0]['group_spans'],
         );
         $this->assertSame(['Oralidade', 'Gramática'], array_column($grid['legend']['questions'], 'group'));
