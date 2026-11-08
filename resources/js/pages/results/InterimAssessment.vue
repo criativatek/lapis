@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { Camera, CircleAlert } from '@lucide/vue';
-import { computed } from 'vue';
+import { Camera, CircleAlert, Printer } from '@lucide/vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
+import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import Heading from '@/components/Heading.vue';
 import DistributionBands from '@/components/infographic/DistributionBands.vue';
 import type { DistributionBand } from '@/components/infographic/DistributionBands.vue';
 import InfographicMetric from '@/components/infographic/InfographicMetric.vue';
 import SectionHeading from '@/components/infographic/SectionHeading.vue';
+import { domainShort, mentionShort, uniqueMentionShorts } from '@/lib/abbreviations';
 import { domainColours, formatPoints, formatShare, pct, TONE_COLOURS } from '@/lib/chartTheme';
+import { SAFETY_PX, fitNotice, fitToPage, usableAreaPx } from '@/lib/printFit';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 
 /**
@@ -107,6 +110,159 @@ function remove(): void {
 
     router.delete(`/classes/${props.schoolClass.ulid}/avaliacoes-intercalares/${props.interim.ulid}`);
 }
+
+// ---------------------------------------------------------------- impressão
+//
+// UMA FOLHA, E SÓ O MAPA (0.191.2). O ecrã é um painel — cartões, gráfico,
+// domínios — e nada disso é o que se leva para a reunião; o que se leva é cada
+// aluno em cada domínio naquela data, com a menção. Por isso o papel não é o
+// ecrã: é um documento próprio, invisível no ecrã, só com o mapa, em siglas e
+// a 7,5 pt, encolhido até caber numa A4 horizontal — a mesma mecânica da grelha
+// de correção e da pauta (`printFit`). TUDO SAI DO RETRATO: nomes, domínios e
+// menções são os que ficaram guardados, nunca os de hoje.
+
+const printedOn = new Date().toLocaleDateString('pt-PT');
+
+/** Sigla de cada menção da escala guardada; o rótulo inteiro se duas colidissem. */
+const mentionShorts = computed(() =>
+    uniqueMentionShorts((props.snapshot.scale?.bands ?? []).map((band) => ({ code: band.label_snapshot, label: band.label_snapshot }))),
+);
+
+/** Sigla de cada domínio, sem duas iguais no mesmo mapa. */
+const domainShorts = computed(() => {
+    const taken: string[] = [];
+    const shorts = new Map<number, string>();
+
+    for (const domain of props.snapshot.domains) {
+        const short = domainShort(domain.label_snapshot, taken);
+        taken.push(short);
+        shorts.set(domain.domain_id, short);
+    }
+
+    return shorts;
+});
+
+function domainShortOf(domain: { domain_id: number; label_snapshot: string }): string {
+    return domainShorts.value.get(domain.domain_id) ?? domain.label_snapshot;
+}
+
+/** A sigla de uma menção guardada; «—» sem menção. */
+function mentionShortOf(band: Band): string {
+    const label = band?.label_snapshot ?? null;
+
+    if (label === null || label === '') {
+        return band?.code_snapshot ?? '—';
+    }
+
+    return mentionShorts.value.get(label) ?? mentionShort(label);
+}
+
+/** «78,0% · B» para um aluno num domínio; «—» quando não havia nada nessa data. */
+function printedDomainCell(student: Snapshot['students'][number], domainId: number): string {
+    const cell = student.domains.find((candidate) => candidate.domain_id === domainId);
+    const value = cell?.weighted_average ?? null;
+    const mention = cell?.mention ?? null;
+
+    if (value === null && mention === null) {
+        return '—';
+    }
+
+    return mention === null ? pct(value) : `${pct(value)} · ${mentionShortOf(mention)}`;
+}
+
+/** «3 · S» — o código e a sigla da menção guardada; «—» sem menção. */
+function printedMention(student: Snapshot['students'][number]): string {
+    if (student.band === null) {
+        return '—';
+    }
+
+    const code = student.band.code_snapshot;
+    const short = mentionShortOf(student.band);
+
+    return code === null || code === short ? short : `${code} · ${short}`;
+}
+
+const printedLegend = computed(() => {
+    const parts: string[] = [];
+
+    for (const domain of props.snapshot.domains) {
+        const short = domainShortOf(domain);
+
+        if (short !== domain.label_snapshot) {
+            parts.push(`${short} = ${domain.label_snapshot}`);
+        }
+    }
+
+    for (const band of props.snapshot.scale?.bands ?? []) {
+        const short = mentionShorts.value.get(band.label_snapshot);
+
+        if (short !== undefined && short !== band.label_snapshot) {
+            parts.push(`${short} = ${band.label_snapshot}`);
+        }
+    }
+
+    return parts;
+});
+
+const anyPartial = computed(() => props.snapshot.students.some((student) => student.coverage_warning));
+
+const printDocumentRef = ref<InstanceType<typeof PrintableDocument> | null>(null);
+const fitRef = ref<HTMLElement | null>(null);
+const fit = ref(1);
+const notice = ref<string | null>(null);
+
+/**
+ * Mede o documento COMO ELE SAI NO PAPEL. No ecrã está escondido; a classe
+ * `interim-measuring` mostra-o só durante este passo síncrono — sem um quadro
+ * pintado pelo meio — à largura do papel.
+ */
+function measure(): void {
+    const root = printDocumentRef.value?.$el as HTMLElement | null | undefined;
+    const box = fitRef.value;
+    const table = box?.querySelector<HTMLTableElement>('table') ?? null;
+
+    if (!root || box === null || table === null) {
+        fit.value = 1;
+        notice.value = null;
+
+        return;
+    }
+
+    const usable = usableAreaPx('A4', 'landscape');
+    const previousRootWidth = root.style.width;
+
+    root.classList.add('interim-measuring');
+    root.style.width = `${usable.width}px`;
+
+    const tableWidth = table.offsetWidth;
+    const rootRect = root.getBoundingClientRect();
+    const fitRect = box.getBoundingClientRect();
+    const headerHeight = fitRect.top - rootRect.top;
+    const footerHeight = rootRect.bottom - fitRect.bottom;
+    const tableHeight = fitRect.height;
+
+    root.style.width = previousRootWidth;
+    root.classList.remove('interim-measuring');
+
+    const result = fitToPage({
+        tableWidth,
+        tableHeight,
+        headerHeight,
+        footerHeight,
+        slack: SAFETY_PX,
+        usable,
+    });
+
+    fit.value = result.scale;
+    notice.value = fitNotice(result);
+}
+
+onMounted(() => void nextTick(measure));
+
+function print(): void {
+    measure();
+    void nextTick(() => window.print());
+}
 </script>
 
 <template>
@@ -140,11 +296,19 @@ function remove(): void {
                 </Link>
                 <button
                     type="button"
+                    class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted/40"
+                    @click="print"
+                >
+                    <Printer class="size-4" /> Imprimir
+                </button>
+                <button
+                    type="button"
                     class="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
                     @click="remove"
                 >
                     Eliminar
                 </button>
+                <p v-if="notice" data-fit-notice class="basis-full text-xs text-muted-foreground" role="status">{{ notice }}</p>
             </div>
         </div>
 
@@ -302,5 +466,95 @@ function remove(): void {
         <p class="text-xs text-muted-foreground">
             Guardada a partir do estado de {{ interim.reference_date_label }} · formato v{{ interim.snapshot_version }}.
         </p>
+
+        <!-- O PAPEL. Invisível no ecrã (`hidden print:block`); ao imprimir, o
+             PrintableDocument esconde tudo o resto da página e fica só isto:
+             o mapa daquela data, em siglas, numa A4 horizontal. -->
+        <PrintableDocument
+            ref="printDocumentRef"
+            orientation="landscape"
+            compact
+            :fit="fit"
+            class="interim-print hidden space-y-2 print:block"
+            data-test="print-document"
+        >
+            <div class="interim-print-header">
+                <h1 class="text-base leading-tight font-semibold">Avaliação intercalar — {{ snapshot.class.label_snapshot }}</h1>
+                <p class="text-xs">{{ snapshot.class.subject_label_snapshot }} · {{ snapshot.period.label_snapshot }}</p>
+                <p class="text-xs">
+                    <span class="font-medium">Referência: {{ interim.reference_date_label }}</span> — fotografia do estado nessa
+                    data; não reflete alterações posteriores. · Impresso em {{ printedOn }}
+                </p>
+            </div>
+
+            <div ref="fitRef" class="document-print-fit">
+                <table class="w-max border-collapse text-[7.5pt] leading-tight" data-test="print-table">
+                    <thead>
+                        <tr class="bg-muted text-left">
+                            <th class="border-b border-border px-[2pt] py-[1pt] align-bottom font-medium">Aluno</th>
+                            <th
+                                v-for="domain in snapshot.domains"
+                                :key="`print-${domain.domain_id}`"
+                                class="border-b border-l border-border px-[2pt] py-[1pt] text-center font-semibold"
+                                :title="domain.label_snapshot"
+                                :abbr="domain.label_snapshot"
+                            >
+                                {{ domainShortOf(domain) }}
+                            </th>
+                            <th class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-semibold">Menção</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(student, index) in snapshot.students" :key="`print-${student.enrollment_id}`" :class="index % 2 === 1 ? 'bg-muted/10' : ''">
+                            <td class="border-b border-border px-[2pt] py-[1pt]">
+                                <span class="block max-w-[24ch] truncate" :title="student.name_snapshot">
+                                    <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
+                                    <span class="ml-1 font-medium">{{ student.name_snapshot }}</span>
+                                </span>
+                            </td>
+                            <td
+                                v-for="domain in snapshot.domains"
+                                :key="`print-${student.enrollment_id}-${domain.domain_id}`"
+                                class="border-b border-l border-border px-[2pt] py-[1pt] text-center whitespace-nowrap tabular-nums"
+                                :class="toneClass(student.domains.find((cell) => cell.domain_id === domain.domain_id)?.mention ?? null)"
+                            >
+                                {{ printedDomainCell(student, domain.domain_id) }}
+                            </td>
+                            <td
+                                class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-medium whitespace-nowrap tabular-nums"
+                                :class="toneClass(student.band)"
+                            >
+                                {{ printedMention(student) }}<span v-if="student.coverage_warning" aria-label="informação parcial nesta data">*</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="pt-1 text-[6.5pt] leading-snug" data-abbreviations>
+                    <strong>Siglas:</strong>{{ ' ' }}
+                    <template v-for="(part, index) in printedLegend" :key="part">{{ index > 0 ? ' · ' : '' }}{{ part }}</template>
+                    <template v-if="anyPartial"><template v-if="printedLegend.length > 0"> · </template>* = informação parcial nesta data</template>
+                </p>
+            </div>
+        </PrintableDocument>
     </div>
 </template>
+
+<style>
+/* O que é próprio da intercalar no papel. O isolamento da folha, o `@page` e a
+   escala (`document-print-fit`) são do PrintableDocument; tudo preso a
+   `.interim-print`, porque o <style> fica carregado na SPA depois de a página
+   sair. */
+@media print {
+    /* Os tons das menções ficam: identificam a menção ao lado do texto. */
+    .interim-print,
+    .interim-print * {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
+/* A MEDIÇÃO: durante um único passo síncrono de `measure()`, o documento — que
+   no ecrã está escondido — fica visível para se medir como sai no papel. */
+.interim-print.interim-measuring {
+    display: block;
+}
+</style>
