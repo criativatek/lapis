@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import EvaluationSheetDecisionDialog from '@/components/evaluation-sheets/EvaluationSheetDecisionDialog.vue';
@@ -11,6 +11,8 @@ import EvaluationSheetTable from '@/components/evaluation-sheets/EvaluationSheet
 import EvaluationSheetViewControls from '@/components/evaluation-sheets/EvaluationSheetViewControls.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import NativeSelect from '@/components/ui/NativeSelect.vue';
+import { SAFETY_PX, fitNotice, fitToPage, usableAreaPx } from '@/lib/printFit';
 import type {
     EvaluationSheet,
     EvaluationSheetDecisionScale,
@@ -285,8 +287,109 @@ const readinessLabel = computed(() => {
 
 const printedOn = new Date().toLocaleDateString('pt-PT');
 
+// «NUMA PÁGINA» (0.191.1): a folha compacta da grelha (uma célula por domínio,
+// siglas, 7,5 pt) encolhida até caber numa A4 horizontal — a mesma mecânica da
+// grelha de correção (`printFit`). Ligado por omissão e lembrado neste browser;
+// desligado, o papel sai como o ecrã está, como sempre saiu. É uma disposição
+// do PAPEL: nada no ecrã muda com ele, e nada viaja para o servidor.
+
+const ONE_PAGE_STORAGE_KEY = 'lapis:print-layout:evaluation-sheet';
+
+const onePage = ref(true);
+
+function rememberedOnePage(): boolean {
+    try {
+        return localStorage.getItem(ONE_PAGE_STORAGE_KEY) !== 'screen';
+    } catch {
+        return true;
+    }
+}
+
+function setOnePage(value: string | number | null): void {
+    onePage.value = value !== 'screen';
+
+    try {
+        localStorage.setItem(ONE_PAGE_STORAGE_KEY, onePage.value ? 'one_page' : 'screen');
+    } catch {
+        // O armazenamento do browser é opcional.
+    }
+}
+
+const printDocumentRef = ref<InstanceType<typeof PrintableDocument> | null>(null);
+const fitRef = ref<HTMLElement | null>(null);
+const fit = ref(1);
+const notice = ref<string | null>(null);
+
+/**
+ * Mede a folha compacta COMO ELA SAI NO PAPEL e calcula a escala.
+ *
+ * No ecrã a folha compacta está escondida e o cabeçalho do papel também; a
+ * classe `pauta-measuring` mostra-os (e esconde a grelha do ecrã) só durante a
+ * medição, dentro do mesmo passo síncrono — sem um único quadro pintado pelo
+ * meio. Mede-se à largura do papel, com o preenchimento do cartão descontado,
+ * pelas mesmas razões que na grelha de correção.
+ */
+function measure(): void {
+    const root = printDocumentRef.value?.$el as HTMLElement | null | undefined;
+    const box = fitRef.value;
+    const compact = box?.querySelector<HTMLTableElement>('table.sheet-compact-only') ?? null;
+
+    if (!onePage.value || !root || box === null || compact === null) {
+        fit.value = 1;
+        notice.value = null;
+
+        return;
+    }
+
+    const usable = usableAreaPx('A4', 'landscape');
+    const rootStyle = getComputedStyle(root);
+    const padX = parseFloat(rootStyle.paddingLeft) + parseFloat(rootStyle.paddingRight);
+    const padTop = parseFloat(rootStyle.paddingTop);
+    const padBottom = parseFloat(rootStyle.paddingBottom);
+    const previousRootWidth = root.style.width;
+
+    root.classList.add('pauta-measuring');
+    root.style.width = `${usable.width + (Number.isFinite(padX) ? padX : 0)}px`;
+
+    const tableWidth = compact.offsetWidth;
+    const rootRect = root.getBoundingClientRect();
+    const fitRect = box.getBoundingClientRect();
+    const headerHeight = fitRect.top - rootRect.top - (Number.isFinite(padTop) ? padTop : 0);
+    const footerHeight = rootRect.bottom - fitRect.bottom - (Number.isFinite(padBottom) ? padBottom : 0);
+    const tableHeight = fitRect.height;
+
+    root.style.width = previousRootWidth;
+    root.classList.remove('pauta-measuring');
+
+    const result = fitToPage({
+        tableWidth,
+        tableHeight,
+        headerHeight,
+        footerHeight,
+        slack: SAFETY_PX,
+        usable,
+    });
+
+    fit.value = result.scale;
+    notice.value = fitNotice(result);
+}
+
+onMounted(() => {
+    // Lido só no browser: no servidor não há armazenamento, e um valor diferente
+    // do servido daria uma hidratação desencontrada.
+    onePage.value = rememberedOnePage();
+    void nextTick(measure);
+});
+
+// Tudo o que muda o que vai para o papel muda a escala.
+watch(
+    [onePage, showQuantitative, showDomainDetail, showWarnings, showSelfAssessment, () => props.sheet],
+    () => void nextTick(measure),
+);
+
 function print(): void {
-    window.print();
+    measure();
+    void nextTick(() => window.print());
 }
 
 // ------------------------------------------------------------ guardar pauta
@@ -494,6 +597,22 @@ function submitSave(): void {
             >
                 <Printer class="size-4" /> Imprimir
             </button>
+            <!-- A disposição do PAPEL, ao lado do botão que o produz. Um seletor
+                 e não uma caixa: as caixas desta página são os toggles do ecrã,
+                 e isto não muda nada no ecrã. -->
+            <label v-if="sheet" class="flex items-center gap-1.5 text-sm">
+                <span class="text-xs font-medium text-muted-foreground">Disposição</span>
+                <NativeSelect
+                    id="pauta-print-layout"
+                    class="min-h-9"
+                    :model-value="onePage ? 'one_page' : 'screen'"
+                    @update:model-value="setOnePage"
+                >
+                    <option value="one_page">Numa página</option>
+                    <option value="screen">Como no ecrã</option>
+                </NativeSelect>
+            </label>
+            <p v-if="notice" data-fit-notice class="text-xs text-muted-foreground" role="status">{{ notice }}</p>
             <!-- A GRELHA PARA IMPRIMIR, composta no servidor: o resultado calculado, a
                  proposta, o nível atribuído e o seu estado, cada um na sua coluna. É
                  outra coisa que o «Imprimir» ao lado, que sai como o ecrã está. -->
@@ -614,12 +733,19 @@ function submitSave(): void {
         />
 
         <!-- O que vai para o papel, e só isto. -->
-        <PrintableDocument orientation="landscape" compact class="pauta-print space-y-3">
+        <PrintableDocument
+            ref="printDocumentRef"
+            orientation="landscape"
+            compact
+            :fit="fit"
+            :data-one-page="onePage ? 'true' : 'false'"
+            class="pauta-print space-y-3"
+        >
             <!-- O cabeçalho que a folha impressa precisa e o ecrã já mostra
                  noutro sítio: turma, disciplina, o período com a sua
                  terminologia própria («Semestre», «Período»…) — nunca uma
                  palavra fixa no código — e a data em que foi impressa. -->
-            <div class="hidden print:block">
+            <div class="pauta-paper-header hidden print:block">
                 <h1 class="text-lg font-semibold">Pauta de Avaliação — {{ schoolClass.label }}</h1>
                 <p class="text-sm">{{ schoolClass.subject }} · {{ schoolClass.academic_year }}</p>
                 <!-- QUE MOMENTO é este, por inteiro. Numa folha impressa não há
@@ -642,21 +768,28 @@ function submitSave(): void {
                 :icon="Table2"
             />
 
-            <EvaluationSheetTable
-                v-else
-                :domains="sheet.domains"
-                :students="sheet.students"
-                :show-quantitative="showQuantitative"
-                :show-domain-detail="showDomainDetail"
-                :show-warnings="showWarnings"
-                :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
-                :scale-bands="scaleBands"
-                :decidable="canDecideHere"
-                @decide="openDecision"
-                @decide-domain="openDomainDecision"
-            />
+            <!-- O que se encolhe para caber numa página é SÓ a grelha (e a
+                 legenda das siglas que vive dentro dela); o cabeçalho e as
+                 notas ficam ao tamanho natural. -->
+            <div v-else ref="fitRef" class="document-print-fit">
+                <EvaluationSheetTable
+                    :domains="sheet.domains"
+                    :students="sheet.students"
+                    :show-quantitative="showQuantitative"
+                    :show-domain-detail="showDomainDetail"
+                    :show-warnings="showWarnings"
+                    :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
+                    :scale-bands="scaleBands"
+                    :decidable="canDecideHere"
+                    :print-compact="onePage"
+                    @decide="openDecision"
+                    @decide-domain="openDomainDecision"
+                />
+            </div>
 
-            <p class="text-xs text-muted-foreground print:text-black">
+            <!-- Em «Numa página» este parágrafo fica no ecrã e sai do papel: a
+                 legenda das siglas, dentro da grelha, diz o que a folha precisa. -->
+            <p class="pauta-screen-only text-xs text-muted-foreground print:text-black">
                 "—" significa sem elementos, nunca zero. O ícone de aviso assinala cobertura parcial ou a ausência de
                 elementos avaliados — passe o rato ou o foco por cima para ver o detalhe. A apreciação de cada
                 <strong>domínio</strong> é a proposta do Lapispro, e ela <strong>vigora</strong> enquanto o professor
@@ -679,7 +812,7 @@ function submitSave(): void {
                  que a autoavaliação estiver ligada, e desaparece com ela. -->
             <p
                 v-if="showSelfAssessment && selfAssessmentAvailable"
-                class="text-xs text-muted-foreground print:text-black"
+                class="pauta-screen-only text-xs text-muted-foreground print:text-black"
             >
                 <strong>A1</strong>, <strong>A2</strong>, <strong>A3</strong>… em expoente são a
                 <strong>autoavaliação do aluno</strong> nesse domínio — o «A» é de autoavaliação e o número é o nível
@@ -764,16 +897,46 @@ function submitSave(): void {
        vários domínios é larga por natureza (o PrintableDocument põe a folha em
        paisagem), e `width: 100%` com quebra de linha permitida para as colunas
        se ajustarem à folha em vez de saírem dela. */
-    .pauta-print .evaluation-sheet-grid table {
+    .pauta-print .sheet-screen-table {
         width: 100% !important;
         min-width: 0 !important;
         table-layout: auto;
         font-size: 9pt;
     }
-    .pauta-print .evaluation-sheet-grid th,
-    .pauta-print .evaluation-sheet-grid td {
+    .pauta-print .sheet-screen-table th,
+    .pauta-print .sheet-screen-table td {
         white-space: normal !important;
         padding: 2pt 3pt !important;
     }
+    /* «NUMA PÁGINA»: sai a folha compacta (uma célula por domínio, siglas,
+       7,5 pt), e a grelha do ecrã e os parágrafos longos ficam no ecrã. A
+       escala que a faz caber é a variável do PrintableDocument, aplicada ao
+       `document-print-fit` que envolve a grelha. `revert` devolve a cada
+       elemento o `display` natural (table, p), que o `hidden` do ecrã tirou. */
+    .pauta-print[data-one-page='true'] .sheet-screen-table,
+    .pauta-print[data-one-page='true'] .pauta-screen-only {
+        display: none !important;
+    }
+    .pauta-print[data-one-page='true'] .sheet-compact-only {
+        display: revert;
+    }
+}
+/* A MEDIÇÃO: durante um único passo síncrono de `measure()`, a folha compacta
+   e o cabeçalho do papel ficam visíveis e a grelha do ecrã não — exatamente o
+   que o papel mostra — para que a escala se calcule sobre o que se imprime. */
+.pauta-print.pauta-measuring .pauta-paper-header {
+    display: block;
+}
+.pauta-print.pauta-measuring .evaluation-sheet-grid {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+}
+.pauta-print.pauta-measuring .sheet-screen-table,
+.pauta-print.pauta-measuring .pauta-screen-only {
+    display: none;
+}
+.pauta-print.pauta-measuring .sheet-compact-only {
+    display: revert;
 }
 </style>
