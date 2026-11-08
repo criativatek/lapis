@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.191.2] — 2026-11-08
+
+> **Avaliação intercalar: imprime-se numa página.** A página de uma avaliação
+> intercalar é um painel — cartões, distribuição, domínios, mapa — e não tinha
+> «Imprimir». Passa a ter: sai um documento próprio, só com o mapa daquela
+> data, numa A4 horizontal: n.º e nome, uma célula por domínio com o
+> quantitativo e a menção em sigla («78,0% · B»), e a coluna «Menção» com o
+> código e a sigla («4 · B»); informação parcial com asterisco e nota; legenda
+> das siglas numa linha; letra de 7,5 pt a encolher até caber. Tudo sai do
+> retrato guardado — nomes, domínios e menções são os dessa data. O resto da
+> página fica no ecrã. Sem migrations.
+
+### Adicionado
+
+- `results/InterimAssessment.vue`: botão «Imprimir», documento
+  `PrintableDocument` só para o papel, medição e escala via `printFit`, aviso
+  «Imprime-se a N %» na barra de ações. O ficheiro entra no teste-guarda do
+  CSS de impressão.
+
 ## [0.191.1] — 2026-11-08
 
 > **Pauta de Avaliação: imprime-se numa página.** O «Imprimir» da pauta saía
