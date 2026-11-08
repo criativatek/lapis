@@ -8,7 +8,7 @@ maneira mais fácil de escrever no passado. Este documento diz o que cada uma
 
 | Saída | Rota | Origem dos números | Deixa registo? |
 |---|---|---|---|
-| **Impressão** | nenhuma (`@media print` no próprio ecrã) | a pauta viva, **como está no ecrã** (WYSIWYG — respeita os toggles) | não |
+| **Impressão** | nenhuma (`@media print` no próprio ecrã) | a pauta viva, respeitando os toggles. Por omissão em **«Numa página»** (0.191.1): a folha compacta — uma célula por domínio «78,0% · B», siglas, 7,5 pt a encolher até caber numa A4 horizontal; a apreciação dos domínios sai sempre, mesmo com o detalhe desligado no ecrã. Em **«Como no ecrã»** sai a grelha tal como está (WYSIWYG). O seletor é lembrado no browser (`lapis:print-layout:evaluation-sheet`) | não |
 | **CSV / Excel da pauta atual** | `evaluation-sheets.csv` · `evaluation-sheets.xlsx` | a pauta viva, **sempre completa** (os toggles não chegam ao servidor) | auditoria |
 | **CSV / Excel de um momento guardado** | `evaluation-sheets.snapshot.csv` · `.xlsx` | **só o payload congelado** | auditoria |
 | **Grelha do Inovar** | `evaluation-sheets.inovar.*` | uma pauta guardada, escrita na grelha da escola | histórico + ficheiro imutável |

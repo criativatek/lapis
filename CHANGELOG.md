@@ -25,6 +25,31 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.191.1] — 2026-11-08
+
+> **Pauta de Avaliação: imprime-se numa página.** O «Imprimir» da pauta saía
+> como o ecrã está — a grelha a 9 pt, duas colunas por domínio, parágrafos
+> explicativos — e uma turma com cinco domínios enchia várias folhas. Passa a
+> sair, por omissão, numa só A4 horizontal: uma célula por domínio com o
+> quantitativo e a apreciação em sigla («78,0% · B»), domínios em sigla nos
+> cabeçalhos («Oral.», «Edu. Lit.»), «Nível» e «Autoav.», legenda das siglas
+> numa linha no lugar do parágrafo longo, letra de 7,5 pt a encolher até 6 pt.
+> A apreciação de cada domínio sai no papel **mesmo com o detalhe desligado**
+> no ecrã; a decisão do professor sai a negrito. O seletor «Disposição» ao lado
+> do botão («Numa página» / «Como no ecrã») é lembrado neste browser, e «Como
+> no ecrã» imprime exatamente como até aqui. Nada muda no ecrã nem no
+> servidor; a pauta guardada não é tocada. Sem migrations.
+
+### Adicionado
+
+- `EvaluationSheetTable`: prop `printCompact` que monta a folha compacta
+  (segunda tabela, escondida no ecrã) a partir das mesmas leituras de menção
+  que a grelha do ecrã; siglas de `abbreviations.ts`.
+- `evaluation-sheets/Show.vue`: disposição do papel lembrada em
+  `lapis:print-layout:evaluation-sheet`; medição da folha compacta e escala
+  via `printFit` e a prop `fit` do `PrintableDocument`; aviso «Imprime-se a
+  N %» junto ao botão.
+
 ## [0.191.0] — 2026-11-07
 
 > **Grelha de correção: imprime-se numa página.** Ao imprimir pelo browser, a
