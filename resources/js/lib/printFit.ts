@@ -31,6 +31,15 @@ export const FLOOR_FONT_PT = 6;
 
 export const FLOOR_SCALE = FLOOR_FONT_PT / BASE_FONT_PT;
 
+/**
+ * Folga entre o que se mede no ecrã e o que o browser pagina: as alturas de
+ * linha arredondam de outra forma no papel, e uma linha de rodapé que escorrega
+ * para a folha seguinte por três píxeis é precisamente o que se quer evitar.
+ */
+export const SAFETY_MM = 5;
+
+export const SAFETY_PX = SAFETY_MM * PX_PER_MM;
+
 export type UsableArea = { width: number; height: number };
 
 /** A área útil da folha em píxeis CSS, com a margem compacta nos quatro lados. */
@@ -49,6 +58,10 @@ export type FitInput = {
     tableHeight: number;
     /** Altura do cabeçalho do documento que fica acima da tabela na primeira página, em px. */
     headerHeight: number;
+    /** Altura do que fica abaixo da tabela e não se encolhe (notas, legenda de estados), em px. */
+    footerHeight?: number;
+    /** Folga a reservar na altura, em px (`SAFETY_PX` nas páginas; 0 por omissão). */
+    slack?: number;
     usable: UsableArea;
 };
 
@@ -77,14 +90,16 @@ function floorScale(value: number): number {
  * não chega, fixa-se no piso e as linhas seguem para as páginas seguintes.
  */
 export function fitToPage(input: FitInput): FitResult {
-    const { tableWidth, tableHeight, headerHeight, usable } = input;
+    const { tableWidth, tableHeight, headerHeight, footerHeight = 0, slack = 0, usable } = input;
 
     if (!positive(tableWidth) || !positive(tableHeight) || !positive(usable.width) || !positive(usable.height)) {
         return ONE_PAGE;
     }
 
     const header = Number.isFinite(headerHeight) && headerHeight > 0 ? headerHeight : 0;
-    const roomHeight = usable.height - header;
+    const footer = Number.isFinite(footerHeight) && footerHeight > 0 ? footerHeight : 0;
+    const reserve = Number.isFinite(slack) && slack > 0 ? slack : 0;
+    const roomHeight = usable.height - header - footer - reserve;
 
     if (!positive(roomHeight)) {
         return ONE_PAGE;

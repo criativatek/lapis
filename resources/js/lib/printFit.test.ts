@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_FONT_PT, FLOOR_FONT_PT, FLOOR_SCALE, fitNotice, fitToPage, usableAreaPx } from './printFit';
+import { BASE_FONT_PT, FLOOR_FONT_PT, FLOOR_SCALE, SAFETY_PX, fitNotice, fitToPage, usableAreaPx } from './printFit';
 
 const PX_PER_MM = 96 / 25.4;
 
@@ -44,6 +44,23 @@ describe('fitToPage', () => {
 
         expect(result.scale).toBe(0.909);
         expect(result.fitsOnePage).toBe(true);
+    });
+
+    it('desconta também o rodapé, que fica abaixo da tabela e não se encolhe', () => {
+        // 700 − 100 − 100 = 500 de altura útil; 660 → 500/660 = 0,757 < piso → não cabe
+        const withFooter = fitToPage({ tableWidth: 500, tableHeight: 660, headerHeight: 100, footerHeight: 100, usable });
+        expect(withFooter.fitsOnePage).toBe(false);
+
+        // 700 − 100 − 50 = 550; 660 → 0,833: cabe
+        const smallFooter = fitToPage({ tableWidth: 500, tableHeight: 660, headerHeight: 100, footerHeight: 50, usable });
+        expect(smallFooter).toEqual({ scale: 0.833, fitsOnePage: true, pages: 1 });
+    });
+
+    it('reserva a folga pedida na altura', () => {
+        // 700 − 100 − 50 = 550; 550 → cabe a 100 % sem folga, mas 550/600 com 50 de folga
+        expect(fitToPage({ tableWidth: 500, tableHeight: 550, headerHeight: 100, footerHeight: 50, usable }).scale).toBe(1);
+        expect(fitToPage({ tableWidth: 500, tableHeight: 550, headerHeight: 100, footerHeight: 50, slack: 50, usable }).scale).toBe(0.909);
+        expect(SAFETY_PX).toBeCloseTo((5 * 96) / 25.4, 5);
     });
 
     it('usa a menor das duas escalas e arredonda por baixo ao milésimo', () => {

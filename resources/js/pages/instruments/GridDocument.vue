@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
-import { fitNotice, fitToPage, usableAreaPx } from '@/lib/printFit';
+import { SAFETY_PX, fitNotice, fitToPage, usableAreaPx } from '@/lib/printFit';
 
 type Orientation = 'auto' | 'portrait' | 'landscape';
 
@@ -216,8 +216,8 @@ function hasQuotas(block: Block): boolean {
  * publica numa variável CSS lida pelo `zoom` de `.document-print-fit`. No jsdom
  * tudo mede zero e a escala fica em 1 — a página não faz aritmética.
  */
+const printDocumentRef = ref<InstanceType<typeof PrintableDocument> | null>(null);
 const fitRef = ref<HTMLElement | null>(null);
-const headerRef = ref<HTMLElement | null>(null);
 const fit = ref<number>(1);
 const notice = ref<string | null>(null);
 
@@ -230,24 +230,56 @@ function measure(): void {
     }
 
     const table = fitRef.value;
+    const root = printDocumentRef.value?.$el as HTMLElement | null | undefined;
 
-    if (table === null) {
+    if (table === null || !root) {
         return;
     }
 
-    // A largura NATURAL: a tabela tem `w-full`; mede-se com a largura solta, como
-    // no Quadro, senão o contentor do ecrã decidiria o papel.
-    const previousWidth = table.style.width;
-    table.style.width = 'max-content';
-    const tableWidth = table.scrollWidth;
-    const tableHeight = table.scrollHeight;
-    table.style.width = previousWidth;
+    const usable = usableAreaPx('A4', 'landscape');
+
+    // Mede-se À LARGURA DO PAPEL, não à do ecrã: um parágrafo de notas quebra
+    // em mais linhas numa folha de 277 mm do que num contentor mais largo, e a
+    // diferença era uma linha de rodapé a escorregar para a folha seguinte. O
+    // cartão do ecrã tem um preenchimento que o papel não tem: desconta-se.
+    const rootStyle = getComputedStyle(root);
+    const padX = parseFloat(rootStyle.paddingLeft) + parseFloat(rootStyle.paddingRight);
+    const padTop = parseFloat(rootStyle.paddingTop);
+    const padBottom = parseFloat(rootStyle.paddingBottom);
+    const previousRootWidth = root.style.width;
+    root.style.width = `${usable.width + (Number.isFinite(padX) ? padX : 0)}px`;
+
+    // A largura NATURAL das tabelas: têm `w-full`, e medi-las assim daria a
+    // largura do contentor, não a do conteúdo. Solta-se a largura de cada
+    // TABELA (não do invólucro: a legenda é um parágrafo, e com a largura solta
+    // deixaria de quebrar linha e mediria uma linha quilométrica).
+    const tables = Array.from(table.querySelectorAll<HTMLTableElement>('table'));
+    const previousWidths = tables.map((candidate) => candidate.style.width);
+    tables.forEach((candidate) => {
+        candidate.style.width = 'max-content';
+    });
+    const tableWidth = Math.max(0, ...tables.map((candidate) => candidate.offsetWidth));
+    tables.forEach((candidate, index) => {
+        candidate.style.width = previousWidths[index];
+    });
+
+    // Tudo o que fica acima e abaixo do que se encolhe — margens incluídas, que
+    // o `offsetHeight` de cada bloco não conta e a folha conta.
+    const rootRect = root.getBoundingClientRect();
+    const fitRect = table.getBoundingClientRect();
+    const headerHeight = fitRect.top - rootRect.top - (Number.isFinite(padTop) ? padTop : 0);
+    const footerHeight = rootRect.bottom - fitRect.bottom - (Number.isFinite(padBottom) ? padBottom : 0);
+    const tableHeight = fitRect.height;
+
+    root.style.width = previousRootWidth;
 
     const result = fitToPage({
         tableWidth,
         tableHeight,
-        headerHeight: headerRef.value?.offsetHeight ?? 0,
-        usable: usableAreaPx('A4', 'landscape'),
+        headerHeight,
+        footerHeight,
+        slack: SAFETY_PX,
+        usable,
     });
 
     fit.value = result.scale;
@@ -431,6 +463,7 @@ function print(): void {
         </div>
 
         <PrintableDocument
+            ref="printDocumentRef"
             :orientation="document.orientation"
             :compact="isOnePage || document.orientation === 'landscape'"
             :stamp="document.state.is_provisional ? document.state.label : null"
@@ -438,21 +471,21 @@ function print(): void {
             page-numbers
             class="w-full rounded-lg border border-border bg-card p-6 sm:p-10"
         >
-            <div ref="headerRef">
             <!-- The school's «not configured» note is advice to the teacher, not
                  part of the document. -->
             <div class="print:[&>p]:hidden">
                 <ReportLetterhead :identity="document.identity" />
             </div>
 
-            <div class="mt-8 border-b border-border pb-5">
+            <!-- Em «uma página» o cabeçalho encolhe também: cada milímetro acima da tabela é um aluno a menos na folha. -->
+            <div class="border-b border-border" :class="isOnePage ? 'mt-3 pb-2' : 'mt-8 pb-5'">
                 <p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">{{ document.kind_label }}</p>
-                <h1 class="mt-1 font-serif text-[1.55rem] leading-tight">{{ document.title }}</h1>
-                <p class="mt-1.5 text-sm text-muted-foreground">{{ document.subtitle }}</p>
+                <h1 class="font-serif leading-tight" :class="isOnePage ? 'text-lg' : 'mt-1 text-[1.55rem]'">{{ document.title }}</h1>
+                <p class="text-muted-foreground" :class="isOnePage ? 'text-xs' : 'mt-1.5 text-sm'">{{ document.subtitle }}</p>
                 <p class="mt-1 text-xs text-muted-foreground">
                     {{ document.meta.type ?? 'Sem tipo' }} · {{ document.meta.purpose }} · {{ document.issued_label }}
                 </p>
-                <div class="mt-3 flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2" :class="isOnePage ? 'mt-1.5' : 'mt-3'">
                     <!-- On paper too: a provisional grid must say so on every copy. This one is on
                          the first sheet; the stamp in the page margin (see PrintableDocument)
                          repeats it on every sheet where the browser draws margin boxes. -->
@@ -466,7 +499,6 @@ function print(): void {
                     <Badge v-if="document.is_diagnostic" variant="outline" class="text-xs">Avaliação diagnóstica</Badge>
                 </div>
             </div>
-            </div>
 
             <p v-if="document.is_empty" class="mt-8 text-sm text-muted-foreground">{{ document.empty_message }}</p>
 
@@ -476,8 +508,8 @@ function print(): void {
                 v-for="(block, blockIndex) in document.blocks"
                 :key="blockIndex"
                 data-block
-                class="mt-8 space-y-2"
-                :class="blockIndex > 0 ? 'print:break-before-page' : ''"
+                class="space-y-2"
+                :class="[isOnePage ? 'mt-3' : 'mt-8', blockIndex > 0 ? 'print:break-before-page' : '']"
             >
                 <h2 v-if="block.caption" class="text-[0.95rem] leading-snug font-semibold">{{ block.caption }}</h2>
 
@@ -644,7 +676,11 @@ function print(): void {
                 </div>
             </section>
 
-            <div class="mt-8 space-y-1 border-t border-border pt-4 text-xs text-muted-foreground">
+            <!-- As notas ficam abaixo da tabela, sem escala: a medição desconta-as da altura útil. -->
+            <div
+                class="space-y-1 border-t border-border text-muted-foreground"
+                :class="isOnePage ? 'mt-2 pt-1 text-[6.5pt] leading-snug' : 'mt-8 pt-4 text-xs'"
+            >
                 <ul v-if="document.legend.states.length > 0" class="flex flex-wrap gap-x-4 gap-y-1">
                     <li v-for="state in document.legend.states" :key="state.short">
                         <span class="font-medium text-foreground">{{ state.short }}</span> {{ state.label }}
@@ -665,11 +701,11 @@ function print(): void {
    `body *`: isso é do PrintableDocument. */
 .grid-one-page {
     font-size: 7.5pt;
-    line-height: 1.15;
+    line-height: 1.1;
 }
 .grid-one-page th,
 .grid-one-page td {
-    padding: 1pt 2pt;
+    padding: 0.5pt 2pt;
 }
 .grid-one-page th[scope='col'],
 .grid-one-page td {
