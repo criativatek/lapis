@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, h, reactive } from 'vue';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { defineComponent, h, nextTick, reactive } from 'vue';
 import type { EvaluationSheet, EvaluationSheetDecisionScale, EvaluationSheetReadiness } from '@/types';
 import Show from './Show.vue';
 
@@ -1179,5 +1179,189 @@ describe('evaluation-sheets/Show — autoavaliação com critérios anteriores',
         expect(panel.textContent).toContain('70% · critérios anteriores');
         expect(panel.textContent).toContain('A4 (ant.)');
         expect(panel.textContent).toContain('(ant.) — autoavaliação respondida com critérios anteriores');
+    });
+});
+
+/**
+ * IMPRIMIR NUMA PÁGINA (0.191.1).
+ *
+ * A folha compacta é uma segunda `<table>` do mesmo componente, escondida no
+ * ecrã e mostrada no papel por CSS — que o jsdom não aplica. O que se fixa aqui
+ * é o que o CSS vai encontrar: a tabela existe só em «Numa página», tem uma
+ * célula por domínio com «78,0% · MB», siglas nos cabeçalhos, a apreciação sai
+ * mesmo com o detalhe desligado no ecrã, e a escala medida chega ao
+ * `PrintableDocument` com o aviso junto ao botão.
+ */
+describe('evaluation-sheets/Show — imprimir numa página', () => {
+    afterEach(() => {
+        localStorage.clear();
+        vi.restoreAllMocks();
+    });
+
+    it('abre em «Numa página», lembra a escolha e sai dela com «Como no ecrã»', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+        await nextTick();
+
+        expect(wrapper.find('.document-print').attributes('data-one-page')).toBe('true');
+        expect(wrapper.find('[data-test="compact-sheet"]').exists()).toBe(true);
+
+        await wrapper.find('#pauta-print-layout').setValue('screen');
+
+        expect(wrapper.find('.document-print').attributes('data-one-page')).toBe('false');
+        // Fora de «Numa página» a folha compacta nem se monta: o papel é o ecrã.
+        expect(wrapper.find('[data-test="compact-sheet"]').exists()).toBe(false);
+        expect(localStorage.getItem('lapis:print-layout:evaluation-sheet')).toBe('screen');
+    });
+
+    it('respeita a disposição lembrada neste browser', async () => {
+        localStorage.setItem('lapis:print-layout:evaluation-sheet', 'screen');
+        const wrapper = mount(Show, { props: baseProps() });
+        await nextTick();
+
+        expect(wrapper.find('.document-print').attributes('data-one-page')).toBe('false');
+        expect((wrapper.find('#pauta-print-layout').element as HTMLSelectElement).value).toBe('screen');
+    });
+
+    it('a folha compacta tem uma célula por domínio («90,0% · MB») e siglas nos cabeçalhos', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+        const compact = wrapper.find('[data-test="compact-sheet"]');
+
+        expect(compact.findAll('thead th').map((th) => th.text())).toEqual(['Aluno', 'Oral.', 'Leit.', 'Global', 'Nível']);
+        // O nome inteiro não se perde: fica no `title` e no `abbr` do cabeçalho.
+        expect(compact.findAll('thead th')[1].attributes('title')).toBe('Oralidade');
+
+        const carolina = compact.findAll('tbody tr')[0].findAll('td').map((td) => td.text());
+        expect(carolina[0]).toContain('Carolina Nunes');
+        expect(carolina[1]).toBe('90,0% · MB');
+        expect(carolina[2]).toBe('93,1% · MB');
+        expect(carolina[3]).toBe('91,0% · MB');
+        // O nível atribuído é o código, como no ecrã — a decisão, a negrito.
+        expect(carolina[4]).toBe('4');
+        expect(compact.findAll('tbody tr')[0].findAll('td')[4].find('span').classes()).toContain('font-bold');
+
+        // Diogo não tem nada: travessões, nunca «— · —» nem zeros. O global
+        // leva o asterisco da cobertura (sem elementos), que no papel faz as
+        // vezes do ícone do ecrã.
+        const diogo = compact.findAll('tbody tr')[1].findAll('td').map((td) => td.text());
+        expect(diogo[1]).toBe('—');
+        expect(diogo[3]).toBe('—*');
+        expect(diogo[4]).toBe('—');
+    });
+
+    it('a apreciação dos domínios sai no papel mesmo com o detalhe desligado no ecrã', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        await wrapper.findAll('input[type="checkbox"]')[1].setValue(false);
+
+        // No ecrã o detalhe desapareceu mesmo…
+        expect(wrapper.find('.sheet-screen-table').text()).not.toContain('Oralidade');
+        // …e no papel continua lá, porque foi para isto que a folha existe.
+        const compact = wrapper.find('[data-test="compact-sheet"]');
+        expect(compact.findAll('thead th').map((th) => th.text())).toContain('Oral.');
+        expect(compact.findAll('tbody tr')[0].findAll('td')[1].text()).toBe('90,0% · MB');
+    });
+
+    it('sem quantitativos a célula fica só com a sigla', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        await wrapper.findAll('input[type="checkbox"]')[0].setValue(false);
+
+        const compact = wrapper.find('[data-test="compact-sheet"]');
+        expect(compact.findAll('tbody tr')[0].findAll('td')[1].text()).toBe('MB');
+        expect(compact.findAll('tbody tr')[0].findAll('td')[3].text()).toBe('MB');
+    });
+
+    it('a decisão do professor num domínio sai a negrito, e a legenda explica as siglas', () => {
+        const props = baseProps();
+        props.sheet.students[0].domains[0].decided_scale_level_id = 3;
+        props.sheet.students[0].domains[0].decided_scale_level_code = '3';
+        props.sheet.students[0].domains[0].decided_scale_level_label = 'Suficiente';
+        const wrapper = mount(Show, { props });
+
+        const cell = wrapper.find('[data-test="compact-sheet"]').findAll('tbody tr')[0].findAll('td')[1];
+        expect(cell.text()).toBe('90,0% · S');
+        expect(cell.find('span').classes()).toContain('font-semibold');
+
+        const legend = wrapper.find('[data-abbreviations]').text().replace(/\s+/g, ' ');
+        expect(legend).toContain('Oral. = Oralidade');
+        expect(legend).toContain('Leit. = Leitura');
+        expect(legend).toContain('MI = Muito Insuficiente');
+        expect(legend).toContain('MB = Muito Bom');
+        expect(legend).toContain('negrito = decisão do professor');
+    });
+
+    it('com autoavaliação, a folha tem a coluna «Autoav.» e a legenda do «A»', () => {
+        const wrapper = mount(Show, { props: selfAssessedProps() });
+        const compact = wrapper.find('[data-test="compact-sheet"]');
+
+        expect(compact.findAll('thead th').map((th) => th.text())).toEqual(['Aluno', 'Oral.', 'Leit.', 'Global', 'Autoav.', 'Nível']);
+        expect(compact.findAll('tbody tr')[0].findAll('td')[1].text()).toContain('A2');
+        expect(wrapper.find('[data-abbreviations]').text().replace(/\s+/g, ' ')).toContain('autoavaliação do aluno');
+    });
+
+    it('o cabeçalho do papel, o parágrafo longo e a grelha estão marcados para o CSS da folha compacta', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(wrapper.find('.pauta-print .pauta-paper-header').exists()).toBe(true);
+        expect(wrapper.find('.pauta-print .pauta-screen-only').exists()).toBe(true);
+        expect(wrapper.find('.pauta-print .document-print-fit [data-test="compact-sheet"]').exists()).toBe(true);
+        expect(wrapper.find('.pauta-print .document-print-fit .sheet-screen-table').exists()).toBe(true);
+    });
+
+    it('no jsdom nada se mede: a escala publicada é 1 e não há aviso', async () => {
+        const wrapper = mount(Show, { props: baseProps() });
+        await nextTick();
+        await nextTick();
+
+        expect(wrapper.find('.document-print').attributes('style') ?? '').toContain('--document-print-zoom: 1');
+        expect(wrapper.find('[data-fit-notice]').exists()).toBe(false);
+    });
+
+    it('com medidas, publica a escala no PrintableDocument e avisa junto ao botão, sem deixar rasto no ecrã', async () => {
+        // A folha compacta mede 1200 px de largura (a folha útil tem ~1047) e
+        // ocupa 700 px de altura entre um cabeçalho de 60 px e notas de 40 px.
+        vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1200);
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+            const isFit = this.classList.contains('document-print-fit');
+            const rect = isFit ? { top: 60, bottom: 760, height: 700 } : { top: 0, bottom: 800, height: 800 };
+
+            return { ...rect, left: 0, right: 1000, width: 1000, x: 0, y: rect.top, toJSON: () => ({}) } as DOMRect;
+        });
+
+        const wrapper = mount(Show, { props: baseProps() });
+        await nextTick();
+        await nextTick();
+
+        const style = wrapper.find('.document-print').attributes('style') ?? '';
+        const zoom = Number(/--document-print-zoom: ([0-9.]+)/.exec(style)?.[1]);
+        expect(zoom).toBeLessThan(1);
+        expect(zoom).toBeGreaterThanOrEqual(0.8);
+        expect(wrapper.find('[data-fit-notice]').text()).toMatch(/Imprime-se a \d+ % para caber numa página\./);
+        expect(wrapper.find('.document-print').classes()).not.toContain('pauta-measuring');
+        expect(wrapper.find('[data-fit-notice]').element.closest('.print-hide')).not.toBeNull();
+    });
+
+    it('fora de «Numa página» não há escala nem aviso, por muito larga que a grelha seja', async () => {
+        vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1200);
+        localStorage.setItem('lapis:print-layout:evaluation-sheet', 'screen');
+
+        const wrapper = mount(Show, { props: baseProps() });
+        await nextTick();
+        await nextTick();
+
+        expect(wrapper.find('.document-print').attributes('style') ?? '').toContain('--document-print-zoom: 1');
+        expect(wrapper.find('[data-fit-notice]').exists()).toBe(false);
+    });
+
+    it('«Imprimir» mede primeiro e só depois chama o browser', async () => {
+        const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+        const wrapper = mount(Show, { props: baseProps() });
+
+        await wrapper.findAll('button').find((button) => button.text() === 'Imprimir')!.trigger('click');
+        await nextTick();
+
+        expect(print).toHaveBeenCalledTimes(1);
+        // A medição correu antes e não deixou a classe de medição no ecrã.
+        expect(wrapper.find('.document-print').classes()).not.toContain('pauta-measuring');
     });
 });

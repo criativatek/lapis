@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import CoverageWarning from '@/components/CoverageWarning.vue';
 import SelfAssessmentValue from '@/components/SelfAssessmentValue.vue';
+import { domainShort, mentionShort, uniqueMentionShorts } from '@/lib/abbreviations';
 import {
     appreciationTone,
     assignedLevel as readAssignedLevel,
@@ -43,6 +44,14 @@ import type {
  * COMO SE LÊ UMA MENÇÃO não é decidido aqui: vive em `@/lib/appreciation`,
  * porque a mesma regra vale para o domínio, para o global e para o nível
  * atribuído, e três cópias dela seriam três sítios a divergir.
+ *
+ * A FOLHA COMPACTA (`printCompact`) é a exceção deliberada à regra de um só
+ * markup: uma segunda `<table>`, escondida no ecrã, com UMA célula por domínio
+ * («78,0% · B»), siglas nos cabeçalhos e letra de 7,5 pt — o que cabe numa A4
+ * horizontal. Não é uma segunda leitura dos dados: cada célula passa pelas
+ * MESMAS funções (`domainCell`, `overallCell`, `assignedLevel`) que a tabela do
+ * ecrã, e só a forma muda. Quem a mostra e quando é o ecrã que imprime
+ * (`evaluation-sheets/Show.vue`), por CSS — aqui ela existe, e mais nada.
  */
 
 const props = withDefaults(
@@ -70,8 +79,13 @@ const props = withDefaults(
          * cor, e o texto guardado lê-se tal e qual.
          */
         scaleBands?: ToneableBand[];
+        /**
+         * Monta também a folha compacta (ver o cabeçalho deste ficheiro). Só o
+         * ecrã que imprime a pede; a pauta guardada não a tem.
+         */
+        printCompact?: boolean;
     }>(),
-    { showSelfAssessment: false, decidable: false, scaleBands: () => [] },
+    { showSelfAssessment: false, decidable: false, scaleBands: () => [], printCompact: false },
 );
 
 const hasEarlierMark = computed(() =>
@@ -187,6 +201,111 @@ function domainHeaderStyle(color: string): Record<string, string> {
 function domainCellStyle(color: string): Record<string, string> {
     return { backgroundColor: `${color}26` };
 }
+
+// ------------------------------------------------------------ folha compacta
+//
+// As siglas vêm de `@/lib/abbreviations` — as mesmas regras da grelha de
+// correção, para que «MB» signifique o mesmo em todos os papéis do Lapispro.
+
+/** Sigla de cada menção da escala; códigos para todas se duas colidissem. */
+const mentionShorts = computed(() => uniqueMentionShorts(props.scaleBands));
+
+/** Sigla de cada domínio, sem duas iguais na mesma pauta. */
+const domainShorts = computed(() => {
+    const taken: string[] = [];
+    const shorts = new Map<number, string>();
+
+    for (const domain of props.domains) {
+        const short = domainShort(domain.name, taken);
+        taken.push(short);
+        shorts.set(domain.domain_id, short);
+    }
+
+    return shorts;
+});
+
+function domainShortOf(domain: EvaluationSheetDomain): string {
+    return domainShorts.value.get(domain.domain_id) ?? domain.name;
+}
+
+/**
+ * A menção em sigla. Sem nível a valer (um travessão, ou o valor de uma escala
+ * de intervalo) sai o texto tal como está — não há sigla para o que não é
+ * menção. Uma pauta guardada sem escala (sem `scaleBands`) abrevia o rótulo
+ * que guardou; sem rótulo, fica o código.
+ */
+function shortOf(appreciation: Appreciation): string {
+    if (appreciation.level === null) {
+        return appreciation.text;
+    }
+
+    const code = appreciation.level.code ?? null;
+    const label = appreciation.level.label ?? null;
+    // O mapa da escala é por RÓTULO (é o rótulo que se abrevia); sem rótulo
+    // não há sigla a dar, e fica o código.
+    const fromScale = label === null ? undefined : mentionShorts.value.get(label);
+
+    if (fromScale !== undefined) {
+        return fromScale;
+    }
+
+    if (label !== null && label !== '') {
+        return mentionShort(label);
+    }
+
+    return code ?? appreciation.text;
+}
+
+/** «78,0% · B» com os quantitativos; «B» sem eles; «—» quando não há nada. */
+function compactText(value: string | null, appreciation: Appreciation): string {
+    const short = shortOf(appreciation);
+
+    if (!props.showQuantitative) {
+        return short;
+    }
+
+    if (value === null && appreciation.origin === 'none') {
+        return '—';
+    }
+
+    return `${pct(value)} · ${short}`;
+}
+
+function compactDomainText(student: EvaluationSheetStudent, domainId: number): string {
+    return compactText(studentDomain(student, domainId)?.normalized_value ?? null, domainCell(student, domainId));
+}
+
+function compactOverallText(student: EvaluationSheetStudent): string {
+    return compactText(student.overall.normalized_value, overallCell(student));
+}
+
+/** O asterisco que, no papel, faz as vezes do ícone de cobertura. */
+function compactWarning(student: EvaluationSheetStudent, domainId: number): boolean {
+    return props.showWarnings && studentDomain(student, domainId)?.has_coverage_warning === true;
+}
+
+/** «Oral. = Oralidade · MB = Muito Bom …» — só o que ficou abreviado. */
+const compactLegend = computed(() => {
+    const parts: string[] = [];
+
+    for (const domain of props.domains) {
+        const short = domainShortOf(domain);
+
+        if (short !== domain.name) {
+            parts.push(`${short} = ${domain.name}`);
+        }
+    }
+
+    for (const band of props.scaleBands) {
+        const short = mentionShorts.value.get(band.label);
+
+        if (short !== undefined && short !== band.label) {
+            parts.push(`${short} = ${band.label}`);
+        }
+    }
+
+    return parts;
+});
 </script>
 
 <template>
@@ -200,7 +319,7 @@ function domainCellStyle(color: string): Record<string, string> {
              larga do que o contentor e as colunas têm de manter a largura
              natural (senão o cabeçalho da coluna fixa é espremido e cortado).
              O contentor é que rola. -->
-        <table class="min-w-full border-collapse text-sm">
+        <table class="sheet-screen-table min-w-full border-collapse text-sm">
             <thead>
                 <!-- Fundos OPACOS em tudo o que é sticky. Um `bg-muted/50`
                      deixa passar o que desliza por baixo: numa turma de 20-30
@@ -534,6 +653,124 @@ function domainCellStyle(color: string): Record<string, string> {
                 </tr>
             </tbody>
         </table>
+
+        <!-- A FOLHA COMPACTA. Escondida no ecrã (`hidden`); o ecrã que imprime
+             mostra-a no papel e esconde a de cima quando a disposição é «Numa
+             página» — por CSS, nunca por duas árvores de dados. Uma célula por
+             domínio, siglas nos cabeçalhos (o nome inteiro fica no `title` e
+             na legenda), nada de botões: um papel não se clica. A apreciação
+             de cada domínio SAI SEMPRE, mesmo com o detalhe desligado no
+             ecrã — foi para isso que o professor pediu a folha. -->
+        <table v-if="printCompact" class="sheet-compact-only hidden border-collapse text-[7.5pt] leading-tight" data-test="compact-sheet">
+            <thead>
+                <tr class="bg-muted text-left">
+                    <th class="border-b border-border px-[2pt] py-[1pt] align-bottom font-medium">Aluno</th>
+                    <th
+                        v-for="domain in domains"
+                        :key="`compact-head-${domain.domain_id}`"
+                        class="border-b border-l border-border px-[2pt] py-[1pt] text-center font-semibold"
+                        :style="domainHeaderStyle(domain.color)"
+                        :title="domain.name"
+                        :abbr="domain.name"
+                    >
+                        {{ domainShortOf(domain) }}
+                    </th>
+                    <th class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-semibold">Global</th>
+                    <th
+                        v-if="showSelfAssessment"
+                        class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-medium"
+                        title="Autoavaliação"
+                        abbr="Autoavaliação"
+                    >
+                        Autoav.
+                    </th>
+                    <th
+                        class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-medium"
+                        title="Nível atribuído"
+                        abbr="Nível atribuído"
+                    >
+                        Nível
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(student, index) in students" :key="`compact-${student.enrollment_id}`" :class="index % 2 === 1 ? 'bg-muted/10' : ''">
+                    <!-- Truncado no SPAN e não na célula: `max-width` numa `td`
+                         de uma tabela automática não é respeitado. -->
+                    <td class="border-b border-border px-[2pt] py-[1pt]">
+                        <span class="block max-w-[24ch] truncate" :title="student.name">
+                            <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
+                            <span class="ml-1 font-medium">{{ student.name }}</span>
+                        </span>
+                    </td>
+                    <td
+                        v-for="domain in domains"
+                        :key="`compact-${student.enrollment_id}-${domain.domain_id}`"
+                        class="border-b border-l border-border px-[2pt] py-[1pt] text-center whitespace-nowrap tabular-nums"
+                        :style="domainCellStyle(domain.color)"
+                        :title="domainCell(student, domain.domain_id).description"
+                    >
+                        <span
+                            :class="{
+                                'font-semibold': domainCell(student, domain.domain_id).origin === 'decided',
+                                'text-muted-foreground': domainCell(student, domain.domain_id).origin === 'none',
+                            }"
+                        >{{ compactDomainText(student, domain.domain_id) }}</span><span
+                            v-if="compactWarning(student, domain.domain_id)"
+                            aria-label="cobertura parcial ou sem elementos"
+                        >*</span>
+                        <SelfAssessmentValue
+                            v-if="showSelfAssessment && studentDomain(student, domain.domain_id)?.self_assessment"
+                            :reading="studentDomain(student, domain.domain_id)?.self_assessment ?? null"
+                            :domain="domain.name"
+                            tag="sup"
+                            prefix="A"
+                            compact
+                            class="ml-0.5 font-normal text-muted-foreground"
+                        />
+                    </td>
+                    <td
+                        class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center font-medium whitespace-nowrap tabular-nums"
+                        :title="overallCell(student).description"
+                    >
+                        <span :class="{ 'text-muted-foreground': overallCell(student).origin === 'none' }">{{ compactOverallText(student) }}</span><span
+                            v-if="showWarnings && student.overall.has_coverage_warning"
+                            aria-label="cobertura parcial ou sem elementos"
+                        >*</span>
+                    </td>
+                    <td v-if="showSelfAssessment" class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center">
+                        <SelfAssessmentValue v-if="student.self_assessment" :reading="student.self_assessment" compact />
+                        <span v-else class="text-muted-foreground">—</span>
+                    </td>
+                    <td
+                        class="border-b border-l-2 border-border px-[2pt] py-[1pt] text-center whitespace-nowrap"
+                        :title="assignedLevel(student).description"
+                    >
+                        <span
+                            :class="{
+                                'font-bold': assignedLevel(student).origin === 'decided',
+                                'text-muted-foreground italic': assignedLevel(student).origin === 'proposed',
+                                'text-muted-foreground': assignedLevel(student).origin === 'none',
+                            }"
+                        >{{ assignedLevel(student).text }}</span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <!-- A legenda das siglas, numa linha, no lugar do parágrafo longo do
+             ecrã. Só diz o que ficou abreviado: um domínio chamado «Leitura»
+             que coube inteiro não precisa de ser explicado. -->
+        <p
+            v-if="printCompact"
+            class="sheet-compact-only hidden pt-1 text-[6.5pt] leading-snug text-muted-foreground print:text-black"
+            data-abbreviations
+        >
+            <strong>Siglas:</strong>{{ ' ' }}
+            <template v-for="(part, index) in compactLegend" :key="part">{{ index > 0 ? ' · ' : '' }}{{ part }}</template>
+            <template v-if="compactLegend.length > 0"> · </template>negrito = decisão do professor · itálico = proposta por
+            atribuir · * = cobertura parcial ou sem elementos<template v-if="showSelfAssessment">
+                · A1, A2… = autoavaliação do aluno</template>
+        </p>
 
         <p v-if="showSelfAssessment && hasEarlierMark" class="sticky left-0 w-fit max-w-full px-3 py-2 text-xs text-muted-foreground print:text-black" data-test="self-assessment-legend">
             {{ EARLIER_LEGEND }}
