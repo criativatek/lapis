@@ -395,6 +395,21 @@ class CalculationEngineTest extends TestCase
     }
 
     #[Test]
+    public function an_included_element_records_the_instrument_it_came_from(): void
+    {
+        $outcome = $this->engine->calculate(
+            [
+                $this->score('10', ResultState::Assessed, '8', [['domain_id' => 1, 'allocation_percent' => '100']], item: 'Q1', instrument: 7),
+            ],
+            [1 => '100'],
+            $this->rule(),
+        );
+
+        $included = $outcome->explanation['domains'][0]['included'];
+        $this->assertSame(7, $included[0]['instrument_id']);
+    }
+
+    #[Test]
     public function only_the_exclusion_that_raised_the_warning_is_marked_as_such(): void
     {
         // Three elements leave the fraction; exactly one of them is the reason for

@@ -119,3 +119,35 @@ os elementos previstos foram realizados» lê-se como uma queixa sobre o aluno.
 E **nunca** pode ser dita sobre quem não teve avaliação nenhuma — afirmaria uma
 avaliação que não existiu. É por isso que o estado se decide num sítio só, e que
 «Preparar fecho», a fotografia guardada e o ⚠ do ecrã dizem todos a mesma coisa.
+
+## De onde vem o quantitativo de um domínio
+
+Desde a 0.192.0 a pauta viva transporta, em cada `students[].domains[]`, a lista
+`elements`: um registo por **instrumento** que tocou nesse domínio, construído
+por [`App\Services\Assessment\EvaluationSheetElements`](../app/Services/Assessment/EvaluationSheetElements.php)
+a partir da explicação que o motor já produz (`included`/`excluded` por
+domínio). **Nada é recalculado**: os pontos de cada instrumento são a soma dos
+seus itens ponderados pela alocação ao domínio, o bónus soma ao numerador e
+nunca ao denominador — a mesma regra do motor —, e a soma dos pontos dos
+elementos contados reproduz exatamente o quantitativo do domínio. O «peso» que
+se mostra é **efetivo** (a fatia do denominador do domínio que a cotação do
+instrumento ocupa), nunca um peso configurado.
+
+Três decisões:
+
+- **Desligado por omissão.** A pauta abre como sempre abriu; «Elementos de
+  avaliação», em «Mostrar:», é uma opção que *inclui* a discriminação quando o
+  professor a pede. Como os outros interruptores, só mostra ou esconde — o
+  payload não muda.
+- **Só na pauta viva.** `BuildEvaluationSheet::for()` só anexa `elements` com
+  `withElements: true`, que apenas o controller da pauta pede. A fotografia
+  guardada (`CaptureEvaluationSheet`) continua no payload v3 sem essa chave — a
+  origem é uma leitura de hoje sobre os registos de hoje, e congelá-la é
+  trabalho para quando o histórico a pedir. O CSV e o Excel também não a levam.
+- **O motivo viaja cru.** Para um instrumento que não contou vai o estado
+  registado (`absent`, `pending`, `not_applicable_to_enrollment`, …) e é o ecrã
+  que o traduz pelo mesmo mapa que o ⚠ de cobertura usa (`resultStateLabel`).
+  O servidor não inventa frases, e as duas leituras não podem divergir.
+
+No papel: «Como no ecrã» imprime a lista; «Numa página» não a leva — não cabe —
+e a pauta avisa enquanto a opção estiver ligada com essa disposição.

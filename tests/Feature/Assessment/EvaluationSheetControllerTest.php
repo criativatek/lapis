@@ -96,6 +96,22 @@ class EvaluationSheetControllerTest extends TestCase
     }
 
     #[Test]
+    public function the_live_sheet_prop_carries_the_elements_of_every_domain(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertNotEmpty($props['sheet']['students']);
+
+        foreach ($props['sheet']['students'] as $student) {
+            foreach ($student['domains'] as $domain) {
+                $this->assertIsArray($domain['elements']);
+            }
+        }
+    }
+
+    #[Test]
     public function the_period_selector_uses_the_dynamic_kind_label_never_a_hardcoded_word(): void
     {
         $teacher = $this->seedDemo();

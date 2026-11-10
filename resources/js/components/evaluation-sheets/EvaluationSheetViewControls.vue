@@ -20,14 +20,21 @@ withDefaults(
          * que ele governaria seria pior ainda (§11).
          */
         selfAssessmentAvailable?: boolean;
+        /**
+         * Se a pauta traz a discriminação dos elementos de avaliação de cada
+         * domínio. SEM ELEMENTOS (a pauta guardada) NÃO HÁ INTERRUPTOR, pela
+         * mesma razão da autoavaliação: não se esconde o que não existe.
+         */
+        elementsAvailable?: boolean;
     }>(),
-    { selfAssessmentAvailable: false },
+    { selfAssessmentAvailable: false, elementsAvailable: false },
 );
 
 const showQuantitative = defineModel<boolean>('showQuantitative', { required: true });
 const showDomainDetail = defineModel<boolean>('showDomainDetail', { required: true });
 const showWarnings = defineModel<boolean>('showWarnings', { required: true });
 const showSelfAssessment = defineModel<boolean>('showSelfAssessment', { required: true });
+const showElements = defineModel<boolean>('showElements', { default: false });
 </script>
 
 <template>
@@ -48,6 +55,11 @@ const showSelfAssessment = defineModel<boolean>('showSelfAssessment', { required
         <label class="flex items-center gap-1.5">
             <input v-model="showWarnings" type="checkbox" class="rounded border-border" />
             Indicadores de cobertura
+        </label>
+        <!-- Em ÚLTIMO lugar: quem escolhe as caixas por posição não se desloca. -->
+        <label v-if="elementsAvailable" class="flex items-center gap-1.5">
+            <input v-model="showElements" type="checkbox" class="rounded border-border" />
+            Elementos de avaliação
         </label>
     </div>
 </template>

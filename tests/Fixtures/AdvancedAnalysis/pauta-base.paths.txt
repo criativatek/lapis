@@ -105,6 +105,21 @@ sheet.students[].domains[].decided_scale_level_code
 sheet.students[].domains[].decided_scale_level_id
 sheet.students[].domains[].decided_scale_level_label
 sheet.students[].domains[].domain_id
+sheet.students[].domains[].elements = []
+sheet.students[].domains[].elements[].applied_on
+sheet.students[].domains[].elements[].applied_on_label
+sheet.students[].domains[].elements[].counted
+sheet.students[].domains[].elements[].excluded_item_count
+sheet.students[].domains[].elements[].instrument_id
+sheet.students[].domains[].elements[].item_count
+sheet.students[].domains[].elements[].normalized_value
+sheet.students[].domains[].elements[].points_earned
+sheet.students[].domains[].elements[].points_possible
+sheet.students[].domains[].elements[].reasons = []
+sheet.students[].domains[].elements[].reasons[].item_count
+sheet.students[].domains[].elements[].reasons[].reason
+sheet.students[].domains[].elements[].title
+sheet.students[].domains[].elements[].weight_percent
 sheet.students[].domains[].has_coverage_warning
 sheet.students[].domains[].name
 sheet.students[].domains[].normalized_value

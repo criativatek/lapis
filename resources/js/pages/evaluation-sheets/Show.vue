@@ -244,6 +244,16 @@ const selfAssessmentAvailable = computed(
 
 const showSelfAssessment = ref(true);
 
+/**
+ * Os elementos de avaliação de cada domínio. DESLIGADO por omissão: a pauta
+ * abre como sempre abriu, e a discriminação INCLUI-SE quando o professor a pede.
+ * Só a pauta viva os traz; sem eles não há interruptor.
+ */
+const showElements = ref(false);
+const elementsAvailable = computed(
+    () => props.sheet?.students.some((student) => student.domains.some((domain) => Array.isArray(domain.elements))) ?? false,
+);
+
 // ------------------------------------------------------------ preparar fecho
 //
 // Uma CAMADA DE LEITURA sobre a pauta, nunca uma segunda pauta: o painel
@@ -383,7 +393,7 @@ onMounted(() => {
 
 // Tudo o que muda o que vai para o papel muda a escala.
 watch(
-    [onePage, showQuantitative, showDomainDetail, showWarnings, showSelfAssessment, () => props.sheet],
+    [onePage, showQuantitative, showDomainDetail, showWarnings, showSelfAssessment, showElements, () => props.sheet],
     () => void nextTick(measure),
 );
 
@@ -613,6 +623,9 @@ function submitSave(): void {
                 </NativeSelect>
             </label>
             <p v-if="notice" data-fit-notice class="text-xs text-muted-foreground" role="status">{{ notice }}</p>
+            <p v-if="showElements && elementsAvailable && onePage" data-elements-print-notice class="text-xs text-muted-foreground" role="status">
+                Na disposição «Numa página» os elementos de avaliação não saem no papel; escolha «Como no ecrã» para os imprimir.
+            </p>
             <!-- A GRELHA PARA IMPRIMIR, composta no servidor: o resultado calculado, a
                  proposta, o nível atribuído e o seu estado, cada um na sua coluna. É
                  outra coisa que o «Imprimir» ao lado, que sai como o ecrã está. -->
@@ -728,7 +741,9 @@ function submitSave(): void {
             v-model:show-domain-detail="showDomainDetail"
             v-model:show-warnings="showWarnings"
             v-model:show-self-assessment="showSelfAssessment"
+            v-model:show-elements="showElements"
             :self-assessment-available="selfAssessmentAvailable"
+            :elements-available="elementsAvailable"
             class="print-hide"
         />
 
@@ -779,6 +794,7 @@ function submitSave(): void {
                     :show-domain-detail="showDomainDetail"
                     :show-warnings="showWarnings"
                     :show-self-assessment="showSelfAssessment && selfAssessmentAvailable"
+                    :show-elements="showElements && elementsAvailable"
                     :scale-bands="scaleBands"
                     :decidable="canDecideHere"
                     :print-compact="onePage"
@@ -804,6 +820,13 @@ function submitSave(): void {
                 da posição do nível na escala — o mais alto é verde, o mais baixo é vermelho —, nunca do número que
                 ele tem, e nunca é a única informação: o nível está escrito e a frase inteira está no texto de cada
                 célula.
+                <template v-if="showElements && elementsAvailable">
+                    Com <strong>Elementos de avaliação</strong> ligado (e com os valores quantitativos e o detalhe por
+                    domínio visíveis), cada domínio lista os instrumentos que entraram no seu cálculo, com a percentagem
+                    obtida em cada um e, para os que não contaram, o motivo — a soma dos pontos dos elementos contados é
+                    o quantitativo do domínio. Passe o rato ou o foco por cima de um elemento para ver os pontos e o
+                    peso efetivo.
+                </template>
             </p>
 
             <!-- A LEGENDA DO «A». Um «A4» em expoente ao lado de uma apreciação
@@ -902,6 +925,14 @@ function submitSave(): void {
         min-width: 0 !important;
         table-layout: auto;
         font-size: 9pt;
+    }
+    .pauta-print .sheet-elements {
+        font-size: 7pt;
+    }
+    /* O papel não tem tooltip: o título tem de sair inteiro. */
+    .pauta-print .sheet-elements .truncate {
+        max-width: none !important;
+        white-space: normal !important;
     }
     .pauta-print .sheet-screen-table th,
     .pauta-print .sheet-screen-table td {

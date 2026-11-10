@@ -1365,3 +1365,165 @@ describe('evaluation-sheets/Show — imprimir numa página', () => {
         expect(wrapper.find('.document-print').classes()).not.toContain('pauta-measuring');
     });
 });
+
+/** A mesma pauta viva, agora com os elementos de avaliação de cada domínio. */
+function elementsProps() {
+    const props = baseProps();
+    const [oralidade, leitura] = props.sheet.students[0].domains;
+    const element = {
+        applied_on: '2026-10-05',
+        applied_on_label: '05/10/2026',
+        points_earned: '18.0000',
+        points_possible: '20.0000',
+        item_count: 2,
+        excluded_item_count: 0,
+        reasons: [] as { reason: string; item_count: number }[],
+    };
+
+    (oralidade as { elements?: unknown }).elements = [
+        {
+            ...element,
+            instrument_id: 1,
+            title: 'Apresentação Oral e Texto de Opinião',
+            counted: true,
+            normalized_value: '90.000000',
+            weight_percent: '100.000000',
+        },
+    ];
+    (leitura as { elements?: unknown }).elements = [
+        {
+            ...element,
+            instrument_id: 2,
+            title: 'Teste de Compreensão Leitora',
+            counted: true,
+            normalized_value: '93.125000',
+            points_earned: '14.9',
+            points_possible: '16.0000',
+            weight_percent: '80.000000',
+        },
+        {
+            ...element,
+            instrument_id: 3,
+            title: 'Ficha de Leitura',
+            counted: false,
+            normalized_value: null,
+            points_earned: null,
+            points_possible: null,
+            weight_percent: null,
+            item_count: 0,
+            excluded_item_count: 1,
+            reasons: [{ reason: 'absent', item_count: 1 }],
+        },
+    ];
+
+    return props;
+}
+
+function elementsToggle(wrapper: ReturnType<typeof mount>) {
+    return wrapper
+        .findAll('label')
+        .find((label) => label.text().includes('Elementos de avaliação'))
+        ?.find('input');
+}
+
+describe('evaluation-sheets/Show — elementos de avaliação', () => {
+    afterEach(() => {
+        localStorage.clear();
+    });
+
+    it('não oferece o interruptor numa pauta sem elementos', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(
+            wrapper
+                .findAll('label')
+                .some((label) =>
+                    label.text().includes('Elementos de avaliação'),
+                ),
+        ).toBe(false);
+        // Os testes que escolhem as caixas por índice continuam válidos.
+        expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(3);
+    });
+
+    it('abre desligado e só mostra os elementos quando o professor os pede, sem tocar no payload', async () => {
+        const props = elementsProps();
+        const before = JSON.stringify(props.sheet);
+        const wrapper = mount(Show, { props });
+        const toggle = elementsToggle(wrapper)!;
+
+        expect(toggle.exists()).toBe(true);
+        expect((toggle.element as HTMLInputElement).checked).toBe(false);
+        expect(wrapper.find('table.sheet-screen-table').text()).not.toContain(
+            'Apresentação Oral',
+        );
+
+        await toggle.setValue(true);
+
+        const text = wrapper.find('table.sheet-screen-table').text();
+        expect(text).toContain('Apresentação Oral');
+        expect(text).toContain('90,0%');
+        expect(text).toContain('Ficha de Leitura');
+        expect(text).toContain('Ausência');
+        expect(wrapper.findAll('[data-test="domain-elements"]')).toHaveLength(
+            2,
+        );
+        expect(JSON.stringify(props.sheet)).toBe(before);
+    });
+
+    it('a frase acessível de cada elemento diz os pontos e o peso', async () => {
+        const wrapper = mount(Show, { props: elementsProps() });
+        await elementsToggle(wrapper)!.setValue(true);
+
+        const item = wrapper
+            .findAll('[data-test="domain-elements"] li')
+            .find((li) => li.text().includes('Teste de Compreensão'))!;
+        const title = item.attributes('title')!;
+
+        expect(title).toContain('93,1%');
+        expect(title).toContain('14,9 de 16 pontos');
+        expect(title).toContain('80,0% do domínio');
+        expect(item.attributes('aria-label')).toBe(title);
+    });
+
+    it('desligar os valores quantitativos esconde também os elementos', async () => {
+        const wrapper = mount(Show, { props: elementsProps() });
+        await elementsToggle(wrapper)!.setValue(true);
+        expect(wrapper.find('[data-test="domain-elements"]').exists()).toBe(
+            true,
+        );
+
+        await wrapper.findAll('input[type="checkbox"]')[0].setValue(false);
+
+        expect(wrapper.find('[data-test="domain-elements"]').exists()).toBe(
+            false,
+        );
+    });
+
+    it('avisa que a disposição numa página deixa os elementos fora do papel', async () => {
+        const wrapper = mount(Show, { props: elementsProps() });
+        await nextTick();
+        expect(wrapper.find('[data-elements-print-notice]').exists()).toBe(
+            false,
+        );
+
+        await elementsToggle(wrapper)!.setValue(true);
+        expect(wrapper.find('[data-elements-print-notice]').exists()).toBe(
+            true,
+        );
+
+        await wrapper.find('#pauta-print-layout').setValue('screen');
+        expect(wrapper.find('[data-elements-print-notice]').exists()).toBe(
+            false,
+        );
+    });
+
+    it('a folha compacta não leva os elementos', async () => {
+        const wrapper = mount(Show, { props: elementsProps() });
+        await nextTick();
+        await elementsToggle(wrapper)!.setValue(true);
+
+        expect(
+            wrapper.find('[data-test="compact-sheet"]').text(),
+        ).not.toContain('Apresentação Oral');
+    });
+});
