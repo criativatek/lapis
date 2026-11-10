@@ -117,6 +117,7 @@ class CalculationEngine
             $contributing++;
             $included[] = [
                 'item' => $score->itemCode,
+                'instrument_id' => $score->instrumentId,
                 'state' => $score->state->value,
                 'earned' => $earned,
                 'possible' => $score->pointsPossible,

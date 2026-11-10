@@ -82,6 +82,42 @@ export type EvaluationSheetStudentDomain = {
     coverage: Coverage;
     /** Ausente nos snapshots guardados antes desta funcionalidade — ausência, nunca zero. */
     self_assessment?: EvaluationSheetSelfAssessment | null;
+    /**
+     * Os instrumentos que entraram no cálculo deste domínio. Ausente nos
+     * snapshots guardados e em payloads antigos; presente (eventualmente
+     * vazio) na pauta viva — ausência não é «sem elementos».
+     */
+    elements?: EvaluationSheetDomainElement[];
+};
+
+/** Um motivo cru pelo qual itens de um instrumento ficaram fora do cálculo do domínio. */
+export type EvaluationSheetDomainElementReason = { reason: string; item_count: number };
+
+/**
+ * Um instrumento considerado no cálculo de um domínio, com a sua classificação.
+ * Todos os valores vêm do servidor; o ecrã só os formata.
+ */
+export type EvaluationSheetDomainElement = {
+    instrument_id: number;
+    title: string;
+    /** 'YYYY-MM-DD' */
+    applied_on: string;
+    /** 'dd/mm/yyyy' */
+    applied_on_label: string;
+    /** Pelo menos um item deste instrumento entrou na fração do domínio. */
+    counted: boolean;
+    /** A % do instrumento neste domínio; null se nada contou. */
+    normalized_value: string | null;
+    /** Já ponderados pela alocação ao domínio. */
+    points_earned: string | null;
+    points_possible: string | null;
+    /** A fatia EFETIVA do denominador do domínio que este instrumento ocupa. */
+    weight_percent: string | null;
+    /** Itens contados. */
+    item_count: number;
+    excluded_item_count: number;
+    /** Motivos crus: 'absent', 'absent_justified', 'pending', 'exempt', 'not_applicable', 'annulled', 'under_review', 'not_applicable_to_enrollment'. */
+    reasons: EvaluationSheetDomainElementReason[];
 };
 
 /**

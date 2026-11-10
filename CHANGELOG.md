@@ -25,6 +25,47 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.192.0] — 2026-11-10
+
+> **Pauta de Avaliação: de onde vem o quantitativo de cada domínio.** A pauta
+> mostrava a percentagem de cada domínio sem dizer que elementos de avaliação a
+> produziram, e o professor tinha de ir à grelha de correção de cada instrumento
+> para o reconstituir. Passa a haver a opção «Elementos de avaliação» em
+> «Mostrar:», desligada por omissão: ligada, cada domínio lista por baixo do
+> quantitativo os instrumentos que entraram no cálculo — título e percentagem
+> obtida em cada um («Teste de Compreensão Leitora · 93,1%») — e, para os que
+> não contaram, o motivo («Ausência», «Por avaliar», «Fora do período de
+> matrícula»). Passar o rato ou o foco por cima diz os pontos obtidos e a
+> cotação ponderada neste domínio, o peso efetivo do instrumento e o número de
+> questões. Nada é recalculado: a lista é a explicação que o motor já produz,
+> organizada por instrumento, e a soma dos pontos dos elementos contados é o
+> quantitativo do domínio. Só na pauta viva: a fotografia guardada não a leva
+> (payload v3 intacto), nem o CSV/Excel. «Imprimir» em «Como no ecrã» leva a
+> lista; em «Numa página» não cabe e a pauta avisa. Sem migrations.
+
+### Adicionado
+
+- `App\Services\Assessment\EvaluationSheetElements`: agrupa por instrumento os
+  `included`/`excluded` da explicação do motor, uma consulta de instrumentos para
+  a turma inteira; pontos ponderados pela alocação ao domínio, bónus fora do
+  denominador, peso efetivo como fatia do denominador do domínio.
+- `BuildEvaluationSheet::for(..., withElements: true)`: cada
+  `students[].domains[]` ganha `elements`; o controller da pauta pede-o, a
+  `CaptureEvaluationSheet` não.
+- `CalculationEngine`: as entradas `included` da explicação passam a registar
+  `instrument_id`, como as `excluded` já faziam. Sem alteração de aritmética
+  nem de regra — `VERSION` fica.
+- `EvaluationSheetViewControls`/`EvaluationSheetTable`: interruptor «Elementos
+  de avaliação» (só quando a pauta os traz) e lista por domínio na célula
+  «Quant.»; a folha compacta de impressão não muda.
+
+### Alterado
+
+- Fixtures de caracterização regeneradas de propósito, só na Pauta:
+  `tests/Fixtures/AdvancedAnalysis/pauta-{base,pro}.{paths.txt,sha256}` (as
+  chaves `elements` novas) e as duas entradas «pauta, N.º período» de
+  `base-surfaces.json`. Nenhuma outra superfície Base mudou.
+
 ## [0.191.2] — 2026-11-08
 
 > **Avaliação intercalar: imprime-se numa página.** A página de uma avaliação

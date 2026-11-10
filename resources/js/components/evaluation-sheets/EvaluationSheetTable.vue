@@ -10,10 +10,12 @@ import {
     overallAppreciation,
 } from '@/lib/appreciation';
 import type { Appreciation, ToneableBand } from '@/lib/appreciation';
+import { resultStateLabel } from '@/lib/coverage';
 import { pct } from '@/lib/results';
 import { anyOtherCriteria, EARLIER_LEGEND } from '@/lib/selfAssessmentReading';
 import type {
     EvaluationSheetDomain,
+    EvaluationSheetDomainElement,
     EvaluationSheetStudent,
     EvaluationSheetStudentDomain,
 } from '@/types';
@@ -28,7 +30,9 @@ import type {
  *
  * NÃO CALCULA NADA. Recebe domínios e alunos já resolvidos pelo servidor —
  * vivos num caso, congelados no outro — e limita-se a mostrá-los. Os três
- * toggles SÓ ESCONDEM: nenhum deles toca nas props recebidas.
+ * toggles SÓ ESCONDEM: nenhum deles toca nas props recebidas. A lista de
+ * elementos de avaliação de cada domínio também vem do servidor; aqui só se
+ * formata, nada se calcula nem se soma.
  *
  * E NÃO DECIDE NADA. `decidable` liga a AÇÃO de atribuir, não a decisão em si:
  * a grelha emite quem o professor quer classificar e é o ecrã que abre o painel
@@ -66,6 +70,11 @@ const props = withDefaults(
          * grelha nunca a inventa nem a soma a coisa alguma (§15).
          */
         showSelfAssessment?: boolean;
+        /**
+         * Os instrumentos de cada domínio, sob o quantitativo. Só esconde: sem
+         * `elements` no payload (pauta guardada) não há nada para mostrar.
+         */
+        showElements?: boolean;
         /** Só na pauta viva. A guardada mostra os mesmos valores, sem ações. */
         decidable?: boolean;
         /**
@@ -85,7 +94,7 @@ const props = withDefaults(
          */
         printCompact?: boolean;
     }>(),
-    { showSelfAssessment: false, decidable: false, scaleBands: () => [], printCompact: false },
+    { showSelfAssessment: false, showElements: false, decidable: false, scaleBands: () => [], printCompact: false },
 );
 
 const hasEarlierMark = computed(() =>
@@ -101,6 +110,53 @@ const domainColumns = computed(() => props.domains.map((domain) => ({ id: domain
 
 function studentDomain(student: EvaluationSheetStudent, domainId: number): EvaluationSheetStudentDomain | undefined {
     return student.domains.find((domain) => domain.domain_id === domainId);
+}
+
+/** O motivo de um item ficar fora do cálculo, em palavras. */
+function reasonLabel(reason: string): string {
+    if (reason === 'not_applicable_to_enrollment') {
+        return 'Fora do período de matrícula';
+    }
+
+    if (reason === 'pending') {
+        return 'Por avaliar';
+    }
+
+    return resultStateLabel(reason);
+}
+
+function elementReasonText(element: EvaluationSheetDomainElement): string {
+    const labels = [...new Set(element.reasons.map((entry) => reasonLabel(entry.reason)))];
+
+    return labels.length > 0 ? labels.join(' · ') : 'Fora do cálculo';
+}
+
+/** Pontos com vírgula decimal e sem zeros inúteis. */
+function points(value: string | null): string {
+    return value === null ? '—' : Number(value).toLocaleString('pt-PT', { maximumFractionDigits: 2 });
+}
+
+function questions(count: number): string {
+    return `${count} ${count === 1 ? 'questão' : 'questões'}`;
+}
+
+/** A frase acessível de um elemento — o `title` e o `aria-label` da linha. */
+function elementDescription(element: EvaluationSheetDomainElement): string {
+    const head = `«${element.title}» (${element.applied_on_label})`;
+
+    if (!element.counted) {
+        return `${head}: ${elementReasonText(element)} — ${questions(element.excluded_item_count)} fora do cálculo.`;
+    }
+
+    let text =
+        `${head}: ${pct(element.normalized_value)} — ${points(element.points_earned)} de ${points(element.points_possible)} pontos neste domínio` +
+        ` · ${pct(element.weight_percent)} do domínio · ${questions(element.item_count)}`;
+
+    if (element.excluded_item_count > 0) {
+        text += ` · ${element.excluded_item_count} fora do cálculo: ${elementReasonText(element)}`;
+    }
+
+    return text;
 }
 
 /** A apreciação de um domínio, já resolvida para a vista que está ligada. */
@@ -430,6 +486,28 @@ const compactLegend = computed(() => {
                                     :has-value="(studentDomain(student, domain.domain_id)?.normalized_value ?? null) !== null"
                                     :domains="domainColumns"
                                 />
+                                <!-- Os elementos só existem na pauta viva (`elements` ausente = nada).
+                                     A célula «Quant.» só existe com o detalhe e os valores ligados. -->
+                                <template v-if="showElements && studentDomain(student, domain.domain_id)?.elements !== undefined">
+                                    <p
+                                        v-if="studentDomain(student, domain.domain_id)!.elements!.length === 0"
+                                        class="sheet-elements mt-1 text-left text-[11px] italic text-muted-foreground"
+                                    >
+                                        Sem elementos
+                                    </p>
+                                    <ul v-else class="sheet-elements mt-1 space-y-0.5 text-left text-[11px] leading-tight" data-test="domain-elements">
+                                        <li
+                                            v-for="element in studentDomain(student, domain.domain_id)!.elements!"
+                                            :key="element.instrument_id"
+                                            :title="elementDescription(element)"
+                                            :aria-label="elementDescription(element)"
+                                        >
+                                            <span class="inline-block max-w-[16ch] truncate align-bottom">{{ element.title }}</span>
+                                            <span v-if="element.counted" class="ml-1 tabular-nums">{{ pct(element.normalized_value) }}</span>
+                                            <span v-else class="ml-1 italic text-muted-foreground">{{ elementReasonText(element) }}</span>
+                                        </li>
+                                    </ul>
+                                </template>
                             </td>
                             <td
                                 class="border-b border-border px-2 py-2 text-center"
@@ -660,7 +738,9 @@ const compactLegend = computed(() => {
              domínio, siglas nos cabeçalhos (o nome inteiro fica no `title` e
              na legenda), nada de botões: um papel não se clica. A apreciação
              de cada domínio SAI SEMPRE, mesmo com o detalhe desligado no
-             ecrã — foi para isso que o professor pediu a folha. -->
+             ecrã — foi para isso que o professor pediu a folha. OS ELEMENTOS DE
+             AVALIAÇÃO NÃO ENTRAM AQUI, e é deliberado: não cabem numa página.
+             Quem os quer no papel escolhe «Como no ecrã». -->
         <table v-if="printCompact" class="sheet-compact-only hidden border-collapse text-[7.5pt] leading-tight" data-test="compact-sheet">
             <thead>
                 <tr class="bg-muted text-left">

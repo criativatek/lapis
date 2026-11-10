@@ -78,7 +78,9 @@ class EvaluationSheetController extends Controller
         $moment = SheetMomentKind::fromRequest($request->query('momento') === null ? null : (string) $request->query('momento'));
 
         $sheet = $selected !== null
-            ? $this->builder->for($class, $selected)
+            // A pauta viva leva a origem de cada quantitativo (os instrumentos);
+            // a fotografia guardada não.
+            ? $this->builder->for($class, $selected, withElements: true)
             : null;
 
         $canExportToInovar = app(Entitlements::class)->allows('inovar_export');

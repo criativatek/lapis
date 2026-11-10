@@ -59,10 +59,12 @@ class BuildEvaluationSheet
         protected DomainAppreciationDecisions $domainDecisions,
         protected FormalProposalBasis $basis,
         protected DecisionScaleReader $decisionScales,
+        protected EvaluationSheetElements $elements,
     ) {}
 
     /**
      * @param  bool  $withProposalBasis  se a leitura traz a proposta de HOJE ao lado da guardada e o aviso de desatualizada. Na unidade que fecha o ano isso obriga a apurar os resultados das outras unidades, e quem não vai ler esses campos não tem por que os pagar — é o caso do Quadro Síntese, que abre a pauta de cada unidade e faz a sua própria leitura do ano.
+     * @param  bool  $withElements  se cada domínio de cada aluno traz `elements`, a lista dos instrumentos que entraram (ou ficaram de fora) do quantitativo. É leitura do ecrã VIVO: a fotografia não o leva, para o payload v3 ficar intacto e porque a origem de um número já guardado seria uma segunda verdade a manter. Para o histórico fica como trabalho futuro. Sem este parâmetro a chave `elements` não existe.
      * @return array{class_id: int, academic_period_id: int, scope: string, domains: list<array<string, mixed>>, students: list<array<string, mixed>>, scale: array{name: string, kind: string, levels: list<array{code: string, label: string, sequence: int, is_negative: bool}>}|null}
      */
     public function for(
@@ -70,10 +72,12 @@ class BuildEvaluationSheet
         AcademicPeriod $academicPeriod,
         ClassificationScope|string $scope = ClassificationScope::Period,
         bool $withProposalBasis = true,
+        bool $withElements = false,
     ): array {
         $resolvedScope = is_string($scope) ? ClassificationScope::from($scope) : $scope;
         $results = $this->calculator->forScope($schoolClass, $academicPeriod, $resolvedScope);
         $coverage = $this->coverage->forResults($results);
+        $elements = $withElements ? $this->elements->forResults($results) : null;
         $profileDomains = $this->profileDomains($schoolClass);
         $profileVersion = $schoolClass->profileVersion;
         $scale = $profileVersion?->scale()->with('levels')->first();
@@ -133,6 +137,7 @@ class BuildEvaluationSheet
                     $coverage[$enrollmentId]['domains'] ?? [],
                     $selfAssessment,
                     $decisions[$enrollmentId] ?? [],
+                    $elements === null ? null : ($elements[$enrollmentId] ?? []),
                 ),
                 'classification' => $this->classification(
                     $classifications[$enrollmentId] ?? null,
@@ -265,6 +270,7 @@ class BuildEvaluationSheet
      * @param  Collection<int, ProfileVersionDomain>  $profileDomains
      * @param  array<int, array<string, mixed>>  $coverage
      * @param  array<int, DomainAppreciationDecision>  $decisions
+     * @param  array<int, list<array<string, mixed>>>|null  $elements  domínio => elementos; null quando a leitura não os pede
      * @return list<array<string, mixed>>
      */
     protected function domains(
@@ -274,13 +280,19 @@ class BuildEvaluationSheet
         array $coverage,
         ?SelfAssessment $selfAssessment = null,
         array $decisions = [],
+        ?array $elements = null,
     ): array {
         $outcomes = collect($outcome->domains)->keyBy('domainId');
 
-        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage, $selfAssessment, $decisions): array {
+        return array_values($profileDomains->map(function (ProfileVersionDomain $profileDomain) use ($outcomes, $scale, $coverage, $selfAssessment, $decisions, $elements): array {
             $domainOutcome = $outcomes->get($profileDomain->domain_id);
             $said = $this->selfAssessments->forDomain($selfAssessment, (int) $profileDomain->domain_id);
             $decided = $decisions[(int) $profileDomain->domain_id] ?? null;
+            // A chave só existe quando foi pedida: a fotografia e as exportações
+            // têm de continuar exatamente com a forma que sempre tiveram.
+            $withElements = $elements === null
+                ? []
+                : ['elements' => $elements[(int) $profileDomain->domain_id] ?? []];
 
             if ($domainOutcome === null) {
                 // The engine never produced an outcome for this domain (e.g. no
@@ -305,6 +317,7 @@ class BuildEvaluationSheet
                     // O aluno pode ter-se pronunciado sobre um domínio que ainda
                     // não tem elementos. Continua a ser o que ele disse.
                     'self_assessment' => $said,
+                    ...$withElements,
                 ];
             }
 
@@ -323,6 +336,7 @@ class BuildEvaluationSheet
                 'has_coverage_warning' => $domainOutcome->coverageWarning,
                 'coverage' => $coverage[$profileDomain->domain_id] ?? CoverageExplanation::none(),
                 'self_assessment' => $said,
+                ...$withElements,
             ];
         })->values()->all());
     }
