@@ -1527,3 +1527,42 @@ describe('evaluation-sheets/Show — elementos de avaliação', () => {
         ).not.toContain('Apresentação Oral');
     });
 });
+
+/**
+ * SÓ PERCENTAGENS, E PORQUÊ. Uma escala sem menções (percentagem, 0 a 20) não
+ * tem apreciação qualitativa a mostrar; a nota diz isso e aponta ao perfil,
+ * com ligação só para quem o pode editar. Nunca sai no papel.
+ */
+describe('evaluation-sheets/Show — escala sem menções', () => {
+    it('avisa, com ligação ao perfil, quando a escala não tem menções e o perfil é editável', () => {
+        const props = baseProps();
+        props.scaleBands = [];
+        props.schoolClass = { ...props.schoolClass, scale_name: 'Percentagem (0 a 100)', profile_edit_url: '/assessment-profiles/profile-1/edit' };
+        const wrapper = mount(Show, { props });
+
+        const note = wrapper.find('[data-test="no-mentions-note"]');
+        expect(note.exists()).toBe(true);
+        expect(note.text()).toContain('Percentagem (0 a 100)');
+        expect(note.text()).toContain('só percentagens');
+        expect(note.find('a').attributes('href')).toBe('/assessment-profiles/profile-1/edit');
+        expect(note.classes()).toContain('print-hide');
+    });
+
+    it('avisa sem ligação quando quem vê não pode editar o perfil', () => {
+        const props = baseProps();
+        props.scaleBands = [];
+        props.schoolClass = { ...props.schoolClass, profile_edit_url: null };
+        const wrapper = mount(Show, { props });
+
+        const note = wrapper.find('[data-test="no-mentions-note"]');
+        expect(note.exists()).toBe(true);
+        expect(note.find('a').exists()).toBe(false);
+    });
+
+    it('não avisa quando a escala tem menções', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(wrapper.find('[data-test="no-mentions-note"]').exists()).toBe(false);
+    });
+});
+

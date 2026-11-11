@@ -51,6 +51,8 @@ const props = defineProps<{
         academic_year: string;
         has_profile: boolean;
         scale_name?: string | null;
+        /** Onde se resolve «só percentagens»; null quando a escala tem menções ou quem vê não pode editar o perfil. */
+        profile_edit_url?: string | null;
     };
     /**
      * OS MOMENTOS ESTRUTURAIS DO ANO, na ordem em que se vivem: para cada
@@ -224,6 +226,9 @@ function selectMoment(period: EvaluationSheetPeriod): void {
 const showQuantitative = ref(true);
 const showDomainDetail = ref(true);
 const showWarnings = ref(true);
+
+/** Uma escala sem níveis com bandas (0 a 20, percentagem) não tem menção nenhuma a mostrar. */
+const scaleHasMentions = computed(() => props.scaleBands.length > 0);
 
 /**
  * A AUTOAVALIAÇÃO ABRE VISÍVEL quando existe.
@@ -732,6 +737,23 @@ function submitSave(): void {
             :period-ulid="selectedPeriod.ulid"
             class="print-hide"
         />
+
+        <!-- SÓ PERCENTAGENS, E PORQUÊ. Uma escala sem níveis com bandas (0 a 20,
+             percentagem, personalizada de intervalo) não tem menção nenhuma a
+             mostrar — a pauta não esconde nada, não há nada. A nota diz isso e
+             aponta para onde se resolve. Fora do papel e nunca numa fotografia. -->
+        <p
+            v-if="sheet && schoolClass.has_profile && !scaleHasMentions"
+            data-test="no-mentions-note"
+            class="print-hide rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900"
+        >
+            Esta escala<template v-if="schoolClass.scale_name"> («{{ schoolClass.scale_name }}»)</template> não tem
+            menções qualitativas, por isso a pauta mostra só percentagens. Para ter Suficiente, Bom…, edite o
+            perfil de avaliação e escolha a «Escala 1 a 5».
+            <Link v-if="schoolClass.profile_edit_url" :href="schoolClass.profile_edit_url" class="ml-1 font-medium underline">
+                Abrir o perfil
+            </Link>
+        </p>
 
         <!-- Controlos de visualização: só apresentação, nunca alteram os dados
              recebidos do servidor. Fora do papel — o que eles decidem já está

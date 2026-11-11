@@ -117,6 +117,17 @@ class EvaluationSheetController extends Controller
         // so three screens cannot offer three different decisions (§3).
         $scale = $class->profileVersion?->scale()->with('levels')->first();
 
+        // A ligação para resolver «só percentagens»: só quando a escala não tem
+        // menções E quem vê pode editar o perfil. Quem não pode vê a nota sem
+        // ligação (Show.vue). Nunca numa pauta guardada — é uma fotografia.
+        $profile = $class->profileVersion?->profile;
+        $hasBands = $scale !== null && $scale->levels->contains(
+            fn ($level): bool => $level->band_min_normalized !== null && $level->band_max_normalized !== null,
+        );
+        $profileEditUrl = $profile !== null && ! $hasBands && Gate::allows('update', $profile)
+            ? route('assessment-profiles.edit', $profile)
+            : null;
+
         return Inertia::render('evaluation-sheets/Show', [
             'schoolClass' => [
                 'ulid' => $class->ulid,
@@ -125,6 +136,7 @@ class EvaluationSheetController extends Controller
                 'academic_year' => $class->academicYear->label,
                 'has_profile' => $class->assessment_profile_version_id !== null,
                 'scale_name' => $scale?->name,
+                'profile_edit_url' => $profileEditUrl,
             ],
             'decision' => DecisionScale::for($scale)->toPayload(),
             // A ESCALA POR ORDEM, para a apreciação de cada célula ser pintada
