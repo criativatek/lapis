@@ -7,6 +7,9 @@ use Illuminate\Validation\Validator;
 
 class ScaleMentionsRequest extends FormRequest
 {
+    /**
+     * @return array<string, list<string>>
+     */
     public function rules(): array
     {
         return [
