@@ -560,7 +560,7 @@ class ScaleMentionsController extends Controller
         $this->audit->record(
             'scale.mentions_customised',
             $derived,
-            $this->user(),
+            $request->user(),
             "Menções da escala «{$derived->name}» definidas pelo utilizador.",
             [
                 'scale_id' => $derived->id,
@@ -583,7 +583,7 @@ Em `routes/web.php`, logo a seguir à rota `scales.store`:
 
 (e o `use App\Http\Controllers\ScaleMentionsController;` no topo, por ordem alfabética). `{scale}` resolve por `ulid` (o modelo usa `HasUlids`); confirmar com `php artisan route:list --path=mencoes`.
 
-`$this->user()`: o `ClassController` tem esse helper; se não estiver no `Controller` base, usar `$request->user()` (confirmado: não há flash partilhado pelo Inertia nesta app, por isso o `with('derivedScaleId')` serve só ao teste PHP).
+Confirmado: o helper `user()` é definido controlador a controlador (não está no `Controller` base), por isso o código acima usa `$request->user()`. Também confirmado que não há flash partilhado pelo Inertia nesta app: o `with('derivedScaleId')` serve só ao teste PHP.
 
 - [ ] **Step 5: Correr e ver passar**
 
