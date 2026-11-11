@@ -48,6 +48,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 - Perfil novo abre com «Escala 1 a 5»; nota na Pauta quando a escala não tem
   menções.
 
+### Alterado
+
+- A Pauta envia a chave nova `schoolClass.profile_edit_url` (nula numa escala
+  com menções). As fixtures de caracterização das superfícies Base
+  (`tests/Fixtures/AdvancedAnalysis/`) foram regeneradas de propósito por isso.
+
 ## [0.192.0] — 2026-11-10
 
 > **Pauta de Avaliação: de onde vem o quantitativo de cada domínio.** A pauta
