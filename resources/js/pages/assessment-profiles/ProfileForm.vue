@@ -23,6 +23,8 @@ type Option = {
     kind: string;
     min_value: number;
     max_value: number;
+    ulid?: string;
+    levels?: { code: string; label: string }[];
 };
 
 type DomainRow = { name: string; weight: number };
@@ -49,8 +51,10 @@ const props = withDefaults(
         // explicitly on Edit, where a member may still be VIEWING a profile
         // they did not write, to see the domains and weights they grade by.
         canManage?: boolean;
+        /** A escala com que um perfil NOVO abre («Escala 1 a 5»); ignorada quando há `initial`. */
+        defaultScaleId?: number | null;
     }>(),
-    { canManage: true },
+    { canManage: true, defaultScaleId: null },
 );
 
 const form = useForm<ProfileData>(
@@ -60,7 +64,7 @@ const form = useForm<ProfileData>(
         subject_id: null,
         grade_levels: [],
         description: null,
-        scale_id: null,
+        scale_id: props.defaultScaleId ?? null,
         domains: [
             { name: '', weight: 0 },
             { name: '', weight: 0 },

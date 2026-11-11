@@ -110,3 +110,38 @@ describe('ProfileForm — Ano(s) de escolaridade', () => {
         expect(wrapper.text()).toContain('Valor repetido.');
     });
 });
+
+describe('a escala por defeito', () => {
+    it('abre com a escala por defeito quando é um perfil novo', () => {
+        const wrapper = mount(ProfileForm, {
+            props: {
+                academicYears: [],
+                subjects: [],
+                scales: [{ id: 7, ulid: 'scale-1-5', label: 'Escala 1 a 5', system: true, kind: 'level', min_value: 1, max_value: 5, levels: [] }],
+                submitUrl: '/assessment-profiles',
+                method: 'post',
+                defaultScaleId: 7,
+            },
+        });
+        wrappers.push(wrapper);
+
+        expect(profileForm().scale_id).toBe(7);
+    });
+
+    it('não toca na escala de um perfil existente', () => {
+        const wrapper = mount(ProfileForm, {
+            props: {
+                academicYears: [],
+                subjects: [],
+                scales: [],
+                initial: { name: 'Português', academic_year_id: 1, subject_id: 1, grade_levels: [], description: null, scale_id: 3, domains: [] },
+                submitUrl: '/assessment-profiles/x',
+                method: 'put',
+                defaultScaleId: 7,
+            },
+        });
+        wrappers.push(wrapper);
+
+        expect(profileForm().scale_id).toBe(3);
+    });
+});

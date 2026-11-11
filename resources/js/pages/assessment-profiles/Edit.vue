@@ -10,6 +10,8 @@ type Option = {
     kind: string;
     min_value: number;
     max_value: number;
+    ulid?: string;
+    levels?: { code: string; label: string }[];
 };
 type DomainRow = { name: string; weight: number };
 

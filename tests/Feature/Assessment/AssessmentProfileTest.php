@@ -244,4 +244,20 @@ class AssessmentProfileTest extends TestCase
         $this->actingAs($this->user)->post("/assessment-profiles/{$profile->ulid}/activate");
         $this->actingAs($this->user)->delete("/assessment-profiles/{$profile->ulid}")->assertForbidden();
     }
+
+    #[Test]
+    public function the_create_form_opens_on_the_system_level_scale_and_lists_the_levels_of_each_scale(): void
+    {
+        $response = $this->actingAs($this->user)->get('/assessment-profiles/create');
+        $response->assertOk();
+
+        $props = $response->viewData('page')['props'];
+        $levelScale = collect($props['scales'])->firstWhere('label', 'Escala 1 a 5');
+
+        $this->assertSame($levelScale['id'], $props['defaultScaleId']);
+        $this->assertNotEmpty($levelScale['ulid']);
+        $this->assertSame(['Fraco', 'Insuficiente', 'Suficiente', 'Bom', 'Muito Bom'], array_column($levelScale['levels'], 'label'));
+        $this->assertSame(['1', '2', '3', '4', '5'], array_column($levelScale['levels'], 'code'));
+        $this->assertSame([], collect($props['scales'])->firstWhere('label', 'Percentagem (0 a 100)')['levels']);
+    }
 }

@@ -65,6 +65,14 @@ class AssessmentProfileController extends Controller
 
         return Inertia::render('assessment-profiles/Create', [
             ...$this->formOptions(),
+            // Por defeito, a escala com menções (Fraco… Muito Bom): quem não
+            // mexer fica com ela. Não é obrigação — é o que evita a pauta só
+            // com percentagens de quem criou o perfil sem reparar na escala.
+            'defaultScaleId' => Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id'),
+            // Por defeito, a escala com menções (Fraco… Muito Bom): quem não
+            // mexer fica com ela. Não é obrigação — é o que evita a pauta só
+            // com percentagens de quem criou o perfil sem reparar na escala.
+            'defaultScaleId' => Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id'),
             // "Precisa de ajuda?" (A2, Onboarding & Help) — critérios, domínios
             // e pesos are the one place in this flow a first-time teacher is
             // most likely to get stuck, per the brief's own explicit choice.
@@ -262,14 +270,22 @@ class AssessmentProfileController extends Controller
                 ->map(fn (AcademicYear $year) => ['id' => $year->id, 'label' => $year->label]),
             'subjects' => Subject::orderBy('name')->get(['id', 'name'])
                 ->map(fn (Subject $subject) => ['id' => $subject->id, 'label' => $subject->name]),
-            'scales' => Scale::orderByRaw('organization_id IS NOT NULL, name')->get(['id', 'name', 'kind', 'min_value', 'max_value', 'organization_id'])
+            'scales' => Scale::with('levels')->orderByRaw('organization_id IS NOT NULL, name')->get()
                 ->map(fn (Scale $scale) => [
                     'id' => $scale->id,
+                    'ulid' => $scale->ulid,
                     'label' => $scale->name,
                     'system' => $scale->organization_id === null,
                     'kind' => $scale->kind,
                     'min_value' => $scale->min_value,
                     'max_value' => $scale->max_value,
+                    // As menções, para o diálogo «Personalizar menções» as
+                    // mostrar como estão; vazio numa escala de intervalo.
+                    'levels' => $scale->levels
+                        ->sortBy('sequence')
+                        ->map(fn ($level): array => ['code' => (string) $level->code, 'label' => (string) $level->label])
+                        ->values()
+                        ->all(),
                 ]),
         ];
     }
