@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
-import { Plus, Trash2, X } from '@lucide/vue';
+import { Pencil, Plus, Trash2, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
@@ -132,6 +132,62 @@ function submitScale(): void {
     });
 }
 
+// ---------------------------------------------------- personalizar menções
+//
+// AS MENÇÕES DA ESCOLA, POR PERFIL. Por defeito nada muda: quem não carregar
+// aqui fica com «Fraco, Insuficiente, Suficiente, Bom, Muito Bom». Guardar
+// cria uma escala da organização derivada da do sistema — mesmos níveis,
+// bandas e Inovar, só com os nomes novos — e o perfil passa a apontar-lhe.
+
+const selectedScale = computed(() => props.scales.find((scale) => scale.id === form.scale_id) ?? null);
+
+/** Só uma escala de níveis tem menções para personalizar. */
+const canCustomiseMentions = computed(
+    () => selectedScale.value !== null && selectedScale.value.kind === 'level' && (selectedScale.value.levels?.length ?? 0) > 0,
+);
+
+const mentionsDialogOpen = ref(false);
+
+const mentionsForm = useForm<{ labels: string[]; profile_name: string }>({
+    labels: [],
+    profile_name: '',
+});
+
+function openMentionsDialog(): void {
+    if (!selectedScale.value) {
+        return;
+    }
+
+    mentionsForm.clearErrors();
+    mentionsForm.labels = (selectedScale.value.levels ?? []).map((level) => level.label);
+    mentionsForm.profile_name = form.name;
+    mentionsDialogOpen.value = true;
+}
+
+function submitMentions(): void {
+    const source = selectedScale.value;
+
+    if (!source) {
+        return;
+    }
+
+    const known = new Set(props.scales.map((scale) => scale.id));
+    mentionsForm.profile_name = form.name;
+
+    mentionsForm.post(`/scales/${source.ulid}/mencoes`, {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            // A lista de escalas voltou com a derivada: nova (apareceu uma
+            // escala que não existia) ou a mesma de antes, atualizada em cima.
+            const appeared = props.scales.find((scale) => !known.has(scale.id));
+
+            form.scale_id = appeared?.id ?? source.id;
+            mentionsDialogOpen.value = false;
+        },
+    });
+}
+
 function addDomain(): void {
     form.domains.push({ name: '', weight: 0 });
 }
@@ -259,17 +315,28 @@ function submit(): void {
                 <InputError :message="gradeLevelsError" />
             </div>
             <div class="grid gap-2">
-                <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
                     <Label for="scale_id">Escala</Label>
-                    <Button
-                        v-if="canManage"
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        @click="openScaleDialog"
-                    >
-                        <Plus class="size-4" /> Criar escala personalizada
-                    </Button>
+                    <div v-if="canManage" class="flex flex-wrap gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            :disabled="!canCustomiseMentions"
+                            :title="canCustomiseMentions ? undefined : 'Só uma escala de níveis tem menções'"
+                            @click="openMentionsDialog"
+                        >
+                            <Pencil class="size-4" /> Personalizar menções
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="openScaleDialog"
+                        >
+                            <Plus class="size-4" /> Criar escala personalizada
+                        </Button>
+                    </div>
                 </div>
                 <select
                     id="scale_id"
@@ -460,6 +527,45 @@ function submit(): void {
                     <Button type="submit" :disabled="scaleForm.processing"
                         >Criar escala</Button
                     >
+                </DialogFooter>
+            </form>
+        </DialogContent>
+    </Dialog>
+
+    <!-- As menções da escola. Os níveis ficam à esquerda, fixos; só o nome é
+         editável. A menção do Lapispro fica como referência por baixo. -->
+    <Dialog v-if="canManage" v-model:open="mentionsDialogOpen">
+        <DialogContent>
+            <form data-test="mentions-form" @submit.prevent="submitMentions">
+                <DialogHeader>
+                    <DialogTitle>Personalizar menções</DialogTitle>
+                    <DialogDescription>
+                        As menções que esta escola usa. Os níveis, as percentagens de cada um e a
+                        correspondência com o Inovar não mudam.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="grid gap-3 py-4">
+                    <div
+                        v-for="(level, index) in selectedScale?.levels ?? []"
+                        :key="level.code"
+                        class="grid grid-cols-[2rem_1fr] items-center gap-3"
+                    >
+                        <span class="text-center font-semibold tabular-nums">{{ level.code }}</span>
+                        <div class="grid gap-1">
+                            <Label :for="`mention-${index}`" class="text-xs text-muted-foreground">
+                                Lapispro: {{ level.label }}
+                            </Label>
+                            <Input :id="`mention-${index}`" v-model="mentionsForm.labels[index]" maxlength="64" />
+                            <InputError :message="(mentionsForm.errors as Record<string, string>)[`labels.${index}`]" />
+                        </div>
+                    </div>
+                    <InputError :message="mentionsForm.errors.labels" />
+                </div>
+
+                <DialogFooter>
+                    <Button type="button" variant="outline" @click="mentionsDialogOpen = false">Cancelar</Button>
+                    <Button type="submit" :disabled="mentionsForm.processing">Guardar</Button>
                 </DialogFooter>
             </form>
         </DialogContent>
