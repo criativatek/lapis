@@ -328,6 +328,8 @@ Escala de classificação: «níveis de 1 a 5, valores de 0 a 20, percentagem ou
 
 > **Decisão:** a escala usa o **mesmo mecanismo de congelamento** dos perfis em vez de ter tabela de versões própria. Rejeitado `scale_versions`: seria um segundo mecanismo de versionamento a manter e testar, para uma entidade que na prática muda uma vez por década. Editar uma escala congelada cria uma escala nova, e a versão de perfil seguinte aponta-lhe; as versões antigas continuam a apontar à escala antiga, intacta.
 
+> **0.193.0 — menções personalizadas.** `DeriveScaleWithLabels` cria uma escala da organização derivada da «Escala 1 a 5» (`derived_from_scale_id`), com os cinco `scale_levels` copiados campo a campo e só `label` diferente. É a única forma de um utilizador obter menções próprias; bandas, códigos e Inovar nunca são editáveis. Enquanto não congelada, os nomes editam-se em cima; congelada, cria-se outra derivada da mesma origem. Por defeito nada muda: a «Escala 1 a 5» do sistema continua a ser a escolhida nos perfis novos.
+
 #### `scale_levels`
 Níveis/patamares da escala. **É aqui que vive a conversão numérico para qualitativo** («Nível: Muito Bom», mockup da Correção Manual).
 

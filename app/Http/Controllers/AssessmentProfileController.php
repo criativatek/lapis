@@ -69,10 +69,6 @@ class AssessmentProfileController extends Controller
             // mexer fica com ela. Não é obrigação — é o que evita a pauta só
             // com percentagens de quem criou o perfil sem reparar na escala.
             'defaultScaleId' => Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id'),
-            // Por defeito, a escala com menções (Fraco… Muito Bom): quem não
-            // mexer fica com ela. Não é obrigação — é o que evita a pauta só
-            // com percentagens de quem criou o perfil sem reparar na escala.
-            'defaultScaleId' => Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id'),
             // "Precisa de ajuda?" (A2, Onboarding & Help) — critérios, domínios
             // e pesos are the one place in this flow a first-time teacher is
             // most likely to get stuck, per the brief's own explicit choice.
