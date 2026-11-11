@@ -7,6 +7,8 @@ use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
+use App\Services\Assessment\DeriveScaleWithLabels;
+use App\Services\Assessment\MigrateClassProfile;
 use App\Services\Assessment\ProfileBuilder;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
@@ -263,6 +265,55 @@ class EvaluationSheetControllerTest extends TestCase
         $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
 
         $this->assertNotEmpty($props['scaleBands']);
+        $this->assertNull($props['schoolClass']['profile_edit_url']);
+    }
+
+    #[Test]
+    public function a_profile_on_a_derived_scale_shows_the_school_mentions_and_freezes_the_scale_on_activation(): void
+    {
+        $teacher = $this->seedDemo();
+        $school = ['Muito insuficiente', 'Insuficiente', 'Suficiente', 'Bom', 'Muito bom'];
+
+        $this->asTenant($teacher, function () use ($teacher, $school): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $profile = $class->profileVersion->profile;
+            $system = Scale::where('name', 'Escala 1 a 5')->firstOrFail();
+            $derived = app(DeriveScaleWithLabels::class)->for($system, $school, $profile->name);
+
+            $domains = $profile->currentVersion->domains()->with('domain')->get()
+                ->map(fn ($row): array => ['name' => $row->domain->name, 'weight' => (float) $row->weight_percent])
+                ->all();
+            app(ProfileBuilder::class)->update(
+                $profile,
+                ['subject_id' => $profile->subject_id, 'name' => $profile->name, 'description' => $profile->description],
+                $derived->id,
+                $domains,
+                $profile->gradeLevels->pluck('grade_level')->all(),
+            );
+            $version = app(ActivateProfileVersion::class)->activate($profile->refresh()->draftVersion(), $teacher);
+
+            $this->assertNotNull($derived->refresh()->frozen_at, 'A escala derivada congela no primeiro uso por uma versão ativa.');
+
+            app(MigrateClassProfile::class)->migrate(
+                SchoolClass::whereKey($class->id)->firstOrFail(),
+                $version,
+                'Menções da escola.',
+                $teacher,
+            );
+        });
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertSame($school, array_column($props['scaleBands'], 'label'));
+        $labels = collect($props['sheet']['students'])
+            ->flatMap(fn (array $student): array => array_column($student['domains'], 'scale_level_label'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertNotEmpty($labels);
+        $this->assertSame([], array_values(array_diff($labels, $school)));
+        $this->assertNotContains('Fraco', $labels);
         $this->assertNull($props['schoolClass']['profile_edit_url']);
     }
 }

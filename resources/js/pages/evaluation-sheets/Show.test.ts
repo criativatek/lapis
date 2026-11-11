@@ -124,7 +124,15 @@ function baseDecision(): EvaluationSheetDecisionScale {
 
 function baseProps() {
     return {
-        schoolClass: { ulid: 'class-1', label: '7.º A', subject: 'Português', academic_year: '2026/2027', has_profile: true },
+        schoolClass: {
+            ulid: 'class-1',
+            label: '7.º A',
+            subject: 'Português',
+            academic_year: '2026/2027',
+            has_profile: true,
+            scale_name: null as string | null,
+            profile_edit_url: null as string | null,
+        },
         // Os dois momentos estruturais de uma unidade temporal, na ordem em que
         // se vivem — o intercalar imediatamente ANTES do respetivo final.
         periods: [
