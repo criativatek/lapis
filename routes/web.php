@@ -86,6 +86,7 @@ use App\Http\Controllers\Reports\ReportTemplateController;
 use App\Http\Controllers\ResultsController;
 use App\Http\Controllers\RosterImportController;
 use App\Http\Controllers\ScaleController;
+use App\Http\Controllers\ScaleMentionsController;
 use App\Http\Controllers\SelfAssessmentController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\StudentDirectoryController;
@@ -401,6 +402,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         ->middleware('module:assessment_profiles')->name('assessment-profiles.store');
     Route::post('scales', [ScaleController::class, 'store'])
         ->middleware('module:assessment_profiles')->name('scales.store');
+    Route::post('scales/{scale}/mencoes', [ScaleMentionsController::class, 'store'])
+        ->middleware('module:assessment_profiles')->name('scales.mentions.store');
     Route::get('assessment-profiles/{assessment_profile}/edit', [AssessmentProfileController::class, 'edit'])
         ->middleware('module:assessment_profiles')->name('assessment-profiles.edit');
     Route::get('assessment-profiles/{assessment_profile}/reuse', [AssessmentProfileController::class, 'reuseForm'])
