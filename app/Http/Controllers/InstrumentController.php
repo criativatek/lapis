@@ -663,6 +663,10 @@ class InstrumentController extends Controller
             'cells.*.lock_version' => ['required', 'integer', 'min:0'],
             'cells.*.points_earned' => ['nullable', 'numeric'],
             'cells.*.state_reason' => ['nullable', 'string', 'max:255'],
+            // A grelha grava sozinha (0.195.0): o mesmo pedido, sem o toast de
+            // sucesso — uma pausa de três segundos não é uma notícia. O aviso
+            // de células obsoletas continua, porque esse muda o que está no ecrã.
+            'autosave' => ['sometimes', 'boolean'],
         ]);
 
         // Guard the ids against the instrument itself, so a tampered payload
@@ -701,7 +705,9 @@ class InstrumentController extends Controller
         ]);
 
         if ($result->stale === []) {
-            Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
+            if (! $request->boolean('autosave')) {
+                Inertia::flash('toast', ['type' => 'success', 'message' => 'Alterações guardadas.']);
+            }
         } else {
             $count = count($result->stale);
             Inertia::flash('toast', [

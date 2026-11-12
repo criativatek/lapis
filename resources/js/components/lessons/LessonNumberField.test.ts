@@ -134,12 +134,20 @@ describe('LessonNumberField', () => {
         );
     });
 
-    it('professor ausente: sem campos, só a frase', () => {
-        const wrapper = mountField(undefined, { canSet: false });
+    it('aula que não se realizou: sem campos, só a frase, com o resultado que a aula teve', () => {
+        const wrapper = mountField(undefined, { canSet: false, absentLabel: 'Professor ausente' });
 
         expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toBe('Professor ausente: esta aula não tem número de lição.');
         expect(wrapper.find('input').exists()).toBe(false);
         expect(wrapper.find('button').exists()).toBe(false);
+
+        expect(mountField(undefined, { canSet: false, absentLabel: 'Turma noutra atividade' }).get('[data-testid="lesson-number-absent"]').text()).toBe(
+            'Turma noutra atividade: esta aula não tem número de lição.',
+        );
+        // Sem resultado conhecido não se inventa «Professor ausente».
+        expect(mountField(undefined, { canSet: false }).get('[data-testid="lesson-number-absent"]').text()).toBe(
+            'Aula não realizada: esta aula não tem número de lição.',
+        );
     });
 
     it('os erros aparecem com role="alert" e ligados ao campo', () => {

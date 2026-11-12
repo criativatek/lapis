@@ -25,6 +25,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.195.0] — 2026-11-12
+
+> **A grelha de correção grava sozinha.** Em 2026-11-07 um professor perdeu
+> classificações que só existiam no rascunho local do browser. A partir de
+> agora, três segundos depois da última alteração, a grelha envia as células
+> alteradas para o servidor pelo mesmo pedido que o «Guardar» — só as
+> alteradas, com a versão de cada célula — e diz ao lado do contador o que
+> está a fazer («Guarda sozinho daqui a instantes.», «A guardar…», «Guardado
+> automaticamente às 20:31.»), sem toasts. Ficam de fora, até o professor
+> sair delas ou as corrigir, a célula que ainda está a ser escrita e as notas
+> acima da cotação; sem ligação não há tentativa (o rascunho local continua a
+> proteger) e, quando a ligação volta, grava o que ficou; um erro do servidor
+> fica escrito ao lado do botão e a gravação automática espera por uma
+> alteração nova em vez de insistir. «Guardar» continua a ser a confirmação
+> explícita e «Concluir correção» continua a exigir tudo guardado. Uma célula
+> corrigida enquanto a gravação anterior ia a caminho fica agora, e com
+> razão, «por guardar» — antes perdia-se em silêncio. Sem migrations.
+
+### Alterado
+
+- `POST instruments/{instrument}/scores` aceita `autosave` (booleano): com
+  ele não há toast de sucesso; o aviso de células obsoletas mantém-se.
+- Numa aula que não se realizou, a frase do número da lição diz o resultado
+  que a aula teve («Turma noutra atividade: esta aula não tem número de
+  lição.») em vez de «Professor ausente» para tudo — no editor da página da
+  aula e no do cartão da semana.
+
 ## [0.194.2] — 2026-11-12
 
 > **Guardar a caixa vazia numa aula ainda não lecionada limpa o sumário.** Um

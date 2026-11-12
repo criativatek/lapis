@@ -401,6 +401,11 @@ onMounted(() => {
 
 function handleOnline(): void {
     isOnline.value = true;
+
+    // A ligação voltou: o que ficou protegido só neste dispositivo vai para o servidor.
+    if (dirty.size > 0) {
+        scheduleAutosave();
+    }
 }
 
 function handleOffline(): void {
@@ -408,6 +413,11 @@ function handleOffline(): void {
 }
 
 onBeforeUnmount(() => {
+    if (autosaveTimer !== null) {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = null;
+    }
+
     layoutObserver?.disconnect();
     window.removeEventListener('scroll', measureHorizontalOverflow, { capture: true });
     window.removeEventListener('resize', measureHorizontalOverflow);
@@ -433,6 +443,10 @@ function cell(enrollmentId: number, itemId: number): Cell {
 function markDirty(enrollmentId: number, itemId: number): void {
     dirty.add(cellKey(enrollmentId, itemId));
     writeCurrentDraft();
+    // Uma alteração nova é a deixa para a gravação automática — e levanta a
+    // pausa de um erro anterior, porque a grelha já não é a mesma.
+    autosavePaused.value = false;
+    scheduleAutosave();
 }
 
 /**
@@ -542,6 +556,11 @@ function onPointsBlur(student: Student, item: Item): void {
         // Texto válido: passa a mostrar-se confirmado (com vírgula). Texto inválido continua
         // visível através de `invalidRaw`.
         editing.value = null;
+    }
+
+    // Ao sair da célula o texto está confirmado: é a altura de a automática o levar.
+    if (dirty.has(cellKey(student.enrollment_id, item.id))) {
+        scheduleAutosave();
     }
 }
 
@@ -1039,6 +1058,60 @@ const dirtyCount = computed(() => dirty.size);
 const saving = ref(false);
 
 /**
+ * ===================== GRAVAÇÃO AUTOMÁTICA (0.195.0) =====================
+ *
+ * Em 2026-11-07 um professor perdeu classificações que só existiam no
+ * rascunho local («incompatível» depois de a estrutura mudar). O rascunho em
+ * localStorage é uma rede frágil: um browser, um computador, uma assinatura
+ * estrutural. A rede forte é o servidor: AUTOSAVE_DELAY_MS depois da última
+ * alteração, as células alteradas vão pelo mesmo pedido que o «Guardar» (só
+ * as sujas, com `lock_version`), com `autosave: true` para o servidor não
+ * mostrar um toast a cada pausa.
+ *
+ * Ficam de fora, até a próxima: a célula que ainda está a ser escrita (o
+ * texto só está confirmado ao sair dela) e as células acima da cotação (o
+ * servidor recusaria o pedido inteiro). Sem ligação não há tentativa — o
+ * rascunho local continua a proteger — e o primeiro erro do servidor pára a
+ * gravação automática até à próxima alteração, para não insistir no mesmo
+ * erro a cada três segundos. «Guardar» continua a existir como confirmação
+ * explícita e cobre o que a automática deixou de fora.
+ */
+const AUTOSAVE_DELAY_MS = 3000;
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+/** Uma gravação pedida enquanto outra ia a caminho: repete-se quando a primeira acabar. */
+let autosaveQueued = false;
+const autosaveInFlight = ref(false);
+const lastAutosavedAt = ref<Date | null>(null);
+const saveError = ref<string | null>(null);
+/** Depois de um erro do servidor a automática espera por uma alteração nova. */
+const autosavePaused = ref(false);
+
+const lastAutosavedLabel = computed(() => {
+    if (lastAutosavedAt.value === null) {
+        return null;
+    }
+
+    return new Intl.DateTimeFormat('pt-PT', { hour: 'numeric', minute: '2-digit', timeZone: 'Europe/Lisbon' }).format(lastAutosavedAt.value);
+});
+
+/** O que a gravação automática está a fazer, dito ao lado do contador. */
+const autosaveStatus = computed(() => {
+    if (autosaveInFlight.value) {
+        return 'A guardar…';
+    }
+
+    if (saveError.value !== null) {
+        return `Não foi possível guardar: ${saveError.value}`;
+    }
+
+    if (dirtyCount.value > 0) {
+        return isOnline.value ? 'Guarda sozinho daqui a instantes.' : null;
+    }
+
+    return lastAutosavedLabel.value === null ? null : `Guardado automaticamente às ${lastAutosavedLabel.value}.`;
+});
+
+/**
  * Which states count as «dealt with», straight from the server.
  *
  * Not a list written again here: InstrumentCompleteness owns it, and a cell the
@@ -1069,12 +1142,58 @@ function isPendingCell(student: Student, item: Item): boolean {
     return cell(student.enrollment_id, item.id).state === 'pending';
 }
 
+/** «Guardar»: tudo o que está por guardar, como sempre. */
 function save(): void {
     if (dirty.size === 0) {
         return;
     }
 
-    const payload = [...dirty].map((key) => {
+    submitCells([...dirty], false);
+}
+
+function keyIsOverMax(key: string): boolean {
+    const [, itemId] = key.split(':').map(Number);
+    const item = props.items.find((candidate) => candidate.id === itemId);
+    const current = cells[key];
+
+    return item !== undefined && current !== undefined && current.state === 'assessed' && current.points !== null && current.points > item.points_possible;
+}
+
+/** As células que a gravação automática pode levar agora. */
+function autosaveKeys(): string[] {
+    return [...dirty].filter((key) => key !== editing.value?.key && !keyIsOverMax(key));
+}
+
+function scheduleAutosave(): void {
+    if (autosaveTimer !== null) {
+        clearTimeout(autosaveTimer);
+    }
+
+    autosaveTimer = setTimeout(runAutosave, AUTOSAVE_DELAY_MS);
+}
+
+function runAutosave(): void {
+    autosaveTimer = null;
+
+    if (isReadOnly.value || !isOnline.value || autosavePaused.value) {
+        return;
+    }
+
+    if (saving.value) {
+        autosaveQueued = true;
+
+        return;
+    }
+
+    submitCells(autosaveKeys(), true);
+}
+
+function submitCells(keys: string[], auto: boolean): void {
+    if (keys.length === 0 || saving.value) {
+        return;
+    }
+
+    const payload = keys.map((key) => {
         const [enrollmentId, itemId] = key.split(':').map(Number);
         const current = cells[key];
 
@@ -1098,8 +1217,16 @@ function save(): void {
         };
     });
 
+    // O que foi enviado, célula a célula: só se dá por guardada a célula que
+    // ainda está igual quando a resposta chega. Uma célula corrigida enquanto
+    // o pedido ia a caminho fica por guardar — a gravação automática torna
+    // isso frequente, e antes perdia-se em silêncio.
+    const sent = new Map(keys.map((key) => [key, { state: cells[key].state, points: cells[key].points, reason: cells[key].reason }]));
+
     saving.value = true;
-    router.post(`/instruments/${props.instrument.ulid}/scores`, { cells: payload }, {
+    autosaveInFlight.value = auto;
+    saveError.value = null;
+    router.post(`/instruments/${props.instrument.ulid}/scores`, { cells: payload, autosave: auto }, {
         preserveScroll: true,
         onSuccess: (page) => {
             const result = page.flash?.scoreSaveResult as ScoreSaveResult | undefined;
@@ -1108,11 +1235,23 @@ function save(): void {
                 return;
             }
 
+            if (auto) {
+                lastAutosavedAt.value = new Date();
+            }
+
+            const confirmed: string[] = [];
+
             for (const version of result.versions) {
                 const key = cellKey(version.enrollment_id, version.instrument_item_id);
+                const current = cell(version.enrollment_id, version.instrument_item_id);
+                const snapshot = sent.get(key);
 
-                cell(version.enrollment_id, version.instrument_item_id).lock_version = version.lock_version;
-                dirty.delete(key);
+                current.lock_version = version.lock_version;
+
+                if (snapshot !== undefined && snapshot.state === current.state && snapshot.points === current.points && snapshot.reason === current.reason) {
+                    dirty.delete(key);
+                    confirmed.push(key);
+                }
             }
 
             // Only conflicted cells are replaced with the authoritative server
@@ -1130,12 +1269,25 @@ function save(): void {
             }
 
             gridDraft.reconcileSaved([
-                ...result.versions.map((version) => cellKey(version.enrollment_id, version.instrument_item_id)),
+                ...confirmed,
                 ...result.stale.map((stale) => cellKey(stale.enrollment_id, stale.instrument_item_id)),
             ]);
         },
+        onError: (errors) => {
+            // O servidor recusou (correção fechada, nota acima da cotação, …):
+            // a razão fica ao lado do botão, e a automática espera por uma
+            // alteração nova em vez de repetir o mesmo pedido.
+            saveError.value = Object.values(errors).join(' ') || 'o servidor recusou a gravação.';
+            autosavePaused.value = auto;
+        },
         onFinish: () => {
             saving.value = false;
+            autosaveInFlight.value = false;
+
+            if (autosaveQueued) {
+                autosaveQueued = false;
+                scheduleAutosave();
+            }
         },
     });
 }
@@ -1564,8 +1716,20 @@ function revertCancellation(): void {
                         </span>
                         <!-- Said out loud rather than left to a grey button. The
                              smoke read a disabled Guardar as a broken one. -->
-                        <span v-else-if="!hasOverMaxCell && !hasInvalidCell" class="text-sm text-muted-foreground">
+                        <span v-else-if="!hasOverMaxCell && !hasInvalidCell && lastAutosavedAt === null" class="text-sm text-muted-foreground">
                             Sem alterações por guardar.
+                        </span>
+                        <!-- A gravação automática (0.195.0) diz o que está a fazer
+                             aqui, em texto, nunca em toast: uma pausa de três
+                             segundos não é uma notícia. -->
+                        <span
+                            v-if="autosaveStatus"
+                            class="text-sm"
+                            :class="saveError ? 'text-destructive' : 'text-muted-foreground'"
+                            role="status"
+                            data-testid="autosave-status"
+                        >
+                            {{ autosaveStatus }}
                         </span>
                         <span v-if="hasOverMaxCell" class="text-sm text-destructive">
                             Há notas acima da cotação máxima

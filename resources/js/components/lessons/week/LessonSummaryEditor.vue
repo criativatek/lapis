@@ -241,6 +241,7 @@ defineExpose({
             :original="numberOriginal"
             :manual="lesson.lesson_number_manual"
             :can-set="canSetLessonNumber(lesson)"
+            :absent-label="lesson.outcome_label"
             :frozen="lesson.numbering_frozen === true"
             :errors="numberErrors"
             :id-prefix="`${fieldId}-number`"
