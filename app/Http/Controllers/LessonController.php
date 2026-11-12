@@ -147,6 +147,9 @@ class LessonController extends Controller implements HasMiddleware
                 'retroactive_outcome' => $this->retroactiveOutcome($request, $lesson),
                 // Corrigir o resultado já registado: só chega ao titular do registo (o dado pode ser reservado).
                 'outcome_rectification' => LessonOutcomeRectificationView::for($lesson, $this->user($request), $this->rectifyLessonOutcome),
+                // Anular um «Lecionada» (0.194.0): só para quem pode (policy), com o destino do
+                // sumário já decidido pelo servidor, para o diálogo dizer o que vai acontecer.
+                'annul_taught' => $this->annulTaughtProps($request, $lesson),
                 // Planeamento que desceu até aqui e já não coube em nenhuma
                 // ocorrência até ao fim do ano (ShiftLessonPlanning).
                 'pending_plan' => $lesson->plan?->planned_summary,
@@ -703,6 +706,24 @@ class LessonController extends Controller implements HasMiddleware
         $user = $request->user();
 
         return $user;
+    }
+
+    /**
+     * @return array{summary_destination: 'next'|'history', lesson_number: int|null, closed_after: string|null}|null
+     */
+    private function annulTaughtProps(Request $request, Lesson $lesson): ?array
+    {
+        if (! $this->user($request)->can('annulTaught', $lesson)) {
+            return null;
+        }
+
+        $closedAfter = $this->lessonPlanning->closedLessonAfter($lesson);
+
+        return [
+            'summary_destination' => $closedAfter === null ? 'next' : 'history',
+            'lesson_number' => $lesson->lesson_number === null ? null : (int) $lesson->lesson_number,
+            'closed_after' => $closedAfter?->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
+        ];
     }
 
     protected function nullableString(Request $request, string $key): ?string

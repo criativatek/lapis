@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Lessons;
 
+use App\Actions\Lessons\AnnulTaughtLesson;
+use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Models\Lesson;
+use App\Models\LessonNotHeldCause;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
 use App\Models\User;
@@ -149,5 +152,63 @@ class LessonNotHeldUiPropsTest extends TestCase
         $stranger->organizations()->attach($this->organization, ['joined_at' => now()]);
         $this->actingAs($stranger)->withSession(['organization_id' => $this->organization->id])
             ->getJson("/lessons/{$early->ulid}/retroactive-outcome")->assertForbidden();
+    }
+
+    #[Test]
+    public function a_taught_lesson_tells_its_closer_it_can_be_annulled_and_where_the_summary_would_go(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-14 09:30:00']);
+        $later = $this->makeLesson(['starts_at' => '2026-10-16 09:30:00']);
+        $this->inTenant($this->organization, function () use ($lesson, $later): void {
+            app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher);
+            app(MarkLessonAsTaught::class)->execute($later, $this->teacher);
+        });
+
+        $props = $this->props($this->teacher, "/lessons/{$lesson->ulid}")['lesson'];
+
+        $this->assertSame('history', $props['annul_taught']['summary_destination']);
+        $this->assertSame('16/10/2026', $props['annul_taught']['closed_after']);
+        $this->assertNull($props['outcome_rectification']);
+
+        $alone = $this->props($this->teacher, "/lessons/{$later->ulid}")['lesson'];
+        $this->assertSame('next', $alone['annul_taught']['summary_destination']);
+        $this->assertNull($alone['annul_taught']['closed_after']);
+    }
+
+    #[Test]
+    public function an_observer_and_the_feature_off_see_no_annulment(): void
+    {
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-14 09:30:00']);
+        $this->inTenant($this->organization, fn () => app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher));
+
+        $this->assertNull($this->props($this->teacher, "/lessons/{$lesson->ulid}")['lesson']['annul_taught']);
+
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $this->assertNull($this->props($this->observer(), "/lessons/{$lesson->ulid}")['lesson']['annul_taught']);
+    }
+
+    #[Test]
+    public function after_the_annulment_the_history_names_the_number_and_the_removed_summary(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-14 09:30:00']);
+        $later = $this->makeLesson(['starts_at' => '2026-10-16 09:30:00']);
+        $this->inTenant($this->organization, function () use ($lesson, $later): void {
+            app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher);
+            LessonSummary::query()->create(['lesson_id' => $lesson->id, 'content' => 'Texto removido']);
+            app(MarkLessonAsTaught::class)->execute($later, $this->teacher);
+            app(AnnulTaughtLesson::class)->execute($lesson->refresh(), $this->teacher, LessonNotHeldCause::WeatherClosure, 'Mau tempo.');
+        });
+
+        $history = $this->props($this->teacher, "/lessons/{$lesson->ulid}")['lesson']['outcome_rectification']['history'];
+
+        $this->assertCount(1, $history);
+        $this->assertSame('annulment', $history[0]['kind']);
+        $this->assertFalse($history[0]['by_direction']);
+        $fields = array_column($history[0]['changes'], 'from', 'field');
+        $this->assertSame('Lecionada', $fields['outcome']);
+        $this->assertArrayHasKey('lesson_number', $fields);
+        $this->assertSame('Texto removido', $fields['summary']);
     }
 }

@@ -25,7 +25,7 @@ final class LessonOutcomeRectificationView
      *     current: array<string, string|null>,
      *     targets: list<string>,
      *     outcome_locked_reason: string|null,
-     *     history: list<array{ulid: string, at: string, by: string|null, kind: string, motive: string, changes: list<array{field: string, label: string, from: string, to: string}>}>
+     *     history: list<array{ulid: string, at: string, by: string|null, kind: string, by_direction: bool, motive: string, changes: list<array{field: string, label: string, from: string, to: string}>}>
      * }|null
      */
     public static function for(Lesson $lesson, User $viewer, RectifyLessonOutcome $rectify): ?array
@@ -49,6 +49,9 @@ final class LessonOutcomeRectificationView
                     'at' => $rectification->rectified_at->toIso8601String(),
                     'by' => $rectification->rectifier?->name,
                     'kind' => $rectification->kind,
+                    // Anulação feita por quem não é o titular do fecho: a direção.
+                    'by_direction' => $rectification->kind === LessonOutcomeRectification::KIND_ANNULMENT
+                        && (int) $rectification->rectified_by !== (int) $lesson->outcome_recorded_by,
                     'motive' => $rectification->motive,
                     'changes' => self::changes($rectification),
                 ])
@@ -57,9 +60,13 @@ final class LessonOutcomeRectificationView
     }
 
     /**
+     * As linhas legíveis de uma correção. Numa ANULAÇÃO (0.194.0) acrescentam-se o número que a aula
+     * tinha e, quando o sumário não pôde descer, o texto removido — este só com `$includeSummary`,
+     * que a lista da direção desliga (ela não lê o sumário de ninguém).
+     *
      * @return list<array{field: string, label: string, from: string, to: string}>
      */
-    public static function changes(LessonOutcomeRectification $rectification): array
+    public static function changes(LessonOutcomeRectification $rectification, bool $includeSummary = true): array
     {
         $labels = [
             'outcome' => __('Resultado'),
@@ -85,6 +92,17 @@ final class LessonOutcomeRectificationView
                 'from' => self::valueLabel($field, $from),
                 'to' => self::valueLabel($field, $to),
             ];
+        }
+
+        if ($rectification->kind === LessonOutcomeRectification::KIND_ANNULMENT) {
+            $number = $rectification->previous['lesson_number'] ?? null;
+            $changes[] = ['field' => 'lesson_number', 'label' => (string) __('N.º da lição'), 'from' => $number === null ? '—' : (string) $number, 'to' => '—'];
+
+            $summary = $rectification->previous['summary_content'] ?? null;
+
+            if ($includeSummary && is_string($summary) && $summary !== '') {
+                $changes[] = ['field' => 'summary', 'label' => (string) __('Sumário removido'), 'from' => $summary, 'to' => '—'];
+            }
         }
 
         return $changes;
