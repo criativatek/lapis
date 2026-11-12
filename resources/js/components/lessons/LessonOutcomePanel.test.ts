@@ -8,7 +8,7 @@ vi.mock('@inertiajs/vue3', () => ({
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({ ...data, errors: {}, processing: false });
 
-        return Object.assign(form, { transform: () => ({ post: vi.fn() }), reset: vi.fn() });
+        return Object.assign(form, { transform: () => ({ post: vi.fn(), patch: vi.fn() }), reset: vi.fn(), clearErrors: vi.fn() });
     },
 }));
 
