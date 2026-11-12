@@ -470,6 +470,54 @@ class RecordScoresTest extends TestCase
         $this->assertSame(1, $stale['lock_version'] ?? null);
     }
 
+    /**
+     * A grelha grava sozinha (0.195.0) pelo mesmo pedido, com `autosave: true`:
+     * o resultado (versões novas) continua a chegar, o toast de sucesso não —
+     * uma pausa de três segundos não é uma notícia. O aviso de células
+     * obsoletas continua, porque muda o que está no ecrã.
+     */
+    #[Test]
+    public function an_autosave_flashes_the_result_but_no_success_toast_and_still_warns_when_stale(): void
+    {
+        $context = $this->inTenant(fn () => $this->scenario());
+
+        $this->actingAs($this->user)
+            ->post("/instruments/{$context['instrument']->ulid}/scores", [
+                'autosave' => true,
+                'cells' => [[
+                    'enrollment_id' => $context['enrollment']->id,
+                    'instrument_item_id' => $context['item']->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 4,
+                    'lock_version' => 0,
+                ]],
+            ])
+            ->assertRedirect();
+
+        $flash = session('inertia.flash_data', []);
+        $this->assertSame(1, $flash['scoreSaveResult']['written'] ?? null);
+        $this->assertSame(1, $flash['scoreSaveResult']['versions'][0]['lock_version'] ?? null);
+        $this->assertArrayNotHasKey('toast', $flash);
+
+        // Obsoleta (versão 0 outra vez): o aviso continua a aparecer.
+        $this->actingAs($this->user)
+            ->post("/instruments/{$context['instrument']->ulid}/scores", [
+                'autosave' => true,
+                'cells' => [[
+                    'enrollment_id' => $context['enrollment']->id,
+                    'instrument_item_id' => $context['item']->id,
+                    'result_state' => 'assessed',
+                    'points_earned' => 5,
+                    'lock_version' => 0,
+                ]],
+            ])
+            ->assertRedirect();
+
+        $flash = session('inertia.flash_data', []);
+        $this->assertSame('warning', $flash['toast']['type'] ?? null);
+        $this->assertSame(4.0, $flash['scoreSaveResult']['stale'][0]['points_earned'] ?? null);
+    }
+
     #[Test]
     public function the_endpoint_refuses_a_cell_from_another_class(): void
     {

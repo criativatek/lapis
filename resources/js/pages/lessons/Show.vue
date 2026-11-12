@@ -903,6 +903,7 @@ function goBack(event: MouseEvent): void {
                     :original="numberOriginal"
                     :manual="lesson.lesson_number_manual"
                     :can-set="lesson.can_set_number"
+                    :absent-label="lesson.outcome_label"
                     :frozen="lesson.numbering_frozen === true"
                     :errors="numberErrors"
                     id-prefix="lesson-number"

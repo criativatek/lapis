@@ -33,8 +33,14 @@ const props = withDefaults(
         original: LessonNumberDraft;
         /** O número foi indicado pelo professor (e não é recalculado). */
         manual: boolean;
-        /** Falso numa aula de professor ausente. */
+        /** Falso numa aula que não se realizou (professor ausente, turma noutra atividade, aula não realizada). */
         canSet?: boolean;
+        /**
+         * O resultado da aula, para a frase dizer o que aconteceu («Professor
+         * ausente», «Turma noutra atividade», «Aula não realizada») em vez de
+         * «Professor ausente» para tudo (0.195.0).
+         */
+        absentLabel?: string | null;
         /** A numeração está congelada: o número só se lê. */
         frozen?: boolean;
         errors?: LessonNumberErrors;
@@ -42,7 +48,7 @@ const props = withDefaults(
         idPrefix: string;
         disabled?: boolean;
     }>(),
-    { canSet: true, frozen: false, errors: () => ({ number: null }), disabled: false },
+    { canSet: true, absentLabel: null, frozen: false, errors: () => ({ number: null }), disabled: false },
 );
 
 const emit = defineEmits<{
@@ -109,7 +115,7 @@ defineExpose({
             class="text-sm text-muted-foreground"
             data-testid="lesson-number-absent"
         >
-            Professor ausente: esta aula não tem número de lição.
+            {{ absentLabel ?? 'Aula não realizada' }}: esta aula não tem número de lição.
         </p>
 
         <div
