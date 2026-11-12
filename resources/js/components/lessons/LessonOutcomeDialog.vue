@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import { Info } from '@lucide/vue';
 import { ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
@@ -211,6 +211,14 @@ function submit(): void {
             open.value = false;
             form.reset();
             emit('recorded');
+
+            // ANULAÇÃO: o sumário saiu da aula (desceu ou foi para o histórico) e o
+            // editor da página guarda o texto em estado local, que uma resposta com o
+            // mesmo componente não substitui. Remonta-se a página para o ecrã dizer a
+            // verdade — um editor com o texto removido convidava a gravá-lo outra vez.
+            if (props.annul) {
+                router.visit(window.location.href, { preserveState: false, preserveScroll: true });
+            }
         },
         onFinish: () => emit('submitting', false),
     });
