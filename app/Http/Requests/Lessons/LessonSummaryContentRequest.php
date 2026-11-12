@@ -5,6 +5,7 @@ namespace App\Http\Requests\Lessons;
 use App\Http\Requests\Lessons\Concerns\ValidatesLessonNumber;
 use App\Models\Lesson;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Editar SÓ o texto do sumário — o cartão da semana e a vista da turma.
@@ -41,7 +42,9 @@ class LessonSummaryContentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'content' => ['required', 'string', 'max:16000'],
+            // A caixa vazia só é recusada numa aula lecionada (0.194.2): numa
+            // aula aberta é «limpar» — ver SaveLessonSummary::clearContent().
+            'content' => [Rule::requiredIf(fn (): bool => $this->lessonIsTaught()), 'nullable', 'string', 'max:16000'],
             'summary_version' => ['required', 'integer', 'min:0'],
             ...$this->lessonNumberRules('lesson_number', 'lesson_number_end'),
             'lesson_number_automatic' => ['sometimes', 'boolean'],
@@ -54,6 +57,16 @@ class LessonSummaryContentRequest extends FormRequest
      */
     public function messages(): array
     {
-        return $this->lessonNumberMessages('lesson_number', 'lesson_number_end');
+        return [
+            'content.required' => __('Escreve o sumário desta aula.'),
+            ...$this->lessonNumberMessages('lesson_number', 'lesson_number_end'),
+        ];
+    }
+
+    private function lessonIsTaught(): bool
+    {
+        $lesson = $this->route('lesson');
+
+        return $lesson instanceof Lesson && $lesson->isTaught();
     }
 }

@@ -1481,4 +1481,15 @@ describe('lessons/Show — aula que não se realizou', () => {
         expect(mountPage().find('#lesson-summary').exists()).toBe(true);
         expect(mountPage({ status: 'taught', status_label: 'Lecionada', outcome: 'taught', outcome_label: 'Lecionada' }).find('#lesson-summary').exists()).toBe(true);
     });
+
+    /**
+     * A CAIXA VAZIA NUMA AULA AINDA NÃO LECIONADA É «LIMPAR» (0.194.2): o
+     * browser não pode travar o «Guardar» com «Preencha este campo» — isso é
+     * só numa aula lecionada, onde o sumário continua obrigatório.
+     */
+    it('só exige o texto no browser numa aula lecionada', () => {
+        expect(mountPage().get('#lesson-summary').attributes('required')).toBeUndefined();
+        expect(mountPage({ status: 'prepared', status_label: 'Preparada' }).get('#lesson-summary').attributes('required')).toBeUndefined();
+        expect(mountPage({ status: 'taught', status_label: 'Lecionada', outcome: 'taught', outcome_label: 'Lecionada' }).get('#lesson-summary').attributes('required')).toBeDefined();
+    });
 });

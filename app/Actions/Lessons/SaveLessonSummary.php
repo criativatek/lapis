@@ -26,8 +26,16 @@ class SaveLessonSummary
      * ApplyLessonSequence relies on to leave an existing lesson's unselected
      * fields alone.
      *
+     * UMA CAIXA VAZIA NUMA AULA AINDA NÃO LECIONADA É «LIMPAR» (0.194.2): o
+     * professor que apaga o texto e carrega em «Guardar» quer a aula sem
+     * sumário — não quer ouvir que «o campo content é obrigatório». O texto
+     * sai (a linha some, se mais nada lá estiver), a aula volta a «Por
+     * preparar» e a auditoria diz `lesson.summary_cleared`, como no botão
+     * «Limpar sumário». Numa aula lecionada o sumário continua obrigatório.
+     *
      * @param  array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
      * @param  list<string>|null  $absentStudentUlids  o rascunho de faltas, gravado na MESMA transação do sumário quando vem — nunca quando a assiduidade já está consolidada, ver SaveLessonAttendanceDraft::apply()
+     * @return LessonSummary|null NULL só quando a aula fica sem linha de sumário (caixa vazia, nada mais a guardar)
      */
     public function execute(
         Lesson $lesson,
@@ -35,8 +43,8 @@ class SaveLessonSummary
         User $actor,
         ?array $absentStudentUlids = null,
         ?int $expectedVersion = null,
-    ): LessonSummary {
-        return DB::transaction(function () use ($absentStudentUlids, $actor, $details, $expectedVersion, $lesson): LessonSummary {
+    ): ?LessonSummary {
+        return DB::transaction(function () use ($absentStudentUlids, $actor, $details, $expectedVersion, $lesson): ?LessonSummary {
             /** @var Lesson $lockedLesson */
             $lockedLesson = Lesson::query()->lockForUpdate()->findOrFail($lesson->getKey());
 
@@ -61,6 +69,14 @@ class SaveLessonSummary
             // própria, e gravar notas ou recursos não pode falhar por causa dela.
             if ($absentStudentUlids !== null && ! $lockedLesson->attendanceRecorded() && ! $lockedLesson->attendanceNotApplicable()) {
                 $this->saveAttendanceDraft->apply($lockedLesson, $absentStudentUlids, $actor);
+            }
+
+            if (array_key_exists('content', $details) && trim((string) $details['content']) === '') {
+                if ($lockedLesson->isTaught()) {
+                    throw self::summaryRequired();
+                }
+
+                return $this->clearContent($lockedLesson, $details, $actor);
             }
 
             $summary = $lockedLesson->summary()->first();
@@ -126,6 +142,72 @@ class SaveLessonSummary
 
             return $summary;
         });
+    }
+
+    /**
+     * A caixa vazia numa aula ainda não lecionada: o texto sai; as notas, os
+     * recursos e o TPC que vierem no mesmo pedido ficam (a linha mantém-se com
+     * `content` vazio, como ClearLessonSummary); sem nada para manter, a linha
+     * some. «Preparada» volta a «Por preparar». Sem linha antes nem depois,
+     * não há nada a registar.
+     *
+     * @param  array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null}  $details
+     */
+    private function clearContent(Lesson $lockedLesson, array $details, User $actor): ?LessonSummary
+    {
+        /** @var LessonSummary|null $summary */
+        $summary = $lockedLesson->summary()->first();
+        $optional = array_intersect_key($details, array_flip(['private_notes', 'resources', 'homework']));
+        $optionalGiven = array_filter($optional, fn (?string $value): bool => trim((string) $value) !== '') !== [];
+
+        if ($summary === null) {
+            if (! $optionalGiven) {
+                return null;
+            }
+
+            $summary = $lockedLesson->summary()->create(['content' => ''] + $optional);
+        } else {
+            $summary->fill(['content' => ''] + $optional);
+
+            $keepsOtherContent = trim((string) $summary->private_notes) !== ''
+                || trim((string) $summary->resources) !== ''
+                || trim((string) $summary->homework) !== '';
+
+            if ($keepsOtherContent) {
+                $summary->save();
+            } else {
+                $summary->delete();
+                $summary = null;
+            }
+        }
+
+        if ($lockedLesson->status === LessonStatus::Prepared) {
+            $lockedLesson->status = LessonStatus::Preparation;
+            $lockedLesson->save();
+        }
+
+        $this->audit->record(
+            'lesson.summary_cleared',
+            $lockedLesson,
+            $actor,
+            'Sumário de aula limpo.',
+            [
+                'kept_optional_details' => $summary !== null,
+                'to_status' => $lockedLesson->status->value,
+            ],
+        );
+
+        return $summary;
+    }
+
+    /**
+     * Numa aula lecionada o sumário é o registo do que se fez: não pode ficar vazio.
+     */
+    public static function summaryRequired(): ValidationException
+    {
+        return ValidationException::withMessages([
+            'content' => __('Escreve o sumário desta aula.'),
+        ]);
     }
 
     public static function notApplicable(Lesson $lesson): ValidationException

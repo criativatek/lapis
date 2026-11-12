@@ -155,17 +155,98 @@ class LessonSummaryTest extends TestCase
         ));
     }
 
+    /**
+     * A CAIXA VAZIA NUMA AULA AINDA NÃO LECIONADA É «LIMPAR» (0.194.2). O
+     * professor que apaga o texto e carrega em «Guardar» quer a aula sem
+     * sumário; a recusa «O campo content é obrigatório» obrigava-o a ir ao
+     * botão «Limpar sumário» — ou a eliminar a aula.
+     */
     #[Test]
-    public function an_empty_summary_is_rejected(): void
+    public function saving_an_empty_box_on_an_open_lesson_clears_the_summary_and_keeps_the_lesson(): void
     {
         $lesson = $this->lessonFor($this->teacher);
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
             'summary_version' => $this->summaryVersion($lesson),
+            'content' => 'Sumário errado.',
+        ])->assertRedirect();
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
             'content' => '   ',
-        ])->assertSessionHasErrors('content');
+        ])->assertSessionHasNoErrors()->assertRedirect()->assertSessionHas('success', 'Sumário limpo. A aula foi mantida.');
 
         $this->assertDatabaseCount('lesson_summaries', 0);
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $this->assertSame(LessonStatus::Preparation, $lesson->refresh()->status);
+            $this->assertDatabaseHas('audit_events', [
+                'event' => 'lesson.summary_cleared',
+                'subject_id' => $lesson->id,
+            ]);
+        });
+    }
+
+    #[Test]
+    public function saving_an_empty_box_on_a_lesson_without_summary_writes_nothing_and_is_not_an_error(): void
+    {
+        $lesson = $this->lessonFor($this->teacher);
+        $version = $this->summaryVersion($lesson);
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $version,
+            'content' => '',
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->assertDatabaseCount('lesson_summaries', 0);
+        $this->assertSame($version, $this->summaryVersion($lesson));
+        $this->assertSame(0, AuditEvent::withoutGlobalScopes()->where('event', 'lesson.summary_cleared')->count());
+    }
+
+    #[Test]
+    public function saving_an_empty_box_keeps_the_notes_resources_and_homework_that_come_with_it(): void
+    {
+        $lesson = $this->lessonFor($this->teacher);
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
+            'content' => 'Sumário errado.',
+            'private_notes' => 'Levar o material.',
+        ])->assertRedirect();
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
+            'content' => '',
+            'private_notes' => 'Levar o material.',
+            'homework' => 'Exercícios 1 a 3.',
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $summary = $lesson->refresh()->summary()->sole();
+            $this->assertSame('', $summary->content);
+            $this->assertSame('Levar o material.', $summary->private_notes);
+            $this->assertSame('Exercícios 1 a 3.', $summary->homework);
+            $this->assertSame(LessonStatus::Preparation, $lesson->status);
+        });
+
+        $this->asTeacher()->get("/lessons/{$lesson->ulid}")
+            ->assertOk()
+            ->assertInertia(fn (Assert $page): Assert => $page
+                ->where('lesson.can_clear_summary', false)
+                ->where('lesson.summary.content', ''));
+    }
+
+    #[Test]
+    public function a_taught_lesson_still_requires_the_summary_and_says_so_in_plain_words(): void
+    {
+        $lesson = $this->lessonFor($this->teacher, attributes: ['status' => LessonStatus::Taught]);
+        $this->inTenant($this->organization, fn () => LessonSummary::create(['lesson_id' => $lesson->id, 'content' => 'Registo da aula.']));
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
+            'content' => '   ',
+        ])->assertSessionHasErrors(['content' => 'Escreve o sumário desta aula.']);
+
+        $this->inTenant($this->organization, fn () => $this->assertSame('Registo da aula.', $lesson->refresh()->summary?->content));
     }
 
     #[Test]

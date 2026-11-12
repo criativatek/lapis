@@ -645,7 +645,16 @@ class ApplyLessonSequence
     {
         /** @var array{content?: string, private_notes?: string|null, resources?: string|null, homework?: string|null} $details */
         $details = $step->details;
-        $summary = $this->saveLessonSummary->execute($step->lesson, $details, $actor)->refresh();
+        $summary = $this->saveLessonSummary->execute($step->lesson, $details, $actor);
+
+        // Sem texto nem mais nada para escrever a aula fica sem linha — e sem
+        // proveniência a registar (os elementos sem nada a escrever já não
+        // chegam aqui; é só a garantia do tipo).
+        if ($summary === null) {
+            return $step->lesson->ulid;
+        }
+
+        $summary->refresh();
 
         $summary->forceFill([
             'lesson_sequence_id' => $sequence->getKey(),
