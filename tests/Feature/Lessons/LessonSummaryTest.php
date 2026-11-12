@@ -5,6 +5,8 @@ namespace Tests\Feature\Lessons;
 use App\Models\AcademicYear;
 use App\Models\AuditEvent;
 use App\Models\Lesson;
+use App\Models\LessonNotHeldCause;
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
 use App\Models\Organization;
@@ -332,5 +334,27 @@ class LessonSummaryTest extends TestCase
     private function inTenant(Organization $organization, callable $callback): mixed
     {
         return app(CurrentOrganization::class)->runFor($organization, $callback);
+    }
+
+    #[Test]
+    public function a_lesson_that_was_not_held_refuses_a_summary_and_says_why(): void
+    {
+        $lesson = $this->lessonFor($this->teacher);
+        $this->inTenant($this->organization, fn () => Lesson::query()->whereKey($lesson->id)->update([
+            'outcome' => LessonOutcome::NotHeld->value,
+            'outcome_cause' => LessonNotHeldCause::WeatherClosure->value,
+            'outcome_recorded_at' => now(),
+            'outcome_recorded_by' => $this->teacher->id,
+        ]));
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
+            'content' => 'Conclusão da correção dos testes.',
+        ])->assertSessionHasErrors('content');
+
+        $this->inTenant($this->organization, function () use ($lesson): void {
+            $this->assertNull($lesson->refresh()->summary);
+            $this->assertSame(LessonStatus::Preparation, $lesson->status);
+        });
     }
 }
