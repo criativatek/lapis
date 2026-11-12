@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Lessons\AnnulTaughtLesson;
 use App\Actions\Lessons\ClearLessonSummary;
 use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
@@ -11,6 +12,7 @@ use App\Actions\Lessons\SaveLessonSummary;
 use App\Actions\Lessons\SetLessonNumber;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\AdministrativeRectifyLessonOutcomeRequest;
+use App\Http\Requests\Lessons\AnnulTaughtLessonRequest;
 use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
@@ -65,6 +67,7 @@ class LessonController extends Controller implements HasMiddleware
         protected LessonAttendanceRoster $attendanceRoster,
         protected RecordLessonOutcome $recordLessonOutcome,
         protected RectifyLessonOutcome $rectifyLessonOutcome,
+        protected AnnulTaughtLesson $annulTaughtLesson,
         protected ShiftLessonPlanning $lessonPlanning,
         protected LessonDayEvents $dayEvents,
         protected Entitlements $entitlements,
@@ -589,6 +592,33 @@ class LessonController extends Controller implements HasMiddleware
         );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Causa corrigida. A correção fica registada.')]);
+
+        return back();
+    }
+
+    /**
+     * ANULAR UM «LECIONADA»: a aula não se realizou (AnnulTaughtLesson, 0.194.0). Serve o professor
+     * (página da aula) e a direção (lista «Aulas fechadas»); a policy decide. O toast diz o destino
+     * real do sumário.
+     */
+    public function annulTaught(AnnulTaughtLessonRequest $request, Lesson $lesson): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $result = $this->annulTaughtLesson->execute(
+            $lesson,
+            $this->user($request),
+            $request->cause(),
+            $request->motive(),
+            $request->causeNote(),
+            $request->situation(),
+        );
+
+        $destination = $result['summary_kept_in_history']
+            ? __('O sumário ficou no histórico desta aula.')
+            : ($result['planning'] === null ? '' : ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson']));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => trim(__('Marcação de lecionada anulada.').' '.$destination)]);
 
         return back();
     }

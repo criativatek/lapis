@@ -79,6 +79,22 @@ class LessonPolicy
             && ! $class->teachers()->whereKey($lesson->outcome_recorded_by)->exists();
     }
 
+    /**
+     * ANULAR UM «LECIONADA» (0.194.0): a aula não se realizou. Quem fechou a aula (o titular, pela regra
+     * de LessonOutcomeDetails::mayReadReason — e nunca um observador), ou a direção da instituição que
+     * detém a turma, pela competência que já tem em «Retificações». Desligada com a funcionalidade.
+     */
+    public function annulTaught(User $user, Lesson $lesson): bool
+    {
+        if (! config('lapis.lesson_not_held_enabled', false) || ! $lesson->isTaught()) {
+            return false;
+        }
+
+        $ownClosing = $this->recordOutcome($user, $lesson) && LessonOutcomeDetails::mayReadReason($lesson, $user);
+
+        return $ownClosing || Gate::forUser($user)->allows('reviewRectifications', $lesson->schoolClass);
+    }
+
     public function delete(User $user, Lesson $lesson): bool
     {
         return $this->teaches($user, $lesson->schoolClass);

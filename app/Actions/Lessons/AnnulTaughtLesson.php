@@ -104,23 +104,23 @@ final class AnnulTaughtLesson
                 ? $this->numbering->handOverManualNumber($locked, $manualNumber)
                 : false;
 
-            // 4. Sumário e planeamento.
+            // 4. Sumário e planeamento, e 5. renumeração: as fechadas são fixas;
+            // sem fechadas a seguir, a sequência fecha-se como em
+            // RecordLessonOutcome::renumber (o caminho automático quando a
+            // descida materializou uma ocorrência; a estrita com a fotografia
+            // da guarda nos outros casos).
             $planning = null;
             $summaryKept = null;
 
             if ($closedAfter === null) {
                 $planning = $this->planning->from($locked, $actor);
+                $renumbered = $planning['materialized']
+                    ? $this->numbering->numberMaterializedLessons($locked->class_id)
+                    : $this->numbering->resequence($locked->class_id, $snapshot);
             } else {
                 $summaryKept = $this->takeSummaryIntoHistory($locked);
+                $renumbered = $this->numbering->resequenceAcceptingGaps($locked->class_id);
             }
-
-            // 5. Renumeração: as fechadas são fixas; sem fechadas a seguir, a
-            // sequência fecha-se como em RecordLessonOutcome::renumber.
-            $renumbered = match (true) {
-                $closedAfter !== null => $this->numbering->resequenceAcceptingGaps($locked->class_id),
-                $planning !== null && $planning['materialized'] => $this->numbering->numberMaterializedLessons($locked->class_id),
-                default => $this->numbering->resequence($locked->class_id, $snapshot),
-            };
 
             $locked->refresh();
             $current = $this->rectifier->snapshot($locked);
