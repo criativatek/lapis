@@ -94,14 +94,14 @@ final class AnnulTaughtLesson
             $locked->status = LessonStatus::Preparation;
 
             // 3. Número: um manual passa à frente; a aula fica sem número.
-            $wasManual = $locked->lesson_number_manual && $fromNumber !== null;
+            $manualNumber = $locked->lesson_number_manual ? $fromNumber : null;
             $locked->lesson_number = null;
             $locked->lesson_number_end = null;
             $locked->lesson_number_manual = false;
             $locked->save();
 
-            $manualHandedOver = $wasManual && $fromNumber !== null
-                ? $this->numbering->handOverManualNumber($locked, $fromNumber)
+            $manualHandedOver = $manualNumber !== null
+                ? $this->numbering->handOverManualNumber($locked, $manualNumber)
                 : false;
 
             // 4. Sumário e planeamento.
@@ -118,7 +118,7 @@ final class AnnulTaughtLesson
             // sequência fecha-se como em RecordLessonOutcome::renumber.
             $renumbered = match (true) {
                 $closedAfter !== null => $this->numbering->resequenceAcceptingGaps($locked->class_id),
-                (bool) ($planning['materialized'] ?? false) => $this->numbering->numberMaterializedLessons($locked->class_id),
+                $planning !== null && $planning['materialized'] => $this->numbering->numberMaterializedLessons($locked->class_id),
                 default => $this->numbering->resequence($locked->class_id, $snapshot),
             };
 
@@ -146,11 +146,11 @@ final class AnnulTaughtLesson
                     'from_lesson_number' => $fromNumber,
                     'attendance_rows_deleted' => $rows,
                     'absences_deleted' => $absences,
-                    'summary_shifted' => $planning !== null && ($planning['shifted'] ?? 0) > 0,
+                    'summary_shifted' => $planning !== null && $planning['shifted'] > 0,
                     'summary_kept_in_history' => $summaryKept !== null,
-                    'planning_shifted' => $planning['shifted'] ?? 0,
-                    'planning_materialized' => (bool) ($planning['materialized'] ?? false),
-                    'planning_pending' => (bool) ($planning['pending'] ?? false),
+                    'planning_shifted' => $planning === null ? 0 : $planning['shifted'],
+                    'planning_materialized' => $planning !== null && $planning['materialized'],
+                    'planning_pending' => $planning !== null && $planning['pending'],
                     'manual_number_handed_over' => $manualHandedOver,
                     'renumbered_lessons' => count($renumbered),
                     'gaps' => $this->gapsIn($locked->class_id),
