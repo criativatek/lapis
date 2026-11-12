@@ -6,7 +6,7 @@ use App\Models\Scale;
 use App\Models\ScaleLevel;
 
 /**
- * What INOVAR calls a band of a scale — F, I, S, B, MB.
+ * What INOVAR calls a band of a scale — the code the school itself defined there.
  *
  * READ FROM THE BAND'S OWN STATED CORRESPONDENCE, never inferred. The two
  * things a band already carries both look tempting and are both wrong for this:
@@ -23,13 +23,28 @@ use App\Models\ScaleLevel;
 class InovarCodeResolver
 {
     /**
-     * The codes this integration writes. Anything else configured on a band is
-     * a configuration error, not a value to pass through: INOVAR would refuse
-     * the file and the teacher would learn about it there rather than here.
+     * The codes a NEW level is offered by default — F, I, S, B, MB, the five
+     * of the system «Escala 1 a 5». Only suggestions: every school defines its
+     * own number of levels and its own codes in INOVAR, so a code the teacher
+     * typed is never rejected for not being one of these.
      *
      * @var list<string>
      */
-    public const ACCEPTED = ['F', 'I', 'S', 'B', 'MB'];
+    public const DEFAULT_SUGGESTIONS = ['F', 'I', 'S', 'B', 'MB'];
+
+    /**
+     * The longest code a band can carry — the width of `scale_levels.inovar_code`.
+     */
+    public const MAX_LENGTH = 8;
+
+    /**
+     * Whether a stored code can be written to the file: a non-empty text once
+     * trimmed. Nothing else is checked — the code belongs to the school.
+     */
+    public static function isWritable(?string $code): bool
+    {
+        return $code !== null && trim($code) !== '';
+    }
 
     /**
      * The code for one band, or null when that band has none.
@@ -42,7 +57,7 @@ class InovarCodeResolver
             return null;
         }
 
-        return in_array(trim($code), self::ACCEPTED, true) ? trim($code) : null;
+        return trim($code);
     }
 
     /**

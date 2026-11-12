@@ -101,15 +101,12 @@ class InterimSnapshotSource implements InovarExportSource
     }
 
     /**
-     * The same closed set the live resolver accepts. A band whose stored code
-     * is something else is a configuration error frozen into history, and
-     * passing it through would produce a file INOVAR refuses — the teacher
-     * would learn about it there rather than here.
+     * The same rule the live resolver applies: a code is whatever non-empty
+     * text the school stored on the band. A band frozen without one cannot be
+     * written, and the export says which.
      */
     protected function accepted(?string $code): bool
     {
-        return $code !== null
-            && trim($code) !== ''
-            && in_array(trim($code), InovarCodeResolver::ACCEPTED, true);
+        return InovarCodeResolver::isWritable($code);
     }
 }

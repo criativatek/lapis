@@ -7,7 +7,7 @@ use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ActivateProfileVersion;
-use App\Services\Assessment\DeriveScaleWithLabels;
+use App\Services\Assessment\DeriveCustomScale;
 use App\Services\Assessment\MigrateClassProfile;
 use App\Services\Assessment\ProfileBuilder;
 use App\Support\Tenancy\CurrentOrganization;
@@ -278,7 +278,12 @@ class EvaluationSheetControllerTest extends TestCase
             $class = SchoolClass::where('label', '7.º A')->firstOrFail();
             $profile = $class->profileVersion->profile;
             $system = Scale::where('name', 'Escala 1 a 5')->firstOrFail();
-            $derived = app(DeriveScaleWithLabels::class)->for($system, $school, $profile->name);
+            $derived = app(DeriveCustomScale::class)->for($system, array_map(
+                fn (string $label, int $cut, string $code): array => ['label' => $label, 'from_percent' => $cut, 'inovar_code' => $code],
+                $school,
+                [0, 20, 50, 70, 90],
+                ['F', 'I', 'S', 'B', 'MB'],
+            ), 3, $profile->name);
 
             $domains = $profile->currentVersion->domains()->with('domain')->get()
                 ->map(fn ($row): array => ['name' => $row->domain->name, 'weight' => (float) $row->weight_percent])

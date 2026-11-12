@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\ConfigSharing;
 
+use App\Services\Export\InovarCodeResolver;
 use App\Support\Import\Backup\SecretScanner;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -60,7 +61,7 @@ final class ValidateConfigurationPackage
             'payload.subjects' => ['present', 'array'], 'payload.subjects.*' => ['array:name,code'], 'payload.subjects.*.name' => ['required', 'string'], 'payload.subjects.*.code' => ['required', 'string'],
             'payload.scales' => ['present', 'array'], 'payload.scales.*' => ['array:name,kind,min_value,max_value,levels'], 'payload.scales.*.name' => ['required', 'string'], 'payload.scales.*.kind' => ['required', 'string'], 'payload.scales.*.levels' => ['present', 'array'],
             'payload.scales.*.levels.*' => ['array:code,label,inovar_code,sequence,numeric_value,normalized_value,band_min_normalized,band_max_normalized,is_negative'],
-            'payload.scales.*.levels.*.code' => ['required', 'string'], 'payload.scales.*.levels.*.label' => ['required', 'string'], 'payload.scales.*.levels.*.sequence' => ['required', 'integer'],
+            'payload.scales.*.levels.*.code' => ['required', 'string'], 'payload.scales.*.levels.*.label' => ['required', 'string'], 'payload.scales.*.levels.*.sequence' => ['required', 'integer'], 'payload.scales.*.levels.*.inovar_code' => ['nullable', 'string', 'max:'.InovarCodeResolver::MAX_LENGTH],
             'payload.assessment_profiles' => ['present', 'array'], 'payload.assessment_profiles.*' => ['array:academic_year_label,subject_code,grade_levels,name,description,is_institutional_template,scale_reference,version,domains'],
             'payload.assessment_profiles.*.academic_year_label' => ['required', 'string'], 'payload.assessment_profiles.*.subject_code' => ['required', 'string'], 'payload.assessment_profiles.*.name' => ['required', 'string'],
             'payload.assessment_profiles.*.grade_levels' => ['present', 'array'], 'payload.assessment_profiles.*.grade_levels.*' => ['string'],

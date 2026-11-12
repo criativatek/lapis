@@ -38,6 +38,7 @@ use App\Models\TeacherStrikeSituation;
 use App\Models\TimetableActivityKind;
 use App\Models\TimetableActivitySession;
 use App\Models\TimetableActivitySessionStatus;
+use App\Services\Export\InovarCodeResolver;
 use App\Support\Assessment\SupportedCalculationRules;
 use App\Support\Import\Backup\BackupSchemaCompatibility;
 use App\Support\Import\Backup\BackupValidationException;
@@ -519,6 +520,18 @@ class ValidateBackupPayload
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    /**
+     * The school's own INOVAR code for a band: any short text without spaces,
+     * as long as the column allows. Longer than that it cannot be stored, and
+     * a band without a code simply blocks the export with a clear message.
+     */
+    private function inovarCode(mixed $value): ?string
+    {
+        $code = is_string($value) ? trim($value) : '';
+
+        return $code !== '' && mb_strlen($code) <= InovarCodeResolver::MAX_LENGTH && preg_match('/\s/u', $code) !== 1 ? $code : null;
+    }
+
     private function nullableNumeric(mixed $value): ?string
     {
         return is_scalar($value) && is_numeric($value) ? (string) $value : null;
@@ -835,7 +848,7 @@ class ValidateBackupPayload
         return [
             'code' => $level['code'],
             'label' => $level['label'],
-            'inovar_code' => $this->nullableString($level['inovar_code'] ?? null),
+            'inovar_code' => $this->inovarCode($level['inovar_code'] ?? null),
             'sequence' => $level['sequence'],
             'numeric_value' => $this->nullableNumeric($level['numeric_value'] ?? null),
             'normalized_value' => $this->nullableNumeric($level['normalized_value'] ?? null),

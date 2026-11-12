@@ -25,6 +25,67 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.196.0] — 2026-11-12
+
+> **A escala é da escola.** Um professor cuja escola usa quatro menções tentou
+> encaixá-las nos cinco níveis do Lapispro deslocando os nomes: os 20–49 %
+> passaram a ler-se «Suficiente» e os 90–100 % «Não Observado». O diálogo
+> «Personalizar menções» só deixava mudar nomes. Passa a chamar-se
+> **«Personalizar escala»**: de 2 a 10 níveis, cada um com a sua designação, o
+> corte inteiro «a partir de X %» (o primeiro começa sempre em 0) e o código
+> que a escola definiu no Inovar — escrito à mão, com sugestão automática
+> (Fraco→F, Insuficiente→I, Suficiente→S, Bom→B, Muito Bom→MB) enquanto o
+> professor não lhe mexer —, mais «a partir de que nível é positiva». Ao lado de
+> cada linha vê-se o intervalo que os cortes dão («20 – 49 %»); «Adicionar
+> nível», «Remover» e «Repor a escala do Lapispro» fazem o que dizem. Por
+> defeito nada muda: os perfis novos abrem na «Escala 1 a 5» com os mesmos
+> níveis, cortes e códigos de sempre. Códigos repetidos ou em falta dão um aviso
+> que não bloqueia; sem código em todos os níveis a escala não exporta para o
+> Inovar, e o exportador diz quais.
+>
+> **Uma vez só, para todos os perfis.** O diálogo ganha o «Nome da escala» e a
+> caixa «Usar como escala da organização — os perfis novos abrem com ela». Os
+> perfis novos abrem com a escala da organização; os existentes não mudam
+> sozinhos (a versão ativa é congelada) e escolhem-na na lista, onde aparece em
+> primeiro lugar nas escalas personalizadas, marcada «(escala da organização)».
+
+### Adicionado
+
+- Migration `organizations.default_scale_id` (nullable, FK para `scales`,
+  `ON DELETE SET NULL`), reversível. É só um apontador; não viaja no backup nem
+  no pacote de configuração.
+- `ScaleCutsToBands`: o único sítio que converte cortes em bandas, pela
+  convenção do `SystemScalesSeeder` (corte 50 → mínimo 49.500000, máximo do
+  nível anterior 49.499999). Com os cortes por defeito dá exatamente a «Escala
+  1 a 5» do sistema.
+- `SetOrganizationDefaultScale`: a escala da organização move-se com o
+  copy-on-write, desmarcar só limpa o apontador que apontava para esta escala e
+  nunca aponta para uma escala de outra organização.
+
+### Alterado
+
+- `DeriveScaleWithLabels` passa a `DeriveCustomScale`: os níveis vêm do pedido,
+  não da cópia da origem. Enquanto a escala derivada não está congelada
+  sincroniza-se em cima (cria, atualiza, apaga os níveis que sobram); congelada,
+  cria-se uma nova. O nome da escala é o que o professor escreveu; um nome que já
+  existe noutra escala da organização é um erro do campo (só o nome de origem,
+  «Escala 1 a N · perfil», ganha « (2)»).
+- `POST scales/{scale}/mencoes` recebe
+  `{levels: [{label, from_percent, inovar_code}], first_positive_level, scale_name, use_as_organization_default, profile_name}`.
+  O campo `labels` deixa de existir.
+- Os códigos do Inovar já não são uma lista fechada: `InovarCodeResolver`
+  aceita o texto que a escola definiu (1 a 8 caracteres, sem espaços) e F, I, S,
+  B, MB ficam só como sugestões por defeito (`DEFAULT_SUGGESTIONS`). A
+  validação do pacote de configuração e do backup segue o comprimento da coluna.
+- A auditoria `scale.mentions_customised` guarda os níveis completos, a
+  fronteira positiva e `organization_default`.
+
+### Corrigido
+
+- Importar um pacote de configuração com uma escala própria falhava com um erro
+  de atribuição em massa (`scale_id`); os níveis passam a ser criados pela
+  relação da escala.
+
 ## [0.195.0] — 2026-11-12
 
 > **A grelha de correção grava sozinha.** Em 2026-11-07 um professor perdeu
