@@ -55,7 +55,7 @@ class AnnulTaughtLessonHttpTest extends TestCase
     }
 
     /** Outro professor na turma, com o papel dado. */
-    private function colleague(string $role = 'teacher'): User
+    private function colleague(string $role = 'co_teacher'): User
     {
         $user = User::factory()->create();
         $user->organizations()->attach($this->organization, ['joined_at' => now()]);
