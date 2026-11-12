@@ -5,6 +5,7 @@ namespace App\Http\Requests\Lessons;
 use App\Http\Requests\Lessons\Concerns\ValidatesLessonNumber;
 use App\Models\Lesson;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class LessonSummaryRequest extends FormRequest
 {
@@ -37,7 +38,9 @@ class LessonSummaryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'content' => ['required', 'string', 'max:16000'],
+            // A caixa vazia só é recusada numa aula lecionada (0.194.2): numa
+            // aula aberta é «limpar» — ver SaveLessonSummary::clearContent().
+            'content' => [Rule::requiredIf(fn (): bool => $this->lessonIsTaught()), 'nullable', 'string', 'max:16000'],
             'private_notes' => ['nullable', 'string', 'max:16000'],
             'resources' => ['nullable', 'string', 'max:16000'],
             'homework' => ['nullable', 'string', 'max:16000'],
@@ -59,7 +62,17 @@ class LessonSummaryRequest extends FormRequest
      */
     public function messages(): array
     {
-        return $this->lessonNumberMessages('lesson_number', 'lesson_number_end');
+        return [
+            'content.required' => __('Escreve o sumário desta aula.'),
+            ...$this->lessonNumberMessages('lesson_number', 'lesson_number_end'),
+        ];
+    }
+
+    private function lessonIsTaught(): bool
+    {
+        $lesson = $this->route('lesson');
+
+        return $lesson instanceof Lesson && $lesson->isTaught();
     }
 
     /**

@@ -25,6 +25,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.194.2] — 2026-11-12
+
+> **Guardar a caixa vazia numa aula ainda não lecionada limpa o sumário.** Um
+> professor que se enganava no sumário de uma aula por preparar, apagava o
+> texto e carregava em «Guardar» ouvia «O campo content é obrigatório» (ou, no
+> browser, «Preencha este campo») — e só saía dali pelo botão «Limpar sumário»
+> ou a pensar em eliminar a aula. Agora, numa aula aberta, gravar com a caixa
+> vazia faz o que «Limpar sumário» faz: o texto sai, as notas, os recursos e
+> o TPC do mesmo pedido ficam, a aula volta a «Por preparar», e a mensagem diz
+> «Sumário limpo. A aula foi mantida.» — na página da aula e no cartão da
+> semana. Numa aula já lecionada o sumário continua obrigatório, mas a recusa
+> passa a dizer «Escreve o sumário desta aula.». Sem migrations.
+
 ## [0.194.1] — 2026-11-12
 
 > **Uma aula que não se realizou não tem sumário.** Depois de anular um

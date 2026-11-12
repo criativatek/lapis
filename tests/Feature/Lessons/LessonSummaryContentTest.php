@@ -260,7 +260,6 @@ class LessonSummaryContentTest extends TestCase
         $lesson = $this->makeLesson();
         $version = $this->summaryVersion($lesson);
 
-        $this->patchContent($lesson, ['content' => '   '])->assertSessionHasErrors('content');
         $this->patchContent($lesson, ['content' => str_repeat('á', 16001)])->assertSessionHasErrors('content');
         $this->asTeacher()
             ->patch("/lessons/{$lesson->ulid}/summary/content", ['content' => 'Sem versão.'])
@@ -270,6 +269,50 @@ class LessonSummaryContentTest extends TestCase
         $this->assertSame(0, LessonSummary::withoutGlobalScopes()->count());
         $this->assertSame($version, $this->summaryVersion($lesson));
         $this->assertSame(LessonStatus::Preparation, Lesson::withoutGlobalScopes()->find($lesson->id)->status);
+    }
+
+    /** A caixa vazia numa aula aberta é «limpar» (0.194.2) — também pelo cartão da semana. */
+    #[Test]
+    public function a_blank_patch_on_an_open_lesson_clears_the_text_and_keeps_the_other_fields(): void
+    {
+        $lesson = $this->makeLesson(['status' => LessonStatus::Prepared]);
+        $this->seedSummary($lesson, ['content' => 'Texto errado.', 'resources' => 'https://example.test/recurso']);
+
+        $this->patchContent($lesson, ['content' => '   '])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Sumário limpo. A aula foi mantida.');
+
+        $row = $this->summaryRow($lesson);
+        $this->assertSame('', $row['content']);
+        $this->assertSame('https://example.test/recurso', $row['resources']);
+        $this->assertSame(LessonStatus::Preparation, Lesson::withoutGlobalScopes()->find($lesson->id)->status);
+    }
+
+    #[Test]
+    public function a_blank_patch_removes_the_row_when_nothing_else_is_kept(): void
+    {
+        $lesson = $this->makeLesson(['status' => LessonStatus::Prepared]);
+        $this->seedSummary($lesson, ['content' => 'Texto errado.']);
+        $version = $this->summaryVersion($lesson);
+
+        $this->patchContent($lesson, ['content' => ''])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, LessonSummary::withoutGlobalScopes()->where('lesson_id', $lesson->id)->count());
+        $this->assertSame($version + 1, $this->summaryVersion($lesson));
+        $this->assertSame(LessonStatus::Preparation, Lesson::withoutGlobalScopes()->find($lesson->id)->status);
+    }
+
+    #[Test]
+    public function a_blank_patch_on_a_taught_lesson_is_refused_in_plain_words(): void
+    {
+        $lesson = $this->makeLesson(['status' => LessonStatus::Taught]);
+        $this->seedSummary($lesson, ['content' => 'Registo da aula.']);
+
+        $this->patchContent($lesson, ['content' => '   '])
+            ->assertSessionHasErrors(['content' => 'Escreve o sumário desta aula.']);
+
+        $this->assertSame('Registo da aula.', $this->summaryRow($lesson)['content']);
     }
 
     // --------------------------------------------------------- concorrência

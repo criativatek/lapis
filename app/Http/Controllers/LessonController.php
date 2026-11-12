@@ -281,7 +281,7 @@ class LessonController extends Controller implements HasMiddleware
 
         $this->recordSummarySaved($lesson, $before);
 
-        return $this->summarySavedResponse($plan);
+        return $this->summarySavedResponse($plan, $this->summaryWasCleared($request));
     }
 
     /**
@@ -311,7 +311,17 @@ class LessonController extends Controller implements HasMiddleware
 
         $this->recordSummarySaved($lesson, $before);
 
-        return $this->summarySavedResponse($plan);
+        return $this->summarySavedResponse($plan, $this->summaryWasCleared($request));
+    }
+
+    /**
+     * A caixa vazia numa aula aberta gravou como «limpar» (0.194.2): a mensagem
+     * diz isso, não «Sumário guardado». Numa aula lecionada a validação já
+     * recusou antes de chegar aqui.
+     */
+    private function summaryWasCleared(LessonSummaryRequest|LessonSummaryContentRequest $request): bool
+    {
+        return trim($request->string('content')->toString()) === '';
     }
 
     /**
@@ -350,9 +360,9 @@ class LessonController extends Controller implements HasMiddleware
      *
      * @param  array<string, mixed>|null  $plan
      */
-    private function summarySavedResponse(?array $plan): RedirectResponse
+    private function summarySavedResponse(?array $plan, bool $cleared = false): RedirectResponse
     {
-        $message = 'Sumário guardado.';
+        $message = $cleared ? 'Sumário limpo. A aula foi mantida.' : 'Sumário guardado.';
 
         if ($plan !== null && $plan['changed'] === true) {
             $number = Lesson::formatLessonNumber($plan['result']['start'], $plan['result']['end']);
