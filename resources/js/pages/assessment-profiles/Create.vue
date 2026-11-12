@@ -11,6 +11,8 @@ type Option = {
     kind: string;
     min_value: number;
     max_value: number;
+    ulid?: string;
+    levels?: { code: string; label: string }[];
 };
 
 type HelpArticle = { id: string; title: string; summary: string };
@@ -19,6 +21,7 @@ defineProps<{
     academicYears: Option[];
     subjects: Option[];
     scales: Option[];
+    defaultScaleId?: number | null;
     helpArticles?: HelpArticle[];
 }>();
 </script>
@@ -36,6 +39,7 @@ defineProps<{
             :academic-years="academicYears"
             :subjects="subjects"
             :scales="scales"
+            :default-scale-id="defaultScaleId"
             submit-url="/assessment-profiles"
             method="post"
         />

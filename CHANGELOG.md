@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.193.0] — 2026-11-11
+
+> **As menções da escola, por perfil — e «Escala 1 a 5» por defeito.** A
+> apreciação qualitativa da pauta só existe numa escala de níveis, e um perfil
+> criado em «Percentagem» mostrava só números sem dizer porquê. Os perfis novos
+> passam a abrir em «Escala 1 a 5»; a Pauta de uma turma cuja escala não tem
+> menções diz-o numa linha, com ligação ao perfil; e o professor pode
+> «Personalizar menções» — dar aos cinco níveis os nomes que a sua escola usa
+> («Muito insuficiente» em vez de «Fraco»). Por defeito nada muda: quem não
+> mexer continua a ver Fraco, Insuficiente, Suficiente, Bom, Muito Bom. Os
+> níveis, as bandas de percentagem e os códigos Inovar não são editáveis. Sem
+> migrations.
+
+### Adicionado
+
+- `DeriveScaleWithLabels`: escala da organização derivada da «Escala 1 a 5»
+  (`derived_from_scale_id`), níveis copiados campo a campo, só o nome muda;
+  copy-on-write depois de congelada, como o modelo de domínio já previa.
+- `POST scales/{scale}/mencoes` e o diálogo «Personalizar menções» no
+  formulário do perfil.
+- Perfil novo abre com «Escala 1 a 5»; nota na Pauta quando a escala não tem
+  menções.
+
+### Alterado
+
+- A Pauta envia a chave nova `schoolClass.profile_edit_url` (nula numa escala
+  com menções). As fixtures de caracterização das superfícies Base
+  (`tests/Fixtures/AdvancedAnalysis/`) foram regeneradas de propósito por isso.
+
 ## [0.192.0] — 2026-11-10
 
 > **Pauta de Avaliação: de onde vem o quantitativo de cada domínio.** A pauta

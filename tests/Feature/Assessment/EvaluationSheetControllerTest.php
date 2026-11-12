@@ -3,8 +3,13 @@
 namespace Tests\Feature\Assessment;
 
 use App\Models\AcademicPeriodKind;
+use App\Models\Scale;
 use App\Models\SchoolClass;
 use App\Models\User;
+use App\Services\Assessment\ActivateProfileVersion;
+use App\Services\Assessment\DeriveScaleWithLabels;
+use App\Services\Assessment\MigrateClassProfile;
+use App\Services\Assessment\ProfileBuilder;
 use App\Support\Tenancy\CurrentOrganization;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +73,32 @@ class EvaluationSheetControllerTest extends TestCase
         $page = $response->viewData('page');
 
         return $page['props'];
+    }
+
+    /**
+     * Troca a escala do perfil da turma de demonstração por outra, ativa a
+     * versão nova e liga-lhe a turma — a troca que um professor faz no
+     * formulário do perfil, sem passar pelo fluxo de migração.
+     */
+    private function switchDemoClassToScale(User $teacher, string $scaleName): void
+    {
+        $this->asTenant($teacher, function () use ($teacher, $scaleName): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $profile = $class->profileVersion->profile;
+            $domains = $profile->currentVersion->domains()->with('domain')->get()
+                ->map(fn ($row): array => ['name' => $row->domain->name, 'weight' => (float) $row->weight_percent])
+                ->all();
+
+            app(ProfileBuilder::class)->update(
+                $profile,
+                ['subject_id' => $profile->subject_id, 'name' => $profile->name, 'description' => $profile->description],
+                Scale::where('name', $scaleName)->firstOrFail()->id,
+                $domains,
+                $profile->gradeLevels->pluck('grade_level')->all(),
+            );
+            $version = app(ActivateProfileVersion::class)->activate($profile->refresh()->draftVersion(), $teacher);
+            $class->update(['assessment_profile_version_id' => $version->id]);
+        });
     }
 
     #[Test]
@@ -211,5 +242,78 @@ class EvaluationSheetControllerTest extends TestCase
         $this->assertNotFalse($nextGroupBoundary);
         $this->assertGreaterThan($resultsGroupStart, $evaluationSheetsRoute);
         $this->assertLessThan($nextGroupBoundary, $evaluationSheetsRoute);
+    }
+
+    #[Test]
+    public function a_class_on_a_scale_without_mentions_gets_the_link_to_fix_its_profile(): void
+    {
+        $teacher = $this->seedDemo();
+        $this->switchDemoClassToScale($teacher, 'Percentagem (0 a 100)');
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertSame([], $props['scaleBands']);
+        $this->assertStringContainsString('/assessment-profiles/', $props['schoolClass']['profile_edit_url']);
+        $this->assertStringEndsWith('/edit', $props['schoolClass']['profile_edit_url']);
+    }
+
+    #[Test]
+    public function a_class_on_the_level_scale_has_bands_and_no_fix_link(): void
+    {
+        $teacher = $this->seedDemo();
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertNotEmpty($props['scaleBands']);
+        $this->assertNull($props['schoolClass']['profile_edit_url']);
+    }
+
+    #[Test]
+    public function a_profile_on_a_derived_scale_shows_the_school_mentions_and_freezes_the_scale_on_activation(): void
+    {
+        $teacher = $this->seedDemo();
+        $school = ['Muito insuficiente', 'Insuficiente', 'Suficiente', 'Bom', 'Muito bom'];
+
+        $this->asTenant($teacher, function () use ($teacher, $school): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            $profile = $class->profileVersion->profile;
+            $system = Scale::where('name', 'Escala 1 a 5')->firstOrFail();
+            $derived = app(DeriveScaleWithLabels::class)->for($system, $school, $profile->name);
+
+            $domains = $profile->currentVersion->domains()->with('domain')->get()
+                ->map(fn ($row): array => ['name' => $row->domain->name, 'weight' => (float) $row->weight_percent])
+                ->all();
+            app(ProfileBuilder::class)->update(
+                $profile,
+                ['subject_id' => $profile->subject_id, 'name' => $profile->name, 'description' => $profile->description],
+                $derived->id,
+                $domains,
+                $profile->gradeLevels->pluck('grade_level')->all(),
+            );
+            $version = app(ActivateProfileVersion::class)->activate($profile->refresh()->draftVersion(), $teacher);
+
+            $this->assertNotNull($derived->refresh()->frozen_at, 'A escala derivada congela no primeiro uso por uma versão ativa.');
+
+            app(MigrateClassProfile::class)->migrate(
+                SchoolClass::whereKey($class->id)->firstOrFail(),
+                $version,
+                'Menções da escola.',
+                $teacher,
+            );
+        });
+
+        $props = $this->props($this->open($teacher, $this->classUlid($teacher)));
+
+        $this->assertSame($school, array_column($props['scaleBands'], 'label'));
+        $labels = collect($props['sheet']['students'])
+            ->flatMap(fn (array $student): array => array_column($student['domains'], 'scale_level_label'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertNotEmpty($labels);
+        $this->assertSame([], array_values(array_diff($labels, $school)));
+        $this->assertNotContains('Fraco', $labels);
+        $this->assertNull($props['schoolClass']['profile_edit_url']);
     }
 }

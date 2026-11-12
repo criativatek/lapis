@@ -47,6 +47,7 @@ scaleBands[].sequence
 schoolClass.academic_year
 schoolClass.has_profile
 schoolClass.label
+schoolClass.profile_edit_url
 schoolClass.scale_name
 schoolClass.subject
 schoolClass.ulid
