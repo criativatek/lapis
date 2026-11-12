@@ -145,8 +145,22 @@ class UsageHooksTest extends TestCase
 
         $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
             'summary_version' => $this->summaryVersion($lesson),
-            'content' => '',
+            'content' => str_repeat('á', 16001),
         ])->assertSessionHasErrors('content');
+
+        $this->assertSame(0, UsageEvent::query()->count());
+    }
+
+    /** A caixa vazia numa aula aberta é «limpar» (0.194.2): sem sumário para limpar, nada mudou — nada se regista. */
+    #[Test]
+    public function an_empty_box_on_a_lesson_without_summary_records_nothing(): void
+    {
+        $lesson = $this->makeLesson();
+
+        $this->asTeacher()->put("/lessons/{$lesson->ulid}/summary", [
+            'summary_version' => $this->summaryVersion($lesson),
+            'content' => '',
+        ])->assertSessionHasNoErrors()->assertRedirect();
 
         $this->assertSame(0, UsageEvent::query()->count());
     }
