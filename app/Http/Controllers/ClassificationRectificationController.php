@@ -118,7 +118,17 @@ class ClassificationRectificationController extends Controller
             ];
         }
 
-        return Inertia::render('classifications/rectifications/Index', ['classes' => $payload]);
+        return Inertia::render('classifications/rectifications/Index', [
+            'classes' => $payload,
+            // Todas as turmas da instituição, para a lista «Aulas fechadas» (0.194.0) — a de cima só
+            // tem as que têm períodos encerrados com classificações publicadas.
+            'lessonClasses' => $classes->map(fn (SchoolClass $class): array => [
+                'ulid' => $class->ulid,
+                'label' => $class->label,
+                'subject' => $class->subject?->name,
+                'academic_year' => $class->academicYear->label,
+            ])->values()->all(),
+        ]);
     }
 
     public function show(Request $request, SchoolClass $class, string $period): Response

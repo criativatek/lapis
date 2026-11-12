@@ -57,6 +57,7 @@ use App\Http\Controllers\InvitationAcceptanceController;
 use App\Http\Controllers\IssueReportController;
 use App\Http\Controllers\LegalController;
 use App\Http\Controllers\LessonActivityPostponementController;
+use App\Http\Controllers\LessonAnnulmentController;
 use App\Http\Controllers\LessonAttendanceController;
 use App\Http\Controllers\LessonBatchController;
 use App\Http\Controllers\LessonCalendarConflictController;
@@ -1046,6 +1047,9 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         // The head's way to those same classifications for a class they do not teach:
         // a page of its own, closed periods only (`SchoolClassPolicy::reviewRectifications`).
         Route::get('retificacoes', [ClassificationRectificationController::class, 'index'])->name('classifications.rectifications.index');
+        // A direção: as aulas fechadas de uma turma, para anular um «Lecionada» (0.194.0). Sem detalhes
+        // reservados. ANTES de `{period}`, senão «aulas» seria lido como um período.
+        Route::get('classes/{class}/retificacoes/aulas', [LessonAnnulmentController::class, 'index'])->name('lessons.annulments.index');
         Route::get('classes/{class}/retificacoes/{period}', [ClassificationRectificationController::class, 'show'])->name('classifications.rectifications.show');
     });
 

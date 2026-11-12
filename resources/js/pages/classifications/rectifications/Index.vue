@@ -28,7 +28,15 @@ type ClassEntry = {
     periods: PeriodEntry[];
 };
 
-defineProps<{ classes: ClassEntry[] }>();
+/** Todas as turmas da instituição (0.194.0): a entrada para «Aulas fechadas». */
+type LessonClassEntry = {
+    ulid: string;
+    label: string;
+    subject: string | null;
+    academic_year: string;
+};
+
+withDefaults(defineProps<{ classes: ClassEntry[]; lessonClasses?: LessonClassEntry[] }>(), { lessonClasses: () => [] });
 
 function counts(period: PeriodEntry): string {
     const published = period.published_count === 1 ? '1 publicada' : `${period.published_count} publicadas`;
@@ -85,5 +93,29 @@ function counts(period: PeriodEntry): string {
                 </ul>
             </li>
         </ul>
+
+        <!-- Aulas fechadas (0.194.0): anular um «Lecionada» de qualquer turma da
+             instituição. Sem sumário nem faltas — ver LessonAnnulmentController. -->
+        <section v-if="lessonClasses.length > 0" class="space-y-2" data-testid="annulment-classes">
+            <h2 class="text-base font-semibold">Aulas fechadas</h2>
+            <p class="text-sm text-muted-foreground">
+                Anular uma aula marcada como lecionada por engano (a aula não se realizou). Sem acesso ao sumário nem às
+                faltas.
+            </p>
+            <ul class="divide-y divide-border rounded-xl border border-border">
+                <li v-for="schoolClass in lessonClasses" :key="schoolClass.ulid">
+                    <Link
+                        :href="`/classes/${schoolClass.ulid}/retificacoes/aulas`"
+                        class="flex min-h-11 items-center justify-between gap-3 px-4 py-2 text-sm hover:bg-muted/40"
+                        data-testid="annulment-class-link"
+                    >
+                        <span class="font-medium">
+                            {{ schoolClass.label }}<span v-if="schoolClass.subject" class="font-normal text-muted-foreground"> — {{ schoolClass.subject }}</span>
+                        </span>
+                        <span class="text-muted-foreground">{{ schoolClass.academic_year }}</span>
+                    </Link>
+                </li>
+            </ul>
+        </section>
     </div>
 </template>
