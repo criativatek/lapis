@@ -354,26 +354,35 @@ describe('personalizar escala', () => {
         expect(mocks.forms[2].post).toHaveBeenCalled();
     });
 
-    it('a fronteira positiva acompanha a sugestão até o professor escolher à mão', async () => {
+    it('a fronteira positiva é de um nível: os cortes não a mudam e ela acompanha o nível', async () => {
         const wrapper = mountWithScale();
         await openDialog(wrapper);
         const scaleForm = mocks.forms[2];
 
-        // O primeiro corte ≥ 50 % está no nível 3; baixá-lo no nível 2 para 45 não o muda, subi-lo sim.
-        await typeInto(document.querySelector<HTMLInputElement>('#level-cut-2')!, '55', wrapper);
+        // «Suficiente» (nível 3) é o primeiro positivo. Uma escola cuja positiva
+        // começa nos 45 % baixa-lhe o corte — e ele continua positivo.
         expect(scaleForm.first_positive_level).toBe(3);
-        await typeInto(document.querySelector<HTMLInputElement>('#level-cut-1')!, '50', wrapper);
+        await typeInto(document.querySelector<HTMLInputElement>('#level-cut-2')!, '45', wrapper);
+        expect(scaleForm.first_positive_level).toBe(3);
+        // Nem um corte ≥ 50 % num nível abaixo a arrasta para lá.
+        await typeInto(document.querySelector<HTMLInputElement>('#level-cut-1')!, '40', wrapper);
+        expect(scaleForm.first_positive_level).toBe(3);
+
+        // Removido o nível 1, «Suficiente» passa a ser o 2 — e a fronteira vai com ele.
+        await click('[data-test="remove-level"]', wrapper);
+        expect(scaleForm.levels![1].label).toBe('Suficiente');
         expect(scaleForm.first_positive_level).toBe(2);
 
-        // Escolhido à mão: já não é recalculado.
+        // Acrescentar um nível no fim não lhe mexe.
+        await click('[data-test="add-level"]', wrapper);
+        expect(scaleForm.first_positive_level).toBe(2);
+
+        // Escolhida à mão, fica onde o professor a pôs.
         const select = document.querySelector<HTMLSelectElement>('#first-positive-level')!;
-        select.value = '4';
+        select.value = '3';
         select.dispatchEvent(new Event('change', { bubbles: true }));
         await wrapper.vm.$nextTick();
-        expect(scaleForm.first_positive_level).toBe(4);
-
-        await click('[data-test="add-level"]', wrapper);
-        expect(scaleForm.first_positive_level).toBe(4);
+        expect(scaleForm.first_positive_level).toBe(3);
     });
 
     it('«Repor a escala do Lapispro» volta aos cinco níveis de origem', async () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, Trash2, X } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -212,7 +212,6 @@ const mentionsForm = useForm<{
 
 // O que o professor já escolheu à mão — as sugestões só valem até lá.
 const inovarTouched = ref<boolean[]>([]);
-const firstPositiveTouched = ref(false);
 const scaleNameTouched = ref(false);
 
 function cutOf(level: MentionLevel): number | null {
@@ -221,7 +220,12 @@ function cutOf(level: MentionLevel): number | null {
     return level.from_percent !== '' && Number.isInteger(cut) ? cut : null;
 }
 
-/** A sugestão: o primeiro nível cujo corte é ≥ 50 %; sem ele, o último. */
+/**
+ * A sugestão de origem: o primeiro nível cujo corte é ≥ 50 %; sem ele, o último.
+ * Só vale ao «Repor». Daí em diante a fronteira é de um NÍVEL, não de uma
+ * percentagem: mexer nos cortes nunca a muda — uma escola cuja positiva começa
+ * nos 45 % não pode ver o seu «Suficiente» passar a negativo em silêncio.
+ */
 function suggestedFirstPositive(levels: MentionLevel[]): number {
     const index = levels.findIndex((level) => (cutOf(level) ?? 0) >= 50);
 
@@ -252,7 +256,6 @@ function openMentionsDialog(): void {
     const levels = scale.levels ?? [];
     const firstPositive = levels.findIndex((level) => level.is_negative === false);
     mentionsForm.first_positive_level = firstPositive === -1 ? levels.length : firstPositive + 1;
-    firstPositiveTouched.value = mentionsForm.first_positive_level !== suggestedFirstPositive(mentionsForm.levels);
 
     mentionsForm.profile_name = form.name;
     mentionsForm.scale_name = scale.system ? `Escala 1 a ${levels.length} · ${form.name}`.trim() : scale.label;
@@ -271,12 +274,6 @@ function syncScaleName(): void {
     }
 }
 
-function syncFirstPositive(): void {
-    if (!firstPositiveTouched.value) {
-        mentionsForm.first_positive_level = suggestedFirstPositive(mentionsForm.levels);
-    }
-}
-
 /** Ao escrever um nome que coincide com um dos de origem, o código sugere-se. */
 function onLabelInput(index: number, event: Event): void {
     const suggestion = suggestedInovarCode((event.target as HTMLInputElement).value);
@@ -285,12 +282,6 @@ function onLabelInput(index: number, event: Event): void {
         mentionsForm.levels[index].inovar_code = suggestion;
     }
 }
-
-// A sugestão da fronteira recalcula-se quando os cortes mudam.
-watch(
-    () => mentionsForm.levels.map((level) => level.from_percent),
-    () => syncFirstPositive(),
-);
 
 const canAddLevel = computed(() => {
     const last = mentionsForm.levels[mentionsForm.levels.length - 1];
@@ -308,7 +299,6 @@ function addLevel(): void {
 
     mentionsForm.levels.push({ label: '', from_percent: suggested, inovar_code: '' });
     inovarTouched.value.push(false);
-    syncFirstPositive();
     syncScaleName();
 }
 
@@ -323,15 +313,14 @@ function removeLevel(index: number): void {
     // O novo primeiro nível começa sempre em 0.
     mentionsForm.levels[0].from_percent = 0;
 
-    if (firstPositiveTouched.value) {
-        const position = index + 1;
-        const current = mentionsForm.first_positive_level;
-        const shifted = position < current ? current - 1 : current;
+    // A fronteira acompanha o NÍVEL: removido um nível abaixo dela, desce uma
+    // posição com ele; removido o próprio, passa para o que lhe sucede.
+    const position = index + 1;
+    const current = mentionsForm.first_positive_level;
+    const shifted = position < current ? current - 1 : current;
 
-        mentionsForm.first_positive_level = Math.min(mentionsForm.levels.length, Math.max(1, shifted));
-    }
+    mentionsForm.first_positive_level = Math.min(mentionsForm.levels.length, Math.max(1, shifted));
 
-    syncFirstPositive();
     syncScaleName();
 }
 
@@ -345,8 +334,7 @@ function resetMentions(): void {
     mentionsForm.clearErrors();
     mentionsForm.levels = levels;
     inovarTouched.value = levels.map(() => false);
-    firstPositiveTouched.value = false;
-    syncFirstPositive();
+    mentionsForm.first_positive_level = suggestedFirstPositive(levels);
     syncScaleName();
 }
 
@@ -833,11 +821,13 @@ function submit(): void {
                         <div
                             v-for="(level, index) in mentionsForm.levels"
                             :key="index"
-                            class="grid grid-cols-[1.5rem_1fr_5rem_5rem_2rem] items-start gap-2"
+                            class="grid grid-cols-[1.5rem_1fr_1fr_2rem] items-start gap-2 sm:grid-cols-[1.5rem_1fr_6rem_6rem_2rem]"
                             data-test="level-row"
                         >
+                            <!-- No telemóvel a designação ocupa a linha toda; o
+                                 corte, o código e o remover ficam por baixo. -->
                             <span class="pt-2 text-center font-semibold tabular-nums">{{ index + 1 }}</span>
-                            <div class="grid gap-1">
+                            <div class="col-span-3 grid gap-1 sm:col-span-1">
                                 <Input
                                     :id="`level-label-${index}`"
                                     v-model="level.label"
@@ -850,7 +840,8 @@ function submit(): void {
                                 </p>
                                 <InputError :message="labelError(index)" />
                             </div>
-                            <div class="grid gap-1">
+                            <div class="col-start-2 grid gap-1 sm:col-start-auto">
+                                <span class="text-xs text-muted-foreground sm:hidden" aria-hidden="true">A partir de (%)</span>
                                 <Input
                                     :id="`level-cut-${index}`"
                                     v-model.number="level.from_percent"
@@ -864,6 +855,7 @@ function submit(): void {
                                 <InputError :message="cutError(index)" />
                             </div>
                             <div class="grid gap-1">
+                                <span class="text-xs text-muted-foreground sm:hidden" aria-hidden="true">Inovar</span>
                                 <Input
                                     :id="`level-inovar-${index}`"
                                     v-model="level.inovar_code"
@@ -879,6 +871,7 @@ function submit(): void {
                                 size="icon"
                                 :disabled="mentionsForm.levels.length <= MIN_LEVELS"
                                 :aria-label="`Remover o nível ${index + 1}`"
+                                class="self-end sm:self-start"
                                 data-test="remove-level"
                                 @click="removeLevel(index)"
                             >
@@ -920,7 +913,6 @@ function submit(): void {
                             id="first-positive-level"
                             v-model.number="mentionsForm.first_positive_level"
                             class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                            @change="firstPositiveTouched = true"
                         >
                             <option v-for="(level, index) in mentionsForm.levels" :key="index" :value="index + 1">
                                 {{ index + 1 }} · {{ level.label || 'Sem nome' }}

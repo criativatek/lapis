@@ -115,8 +115,12 @@ Uma linha por nível, por ordem:
   médio entre o último corte e 100, arredondado, e maior que o último.
 - **Remover** em cada linha (desativado quando restam 2). Remover o nível 1 faz o novo
   primeiro nível passar a começar em 0.
-- **«A partir de que nível é positiva»**: lista com as designações atuais; sugestão
-  recalculada (primeiro corte ≥ 50) enquanto o professor não escolher à mão.
+- **«A partir de que nível é positiva»**: lista com as designações atuais. Abre no que a
+  escala tem (na de origem, «Suficiente», o primeiro corte ≥ 50). A fronteira é de um
+  **nível**, não de uma percentagem: mexer nos cortes nunca a muda, e ao remover um nível
+  abaixo dela acompanha o nível. Só «Repor» volta à sugestão dos 50 %. (Corrigido no QA: a
+  primeira versão recalculava-a a cada corte, e baixar «Suficiente» para 45 % punha-o
+  negativo em silêncio.)
 - **Inovar**: campo de texto curto por nível («Código no Inovar — o que a sua escola definiu
   no Inovar para este nível»). Ao escrever uma designação que coincide (sem
   maiúsculas/acentos/espaços) com Fraco, Insuficiente, Suficiente, Bom ou Muito Bom, o código
