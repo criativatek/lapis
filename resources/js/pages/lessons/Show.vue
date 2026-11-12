@@ -45,7 +45,7 @@ import {
     validateNumberDraft,
 } from '@/lib/lessonNumber';
 import type { LessonNumberDraft, LessonNumberErrors, LessonNumberPreview } from '@/lib/lessonNumber';
-import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
+import type { AnnulTaught, NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import { lessonDisplayState, lessonNumberLabel } from '@/lib/lessons';
 import { statusToneClasses } from '@/lib/statusTone';
 import { combineSummaries } from '@/lib/summaryMerge';
@@ -88,6 +88,8 @@ type Lesson = {
     not_held_options?: NotHeldOptions | null;
     retroactive_outcome?: { closed_after: string; blockers: string[] } | null;
     outcome_rectification?: OutcomeRectification | null;
+    /** Anular um «Lecionada» (0.194.0) — ver LessonController::annulTaughtProps(). */
+    annul_taught?: AnnulTaught | null;
     pending_plan: string | null;
     /** Decididos no servidor — ver LessonController::show(). */
     can_delete: boolean;
@@ -798,6 +800,7 @@ function goBack(event: MouseEvent): void {
             :not-held-options="lesson.not_held_options"
             :retroactive-outcome="lesson.retroactive_outcome"
             :outcome-rectification="lesson.outcome_rectification ?? null"
+            :annul-taught="lesson.annul_taught ?? null"
             :lesson-context="lesson.context_label"
             :can-record="lesson.can_record_outcome"
             :reasons="lesson.absence_reasons"

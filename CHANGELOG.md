@@ -25,6 +25,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.194.0] — 2026-11-12
+
+> **Anular um «Lecionada»: a aula não se realizou.** Uma aula fechada por
+> engano como lecionada (sumário, número, assiduidade) não tinha volta: a
+> correção do resultado recusava-a e o registo retroativo só aceita aulas
+> vazias. Passa a haver «Corrigir: a aula não se realizou» na página da aula,
+> para quem a fechou, e «Anular lecionada» na área «Retificações», para a
+> direção de uma organização institucional, sem ler sumário nem faltas. A aula
+> passa a «Aula não realizada» com causa e motivo e perde o número; a
+> assiduidade é apagada; sem aulas fechadas a seguir, o sumário passa para a
+> aula seguinte e as abertas renumeram-se; com aulas fechadas a seguir, o
+> sumário fica no histórico da aula (só o professor o lê) e a numeração fica
+> com a lacuna — nenhuma aula lecionada muda de número. Tudo no histórico de
+> correções e na auditoria. Sem migrations.
+
+### Adicionado
+
+- `AnnulTaughtLesson`, `PATCH lessons/{lesson}/outcome/annul`,
+  `LessonPolicy::annulTaught`, `LessonOutcomeRectification::KIND_ANNULMENT`.
+- Página «Aulas fechadas» por turma em «Retificações»
+  (`classes/{turma}/retificacoes/aulas`); o índice de «Retificações» passa a
+  enviar `lessonClasses` (só identificação das turmas).
+
 ## [0.193.0] — 2026-11-11
 
 > **As menções da escola, por perfil — e «Escala 1 a 5» por defeito.** A

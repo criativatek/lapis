@@ -471,7 +471,9 @@ class RectificationsPageTest extends TestCase
             'selectableAcademicYears', 'sidebarOpen', 'supportAwaitingReply', 'supportCategories', 'workContext',
         ];
 
-        $this->assertSame(['classes'], array_values(array_diff(self::keysOf($index), $shared)));
+        // `lessonClasses` (0.194.0): todas as turmas, para a lista «Aulas fechadas» — só identificação.
+        $this->assertSame(['classes', 'lessonClasses'], array_values(array_diff(self::keysOf($index), $shared)));
+        $this->assertSame(['academic_year', 'label', 'subject', 'ulid'], self::keysOf($index['lessonClasses'][0]));
         $this->assertSame(['academic_year', 'label', 'periods', 'subject', 'teachers', 'ulid'], self::keysOf($index['classes'][0]));
         $this->assertSame(['label', 'published_count', 'rectified_count', 'ulid'], self::keysOf($index['classes'][0]['periods'][0]));
         $this->assertContainsOnly('string', $index['classes'][0]['teachers']);

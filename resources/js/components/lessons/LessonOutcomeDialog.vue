@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import { Info } from '@lucide/vue';
 import { ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
@@ -16,7 +16,7 @@ import {
 import { Label } from '@/components/ui/label';
 import NativeSelect from '@/components/ui/NativeSelect.vue';
 import { Spinner } from '@/components/ui/spinner';
-import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
+import type { AnnulTaught, NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import { SURFACE } from '@/lib/surfaces';
 
 export type SpecialLessonOutcome = 'teacher_absent' | 'class_external_activity' | 'not_held';
@@ -46,6 +46,12 @@ const props = defineProps<{
      * continua fechada: números, planeamento e sumário não mudam.
      */
     rectify?: OutcomeRectification | null;
+    /**
+     * ANULAR um «Lecionada» (0.194.0): a aula não se realizou. Só «Aula não realizada», com causa e
+     * motivo; o aviso diz o que acontece ao número, às faltas e ao sumário (o destino vem do servidor).
+     * Envia um PATCH para a rota de anulação.
+     */
+    annul?: AnnulTaught | null;
     initialOutcome?: SpecialLessonOutcome;
     /** «8.º F · 09:30–10:20» — para o professor saber que aula está a fechar. */
     lessonContext?: string | null;
@@ -94,7 +100,7 @@ const form = useForm<{
     cause_note: string;
     rectification_note: string;
 }>({
-    outcome: props.retroactive ? 'not_held' : 'teacher_absent',
+    outcome: props.retroactive || props.annul ? 'not_held' : 'teacher_absent',
     reason: '',
     note: '',
     cause: '',
@@ -121,7 +127,14 @@ watch(
 watch(open, (value) => {
     confirming.value = false;
 
-    if (value && props.rectify) {
+    if (value && props.annul) {
+        form.outcome = 'not_held';
+        form.cause = '';
+        form.situation = '';
+        form.cause_note = '';
+        form.rectification_note = '';
+        form.clearErrors();
+    } else if (value && props.rectify) {
         const current = props.rectify.current;
 
         form.outcome = (current.outcome ?? 'teacher_absent') as SpecialLessonOutcome;
@@ -140,7 +153,11 @@ watch(open, (value) => {
 });
 
 function submit(): void {
-    if (props.lessonUlid === null || (props.unsavedChanges && !props.rectify) || (props.rectify && form.rectification_note.trim().length < 3)) {
+    if (
+        props.lessonUlid === null ||
+        (props.unsavedChanges && !props.rectify && !props.annul) ||
+        ((props.rectify || props.annul) && form.rectification_note.trim().length < 3)
+    ) {
         return;
     }
 
@@ -159,8 +176,19 @@ function submit(): void {
 
     emit('submitting', true);
     const motive = (data: { rectification_note: string }) => (props.rectify ? { rectification_note: data.rectification_note.trim() } : {});
+    const url = props.annul ? `/lessons/${props.lessonUlid}/outcome/annul` : `/lessons/${props.lessonUlid}/outcome`;
+    const method = props.rectify || props.annul ? 'patch' : 'post';
 
     form.transform((data) => {
+        if (props.annul) {
+            return {
+                cause: data.cause,
+                ...(data.cause === 'strike' && data.situation !== '' ? { situation: data.situation } : {}),
+                ...(data.cause === 'other' ? { cause_note: data.cause_note.trim() } : {}),
+                rectification_note: data.rectification_note.trim(),
+            };
+        }
+
         if (data.outcome === 'teacher_absent') {
             return { outcome: data.outcome, reason: data.reason, ...motive(data) };
         }
@@ -177,12 +205,20 @@ function submit(): void {
         }
 
         return { outcome: data.outcome, note: data.note.trim() === '' ? null : data.note, ...motive(data) };
-    })[props.rectify ? 'patch' : 'post'](`/lessons/${props.lessonUlid}/outcome`, {
+    })[method](url, {
         preserveScroll: true,
         onSuccess: () => {
             open.value = false;
             form.reset();
             emit('recorded');
+
+            // ANULAÇÃO: o sumário saiu da aula (desceu ou foi para o histórico) e o
+            // editor da página guarda o texto em estado local, que uma resposta com o
+            // mesmo componente não substitui. Remonta-se a página para o ecrã dizer a
+            // verdade — um editor com o texto removido convidava a gravá-lo outra vez.
+            if (props.annul) {
+                router.visit(window.location.href, { preserveState: false, preserveScroll: true });
+            }
         },
         onFinish: () => emit('submitting', false),
     });
@@ -195,10 +231,14 @@ function submit(): void {
         <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-md">
             <form class="space-y-4" @submit.prevent="submit">
                 <DialogHeader class="space-y-2">
-                    <DialogTitle>{{ rectify ? 'Corrigir o resultado desta aula' : 'O que aconteceu nesta aula?' }}</DialogTitle>
+                    <DialogTitle>{{ annul ? 'Corrigir: a aula não se realizou' : rectify ? 'Corrigir o resultado desta aula' : 'O que aconteceu nesta aula?' }}</DialogTitle>
                     <DialogDescription>
                         <span v-if="lessonContext" class="block font-medium text-foreground">{{ lessonContext }}</span>
-                        <template v-if="rectify">
+                        <template v-if="annul">
+                            A aula passa a «Aula não realizada», com a causa e o motivo que indicares. A correção fica no
+                            histórico da aula.
+                        </template>
+                        <template v-else-if="rectify">
                             A aula continua fechada: os números das lições, o planeamento e o sumário não mudam. A correção
                             fica no histórico da aula, com o valor anterior.
                         </template>
@@ -208,7 +248,7 @@ function submit(): void {
                     </DialogDescription>
                 </DialogHeader>
 
-                <div v-if="unsavedChanges && !rectify" :class="['space-y-3 rounded-xl border p-4 text-sm', SURFACE.sky]" data-testid="outcome-unsaved">
+                <div v-if="unsavedChanges && !rectify && !annul" :class="['space-y-3 rounded-xl border p-4 text-sm', SURFACE.sky]" data-testid="outcome-unsaved">
                     <p class="flex items-start gap-2">
                         <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                         Tens alterações por guardar no sumário desta aula. Guarda-as primeiro: a preparação que passa
@@ -246,7 +286,23 @@ function submit(): void {
                     </div>
                 </div>
 
-                <fieldset v-if="!retroactive" class="grid gap-2">
+                <div v-if="annul" :class="['space-y-1 rounded-xl border p-4 text-sm', SURFACE.amber]" data-testid="annul-warning">
+                    <p>
+                        Esta aula deixa de contar como lecionada<template v-if="annul.lesson_number !== null"> e perde o n.º {{ annul.lesson_number }}</template>.
+                        As faltas registadas nesta aula são apagadas.
+                    </p>
+                    <p v-if="annul.summary_destination === 'next'">O sumário e a preparação passam para a aula seguinte.</p>
+                    <p v-else-if="annul.closed_after">
+                        A aula de {{ annul.closed_after }}, depois desta, já está fechada: o sumário é removido (fica no histórico
+                        desta aula) e a numeração fica com uma lacuna. Nenhuma aula lecionada muda de número.
+                    </p>
+                    <p v-else>
+                        O sumário do professor passa para a aula seguinte ou, se já houver aulas fechadas depois desta, fica no
+                        histórico desta aula com uma lacuna na numeração. Nenhuma aula lecionada muda de número.
+                    </p>
+                </div>
+
+                <fieldset v-if="!retroactive && !annul" class="grid gap-2">
                     <legend class="sr-only">Resultado</legend>
                     <label v-if="!rectify || rectify.targets.includes('teacher_absent')" class="flex min-h-9 items-center gap-2">
                         <input v-model="form.outcome" type="radio" name="outcome" value="teacher_absent" />
@@ -344,7 +400,7 @@ function submit(): void {
                     <InputError :message="form.errors.note" />
                 </div>
 
-                <div v-if="rectify" class="grid gap-2" data-testid="rectify-motive">
+                <div v-if="rectify || annul" class="grid gap-2" data-testid="rectify-motive">
                     <Label for="outcome-rectification-note">Motivo da correção</Label>
                     <input
                         id="outcome-rectification-note"
@@ -356,7 +412,7 @@ function submit(): void {
                         aria-describedby="outcome-rectification-note-hint"
                     />
                     <p id="outcome-rectification-note-hint" class="text-xs text-muted-foreground">
-                        Fica no histórico da aula, visível só para ti. Evita incluir dados pessoais.
+                        Fica no histórico da aula<template v-if="rectify">, visível só para ti</template>. Evita incluir dados pessoais.
                     </p>
                     <InputError :message="form.errors.rectification_note" />
                 </div>
@@ -379,13 +435,13 @@ function submit(): void {
                         :disabled="
                             form.processing ||
                             lessonUlid === null ||
-                            (unsavedChanges === true && !rectify) ||
+                            (unsavedChanges === true && !rectify && !annul) ||
                             (retroactive?.blockers.length ?? 0) > 0 ||
-                            (!!rectify && form.rectification_note.trim().length < 3)
+                            ((!!rectify || !!annul) && form.rectification_note.trim().length < 3)
                         "
                     >
                         <Spinner v-if="form.processing" />
-                        {{ rectify ? 'Guardar correção' : retroactive ? (confirming ? 'Confirmar registo' : 'Continuar') : 'Registar' }}
+                        {{ annul ? 'Anular lecionada' : rectify ? 'Guardar correção' : retroactive ? (confirming ? 'Confirmar registo' : 'Continuar') : 'Registar' }}
                     </Button>
                 </DialogFooter>
             </form>

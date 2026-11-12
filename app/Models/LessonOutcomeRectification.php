@@ -40,6 +40,9 @@ class LessonOutcomeRectification extends Model
     /** Correção da causa feita pela direção, com o titular fora da turma (RectifyLessonOutcome::executeAsAdministrator). */
     public const string KIND_ADMINISTRATIVE = 'administrative';
 
+    /** Anulação de um «Lecionada»: a aula não se realizou. `previous` leva o n.º e, quando removido, o sumário. */
+    public const string KIND_ANNULMENT = 'annulment';
+
     /** Os campos do resultado que uma correção pode mudar, pela ordem em que se mostram. */
     public const array FIELDS = ['outcome', 'reason', 'note', 'cause', 'situation', 'cause_note'];
 

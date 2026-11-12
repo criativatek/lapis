@@ -8,7 +8,7 @@ vi.mock('@inertiajs/vue3', () => ({
     useForm: (data: Record<string, unknown>) => {
         const form = reactive({ ...data, errors: {}, processing: false });
 
-        return Object.assign(form, { transform: () => ({ post: vi.fn() }), reset: vi.fn() });
+        return Object.assign(form, { transform: () => ({ post: vi.fn(), patch: vi.fn() }), reset: vi.fn(), clearErrors: vi.fn() });
     },
 }));
 
@@ -157,5 +157,45 @@ describe('LessonOutcomePanel', () => {
         const colleague = mount(LessonOutcomePanel, { props: { ...base, outcomeReasonLabel: null, outcomeReasonReserved: true } });
         expect(colleague.text()).not.toContain('Formação');
         expect(colleague.get('[data-testid="lesson-outcome-reason-reserved"]').text()).toContain('reservado');
+    });
+});
+
+/** Anular um «Lecionada» (0.194.0): só quando o servidor o permite. */
+describe('LessonOutcomePanel — anular lecionada', () => {
+    const notHeldOptions = { causes: [{ value: 'weather_closure', label: 'Encerramento por mau tempo' }], specifications: [] };
+
+    function mountTaught(extra: Record<string, unknown> = {}) {
+        return mount(LessonOutcomePanel, {
+            props: {
+                lessonUlid: 'lesson-a',
+                outcome: 'taught',
+                outcomeLabel: 'Lecionada',
+                outcomeReasonLabel: null,
+                outcomeNote: null,
+                canRecord: false,
+                reasons: [],
+                pendingPlan: null,
+                notHeldOptions,
+                ...extra,
+            },
+            global: { stubs: { teleport: true } },
+            attachTo: document.body,
+        });
+    }
+
+    it('mostra «Corrigir: a aula não se realizou» quando a página diz que se pode anular', async () => {
+        const wrapper = mountTaught({ annulTaught: { summary_destination: 'next', lesson_number: 34, closed_after: null } });
+
+        expect(wrapper.get('[data-testid="open-annul-dialog"]').text()).toContain('Corrigir: a aula não se realizou');
+        await wrapper.get('[data-testid="open-annul-dialog"]').trigger('click');
+        expect(document.body.textContent).toContain('perde o n.º 34');
+        wrapper.unmount();
+    });
+
+    it('não o mostra sem a prop', () => {
+        const wrapper = mountTaught();
+
+        expect(wrapper.find('[data-testid="open-annul-dialog"]').exists()).toBe(false);
+        wrapper.unmount();
     });
 });

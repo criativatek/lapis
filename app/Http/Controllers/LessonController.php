@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Lessons\AnnulTaughtLesson;
 use App\Actions\Lessons\ClearLessonSummary;
 use App\Actions\Lessons\DeleteLesson;
 use App\Actions\Lessons\MarkLessonAsTaught;
@@ -11,6 +12,7 @@ use App\Actions\Lessons\SaveLessonSummary;
 use App\Actions\Lessons\SetLessonNumber;
 use App\Http\Controllers\Concerns\RefusesDuringImpersonation;
 use App\Http\Requests\Lessons\AdministrativeRectifyLessonOutcomeRequest;
+use App\Http\Requests\Lessons\AnnulTaughtLessonRequest;
 use App\Http\Requests\Lessons\LessonSummaryContentRequest;
 use App\Http\Requests\Lessons\LessonSummaryRequest;
 use App\Http\Requests\Lessons\MarkLessonAsTaughtRequest;
@@ -65,6 +67,7 @@ class LessonController extends Controller implements HasMiddleware
         protected LessonAttendanceRoster $attendanceRoster,
         protected RecordLessonOutcome $recordLessonOutcome,
         protected RectifyLessonOutcome $rectifyLessonOutcome,
+        protected AnnulTaughtLesson $annulTaughtLesson,
         protected ShiftLessonPlanning $lessonPlanning,
         protected LessonDayEvents $dayEvents,
         protected Entitlements $entitlements,
@@ -144,6 +147,9 @@ class LessonController extends Controller implements HasMiddleware
                 'retroactive_outcome' => $this->retroactiveOutcome($request, $lesson),
                 // Corrigir o resultado já registado: só chega ao titular do registo (o dado pode ser reservado).
                 'outcome_rectification' => LessonOutcomeRectificationView::for($lesson, $this->user($request), $this->rectifyLessonOutcome),
+                // Anular um «Lecionada» (0.194.0): só para quem pode (policy), com o destino do
+                // sumário já decidido pelo servidor, para o diálogo dizer o que vai acontecer.
+                'annul_taught' => $this->annulTaughtProps($request, $lesson),
                 // Planeamento que desceu até aqui e já não coube em nenhuma
                 // ocorrência até ao fim do ano (ShiftLessonPlanning).
                 'pending_plan' => $lesson->plan?->planned_summary,
@@ -594,6 +600,33 @@ class LessonController extends Controller implements HasMiddleware
     }
 
     /**
+     * ANULAR UM «LECIONADA»: a aula não se realizou (AnnulTaughtLesson, 0.194.0). Serve o professor
+     * (página da aula) e a direção (lista «Aulas fechadas»); a policy decide. O toast diz o destino
+     * real do sumário.
+     */
+    public function annulTaught(AnnulTaughtLessonRequest $request, Lesson $lesson): RedirectResponse
+    {
+        $this->refuseDuringImpersonation($request);
+
+        $result = $this->annulTaughtLesson->execute(
+            $lesson,
+            $this->user($request),
+            $request->cause(),
+            $request->motive(),
+            $request->causeNote(),
+            $request->situation(),
+        );
+
+        $destination = $result['summary_kept_in_history']
+            ? __('O sumário ficou no histórico desta aula.')
+            : ($result['planning'] === null ? '' : ShiftLessonPlanning::destinationSentence($result['planning'], $result['lesson']));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => trim(__('Marcação de lecionada anulada.').' '.$destination)]);
+
+        return back();
+    }
+
+    /**
      * O registo retroativo de UMA aula, para a vista semanal: a mesma resposta que a página da aula
      * dá em `retroactive_outcome`, com as mesmas razões. `null` = o registo normal basta.
      */
@@ -673,6 +706,24 @@ class LessonController extends Controller implements HasMiddleware
         $user = $request->user();
 
         return $user;
+    }
+
+    /**
+     * @return array{summary_destination: 'next'|'history', lesson_number: int|null, closed_after: string|null}|null
+     */
+    private function annulTaughtProps(Request $request, Lesson $lesson): ?array
+    {
+        if (! $this->user($request)->can('annulTaught', $lesson)) {
+            return null;
+        }
+
+        $closedAfter = $this->lessonPlanning->closedLessonAfter($lesson);
+
+        return [
+            'summary_destination' => $closedAfter === null ? 'next' : 'history',
+            'lesson_number' => $lesson->lesson_number === null ? null : (int) $lesson->lesson_number,
+            'closed_after' => $closedAfter?->starts_at->setTimezone('Europe/Lisbon')->format('d/m/Y'),
+        ];
     }
 
     protected function nullableString(Request $request, string $key): ?string

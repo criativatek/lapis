@@ -184,6 +184,16 @@ class Lesson extends Model
     }
 
     /**
+     * Quem fechou a aula (o titular do resultado).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function outcomeRecorder(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'outcome_recorded_by');
+    }
+
+    /**
      * Só as linhas de falta — para a vista da semana dizer QUEM faltou, e não
      * apenas quantos. Leitura: nunca se grava através desta relação.
      *

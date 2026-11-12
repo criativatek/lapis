@@ -71,3 +71,17 @@ describe('Retificações — lista', () => {
         expect(wrapper.find('[data-testid="rectification-classes"]').exists()).toBe(false);
     });
 });
+
+describe('Retificações — aulas fechadas (0.194.0)', () => {
+    it('liga a cada turma da instituição e esconde a secção sem turmas', () => {
+        const wrapper = mount(Index, {
+            props: { classes, lessonClasses: [{ ulid: 'cls-9', label: '9.º D', subject: 'Francês', academic_year: '2026/2027' }] },
+        });
+
+        const link = wrapper.get('[data-testid="annulment-class-link"]');
+        expect(link.attributes('href')).toBe('/classes/cls-9/retificacoes/aulas');
+        expect(link.text()).toContain('9.º D');
+
+        expect(mount(Index, { props: { classes } }).find('[data-testid="annulment-classes"]').exists()).toBe(false);
+    });
+});

@@ -52,6 +52,14 @@ O professor que registou um resultado (e só ele) pode corrigi-lo na página da 
   `lessons`. O histórico viaja na exportação pessoal (só o das aulas do próprio; ver
   `backup-schema.md`, v21) e restaura-se sem duplicar; a recuperação integral é a cópia diária da base.
 
+- **Anular «Lecionada» (0.194.0):** `AnnulTaughtLesson` (`PATCH /lessons/{lesson}/outcome/annul`),
+  pelo titular do fecho ou pela direção da instituição (`LessonPolicy::annulTaught`). Apaga a
+  assiduidade, tira o número (manual passa à frente), desce o sumário para a aula seguinte quando não
+  há fechadas a seguir (senão guarda-o em `previous.summary_*` da linha `kind = annulment`, que só o
+  titular lê) e renumera sem tocar em lecionadas. O titular (`outcome_recorded_by`) não muda. Rollback
+  de código: a aula fica como qualquer «não realizada»; a linha de histórico com `kind = annulment`
+  é ignorada pelo código antigo, que só itera os seis campos.
+
 ### Correção administrativa excecional (titular fora da turma)
 
 `PATCH /lessons/{lesson}/outcome/administrative` (`LessonPolicy::rectifyOutcomeAsAdministrator`).

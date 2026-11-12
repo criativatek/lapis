@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Lessons;
 
+use App\Actions\Lessons\AnnulTaughtLesson;
+use App\Actions\Lessons\MarkLessonAsTaught;
 use App\Actions\Lessons\RecordLessonOutcome;
 use App\Models\Lesson;
 use App\Models\LessonNotHeldCause;
@@ -278,5 +280,24 @@ class LessonServiceReportTest extends TestCase
         $this->assertSame($before['personal']['teacher_absent'] - 1, $after['personal']['teacher_absent']);
         $this->assertSame($before['personal']['not_held_recorded'] + 1, $after['personal']['not_held_recorded']);
         $this->assertSame(['strike'], array_column($after['causes'], 'cause'));
+    }
+
+    #[Test]
+    public function an_annulled_lesson_counts_as_not_held_and_no_longer_as_given(): void
+    {
+        config(['lapis.lesson_not_held_enabled' => true]);
+        $lesson = $this->makeLesson(['starts_at' => '2026-10-28 09:30:00']);
+        $this->inTenant($this->organization, fn () => app(MarkLessonAsTaught::class)->execute($lesson, $this->teacher));
+
+        $before = $this->report($this->teacher)['report']['totals'];
+
+        $this->inTenant($this->organization, fn () => app(AnnulTaughtLesson::class)->execute(
+            $lesson->refresh(), $this->teacher, LessonNotHeldCause::WeatherClosure, 'Escola encerrada por mau tempo.',
+        ));
+
+        $after = $this->report($this->teacher)['report']['totals'];
+
+        $this->assertSame($before['not_held'] + 1, $after['not_held']);
+        $this->assertSame($before['counted_as_taught'] - 1, $after['counted_as_taught']);
     }
 }

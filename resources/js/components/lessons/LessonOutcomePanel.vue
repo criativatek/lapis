@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { CalendarX2, PencilLine } from '@lucide/vue';
+import { CalendarX2, PencilLine, Undo2 } from '@lucide/vue';
 import { ref } from 'vue';
 import LessonOutcomeDialog from '@/components/lessons/LessonOutcomeDialog.vue';
 import { Button } from '@/components/ui/button';
-import type { NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
+import type { AnnulTaught, NotHeldOptions, OutcomeRectification } from '@/lib/lessonOutcomeOptions';
 import { statusToneClasses } from '@/lib/statusTone';
 
 export type LessonOutcomeValue = 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held';
@@ -38,6 +38,8 @@ defineProps<{
     retroactiveOutcome?: { closed_after: string; blockers: string[] } | null;
     /** Corrigir o resultado já registado: só para o titular do registo (o servidor decide); inclui o histórico. */
     outcomeRectification?: OutcomeRectification | null;
+    /** Anular um «Lecionada» (0.194.0): só chega a quem pode; o destino do sumário vem do servidor. */
+    annulTaught?: AnnulTaught | null;
     /** «8.º F · 09:30–10:20» — identifica a aula no diálogo. */
     lessonContext?: string | null;
     canRecord: boolean;
@@ -54,6 +56,7 @@ const emit = defineEmits<{ submitting: [boolean] }>();
 const dialogOpen = ref(false);
 const retroactiveOpen = ref(false);
 const rectifyOpen = ref(false);
+const annulOpen = ref(false);
 
 const when = (iso: string): string =>
     new Date(iso).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
@@ -107,7 +110,7 @@ const when = (iso: string): string =>
                 </summary>
                 <ul class="space-y-3">
                     <li v-for="entry in outcomeRectification.history" :key="entry.ulid" data-testid="rectification-entry">
-                        <p class="font-medium">{{ when(entry.at) }}<span v-if="entry.by"> · {{ entry.by }}</span></p>
+                        <p class="font-medium">{{ when(entry.at) }}<span v-if="entry.by"> · {{ entry.by }}</span><span v-if="entry.by_direction"> · pela direção</span></p>
                         <p v-for="change in entry.changes" :key="change.field">
                             {{ change.label }}: {{ change.from }} → {{ change.to }}
                         </p>
@@ -116,6 +119,31 @@ const when = (iso: string): string =>
                 </ul>
             </details>
         </div>
+    </section>
+
+    <!-- A aula não se realizou e foi fechada por engano (0.194.0): a única porta
+         para desfazer um «Lecionada». Secção própria, porque a de cima não
+         existe numa aula lecionada. O servidor diz se se pode e o que acontece
+         ao sumário; o diálogo diz-o ao professor antes de ele confirmar. -->
+    <section v-if="annulTaught && notHeldOptions" class="space-y-2 rounded-xl border p-4" data-testid="lesson-annul-taught">
+        <h2 class="text-sm font-semibold">A aula não se realizou?</h2>
+        <p class="text-sm text-muted-foreground">
+            Se esta aula foi marcada como lecionada por engano, corrige-a aqui: passa a «Aula não realizada», com causa e
+            motivo, e fica no histórico.
+        </p>
+        <LessonOutcomeDialog
+            v-model:open="annulOpen"
+            :lesson-ulid="lessonUlid"
+            :reasons="reasons"
+            :not-held-options="notHeldOptions"
+            :annul="annulTaught"
+            :lesson-context="lessonContext ?? null"
+            @submitting="emit('submitting', $event)"
+        >
+            <Button type="button" variant="outline" class="min-h-11" data-testid="open-annul-dialog" @click="annulOpen = true">
+                <Undo2 class="size-4" /> Corrigir: a aula não se realizou
+            </Button>
+        </LessonOutcomeDialog>
     </section>
 
     <section
