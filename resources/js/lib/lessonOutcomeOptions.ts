@@ -36,7 +36,16 @@ export type OutcomeRectification = {
         at: string;
         by: string | null;
         kind: string;
+        /** Anulação feita pela direção, e não pelo titular do fecho. */
+        by_direction?: boolean;
         motive: string;
         changes: { field: string; label: string; from: string; to: string }[];
     }[];
+};
+
+/** Anular um «Lecionada» (0.194.0): só chega a quem pode; o destino do sumário é decidido no servidor. */
+export type AnnulTaught = {
+    summary_destination: 'next' | 'history';
+    lesson_number: number | null;
+    closed_after: string | null;
 };
