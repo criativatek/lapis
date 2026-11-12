@@ -439,7 +439,10 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                 </ul>
 
                 <div class="mt-4 flex flex-wrap gap-2">
+                    <!-- Uma aula que não se realizou não tem sumário (0.194.1): nem
+                         se escreve nem se projeta. Fica «Abrir aula». -->
                     <Button
+                        v-if="attendanceApplies"
                         type="button"
                         variant="outline"
                         class="min-h-11 flex-[1_1_calc(50%-0.5rem)] sm:min-h-9 sm:flex-none"
@@ -475,6 +478,7 @@ function scheduleLabel(event: WeekLesson['day_events'][number]): string {
                         </Link>
                     </Button>
                     <Button
+                        v-if="attendanceApplies"
                         type="button"
                         variant="ghost"
                         class="min-h-11 flex-[1_1_calc(50%-0.5rem)] sm:min-h-9 sm:flex-none"

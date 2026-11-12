@@ -25,6 +25,21 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.194.1] — 2026-11-12
+
+> **Uma aula que não se realizou não tem sumário.** Depois de anular um
+> «Lecionada» (ou de registar «Professor ausente», «Turma noutra atividade» ou
+> «Aula não realizada»), a página da aula continuava a mostrar o editor de
+> sumário com campo obrigatório e «Guardar», como se fosse uma aula normal, e o
+> servidor aceitava o texto — a semana passava a mostrá-lo como sumário de uma
+> aula que não houve. Agora o servidor recusa-o com a razão; a página mostra
+> uma nota («Esta aula não se realizou: não tem sumário. O que estava planeado
+> passou para a aula seguinte.») e, se ficou texto gravado por engano,
+> mostra-o só para leitura com «Limpar sumário» à mão; o cartão da semana
+> deixa de oferecer «Escrever sumário» e «Projetar sumário» nessas aulas. A
+> frase do número passa a nomear o resultado certo em vez de «Professor
+> ausente» para tudo. Sem migrations.
+
 ## [0.194.0] — 2026-11-12
 
 > **Anular um «Lecionada»: a aula não se realizou.** Uma aula fechada por
