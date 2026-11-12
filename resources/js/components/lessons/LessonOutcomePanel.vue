@@ -119,25 +119,31 @@ const when = (iso: string): string =>
                 </ul>
             </details>
         </div>
+    </section>
 
-        <!-- A aula não se realizou e foi fechada por engano: a única porta para
-             desfazer um «Lecionada». O servidor diz se se pode e o que acontece
-             ao sumário; o diálogo diz-o ao professor antes de ele confirmar. -->
-        <div v-if="annulTaught && notHeldOptions" class="pt-2" data-testid="lesson-annul-taught">
-            <LessonOutcomeDialog
-                v-model:open="annulOpen"
-                :lesson-ulid="lessonUlid"
-                :reasons="reasons"
-                :not-held-options="notHeldOptions"
-                :annul="annulTaught"
-                :lesson-context="lessonContext ?? null"
-                @submitting="emit('submitting', $event)"
-            >
-                <Button type="button" variant="outline" class="min-h-11" data-testid="open-annul-dialog" @click="annulOpen = true">
-                    <Undo2 class="size-4" /> Corrigir: a aula não se realizou
-                </Button>
-            </LessonOutcomeDialog>
-        </div>
+    <!-- A aula não se realizou e foi fechada por engano (0.194.0): a única porta
+         para desfazer um «Lecionada». Secção própria, porque a de cima não
+         existe numa aula lecionada. O servidor diz se se pode e o que acontece
+         ao sumário; o diálogo diz-o ao professor antes de ele confirmar. -->
+    <section v-if="annulTaught && notHeldOptions" class="space-y-2 rounded-xl border p-4" data-testid="lesson-annul-taught">
+        <h2 class="text-sm font-semibold">A aula não se realizou?</h2>
+        <p class="text-sm text-muted-foreground">
+            Se esta aula foi marcada como lecionada por engano, corrige-a aqui: passa a «Aula não realizada», com causa e
+            motivo, e fica no histórico.
+        </p>
+        <LessonOutcomeDialog
+            v-model:open="annulOpen"
+            :lesson-ulid="lessonUlid"
+            :reasons="reasons"
+            :not-held-options="notHeldOptions"
+            :annul="annulTaught"
+            :lesson-context="lessonContext ?? null"
+            @submitting="emit('submitting', $event)"
+        >
+            <Button type="button" variant="outline" class="min-h-11" data-testid="open-annul-dialog" @click="annulOpen = true">
+                <Undo2 class="size-4" /> Corrigir: a aula não se realizou
+            </Button>
+        </LessonOutcomeDialog>
     </section>
 
     <section
