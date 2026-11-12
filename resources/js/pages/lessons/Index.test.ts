@@ -2174,12 +2174,12 @@ describe('editar o sumário no cartão — o número da lição (0.169.0)', () =
         expect(inertia.router.patch.mock.calls[0][1]).not.toHaveProperty('lesson_number');
     });
 
-    it('professor ausente: o editor não oferece o número', async () => {
-        const wrapper = await openEditor(
+    it('professor ausente: o cartão já não abre o editor (0.194.1 — uma aula que não se realizou não tem sumário)', () => {
+        const wrapper = mountPage([
             makeLesson({ outcome: 'teacher_absent', outcome_label: 'Professor ausente', lesson_number: null, status: 'taught', status_label: 'Lecionada' }),
-        );
+        ]);
 
-        expect(wrapper.get('[data-testid="lesson-number-absent"]').text()).toContain('Professor ausente');
+        expect(wrapper.find('[data-testid="edit-lesson-a"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="lesson-number-start"]').exists()).toBe(false);
     });
 });
@@ -2405,5 +2405,20 @@ describe('registo retroativo a partir da semana', () => {
 
         expect(wrapper.findComponent(LessonOutcomeDialog).props('open')).toBe(true);
         expect(wrapper.findComponent(LessonOutcomeDialog).props('retroactive')).toBeNull();
+    });
+});
+
+/** Uma aula que não se realizou não tem sumário (0.194.1): o cartão não oferece escrever nem projetar. */
+describe('cartão — aula que não se realizou', () => {
+    it('não oferece «Escrever sumário» nem «Projetar sumário», mas continua a abrir a aula', () => {
+        const wrapper = mountPage([
+            makeLesson({ ulid: 'nh', outcome: 'not_held', outcome_label: 'Aula não realizada', has_summary: false, summary: null }),
+            makeLesson({ ulid: 'open', starts_at: '2026-09-09T10:00:00+01:00', ends_at: '2026-09-09T10:50:00+01:00' }),
+        ]);
+
+        expect(wrapper.find('[data-testid="edit-nh"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="project-nh"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="edit-open"]').exists()).toBe(true);
+        expect(wrapper.text()).toContain('Abrir aula');
     });
 });

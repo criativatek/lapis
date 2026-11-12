@@ -3,6 +3,7 @@
 namespace App\Actions\Lessons;
 
 use App\Models\Lesson;
+use App\Models\LessonOutcome;
 use App\Models\LessonStatus;
 use App\Models\LessonSummary;
 use App\Models\User;
@@ -45,6 +46,15 @@ class SaveLessonSummary
             // internos (sequências, importação) não passam versão.
             if ($expectedVersion !== null && $expectedVersion !== $lockedLesson->summary_version) {
                 throw self::staleVersion();
+            }
+
+            // UMA AULA QUE NÃO SE REALIZOU NÃO TEM SUMÁRIO (0.194.1). Professor ausente,
+            // turma noutra atividade, aula não realizada: o resultado já disse o que
+            // aconteceu e o planeamento desceu para a aula seguinte. Aceitar texto aqui
+            // deixava o professor «obrigado» a escrever o sumário de uma aula que não
+            // houve — e a semana a mostrá-lo como se tivesse havido.
+            if ($lockedLesson->outcome !== null && $lockedLesson->outcome !== LessonOutcome::Taught) {
+                throw self::notApplicable($lockedLesson);
             }
 
             // Consolidada, a lista vem só como eco do ecrã: as correções têm rota
@@ -116,6 +126,15 @@ class SaveLessonSummary
 
             return $summary;
         });
+    }
+
+    public static function notApplicable(Lesson $lesson): ValidationException
+    {
+        return ValidationException::withMessages([
+            'content' => __('Esta aula não se realizou (:outcome): não tem sumário. O que estava planeado passou para a aula seguinte.', [
+                'outcome' => (string) $lesson->outcome?->label(),
+            ]),
+        ]);
     }
 
     /**

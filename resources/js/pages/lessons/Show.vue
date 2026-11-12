@@ -395,6 +395,16 @@ function basePreviousSummary(): void {
 
 const summaryTextarea = ref<HTMLTextAreaElement | null>(null);
 
+/** Só uma aula aberta ou lecionada tem sumário; as outras já disseram o que aconteceu. */
+const summaryApplies = computed(() => props.lesson.outcome === null || props.lesson.outcome === 'taught');
+
+/** Texto gravado numa aula que não se realizou (antes da 0.194.1 o servidor aceitava-o). */
+const strayStoredSummary = computed(() => {
+    const content = props.lesson.summary?.content?.trim() ?? '';
+
+    return summaryApplies.value || content === '' ? null : content;
+});
+
 function applyDayEventToSummary(content: string, focusSummary: boolean): void {
     summaryForm.content = content;
 
@@ -814,7 +824,35 @@ function goBack(event: MouseEvent): void {
              fechada (aí já não se prepara nada). -->
         <LessonPreparationContextPanel :lesson-ulid="lesson.ulid" :default-open="lesson.outcome === null && lesson.status !== 'taught'" />
 
-        <form class="space-y-4" @submit.prevent="submitSummary">
+        <!-- UMA AULA QUE NÃO SE REALIZOU NÃO TEM SUMÁRIO (0.194.1). Professor
+             ausente, turma noutra atividade, aula não realizada: o resultado já
+             disse o que aconteceu e o planeamento desceu para a aula seguinte.
+             O editor com campo obrigatório deixava o professor a pensar que
+             tinha de escrever o sumário de uma aula que não houve; o servidor
+             (SaveLessonSummary) recusa-o de qualquer forma. -->
+        <section
+            v-if="!summaryApplies"
+            class="space-y-3 rounded-xl border bg-muted/20 p-4"
+            data-testid="summary-not-applicable"
+        >
+            <h2 class="text-base font-semibold">Sumário</h2>
+            <p class="text-sm text-muted-foreground">
+                Esta aula não se realizou<template v-if="lesson.outcome_label"> ({{ lesson.outcome_label }})</template>: não tem
+                sumário. O que estava planeado passou para a aula seguinte.
+            </p>
+            <!-- A frase do número que o campo (escondido com o formulário) dava, agora
+                 com o resultado certo em vez de «Professor ausente» para tudo. -->
+            <p class="text-sm text-muted-foreground" data-testid="lesson-number-absent">
+                {{ lesson.outcome_label ?? 'Aula não realizada' }}: esta aula não tem número de lição.
+            </p>
+            <div v-if="strayStoredSummary" class="space-y-2" data-testid="summary-stray">
+                <p class="text-sm font-medium">Ficou um sumário gravado nesta aula, provavelmente por engano:</p>
+                <p class="rounded-lg border bg-background px-3 py-2 text-sm whitespace-pre-line">{{ strayStoredSummary }}</p>
+                <p class="text-xs text-muted-foreground">Para o remover, usa «Limpar sumário» em «Corrigir esta aula», mais abaixo.</p>
+            </div>
+        </section>
+
+        <form v-else class="space-y-4" @submit.prevent="submitSummary">
             <AlertError v-if="summaryErrors.length > 0" :errors="summaryErrors" title="Não foi possível guardar o sumário." />
             <AlertError v-if="attendanceErrors.length > 0" :errors="attendanceErrors" title="Não foi possível registar a assiduidade." />
 

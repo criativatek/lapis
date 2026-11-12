@@ -100,7 +100,7 @@ function mountPage(
         ends_at?: string | null;
         status?: 'preparation' | 'prepared' | 'taught';
         status_label?: string;
-        outcome?: 'taught' | 'teacher_absent' | 'class_external_activity' | null;
+        outcome?: 'taught' | 'teacher_absent' | 'class_external_activity' | 'not_held' | null;
         outcome_label?: string | null;
         can_record_outcome?: boolean;
         context_label?: string;
@@ -1445,5 +1445,40 @@ describe('lessons/Show — aula num dia sem aulas', () => {
 
     it('shows nothing when the day is a teaching day', () => {
         expect(mountPage().find('[data-testid="lesson-calendar-conflict"]').exists()).toBe(false);
+    });
+});
+
+/**
+ * UMA AULA QUE NÃO SE REALIZOU NÃO TEM SUMÁRIO (0.194.1): nem campo obrigatório
+ * nem «Guardar». Se ficou texto gravado por engano, mostra-se só para leitura e
+ * aponta-se para «Limpar sumário».
+ */
+describe('lessons/Show — aula que não se realizou', () => {
+    it('não mostra o editor numa aula não realizada, e explica porquê', () => {
+        const wrapper = mountPage({ outcome: 'not_held', outcome_label: 'Aula não realizada' });
+
+        expect(wrapper.find('#lesson-summary').exists()).toBe(false);
+        const note = wrapper.get('[data-testid="summary-not-applicable"]').text().replace(/\s+/g, ' ');
+        expect(note).toContain('não se realizou (Aula não realizada)');
+        expect(note).toContain('passou para a aula seguinte');
+        expect(wrapper.find('[data-testid="summary-stray"]').exists()).toBe(false);
+    });
+
+    it('mostra um sumário gravado por engano só para leitura', () => {
+        const wrapper = mountPage({
+            outcome: 'teacher_absent',
+            outcome_label: 'Professor ausente',
+            summary: { content: 'Conclusão da correção dos testes.', private_notes: null, resources: null, homework: null, reviewed_at: null },
+        });
+
+        expect(wrapper.find('#lesson-summary').exists()).toBe(false);
+        const stray = wrapper.get('[data-testid="summary-stray"]').text();
+        expect(stray).toContain('Conclusão da correção dos testes.');
+        expect(stray).toContain('Limpar sumário');
+    });
+
+    it('mantém o editor numa aula aberta e numa lecionada', () => {
+        expect(mountPage().find('#lesson-summary').exists()).toBe(true);
+        expect(mountPage({ status: 'taught', status_label: 'Lecionada', outcome: 'taught', outcome_label: 'Lecionada' }).find('#lesson-summary').exists()).toBe(true);
     });
 });
