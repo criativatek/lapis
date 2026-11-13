@@ -24,7 +24,14 @@ type Option = {
     min_value: number;
     max_value: number;
     ulid?: string;
-    levels?: { code: string; label: string }[];
+    organization_default?: boolean;
+    levels?: {
+        code: string;
+        label: string;
+        from_percent?: number;
+        inovar_code?: string | null;
+        is_negative?: boolean;
+    }[];
 };
 
 type DomainRow = { name: string; weight: number };
@@ -132,37 +139,270 @@ function submitScale(): void {
     });
 }
 
-// ---------------------------------------------------- personalizar menções
+// ---------------------------------------------------- personalizar escala
 //
-// AS MENÇÕES DA ESCOLA, POR PERFIL. Por defeito nada muda: quem não carregar
-// aqui fica com «Fraco, Insuficiente, Suficiente, Bom, Muito Bom». Guardar
-// cria uma escala da organização derivada da do sistema — mesmos níveis,
-// bandas e Inovar, só com os nomes novos — e o perfil passa a apontar-lhe.
+// A ESCALA DA ESCOLA, POR PERFIL. Por defeito nada muda: quem não carregar
+// aqui fica com «Fraco, Insuficiente, Suficiente, Bom, Muito Bom» e os cortes
+// 0, 20, 50, 70, 90. O professor pode ter de 2 a 10 níveis, cada um com nome,
+// «a partir de X %» (inteiro) e o código que a escola definiu no Inovar, e
+// diz a partir de que nível é positiva. Guardar cria uma escala da
+// organização derivada da do sistema (ou atualiza-a, enquanto não congelada) e
+// o perfil passa a apontar-lhe. O servidor é a autoridade: o que se valida
+// aqui serve só para o feedback ser imediato.
+
+type MentionLevel = { label: string; from_percent: number | string; inovar_code: string };
+
+const MIN_LEVELS = 2;
+const MAX_LEVELS = 10;
+const INOVAR_CODE_MAX_LENGTH = 8;
+
+/** O que o Inovar costuma chamar a cada nível de origem — só sugestões. */
+const defaultInovarCodes: Record<string, string> = {
+    fraco: 'F',
+    insuficiente: 'I',
+    suficiente: 'S',
+    bom: 'B',
+    'muito bom': 'MB',
+};
+
+const defaultLevels: MentionLevel[] = [
+    { label: 'Fraco', from_percent: 0, inovar_code: 'F' },
+    { label: 'Insuficiente', from_percent: 20, inovar_code: 'I' },
+    { label: 'Suficiente', from_percent: 50, inovar_code: 'S' },
+    { label: 'Bom', from_percent: 70, inovar_code: 'B' },
+    { label: 'Muito Bom', from_percent: 90, inovar_code: 'MB' },
+];
+
+/** Sem maiúsculas, acentos nem espaços nas pontas — para comparar nomes. */
+function normaliseName(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function suggestedInovarCode(label: string): string | null {
+    return defaultInovarCodes[normaliseName(label)] ?? null;
+}
 
 const selectedScale = computed(() => props.scales.find((scale) => scale.id === form.scale_id) ?? null);
 
-/** Só uma escala de níveis tem menções para personalizar. */
+/** Só uma escala de níveis se pode personalizar. */
 const canCustomiseMentions = computed(
     () => selectedScale.value !== null && selectedScale.value.kind === 'level' && (selectedScale.value.levels?.length ?? 0) > 0,
 );
 
 const mentionsDialogOpen = ref(false);
 
-const mentionsForm = useForm<{ labels: string[]; profile_name: string }>({
-    labels: [],
+const mentionsForm = useForm<{
+    levels: MentionLevel[];
+    first_positive_level: number;
+    profile_name: string;
+    scale_name: string;
+    use_as_organization_default: boolean;
+}>({
+    levels: [],
+    first_positive_level: 1,
     profile_name: '',
+    scale_name: '',
+    use_as_organization_default: false,
 });
 
+// O que o professor já escolheu à mão — as sugestões só valem até lá.
+const inovarTouched = ref<boolean[]>([]);
+const scaleNameTouched = ref(false);
+
+function cutOf(level: MentionLevel): number | null {
+    const cut = typeof level.from_percent === 'number' ? level.from_percent : Number(level.from_percent);
+
+    return level.from_percent !== '' && Number.isInteger(cut) ? cut : null;
+}
+
+/**
+ * A sugestão de origem: o primeiro nível cujo corte é ≥ 50 %; sem ele, o último.
+ * Só vale ao «Repor». Daí em diante a fronteira é de um NÍVEL, não de uma
+ * percentagem: mexer nos cortes nunca a muda — uma escola cuja positiva começa
+ * nos 45 % não pode ver o seu «Suficiente» passar a negativo em silêncio.
+ */
+function suggestedFirstPositive(levels: MentionLevel[]): number {
+    const index = levels.findIndex((level) => (cutOf(level) ?? 0) >= 50);
+
+    return index === -1 ? levels.length : index + 1;
+}
+
+function levelsFromScale(scale: Option): MentionLevel[] {
+    return (scale.levels ?? []).map((level, index) => ({
+        label: level.label,
+        from_percent: index === 0 ? 0 : (level.from_percent ?? 0),
+        inovar_code: level.inovar_code ?? '',
+    }));
+}
+
 function openMentionsDialog(): void {
-    if (!selectedScale.value) {
+    const scale = selectedScale.value;
+
+    if (!scale) {
         return;
     }
 
     mentionsForm.clearErrors();
-    mentionsForm.labels = (selectedScale.value.levels ?? []).map((level) => level.label);
+    mentionsForm.levels = levelsFromScale(scale);
+    inovarTouched.value = mentionsForm.levels.map(
+        (level) => level.inovar_code !== '' && level.inovar_code !== (suggestedInovarCode(level.label) ?? ''),
+    );
+
+    const levels = scale.levels ?? [];
+    const firstPositive = levels.findIndex((level) => level.is_negative === false);
+    mentionsForm.first_positive_level = firstPositive === -1 ? levels.length : firstPositive + 1;
+
     mentionsForm.profile_name = form.name;
+    mentionsForm.scale_name = scale.system ? `Escala 1 a ${levels.length} · ${form.name}`.trim() : scale.label;
+    scaleNameTouched.value = false;
+    mentionsForm.use_as_organization_default = scale.organization_default === true;
     mentionsDialogOpen.value = true;
 }
+
+/** O nome pré-preenchido acompanha o número de níveis, enquanto o professor não lhe mexer. */
+function syncScaleName(): void {
+    if (!scaleNameTouched.value) {
+        mentionsForm.scale_name = mentionsForm.scale_name.replace(
+            /^Escala 1 a \d+ · /,
+            `Escala 1 a ${mentionsForm.levels.length} · `,
+        );
+    }
+}
+
+/** Ao escrever um nome que coincide com um dos de origem, o código sugere-se. */
+function onLabelInput(index: number, event: Event): void {
+    const suggestion = suggestedInovarCode((event.target as HTMLInputElement).value);
+
+    if (suggestion !== null && !inovarTouched.value[index]) {
+        mentionsForm.levels[index].inovar_code = suggestion;
+    }
+}
+
+const canAddLevel = computed(() => {
+    const last = mentionsForm.levels[mentionsForm.levels.length - 1];
+
+    return mentionsForm.levels.length < MAX_LEVELS && (last === undefined || (cutOf(last) ?? 0) < 100);
+});
+
+function addLevel(): void {
+    if (!canAddLevel.value) {
+        return;
+    }
+
+    const last = cutOf(mentionsForm.levels[mentionsForm.levels.length - 1]) ?? 0;
+    const suggested = Math.min(100, Math.max(last + 1, Math.round((last + 100) / 2)));
+
+    mentionsForm.levels.push({ label: '', from_percent: suggested, inovar_code: '' });
+    inovarTouched.value.push(false);
+    syncScaleName();
+}
+
+function removeLevel(index: number): void {
+    if (mentionsForm.levels.length <= MIN_LEVELS) {
+        return;
+    }
+
+    mentionsForm.levels.splice(index, 1);
+    inovarTouched.value.splice(index, 1);
+
+    // O novo primeiro nível começa sempre em 0.
+    mentionsForm.levels[0].from_percent = 0;
+
+    // A fronteira acompanha o NÍVEL: removido um nível abaixo dela, desce uma
+    // posição com ele; removido o próprio, passa para o que lhe sucede.
+    const position = index + 1;
+    const current = mentionsForm.first_positive_level;
+    const shifted = position < current ? current - 1 : current;
+
+    mentionsForm.first_positive_level = Math.min(mentionsForm.levels.length, Math.max(1, shifted));
+
+    syncScaleName();
+}
+
+/** «Repor a escala do Lapispro»: os cinco níveis de origem. */
+function resetMentions(): void {
+    const origin = props.scales.find(
+        (scale) => scale.system === true && scale.kind === 'level' && (scale.levels?.length ?? 0) > 0,
+    );
+    const levels = origin ? levelsFromScale(origin) : defaultLevels.map((level) => ({ ...level }));
+
+    mentionsForm.clearErrors();
+    mentionsForm.levels = levels;
+    inovarTouched.value = levels.map(() => false);
+    mentionsForm.first_positive_level = suggestedFirstPositive(levels);
+    syncScaleName();
+}
+
+/** «20 – 49 %»: o intervalo que os cortes dão a cada nível. */
+function rangeText(index: number): string {
+    const from = cutOf(mentionsForm.levels[index]);
+    const next = mentionsForm.levels[index + 1];
+    const nextCut = next === undefined ? 101 : cutOf(next);
+
+    if (from === null || nextCut === null || nextCut <= from) {
+        return '';
+    }
+
+    return `${from} – ${nextCut - 1} %`;
+}
+
+const serverErrors = computed(() => mentionsForm.errors as Record<string, string>);
+
+const REPEATED_NAME = 'Dois níveis não podem ter o mesmo nome.';
+
+/** Feedback imediato (nome repetido); o servidor continua a ser a autoridade. */
+function labelError(index: number): string | undefined {
+    const name = normaliseName(mentionsForm.levels[index].label);
+    const repeated = name !== '' && mentionsForm.levels.findIndex((level) => normaliseName(level.label) === name) !== index;
+
+    return serverErrors.value[`levels.${index}.label`] ?? (repeated ? REPEATED_NAME : undefined);
+}
+
+function cutError(index: number): string | undefined {
+    if (serverErrors.value[`levels.${index}.from_percent`]) {
+        return serverErrors.value[`levels.${index}.from_percent`];
+    }
+
+    if (index === 0) {
+        return undefined;
+    }
+
+    const cut = cutOf(mentionsForm.levels[index]);
+    const previous = cutOf(mentionsForm.levels[index - 1]);
+
+    if (cut === null || cut < 0 || cut > 100) {
+        return 'Indique um número inteiro entre 0 e 100.';
+    }
+
+    return previous !== null && cut <= previous ? 'Tem de começar acima do nível anterior.' : undefined;
+}
+
+function codeError(index: number): string | undefined {
+    const code = mentionsForm.levels[index].inovar_code;
+
+    if (serverErrors.value[`levels.${index}.inovar_code`]) {
+        return serverErrors.value[`levels.${index}.inovar_code`];
+    }
+
+    if (code.length > INOVAR_CODE_MAX_LENGTH) {
+        return `No máximo ${INOVAR_CODE_MAX_LENGTH} caracteres.`;
+    }
+
+    return /\s/.test(code) ? 'Sem espaços.' : undefined;
+}
+
+const levelsWithoutCode = computed(() => mentionsForm.levels.some((level) => level.inovar_code.trim() === ''));
+
+const repeatedCodes = computed(() => {
+    const codes = mentionsForm.levels.map((level) => level.inovar_code.trim().toLowerCase()).filter((code) => code !== '');
+
+    return new Set(codes).size !== codes.length;
+});
 
 function submitMentions(): void {
     const source = selectedScale.value;
@@ -323,10 +563,10 @@ function submit(): void {
                             variant="outline"
                             size="sm"
                             :disabled="!canCustomiseMentions"
-                            :title="canCustomiseMentions ? undefined : 'Só uma escala de níveis tem menções'"
+                            :title="canCustomiseMentions ? undefined : 'Só uma escala de níveis se pode personalizar'"
                             @click="openMentionsDialog"
                         >
-                            <Pencil class="size-4" /> Personalizar menções
+                            <Pencil class="size-4" /> Personalizar escala
                         </Button>
                         <Button
                             type="button"
@@ -364,7 +604,7 @@ function submit(): void {
                             :key="scale.id"
                             :value="scale.id"
                         >
-                            {{ scale.label }}
+                            {{ scale.label }}{{ scale.organization_default ? ' (escala da organização)' : '' }}
                         </option>
                     </optgroup>
                 </select>
@@ -532,35 +772,154 @@ function submit(): void {
         </DialogContent>
     </Dialog>
 
-    <!-- As menções da escola. Os níveis ficam à esquerda, fixos; só o nome é
-         editável. A menção do Lapispro fica como referência por baixo. -->
+    <!-- A escala da escola: quantos níveis, como se chamam, a partir de que
+         percentagem começa cada um e o código que a escola definiu no Inovar. -->
     <Dialog v-if="canManage" v-model:open="mentionsDialogOpen">
-        <DialogContent>
+        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
             <form data-test="mentions-form" @submit.prevent="submitMentions">
                 <DialogHeader>
-                    <DialogTitle>Personalizar menções</DialogTitle>
+                    <DialogTitle>Personalizar escala</DialogTitle>
                     <DialogDescription>
-                        As menções que esta escola usa. Os níveis, as percentagens de cada um e a
-                        correspondência com o Inovar não mudam.
+                        Os níveis que a sua escola usa: quantos são, como se chamam e a partir de que percentagem
+                        começa cada um.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div class="grid gap-3 py-4">
-                    <div
-                        v-for="(level, index) in selectedScale?.levels ?? []"
-                        :key="level.code"
-                        class="grid grid-cols-[2rem_1fr] items-center gap-3"
-                    >
-                        <span class="text-center font-semibold tabular-nums">{{ level.code }}</span>
-                        <div class="grid gap-1">
-                            <Label :for="`mention-${index}`" class="text-xs text-muted-foreground">
-                                Lapispro: {{ level.label }}
-                            </Label>
-                            <Input :id="`mention-${index}`" v-model="mentionsForm.labels[index]" maxlength="64" />
-                            <InputError :message="(mentionsForm.errors as Record<string, string>)[`labels.${index}`]" />
+                <div class="grid gap-4 py-4">
+                    <div class="grid gap-1">
+                        <Label for="scale-display-name">Nome da escala</Label>
+                        <Input
+                            id="scale-display-name"
+                            v-model="mentionsForm.scale_name"
+                            maxlength="120"
+                            @input="scaleNameTouched = true"
+                        />
+                        <InputError :message="serverErrors.scale_name" />
+                    </div>
+
+                    <label class="flex items-start gap-2 text-sm">
+                        <input
+                            v-model="mentionsForm.use_as_organization_default"
+                            type="checkbox"
+                            class="mt-0.5 size-4"
+                            data-test="organization-default"
+                        />
+                        <span>Usar como escala da organização — os perfis novos abrem com ela</span>
+                    </label>
+
+                    <div class="grid gap-3">
+                        <div
+                            class="hidden grid-cols-[1.5rem_1fr_6rem_6rem_2rem] items-end gap-2 text-xs text-muted-foreground sm:grid"
+                        >
+                            <span>N.º</span>
+                            <span>Designação</span>
+                            <span>A partir de (%)</span>
+                            <span>Inovar</span>
+                            <span />
+                        </div>
+
+                        <div
+                            v-for="(level, index) in mentionsForm.levels"
+                            :key="index"
+                            class="grid grid-cols-[1.5rem_1fr_1fr_2rem] items-start gap-2 sm:grid-cols-[1.5rem_1fr_6rem_6rem_2rem]"
+                            data-test="level-row"
+                        >
+                            <!-- No telemóvel a designação ocupa a linha toda; o
+                                 corte, o código e o remover ficam por baixo. -->
+                            <span class="pt-2 text-center font-semibold tabular-nums">{{ index + 1 }}</span>
+                            <div class="col-span-3 grid gap-1 sm:col-span-1">
+                                <Input
+                                    :id="`level-label-${index}`"
+                                    v-model="level.label"
+                                    maxlength="64"
+                                    :aria-label="`Designação do nível ${index + 1}`"
+                                    @input="onLabelInput(index, $event)"
+                                />
+                                <p v-if="rangeText(index)" class="text-xs text-muted-foreground" data-test="level-range">
+                                    {{ rangeText(index) }}
+                                </p>
+                                <InputError :message="labelError(index)" />
+                            </div>
+                            <div class="col-start-2 grid gap-1 sm:col-start-auto">
+                                <span class="text-xs text-muted-foreground sm:hidden" aria-hidden="true">A partir de (%)</span>
+                                <Input
+                                    :id="`level-cut-${index}`"
+                                    v-model.number="level.from_percent"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    :disabled="index === 0"
+                                    :aria-label="`Percentagem a partir da qual começa o nível ${index + 1}`"
+                                />
+                                <InputError :message="cutError(index)" />
+                            </div>
+                            <div class="grid gap-1">
+                                <span class="text-xs text-muted-foreground sm:hidden" aria-hidden="true">Inovar</span>
+                                <Input
+                                    :id="`level-inovar-${index}`"
+                                    v-model="level.inovar_code"
+                                    :maxlength="INOVAR_CODE_MAX_LENGTH"
+                                    :aria-label="`Código no Inovar do nível ${index + 1}`"
+                                    @input="inovarTouched[index] = true"
+                                />
+                                <InputError :message="codeError(index)" />
+                            </div>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                :disabled="mentionsForm.levels.length <= MIN_LEVELS"
+                                :aria-label="`Remover o nível ${index + 1}`"
+                                class="self-end sm:self-start"
+                                data-test="remove-level"
+                                @click="removeLevel(index)"
+                            >
+                                <Trash2 class="size-4" />
+                            </Button>
+                        </div>
+
+                        <p class="text-xs text-muted-foreground">
+                            Código no Inovar — o que a sua escola definiu no Inovar para este nível.
+                        </p>
+                        <p v-if="levelsWithoutCode" class="text-xs text-amber-700 dark:text-amber-400" data-test="warning-no-code">
+                            Sem código em todos os níveis, esta escala não exporta para o Inovar.
+                        </p>
+                        <p v-if="repeatedCodes" class="text-xs text-amber-700 dark:text-amber-400" data-test="warning-repeated-code">
+                            Dois níveis têm o mesmo código: no Inovar ficam indistinguíveis.
+                        </p>
+                        <InputError :message="serverErrors.levels" />
+
+                        <div class="flex flex-wrap gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                :disabled="!canAddLevel"
+                                data-test="add-level"
+                                @click="addLevel"
+                            >
+                                <Plus class="size-4" /> Adicionar nível
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" data-test="reset-levels" @click="resetMentions">
+                                Repor a escala do Lapispro
+                            </Button>
                         </div>
                     </div>
-                    <InputError :message="mentionsForm.errors.labels" />
+
+                    <div class="grid gap-1">
+                        <Label for="first-positive-level">A partir de que nível é positiva</Label>
+                        <select
+                            id="first-positive-level"
+                            v-model.number="mentionsForm.first_positive_level"
+                            class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                        >
+                            <option v-for="(level, index) in mentionsForm.levels" :key="index" :value="index + 1">
+                                {{ index + 1 }} · {{ level.label || 'Sem nome' }}
+                            </option>
+                        </select>
+                        <InputError :message="serverErrors.first_positive_level" />
+                    </div>
                 </div>
 
                 <DialogFooter>

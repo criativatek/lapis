@@ -11,7 +11,14 @@ type Option = {
     min_value: number;
     max_value: number;
     ulid?: string;
-    levels?: { code: string; label: string }[];
+    organization_default?: boolean;
+    levels?: {
+        code: string;
+        label: string;
+        from_percent?: number;
+        inovar_code?: string | null;
+        is_negative?: boolean;
+    }[];
 };
 type DomainRow = { name: string; weight: number };
 

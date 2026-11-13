@@ -102,16 +102,48 @@ class InovarCodeResolverTest extends TestCase
     }
 
     #[Test]
-    public function a_code_outside_the_five_this_integration_writes_is_not_passed_through(): void
+    public function a_code_the_school_defined_is_written_as_it_is_and_never_rejected_for_not_being_a_default(): void
     {
         $scale = $this->systemScale('Escala 1 a 5');
         $level = $scale->levels->firstWhere('label', 'Bom');
 
-        // INOVAR would refuse the file and the teacher would find out there
-        // instead of here.
-        $level->update(['inovar_code' => 'X']);
+        // Each school defines its own codes in INOVAR; F/I/S/B/MB are only the
+        // suggestions a new level starts from.
+        $level->update(['inovar_code' => ' SB ']);
 
-        $this->assertNull($this->resolver()->forLevel($level->fresh()));
+        $this->assertSame('SB', $this->resolver()->forLevel($level->fresh()));
+        $this->assertTrue(InovarCodeResolver::isWritable('SMB'));
+        $this->assertFalse(InovarCodeResolver::isWritable('  '));
+        $this->assertFalse(InovarCodeResolver::isWritable(null));
+        $this->assertSame(['F', 'I', 'S', 'B', 'MB'], InovarCodeResolver::DEFAULT_SUGGESTIONS);
+    }
+
+    #[Test]
+    public function a_four_level_scale_with_the_school_codes_is_covered_and_names_the_level_that_has_none(): void
+    {
+        $scale = $this->systemScale('Escala 1 a 5');
+        $codes = ['NS', 'S', 'SB', 'SMB'];
+
+        // Four levels with the school's own codes (the fifth is dropped from
+        // the picture: a scale of four).
+        $scale->levels->each(function ($level, int $index) use ($codes): void {
+            if ($index < 4) {
+                $level->update(['inovar_code' => $codes[$index]]);
+            } else {
+                $level->delete();
+            }
+        });
+        $scale->unsetRelation('levels');
+        $scale->load('levels');
+
+        $this->assertTrue($this->resolver()->covers($scale));
+        $this->assertSame(['NS', 'S', 'SB', 'SMB'], $scale->levels->map(fn ($level) => $this->resolver()->forLevel($level))->all());
+
+        $scale->levels->first()->update(['inovar_code' => null]);
+        $scale->unsetRelation('levels');
+
+        $this->assertFalse($this->resolver()->covers($scale));
+        $this->assertSame(['Fraco'], $this->resolver()->missingFrom($scale));
     }
 
     #[Test]

@@ -13,7 +13,6 @@ use App\Models\OrganizationIdentity;
 use App\Models\ProfileVersionDomain;
 use App\Models\ProfileVersionStatus;
 use App\Models\Scale;
-use App\Models\ScaleLevel;
 use App\Models\Subject;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -83,8 +82,7 @@ final class WriteConfigurationImport
         unset($data['levels']);
         $scale = Scale::query()->create($data);
         foreach ($levels as $level) {
-            $level['scale_id'] = $scale->id;
-            ScaleLevel::query()->create($level);
+            $scale->levels()->create($level);
         }
     }
 

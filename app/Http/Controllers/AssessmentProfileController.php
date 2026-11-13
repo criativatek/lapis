@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Actions\ConfigSharing\BuildConfigurationImportPlan;
 use App\Actions\ConfigSharing\BuildYearReusePackage;
 use App\Actions\ConfigSharing\WriteConfigurationImport;
+use App\Domain\Assessment\Bc;
 use App\Http\Requests\AssessmentProfileRequest;
 use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
+use App\Models\Organization;
 use App\Models\Scale;
 use App\Models\Subject;
 use App\Models\User;
@@ -18,6 +20,7 @@ use App\Support\Assessment\GradeLevelLabel;
 use App\Support\Assessment\ProfileActivationException;
 use App\Support\Help\HelpArticle;
 use App\Support\Help\HelpCenter;
+use App\Support\Tenancy\CurrentOrganization;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -68,7 +71,7 @@ class AssessmentProfileController extends Controller
             // Por defeito, a escala com menções (Fraco… Muito Bom): quem não
             // mexer fica com ela. Não é obrigação — é o que evita a pauta só
             // com percentagens de quem criou o perfil sem reparar na escala.
-            'defaultScaleId' => Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id'),
+            'defaultScaleId' => $this->defaultScaleId(),
             // "Precisa de ajuda?" (A2, Onboarding & Help) — critérios, domínios
             // e pesos are the one place in this flow a first-time teacher is
             // most likely to get stuck, per the brief's own explicit choice.
@@ -261,29 +264,82 @@ class AssessmentProfileController extends Controller
      */
     protected function formOptions(): array
     {
+        $organizationScaleId = $this->organizationScaleId();
+
         return [
             'academicYears' => AcademicYear::orderByDesc('starts_on')->get(['ulid', 'id', 'label'])
                 ->map(fn (AcademicYear $year) => ['id' => $year->id, 'label' => $year->label]),
             'subjects' => Subject::orderBy('name')->get(['id', 'name'])
                 ->map(fn (Subject $subject) => ['id' => $subject->id, 'label' => $subject->name]),
             'scales' => Scale::with('levels')->orderByRaw('organization_id IS NOT NULL, name')->get()
+                ->sortBy(fn (Scale $scale): int => $scale->id === $organizationScaleId ? 0 : 1)
+                ->values()
                 ->map(fn (Scale $scale) => [
                     'id' => $scale->id,
+                    'organization_default' => $scale->id === $organizationScaleId,
                     'ulid' => $scale->ulid,
                     'label' => $scale->name,
                     'system' => $scale->organization_id === null,
                     'kind' => $scale->kind,
                     'min_value' => $scale->min_value,
                     'max_value' => $scale->max_value,
-                    // As menções, para o diálogo «Personalizar menções» as
-                    // mostrar como estão; vazio numa escala de intervalo.
-                    'levels' => $scale->levels
-                        ->sortBy('sequence')
-                        ->map(fn ($level): array => ['code' => (string) $level->code, 'label' => (string) $level->label])
-                        ->values()
-                        ->all(),
+                    // Os níveis, para o diálogo «Personalizar escala» os mostrar como
+                    // estão; vazio numa escala de intervalo.
+                    'levels' => $this->levelsForForm($scale),
                 ]),
         ];
+    }
+
+    /**
+     * Os níveis de uma escala como o diálogo os edita. O corte é o inteiro
+     * «a partir de X %»: 0 no primeiro nível, e a banda mínima mais meio ponto
+     * nos restantes (49.5 → 50) — a conversão inversa de ScaleCutsToBands.
+     *
+     * @return list<array{code: string, label: string, from_percent: int, inovar_code: string|null, is_negative: bool}>
+     */
+    protected function levelsForForm(Scale $scale): array
+    {
+        $levels = [];
+
+        foreach ($scale->levels->sortBy('sequence')->values() as $index => $level) {
+            $levels[] = [
+                'code' => (string) $level->code,
+                'label' => (string) $level->label,
+                'from_percent' => $index === 0 || $level->band_min_normalized === null
+                    ? 0
+                    : (int) Bc::truncate(Bc::add(Bc::of((string) $level->band_min_normalized), '0.5'), 0),
+                'inovar_code' => $level->inovar_code,
+                'is_negative' => (bool) $level->is_negative,
+            ];
+        }
+
+        return $levels;
+    }
+
+    /**
+     * A escala da organização, se ainda existe e é visível. O apontador desfaz-se
+     * sozinho quando a escala é apagada (`nullOnDelete`); a verificação protege
+     * também de uma escala de outra organização que lá tenha ido parar.
+     */
+    protected function organizationScaleId(): ?int
+    {
+        $scaleId = Organization::query()->whereKey(app(CurrentOrganization::class)->id())->value('default_scale_id');
+
+        if ($scaleId === null) {
+            return null;
+        }
+
+        return Scale::query()
+            ->whereKey($scaleId)
+            ->where('organization_id', app(CurrentOrganization::class)->id())
+            ->value('id');
+    }
+
+    /** Com que escala abre um perfil novo: a da organização, ou a «Escala 1 a 5» do sistema. */
+    protected function defaultScaleId(): ?int
+    {
+        return $this->organizationScaleId()
+            ?? Scale::whereNull('organization_id')->where('name', 'Escala 1 a 5')->value('id');
     }
 
     protected function requestUser(): User

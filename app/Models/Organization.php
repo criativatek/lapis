@@ -26,6 +26,8 @@ use Illuminate\Support\Carbon;
  * @property string $timezone
  * @property string $locale
  * @property string|null $jurisdiction ISO 3166-1 alpha-2; NULL = never stated, not "Portugal"
+ * @property int|null $default_scale_id A escala da organização: os perfis novos abrem com ela.
+ *                                      Fora do `#[Fillable]`; só `SetOrganizationDefaultScale` a escreve.
  * @property bool $is_test_account An account that exists to try the product out, and
  *                                 to which nothing was ever promised. Says nothing
  *                                 about what it may do — see `SetTestAccount`.
