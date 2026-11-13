@@ -116,7 +116,9 @@ class ScaleMentionsTest extends TestCase
 
         $event = AuditEvent::withoutGlobalScopes()->where('event', 'scale.mentions_customised')->latest('id')->first();
         $this->assertNotNull($event);
-        $this->assertSame($this->fiveLevels(), $event->properties['levels']);
+        // assertEquals, não assertSame: uma coluna JSON do MySQL devolve as
+        // chaves de cada objeto pela SUA ordem, não pela de quem as gravou.
+        $this->assertEquals($this->fiveLevels(), $event->properties['levels']);
         $this->assertSame(3, $event->properties['first_positive_level']);
         $this->assertSame($this->systemScale()->id, $event->properties['derived_from_scale_id']);
     }
