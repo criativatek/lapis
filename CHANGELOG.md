@@ -25,6 +25,28 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.197.0] — 2026-11-15
+
+> **A turma pode mudar de perfil.** Um professor com as disciplinas «Francês7» e
+> «Francês9», cada uma com um perfil chamado «Francês», quis avaliar as turmas
+> do 7.º pelo perfil do 9.º — e a página da turma só deixava escolher perfil
+> enquanto a turma não tinha nenhum, e só da sua própria disciplina. Agora, com
+> a turma já avaliada, aparece «Mudar de perfil»; a lista traz os perfis ativos
+> do ano letivo de qualquer disciplina, com a disciplina, a versão e a escala no
+> nome para distinguir os que se chamam igual.
+
+### Alterado
+
+- `ClassController::show`: `availableProfiles` lista todos os perfis ativos do
+  mesmo ano letivo da turma (os da sua disciplina primeiro) e cada opção diz a
+  disciplina, a versão, a escala, se é da disciplina da turma e se é a atual.
+- `ClassController::updateProfile`, `ClassProfileMigrationController`: recusam
+  um perfil de outro ano letivo (os períodos do perfil são os do ano). A troca
+  continua direta sem classificações e passa pela migração auditável, com
+  impacto e motivo, quando as há.
+- Página da turma: «Mudar de perfil» por baixo de «Avaliada por…»; a opção atual
+  aparece desativada.
+
 ## [0.196.1] — 2026-11-15
 
 > **Dois níveis podem ter a mesma designação.** Em muitas escolas a escala é de

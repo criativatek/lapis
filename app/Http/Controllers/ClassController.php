@@ -265,15 +265,12 @@ class ClassController extends Controller
                     && $class->status === ClassStatus::Preparation
                     && $classHistory->blockingInPreparation($class) === [],
             ],
-            // Active profiles for this subject, so a class created without one can
-            // be assigned later without going back to the profile screen.
-            'availableProfiles' => AssessmentProfile::whereNotNull('current_version_id')
-                ->where('subject_id', $class->subject_id)
-                ->get()
-                ->map(fn (AssessmentProfile $profile) => [
-                    'version_id' => $profile->current_version_id,
-                    'label' => $profile->name,
-                ]),
+            // Perfis ativos do mesmo ano letivo, de qualquer disciplina: a turma
+            // pode ser avaliada por um perfil de outra disciplina (o professor
+            // com «Francês7» e «Francês9» põe o 7.º no perfil do 9.º). Os da
+            // disciplina da turma vêm primeiro; o ano letivo é o limite, porque
+            // os períodos do perfil são os desse ano.
+            'availableProfiles' => $this->availableProfiles($class),
             // Only the currently-active-or-future slot per schedule line: a
             // revision (ReviseRecurringLessonSlot) leaves the old, now-closed
             // row in place for Lessons already materialized from it to keep
@@ -504,6 +501,43 @@ class ClassController extends Controller
     }
 
     /**
+     * @return list<array{version_id: int, label: string, profile_name: string, subject_name: string, version_number: int, scale_name: string|null, same_subject: bool, is_current: bool}>
+     */
+    protected function availableProfiles(SchoolClass $class): array
+    {
+        return AssessmentProfile::query()
+            ->with(['subject', 'currentVersion.scale'])
+            ->where('academic_year_id', $class->academic_year_id)
+            ->whereHas('currentVersion', fn (Builder $query) => $query->where('status', ProfileVersionStatus::Active))
+            ->get()
+            ->map(function (AssessmentProfile $profile) use ($class): array {
+                /** @var AssessmentProfileVersion $version */
+                $version = $profile->currentVersion;
+                $scaleName = $version->scale?->name;
+                $subjectName = $profile->subject->name;
+
+                return [
+                    'version_id' => $version->id,
+                    'label' => collect([$profile->name, $subjectName, 'versão '.$version->version_number, $scaleName])
+                        ->filter()->implode(' · '),
+                    'profile_name' => $profile->name,
+                    'subject_name' => $subjectName,
+                    'version_number' => $version->version_number,
+                    'scale_name' => $scaleName,
+                    'same_subject' => $profile->subject_id === $class->subject_id,
+                    'is_current' => $version->id === $class->assessment_profile_version_id,
+                ];
+            })
+            ->sortBy([
+                fn (array $a, array $b) => $b['same_subject'] <=> $a['same_subject'],
+                fn (array $a, array $b) => strcasecmp($a['profile_name'], $b['profile_name']),
+                fn (array $a, array $b) => strcasecmp($a['subject_name'], $b['subject_name']),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
      * Assign (or change) the profile version a class is assessed by.
      *
      * ponytail: a plain reassignment while no results exist. Once results hang
@@ -524,6 +558,12 @@ class ClassController extends Controller
 
         if ($version->status !== ProfileVersionStatus::Active) {
             return back()->withErrors(['assessment_profile_version_id' => __('Só um perfil ativo pode ser associado a uma turma.')]);
+        }
+
+        // Os períodos do perfil são os do ano letivo: um perfil de outro ano não
+        // serve a esta turma, seja qual for a disciplina.
+        if ($version->profile->academic_year_id !== $class->academic_year_id) {
+            return back()->withErrors(['assessment_profile_version_id' => __('Só um perfil do mesmo ano letivo da turma pode ser associado a ela.')]);
         }
 
         if ($version->id === $class->assessment_profile_version_id) {

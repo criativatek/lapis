@@ -83,7 +83,14 @@ type Student = {
     } | null;
 };
 
-type ProfileOption = { version_id: number; label: string };
+type ProfileOption = {
+    version_id: number;
+    /** Perfil · disciplina · versão · escala — distingue dois perfis com o mesmo nome. */
+    label: string;
+    same_subject: boolean;
+    /** A versão que a turma já usa. */
+    is_current: boolean;
+};
 
 const props = defineProps<{
     schoolClass: {
@@ -213,9 +220,14 @@ const profileForm = useForm<{ assessment_profile_version_id: number | null }>({
     assessment_profile_version_id: null,
 });
 
+const changingProfile = ref(false);
+
 function assignProfile(): void {
     profileForm.put(`/classes/${props.schoolClass.ulid}/profile`, {
         preserveScroll: true,
+        onSuccess: () => {
+            changingProfile.value = false;
+        },
     });
 }
 
@@ -762,6 +774,66 @@ function deleteResult(student: Student): void {
                     >
                 </Button>
             </div>
+            <div v-if="availableProfiles.length > 1" data-testid="change-profile">
+                <Button
+                    v-if="!changingProfile"
+                    type="button"
+                    variant="outline"
+                    class="min-h-11"
+                    @click="changingProfile = true"
+                    >Mudar de perfil</Button
+                >
+                <form
+                    v-else
+                    class="space-y-2"
+                    @submit.prevent="assignProfile"
+                >
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select
+                            v-model.number="profileForm.assessment_profile_version_id"
+                            aria-label="Novo perfil de avaliação"
+                            class="min-h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground sm:w-auto sm:max-w-md"
+                        >
+                            <option :value="null" disabled>Escolher perfil…</option>
+                            <option
+                                v-for="profile in availableProfiles"
+                                :key="profile.version_id"
+                                :value="profile.version_id"
+                                :disabled="profile.is_current"
+                            >
+                                {{ profile.label
+                                }}{{ profile.is_current ? ' (atual)' : '' }}
+                            </option>
+                        </select>
+                        <div class="flex gap-2">
+                            <Button
+                                type="submit"
+                                class="min-h-11"
+                                :disabled="
+                                    profileForm.processing ||
+                                    profileForm.assessment_profile_version_id === null
+                                "
+                                >Mudar</Button
+                            >
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                class="min-h-11"
+                                @click="changingProfile = false"
+                                >Cancelar</Button
+                            >
+                        </div>
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                        Se a turma já tem classificações, o passo seguinte
+                        mostra o impacto da mudança e pede um motivo antes de
+                        confirmar.
+                    </p>
+                    <InputError
+                        :message="profileForm.errors.assessment_profile_version_id"
+                    />
+                </form>
+            </div>
         </div>
         <div
             v-else
@@ -782,8 +854,10 @@ function deleteResult(student: Student): void {
                         v-for="profile in availableProfiles"
                         :key="profile.version_id"
                         :value="profile.version_id"
+                        :disabled="profile.is_current"
                     >
-                        {{ profile.label }}
+                        {{ profile.label
+                        }}{{ profile.is_current ? ' (atual)' : '' }}
                     </option>
                 </select>
                 <Button
@@ -794,8 +868,8 @@ function deleteResult(student: Student): void {
                 >
             </form>
             <p v-else class="text-xs">
-                Não há perfis ativos para {{ schoolClass.subject }}. Crie e
-                ative um perfil primeiro.
+                Não há perfis ativos neste ano letivo. Crie e ative um perfil
+                primeiro.
             </p>
             <InputError
                 :message="profileForm.errors.assessment_profile_version_id"

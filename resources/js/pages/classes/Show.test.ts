@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive } from 'vue';
 import Show from './Show.vue';
 
+type ProfileOptionProp = { version_id: number; label: string; same_subject: boolean; is_current: boolean };
 type MockForm = Record<string, unknown> & { errors: Record<string, string> };
 
 const mocks = vi.hoisted(() => ({
@@ -88,11 +89,15 @@ function baseProps() {
     };
 }
 
-function mountPage(schoolClassOverrides: Record<string, unknown> = {}) {
+function mountPage(
+    schoolClassOverrides: Record<string, unknown> = {},
+    availableProfiles: ProfileOptionProp[] = [],
+) {
     const props = baseProps();
     const wrapper = mount(Show, {
         props: {
             ...props,
+            availableProfiles,
             schoolClass: { ...props.schoolClass, ...schoolClassOverrides },
         },
     });
@@ -377,5 +382,68 @@ describe('classes/Show — perfil, versão e escala', () => {
         expect(link.text()).toBe('Rever e aplicar alterações');
         expect(link.attributes('href')).toBe('/classes/class-1/profile-migration?to=01VERSION');
         expect(link.classes()).toContain('min-h-11');
+    });
+});
+
+describe('classes/Show — mudar de perfil', () => {
+    const profile = { name: 'Francês', version_number: 5, scale_name: 'Escala 1 a 5' };
+    const options = [
+        {
+            version_id: 11,
+            label: 'Francês · Francês7 · versão 5 · Escala 1 a 5',
+            same_subject: true,
+            is_current: true,
+        },
+        {
+            version_id: 22,
+            label: 'Francês · Francês9 · versão 2 · Escala 1 a 5',
+            same_subject: false,
+            is_current: false,
+        },
+    ];
+
+    function profileFormMock(): MockForm {
+        return mocks.forms[1];
+    }
+
+    it('mostra «Mudar de perfil» numa turma que já tem perfil', () => {
+        const wrapper = mountPage({ profile, profile_update: null }, options);
+        const button = wrapper.get('[data-testid="change-profile"] button');
+
+        expect(button.text()).toBe('Mudar de perfil');
+        expect(button.classes()).toContain('min-h-11');
+        expect(wrapper.find('select[aria-label="Novo perfil de avaliação"]').exists()).toBe(false);
+    });
+
+    it('não oferece a mudança quando não há outro perfil para escolher', () => {
+        const wrapper = mountPage({ profile, profile_update: null }, [options[0]]);
+
+        expect(wrapper.find('[data-testid="change-profile"]').exists()).toBe(false);
+    });
+
+    it('abre a lista com a opção atual desativada e a explicação do passo seguinte', async () => {
+        const wrapper = mountPage({ profile, profile_update: null }, options);
+
+        await wrapper.get('[data-testid="change-profile"] button').trigger('click');
+
+        const choices = wrapper.get('select[aria-label="Novo perfil de avaliação"]').findAll('option');
+        const current = choices.find((option) => option.text().includes('Francês7'));
+        const other = choices.find((option) => option.text().includes('Francês9'));
+
+        expect(current?.text()).toContain('(atual)');
+        expect(current?.attributes('disabled')).toBeDefined();
+        expect(other?.attributes('disabled')).toBeUndefined();
+        expect(wrapper.text()).toContain('pede um motivo antes de confirmar');
+    });
+
+    it('submete um PUT para /classes/{ulid}/profile com a versão escolhida', async () => {
+        const wrapper = mountPage({ profile, profile_update: null }, options);
+
+        await wrapper.get('[data-testid="change-profile"] button').trigger('click');
+        await wrapper.get('select[aria-label="Novo perfil de avaliação"]').setValue(22);
+        await wrapper.get('[data-testid="change-profile"] form').trigger('submit');
+
+        expect(profileFormMock().assessment_profile_version_id).toBe(22);
+        expect(profileFormMock().put).toHaveBeenCalledWith('/classes/class-1/profile', expect.objectContaining({ preserveScroll: true }));
     });
 });
