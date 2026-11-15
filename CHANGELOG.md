@@ -25,6 +25,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.196.1] — 2026-11-15
+
+> **Dois níveis podem ter a mesma designação.** Em muitas escolas a escala é de
+> 1 a 5 e os níveis 1 e 2 são ambos «Insuficiente». O diálogo «Personalizar
+> escala» recusava nomes repetidos, e a alternativa — uma escala de quatro
+> níveis — dava a menção certa mas o número errado («Suficiente» passava a ser o
+> nível 2). A proibição sai: cada nível continua a ter o seu número, o seu corte
+> e o seu código do Inovar, e é por eles que se distingue.
+
+### Alterado
+
+- `ScaleMentionsRequest` deixa de recusar designações repetidas; o aviso
+  imediato do diálogo sai com ela.
+- Nas folhas compactas (grelha, pauta, intercalar), dois níveis com a mesma
+  designação partilham a sigla («I») em vez de serem tratados como uma colisão
+  que trocava todas as siglas pelos códigos; a legenda mostra-a uma só vez.
+  Onde o professor escolhe um nível, a lista já mostrava «1 — Insuficiente» e
+  «2 — Insuficiente».
+
 ## [0.196.0] — 2026-11-12
 
 > **A escala é da escola.** Um professor cuja escola usa quatro menções tentou

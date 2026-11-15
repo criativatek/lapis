@@ -93,6 +93,20 @@ describe('uniqueMentionShorts', () => {
         expect(map.get('Satisfaz Bem')).toBe('3');
         expect(map.get('Satisfaz Bastante')).toBe('4');
     });
+
+    it('dois níveis com a mesma designação partilham a sigla, não colidem', () => {
+        const map = uniqueMentionShorts([
+            { code: '1', label: 'Insuficiente' },
+            { code: '2', label: 'Insuficiente' },
+            { code: '3', label: 'Suficiente' },
+            { code: '4', label: 'Bom' },
+            { code: '5', label: 'Muito Bom' },
+        ]);
+
+        expect(map.get('Insuficiente')).toBe('I');
+        expect(map.get('Suficiente')).toBe('S');
+        expect(map.size).toBe(4);
+    });
 });
 
 describe('SUMMARY_SHORT', () => {

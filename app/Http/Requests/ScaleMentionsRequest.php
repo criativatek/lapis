@@ -66,18 +66,12 @@ class ScaleMentionsRequest extends FormRequest
                 return;
             }
 
+            // Dois níveis PODEM ter a mesma designação: numa escala de 1 a 5 em que
+            // o 1 e o 2 são ambos «Insuficiente», o nível distingue-se pelo número.
             $levels = array_values((array) $this->input('levels', []));
-            $seen = [];
             $previousCut = null;
 
             foreach ($levels as $index => $level) {
-                $name = mb_strtolower(trim((string) $level['label']));
-
-                if (isset($seen[$name])) {
-                    $validator->errors()->add("levels.{$index}.label", 'Dois níveis não podem ter o mesmo nome.');
-                }
-                $seen[$name] = true;
-
                 $cut = (int) $level['from_percent'];
 
                 if ($index === 0 && $cut !== 0) {

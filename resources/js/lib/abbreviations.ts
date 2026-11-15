@@ -105,12 +105,24 @@ export function mentionShort(label: string): string {
 /**
  * A sigla de cada menção da escala — ou, se duas colidirem, o CÓDIGO de todas,
  * para nunca haver duas menções com a mesma letra no papel.
+ *
+ * Dois níveis com a MESMA designação (o 1 e o 2, ambos «Insuficiente») são a
+ * mesma menção e partilham a sigla: colisão é só entre designações diferentes.
  */
 export function uniqueMentionShorts(bands: { code: string; label: string }[]): Map<string, string> {
-    const shorts = bands.map((band) => mentionShort(band.label));
+    const firstCodeByLabel = new Map<string, string>();
+
+    for (const band of bands) {
+        if (!firstCodeByLabel.has(band.label)) {
+            firstCodeByLabel.set(band.label, band.code);
+        }
+    }
+
+    const labels = [...firstCodeByLabel.keys()];
+    const shorts = labels.map((label) => mentionShort(label));
     const collides = new Set(shorts).size !== shorts.length;
 
-    return new Map(bands.map((band, index) => [band.label, collides ? band.code : shorts[index]]));
+    return new Map(labels.map((label, index) => [label, collides ? (firstCodeByLabel.get(label) as string) : shorts[index]]));
 }
 
 /** Colunas-resumo com sigla fixa, pela sua chave. */

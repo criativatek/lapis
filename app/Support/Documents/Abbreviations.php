@@ -103,17 +103,27 @@ final class Abbreviations
     /**
      * A sigla de cada menção — ou o CÓDIGO de todas quando duas colidem.
      *
+     * Dois níveis com a MESMA designação (o 1 e o 2, ambos «Insuficiente») são a
+     * mesma menção e partilham a sigla: não é uma colisão. Colisão é entre
+     * designações diferentes («Satisfaz» e «Suficiente»).
+     *
      * @param  list<array{code: string, label: string}>  $bands
      * @return array<string, string> rótulo ⇒ sigla ou código
      */
     public static function uniqueMentionShorts(array $bands): array
     {
-        $shorts = array_map(fn (array $band): string => self::mentionShort($band['label']), $bands);
+        $firstCodeByLabel = [];
+
+        foreach ($bands as $band) {
+            $firstCodeByLabel[$band['label']] ??= $band['code'];
+        }
+
+        $shorts = array_map(fn (string $label): string => self::mentionShort($label), array_keys($firstCodeByLabel));
         $collides = count(array_unique($shorts)) !== count($shorts);
         $result = [];
 
-        foreach ($bands as $index => $band) {
-            $result[$band['label']] = $collides ? $band['code'] : $shorts[$index];
+        foreach (array_keys($firstCodeByLabel) as $index => $label) {
+            $result[$label] = $collides ? $firstCodeByLabel[$label] : $shorts[$index];
         }
 
         return $result;

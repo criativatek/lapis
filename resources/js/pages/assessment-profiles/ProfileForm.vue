@@ -353,14 +353,9 @@ function rangeText(index: number): string {
 
 const serverErrors = computed(() => mentionsForm.errors as Record<string, string>);
 
-const REPEATED_NAME = 'Dois níveis não podem ter o mesmo nome.';
-
-/** Feedback imediato (nome repetido); o servidor continua a ser a autoridade. */
+/** Dois níveis podem ter a mesma designação (o 1 e o 2, ambos «Insuficiente»). */
 function labelError(index: number): string | undefined {
-    const name = normaliseName(mentionsForm.levels[index].label);
-    const repeated = name !== '' && mentionsForm.levels.findIndex((level) => normaliseName(level.label) === name) !== index;
-
-    return serverErrors.value[`levels.${index}.label`] ?? (repeated ? REPEATED_NAME : undefined);
+    return serverErrors.value[`levels.${index}.label`];
 }
 
 function cutError(index: number): string | undefined {

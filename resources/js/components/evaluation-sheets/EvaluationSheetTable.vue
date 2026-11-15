@@ -360,7 +360,8 @@ const compactLegend = computed(() => {
         }
     }
 
-    return parts;
+    // Dois níveis com a mesma designação dão a mesma linha: fica uma só.
+    return [...new Set(parts)];
 });
 </script>
 
