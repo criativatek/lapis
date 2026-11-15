@@ -138,12 +138,25 @@ class ScaleMentionsTest extends TestCase
     }
 
     #[Test]
-    public function rejects_repeated_names_ignoring_case_and_the_edges_and_names_that_are_empty_or_too_long(): void
+    public function two_levels_may_share_a_name_and_each_keeps_its_own_band_and_number(): void
     {
+        // A escala de 1 a 5 de muitas escolas: o 1 e o 2 são ambos «Insuficiente».
         $levels = $this->fiveLevels();
-        $levels[3]['label'] = ' MUITO bom ';
-        $this->actingAs($this->user)->post($this->url(), $this->payload(['levels' => $levels]))->assertSessionHasErrors('levels.4.label');
+        $levels[0]['label'] = 'Insuficiente';
 
+        $this->actingAs($this->user)->post($this->url(), $this->payload(['levels' => $levels]))->assertSessionHasNoErrors();
+
+        $derived = Scale::query()->whereNotNull('derived_from_scale_id')->latest('id')->firstOrFail();
+        $stored = $derived->levels()->orderBy('sequence')->get();
+
+        $this->assertSame(['Insuficiente', 'Insuficiente', 'Suficiente', 'Bom', 'Muito bom'], $stored->pluck('label')->all());
+        $this->assertSame(['1', '2', '3', '4', '5'], $stored->pluck('code')->all());
+        $this->assertSame(['0.000000', '19.500000'], $stored->take(2)->pluck('band_min_normalized')->all());
+    }
+
+    #[Test]
+    public function rejects_names_that_are_empty_or_too_long(): void
+    {
         $levels = $this->fiveLevels();
         $levels[0]['label'] = str_repeat('x', 65);
         $this->actingAs($this->user)->post($this->url(), $this->payload(['levels' => $levels]))->assertSessionHasErrors('levels.0.label');

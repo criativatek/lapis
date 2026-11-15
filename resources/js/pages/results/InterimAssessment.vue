@@ -201,7 +201,8 @@ const printedLegend = computed(() => {
         }
     }
 
-    return parts;
+    // Dois níveis com a mesma designação dão a mesma linha: fica uma só.
+    return [...new Set(parts)];
 });
 
 const anyPartial = computed(() => props.snapshot.students.some((student) => student.coverage_warning));

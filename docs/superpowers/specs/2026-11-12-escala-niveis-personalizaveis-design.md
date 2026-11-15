@@ -18,8 +18,9 @@ fixos. Cada escola tem a sua escala e o Lapispro tem de a aceitar.
 1. **Por defeito nada muda.** Perfis novos continuam a abrir na «Escala 1 a 5» do sistema com
    Fraco / Insuficiente / Suficiente / Bom / Muito Bom e os cortes atuais (0, 20, 50, 70, 90).
 2. **Número de níveis:** 5 por defeito; o professor pode ter entre **2 e 10**.
-3. **Designação** de cada nível editável (como hoje; nomes repetidos continuam proibidos,
-   sem distinguir maiúsculas nem espaços nas pontas).
+3. **Designação** de cada nível editável. **Nomes repetidos são permitidos** (decisão de
+   2026-11-15, 0.196.1: numa escala de 1 a 5 o 1 e o 2 podem ser ambos «Insuficiente»; o
+   nível distingue-se pelo número). Até à 0.196.0 eram proibidos.
 4. **Cortes:** o professor escreve só «a partir de X %» em cada nível, **inteiros**. O
    primeiro nível começa sempre em 0 e não se edita.
 5. **Inovar:** cada escola define no Inovar o seu número de níveis e os seus códigos, por
@@ -58,7 +59,7 @@ Escala derivada: `kind = level`, `min_value = 1`, `max_value = N`,
 ### 3.3 Validação (servidor)
 
 - `levels`: array, 2 a 10 elementos;
-- `levels.*.label`: obrigatório, 1–64 caracteres; sem repetidos;
+- `levels.*.label`: obrigatório, 1–64 caracteres (repetidos permitidos desde a 0.196.1);
 - `levels.*.from_percent`: inteiro 0–100; o primeiro tem de ser 0; estritamente crescente;
 - `levels.*.inovar_code`: `null` ou texto de 1 a 8 caracteres (o tamanho da coluna), sem
   espaços; guardado sem espaços nas pontas;

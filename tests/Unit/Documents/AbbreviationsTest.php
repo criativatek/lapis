@@ -73,6 +73,13 @@ class AbbreviationsTest extends TestCase
             ['code' => '2', 'label' => 'Satisfaz'], ['code' => '3', 'label' => 'Satisfaz Bem'], ['code' => '4', 'label' => 'Satisfaz Bastante'],
         ]);
         $this->assertSame(['Satisfaz' => '2', 'Satisfaz Bem' => '3', 'Satisfaz Bastante' => '4'], $colliding);
+
+        // O 1 e o 2 com a mesma designação são a mesma menção: partilham a sigla, não colidem.
+        $repeated = Abbreviations::uniqueMentionShorts([
+            ['code' => '1', 'label' => 'Insuficiente'], ['code' => '2', 'label' => 'Insuficiente'], ['code' => '3', 'label' => 'Suficiente'],
+            ['code' => '4', 'label' => 'Bom'], ['code' => '5', 'label' => 'Muito Bom'],
+        ]);
+        $this->assertSame(['Insuficiente' => 'I', 'Suficiente' => 'S', 'Bom' => 'B', 'Muito Bom' => 'MB'], $repeated);
     }
 
     #[Test]
