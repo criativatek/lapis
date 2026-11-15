@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Classes;
 
+use App\Models\AcademicYear;
 use App\Models\AssessmentProfile;
 use App\Models\AssessmentProfileVersion;
 use App\Models\AuditEvent;
 use App\Models\ClassProfileMigration;
 use App\Models\Organization;
 use App\Models\ProfileVersionStatus;
+use App\Models\Scale;
 use App\Models\SchoolClass;
+use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -338,5 +341,111 @@ class ClassProfileUpdateTest extends TestCase
                 ->where('events', fn ($events) => collect($events)->contains(fn ($event) => $event['event'] === 'class.profile_migrated'
                     && $event['causer'] === $this->teacher->name
                     && $event['technical_access'] === false)));
+    }
+
+    /**
+     * Um perfil com uma versão ativa, como current_version, de outra disciplina
+     * ou de outro ano letivo.
+     */
+    private function activeProfileFor(int $yearId, int $subjectId, string $name): AssessmentProfileVersion
+    {
+        return $this->inTenant(function () use ($yearId, $subjectId, $name): AssessmentProfileVersion {
+            $organization = $this->teacher->personalOrganization();
+            $profile = AssessmentProfile::factory()->recycle($organization)->create([
+                'academic_year_id' => $yearId, 'subject_id' => $subjectId, 'name' => $name,
+            ]);
+            $version = AssessmentProfileVersion::factory()->recycle($organization)->create([
+                'assessment_profile_id' => $profile->id,
+                'status' => ProfileVersionStatus::Active,
+                'scale_id' => Scale::where('name', 'Escala 1 a 5')->firstOrFail()->id,
+            ]);
+            $profile->forceFill(['current_version_id' => $version->id])->save();
+
+            return $version;
+        });
+    }
+
+    private function otherSubject(string $name): Subject
+    {
+        return $this->inTenant(fn () => Subject::factory()->recycle($this->teacher->personalOrganization())->create(['name' => $name]));
+    }
+
+    private function otherYear(): AcademicYear
+    {
+        return $this->inTenant(fn () => AcademicYear::factory()->recycle($this->teacher->personalOrganization())->create(['label' => '2020/2021']));
+    }
+
+    #[Test]
+    public function the_class_page_lists_active_profiles_of_other_subjects_of_the_same_year_only(): void
+    {
+        ['class' => $class] = $this->percentageClassWithProposals();
+
+        $this->migrateToTheLevelVersion($class);
+        $sameYear = $this->activeProfileFor($class->academic_year_id, $this->otherSubject('Francês9')->id, 'Aaa Francês');
+        $this->activeProfileFor($this->otherYear()->id, $this->otherSubject('Francês7')->id, 'Francês de outro ano');
+
+        $this->actingAs($this->teacher)->get("/classes/{$class->ulid}")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('availableProfiles', function ($profiles) use ($sameYear): bool {
+                    $profiles = collect($profiles);
+                    $foreign = $profiles->firstWhere('version_id', $sameYear->id);
+
+                    return $foreign !== null
+                        && $profiles->doesntContain(fn ($option): bool => str_contains($option['label'], 'outro ano'))
+                        // os da disciplina da turma vêm primeiro, mesmo que o outro seja alfabeticamente anterior
+                        && $profiles->first()['same_subject'] === true
+                        && $profiles->last()['version_id'] === $sameYear->id
+                        && $profiles->where('is_current', true)->count() === 1
+                        && $foreign['same_subject'] === false
+                        && $foreign['label'] === "Aaa Francês · Francês9 · versão {$sameYear->version_number} · Escala 1 a 5";
+                }));
+    }
+
+    #[Test]
+    public function a_class_without_results_swaps_to_a_profile_of_another_subject_and_audits_it(): void
+    {
+        $class = $this->inTenant(fn () => SchoolClass::where('label', '7.º A')->firstOrFail());
+        $fromId = $class->assessment_profile_version_id;
+        $target = $this->activeProfileFor($class->academic_year_id, $this->otherSubject('Francês9')->id, 'Francês');
+
+        $this->actingAs($this->teacher)
+            ->put("/classes/{$class->ulid}/profile", ['assessment_profile_version_id' => $target->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame($target->id, $this->classOnDatabase($class)->assessment_profile_version_id);
+        $event = $this->inTenant(fn () => AuditEvent::query()->where('event', 'class.updated')->latest('id')->firstOrFail());
+        $this->assertSame($fromId, $event->properties['from_profile_version_id']);
+        $this->assertSame($target->id, $event->properties['to_profile_version_id']);
+    }
+
+    #[Test]
+    public function a_class_with_results_is_sent_to_the_migration_for_a_profile_of_another_subject(): void
+    {
+        ['class' => $class] = $this->percentageClassWithProposals();
+        $target = $this->activeProfileFor($class->academic_year_id, $this->otherSubject('Francês9')->id, 'Francês');
+
+        $this->actingAs($this->teacher)
+            ->put("/classes/{$class->ulid}/profile", ['assessment_profile_version_id' => $target->id])
+            ->assertRedirect("/classes/{$class->ulid}/profile-migration?to={$target->ulid}");
+
+        $this->assertSame($this->percentageVersion->id, $this->classOnDatabase($class)->assessment_profile_version_id);
+    }
+
+    #[Test]
+    public function a_version_of_another_academic_year_is_refused_everywhere(): void
+    {
+        ['class' => $class] = $this->percentageClassWithProposals();
+        $foreign = $this->activeProfileFor($this->otherYear()->id, $class->subject_id, 'Perfil de outro ano');
+
+        $this->actingAs($this->teacher)
+            ->put("/classes/{$class->ulid}/profile", ['assessment_profile_version_id' => $foreign->id])
+            ->assertSessionHasErrors('assessment_profile_version_id');
+        $this->get("/classes/{$class->ulid}/profile-migration?to={$foreign->ulid}")
+            ->assertRedirect("/classes/{$class->ulid}");
+        $this->post("/classes/{$class->ulid}/profile-migration", ['to_version' => $foreign->ulid, 'reason' => 'Outro ano letivo.'])
+            ->assertSessionHasErrors('reason');
+
+        $this->assertSame($this->percentageVersion->id, $this->classOnDatabase($class)->assessment_profile_version_id);
+        $this->assertSame(0, ClassProfileMigration::withoutGlobalScopes()->count());
     }
 }

@@ -35,6 +35,11 @@ class ClassProfileMigrationController extends Controller
                 ->withErrors(['assessment_profile_version_id' => __('Só um perfil ativo pode ser associado a uma turma.')]);
         }
 
+        if ($toVersion->profile->academic_year_id !== $class->academic_year_id) {
+            return redirect()->route('classes.show', $class)
+                ->withErrors(['assessment_profile_version_id' => __('Só um perfil do mesmo ano letivo da turma pode ser associado a ela.')]);
+        }
+
         return Inertia::render('classes/ProfileMigration', [
             'schoolClass' => ['ulid' => $class->ulid, 'label' => $class->label, 'subject' => $class->subject->name],
             'toVersionUlid' => $toVersion->ulid,
@@ -67,6 +72,10 @@ class ClassProfileMigrationController extends Controller
         $impersonator = $impersonatorId === null || (int) $impersonatorId === (int) $representedTeacher->getKey()
             ? null
             : User::query()->whereKey($impersonatorId)->first();
+
+        if ($toVersion->profile->academic_year_id !== $class->academic_year_id) {
+            return back()->withErrors(['reason' => __('Só um perfil do mesmo ano letivo da turma pode ser associado a ela.')]);
+        }
 
         try {
             $migration = $this->migrator->migrate(
