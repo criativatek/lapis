@@ -310,6 +310,32 @@ class ClassResultsCalculator
     }
 
     /**
+     * The ids of the eligible instruments of EVERY period of the class's academic year up to `$period`,
+     * inclusive — the same eligibility rule the engine applies (`InstrumentEligibility::constrain`), without
+     * the profile's per-period choice of what feeds the accumulated figure.
+     *
+     * It differs from `contributingInstrumentIds(..., Accumulated)` only when the profile version leaves an
+     * earlier period out of the accumulated (`contributes_to_accumulated` false): those instruments are here
+     * and not there. For callers that must show the whole year so far (the «Pacote de reunião»), and say
+     * which of them the accumulated does not count.
+     *
+     * @return Collection<int, int>
+     */
+    public function eligibleInstrumentIdsUpTo(SchoolClass $class, AcademicPeriod $period): Collection
+    {
+        $periodIds = AcademicPeriod::query()
+            ->where('academic_year_id', $class->academic_year_id)
+            ->where('sequence', '<=', $period->sequence)
+            ->pluck('id');
+
+        return $this->eligibility->constrain(
+            Instrument::query()
+                ->where('class_id', $class->getKey())
+                ->whereIn('academic_period_id', $periodIds),
+        )->pluck('id');
+    }
+
+    /**
      * The periods a scope draws from — the public counterpart of the internal
      * selection, so other services (publication's under-review guard) resolve the
      * same set without re-deriving the rule.

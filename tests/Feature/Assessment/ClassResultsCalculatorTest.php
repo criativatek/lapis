@@ -2,6 +2,10 @@
 
 namespace Tests\Feature\Assessment;
 
+use App\Models\ClassificationScope;
+use App\Models\Instrument;
+use App\Models\InstrumentStatus;
+use App\Models\ProfileVersionPeriod;
 use App\Models\SchoolClass;
 use App\Models\User;
 use App\Services\Assessment\ClassResultsCalculator;
@@ -125,6 +129,49 @@ class ClassResultsCalculatorTest extends TestCase
             // in the second — his accumulated gains a value where the period had none.
             $this->assertNull($periodP1['Diogo Ferreira']['outcome']->normalizedValue);
             $this->assertSame('72.500000', $accumulated['Diogo Ferreira']['outcome']->normalizedValue);
+        });
+    }
+
+    #[Test]
+    public function the_eligible_instruments_up_to_a_period_are_the_whole_year_so_far_whatever_the_profile_says(): void
+    {
+        $teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
+        $this->seed(DemoDataSeeder::class);
+
+        app(CurrentOrganization::class)->runFor($teacher->personalOrganization(), function (): void {
+            $class = SchoolClass::where('label', '7.º A')->firstOrFail();
+            [$first, $second] = $class->academicYear->periods()->orderBy('sequence')->get()->all();
+            $calculator = app(ClassResultsCalculator::class);
+
+            $inFirst = Instrument::where('class_id', $class->id)->where('academic_period_id', $first->id)->pluck('id')->all();
+            $inSecond = Instrument::where('class_id', $class->id)->where('academic_period_id', $second->id)->pluck('id')->all();
+            $this->assertNotEmpty($inFirst);
+            $this->assertNotEmpty($inSecond);
+
+            // Never later than the period asked for; nothing before the first.
+            $this->assertEqualsCanonicalizing($inFirst, $calculator->eligibleInstrumentIdsUpTo($class, $first)->all());
+            $this->assertEqualsCanonicalizing([...$inFirst, ...$inSecond], $calculator->eligibleInstrumentIdsUpTo($class, $second)->all());
+
+            // The same rule as the engine's: a cancelled element is out.
+            Instrument::whereIn('id', $inFirst)->update(['status' => InstrumentStatus::Cancelled]);
+            $this->assertEqualsCanonicalizing($inSecond, $calculator->eligibleInstrumentIdsUpTo($class, $second)->all());
+            Instrument::whereIn('id', $inFirst)->update(['status' => InstrumentStatus::InCorrection]);
+
+            // Without a per-period choice, it is what the accumulated reads.
+            $this->assertEqualsCanonicalizing(
+                $calculator->contributingInstrumentIds($class, $second, ClassificationScope::Accumulated)->all(),
+                $calculator->eligibleInstrumentIdsUpTo($class, $second)->all(),
+            );
+
+            // A profile that leaves the 1.º Semestre out of the accumulated changes that, and not this.
+            ProfileVersionPeriod::create([
+                'assessment_profile_version_id' => $class->assessment_profile_version_id,
+                'academic_period_id' => $first->getKey(),
+                'contributes_to_accumulated' => false,
+            ]);
+
+            $this->assertEqualsCanonicalizing($inSecond, $calculator->contributingInstrumentIds($class, $second, ClassificationScope::Accumulated)->all());
+            $this->assertEqualsCanonicalizing([...$inFirst, ...$inSecond], $calculator->eligibleInstrumentIdsUpTo($class, $second)->all());
         });
     }
 }

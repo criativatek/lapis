@@ -527,6 +527,32 @@ describe('evaluation-sheets/Show — imprimir e exportar', () => {
         expect(printButton).toBeDefined();
     });
 
+    it('links «Preparar reunião» to the meeting package of the period and the moment on screen, as a plain download link', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text().includes('Preparar reunião'));
+        expect(link).toBeDefined();
+        // O momento final é o por omissão: um endereço limpo, como o da grelha para imprimir.
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/pacote-reuniao/period-1');
+        // Um ficheiro e não uma visita Inertia, e explica o que leva.
+        expect(link!.attributes('title')).toContain('ZIP');
+        expect(link!.attributes('title')).toContain('Quadro Síntese');
+        expect(link!.attributes('title')).toContain('Excel');
+        expect(link!.attributes('title')).toContain('períodos anteriores');
+        // Não sai no papel.
+        expect(link!.element.closest('.print-hide')).not.toBeNull();
+    });
+
+    it('keeps the intermediate moment in the meeting package link', () => {
+        const props = baseProps();
+        props.periods = props.periods.map((period) => ({ ...period, selected: period.moment === 'interim' }));
+        const wrapper = mount(Show, { props });
+
+        const link = wrapper.findAll('a').find((anchor) => anchor.text().includes('Preparar reunião'));
+        expect(link).toBeDefined();
+        expect(link!.attributes('href')).toBe('/classes/class-1/pauta-avaliacao/pacote-reuniao/period-1?momento=interim');
+    });
+
     it('prints from this very screen, and keeps the controls off the paper', () => {
         const wrapper = mount(Show, { props: baseProps() });
 
