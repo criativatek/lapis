@@ -449,7 +449,9 @@ class MeetingPackageTest extends TestCase
 
         $event = AuditEvent::withoutGlobalScopes()->where('event', 'evaluation_sheets.meeting_package.exported')->firstOrFail();
         $this->assertSame(['pauta', 'quadro-sintese'], $event->properties['documents_included']);
-        $this->assertSame([['document' => 'elementos', 'reason' => 'plan']], $event->properties['documents_omitted']);
+        // assertEquals, não assertSame: o MySQL reordena as chaves de um objeto
+        // JSON, e a ordem delas não faz parte do que este registo promete.
+        $this->assertEquals([['document' => 'elementos', 'reason' => 'plan']], $event->properties['documents_omitted']);
     }
 
     #[Test]
