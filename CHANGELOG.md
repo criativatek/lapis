@@ -25,6 +25,81 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.197.0] — 2026-11-17
+
+> **Pacote de reunião.** O Lapispro precisa de ligação, e numa reunião de
+> avaliação com a rede da escola em baixo o professor fica sem os dados à
+> frente. Na Pauta passa a haver «Preparar reunião»: um só ficheiro ZIP, de uma
+> turma, com folhas de Excel — a Pauta do período e as dos períodos anteriores
+> do ano, o Quadro Síntese e a grelha com os resultados de cada elemento de
+> avaliação —, isto é, tudo o que entra no cálculo das classificações. A
+> avaliação é contínua, por isso o pacote do período N traz também tudo o que
+> está para trás no ano letivo. Um artigo no Centro de
+> Ajuda diz o que fazer quando a rede falha e o que levar preparado.
+
+### Adicionado
+
+- Rota `evaluation-sheets.meeting-package`
+  (`classes/{class}/pauta-avaliacao/pacote-reuniao/{period}`, com `?momento=`
+  como a grelha), no módulo Resultados (plano Base) e declarada antes do
+  wildcard `pauta-avaliacao/{period?}`. Autorizada como a Pauta: quem pode ver
+  a turma; um colega que não a leciona recebe 403 e um período de outro ano
+  letivo ou de outra organização não existe.
+- O ZIP leva `1-NN-pauta-….xlsx` (o mesmo ficheiro de «Exportar Excel» da
+  Pauta) de cada período do ano até ao pedido — os anteriores no momento final,
+  o pedido por último e no momento pedido —, `2-quadro-sintese-….xlsx` (o do
+  Quadro Síntese), uma grelha `3-NN-<elemento>-<data>.xlsx` por cada elemento de
+  avaliação elegível desses períodos (as pontuações por questão e por aluno e o
+  resultado, como a grelha corrigida do elemento), por ordem cronológica e com
+  nomes únicos, e um
+  `LEIA-ME.txt` com a turma, o período e o momento, a hora de emissão, o que
+  entrou, o que ficou de fora e porquê, e o aviso de que é uma cópia que não se
+  atualiza, que serve para consultar e não para lançar, e que contém dados de
+  alunos identificáveis.
+- Entram os elementos elegíveis, pela regra do próprio motor, de todos os
+  períodos do ano até ao pedido, agrupados por período no LEIA-ME; os que têm a
+  correção por concluir entram assinalados como provisórios. Se o perfil de
+  avaliação deixar um período de fora do acumulado, os elementos desse período
+  vêm na mesma e o LEIA-ME assinala que não entram no acumulado. Os anulados,
+  de diagnóstico, que não contam, ainda em preparação ou de períodos
+  posteriores ficam de fora, contados por razão no LEIA-ME. Sem o módulo dos elementos de
+  avaliação, ficam de fora as grelhas dos elementos (razão `plan`), sem erro.
+  Os nomes dos ficheiros não levam nomes de alunos.
+- Nada fica no servidor: o ZIP é escrito num ficheiro temporário e apagado logo
+  depois de enviado, com `Cache-Control: private, no-store, max-age=0`.
+- Auditoria: um único registo `evaluation_sheets.meeting_package.exported`
+  por pacote, sobre a turma, só com contagens e opções (período, momento,
+  número de alunos, períodos e Pautas incluídos, documentos incluídos e
+  omitidos, elementos incluídos, provisórios, fora do acumulado e omitidos por
+  razão) — nunca nomes nem notas.
+- Botão «Preparar reunião» na Pauta de Avaliação, junto de «Grelha para
+  imprimir»: ligação simples (resposta binária, não uma visita Inertia) com o
+  período e o momento que estão no ecrã e um `title` que explica o que traz.
+  Não sai impresso.
+- Artigo de ajuda «Reunião de avaliação sem Internet: o que levar preparado»
+  (`reports.meeting-without-internet`), em «Relatórios e pautas» e ligado à
+  Pauta: começa pelo botão «Preparar reunião», diz o que entra e o que fica de
+  fora, que os PDF continuam a tirar-se um a um para quem prefere papel e que o
+  Mapa de Medidas e a Análise não vêm no pacote, e mantém o conselho de usar os
+  dados móveis do telemóvel. Diz que as cópias servem para consultar e não para
+  lançar, e que são dados de alunos identificáveis.
+- Testes: `MeetingPackageTest`, `MeetingWithoutInternetArticleTest` e a ligação
+  «Preparar reunião» em `Show.test.ts`.
+
+### Alterado
+
+- `ClassResultsCalculator::eligibleInstrumentIdsUpTo()`: os elementos elegíveis
+  de todos os períodos do ano até um dado período, pela mesma regra de
+  elegibilidade do motor e sem a escolha por período do perfil.
+- Fonte única dos ficheiros: o que o Excel da Pauta e o Excel do Quadro Síntese
+  faziam dentro dos controladores passou para `LiveEvaluationSheet` e
+  `ClassSynopsisExport`, que os controladores e o pacote usam; a grelha de cada
+  elemento sai de `WriteInstrumentResults`, como já saía. O comportamento dos
+  endpoints não muda, incluindo os seus registos de auditoria individuais; o
+  pacote não os emite.
+- O artigo «grelha de avaliação da turma» passa a apontar para o artigo da
+  reunião sem Internet.
+
 ## [0.196.1] — 2026-11-15
 
 > **Dois níveis podem ter a mesma designação.** Em muitas escolas a escala é de

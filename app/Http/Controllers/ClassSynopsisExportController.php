@@ -2,12 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AcademicPeriod;
 use App\Models\SchoolClass;
 use App\Models\User;
-use App\Services\Assessment\AccumulatedBreakdown;
-use App\Services\Assessment\BuildClassSynopsis;
-use App\Services\Assessment\Export\ClassSynopsisXlsxWriter;
+use App\Services\Assessment\Export\ClassSynopsisExport;
 use App\Services\Audit\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
@@ -40,9 +37,7 @@ use Illuminate\Support\Str;
 class ClassSynopsisExportController extends Controller
 {
     public function __construct(
-        protected BuildClassSynopsis $synopsis,
-        protected AccumulatedBreakdown $breakdown,
-        protected ClassSynopsisXlsxWriter $xlsx,
+        protected ClassSynopsisExport $export,
         protected AuditLog $audit,
     ) {}
 
@@ -50,41 +45,8 @@ class ClassSynopsisExportController extends Controller
     {
         Gate::authorize('view', $class);
 
-        $synopsis = $this->synopsis->for($class);
-        $scale = $class->profileVersion?->scale()->with('levels')->first();
-
-        // A CONTA DO DESEMPENHO ACUMULADO, para a turma inteira e de uma vez. O
-        // ecrã pergunta-a célula a célula, quando alguém a quer; o ficheiro
-        // leva-a toda, porque quem o abre uma semana depois não tem onde clicar.
-        // A ÚLTIMA UNIDADE DO ANO, por uma consulta PRÓPRIA e não pela relação.
-        // `AcademicYear::periods()` traz um `orderBy('sequence')` seu, e um
-        // `orderByDesc` acrescentado fica em segundo lugar: a consulta sairia
-        // pela ordem original e isto devolveria o PRIMEIRO semestre a chamar-lhe
-        // o fim do ano — a mesma armadilha que já está documentada em
-        // `TwoReadingsOfTheYearTest`.
-        $lastPeriod = AcademicPeriod::query()
-            ->where('academic_year_id', $class->academic_year_id)
-            ->orderByDesc('sequence')
-            ->first();
-        $context = [
-            'class_label' => (string) $class->label,
-            'subject' => (string) $class->subject->name,
-            'academic_year' => (string) $class->academicYear->label,
-            'scale_name' => $scale?->name,
-            'scale_levels' => $scale === null ? [] : $scale->levels
-                ->sortBy('sequence')
-                ->map(fn ($level): array => [
-                    'code' => (string) $level->code,
-                    'label' => (string) $level->label,
-                    'is_negative' => (bool) $level->is_negative,
-                ])->values()->all(),
-            'exported_on' => now()->format('d/m/Y H:i'),
-            'accumulated_period_label' => $lastPeriod === null ? null : (string) $lastPeriod->label,
-        ];
-
-        $accumulated = $lastPeriod === null
-            ? []
-            : $this->breakdown->forClassByDomain($class, $lastPeriod);
+        // O ficheiro sai de `ClassSynopsisExport`, que o «Pacote de reunião» lê também.
+        $file = $this->export->build($class);
 
         /** @var User $user */
         $user = $request->user();
@@ -96,14 +58,14 @@ class ClassSynopsisExportController extends Controller
             'Quadro Síntese exportado para Excel.',
             [
                 'format' => 'xlsx',
-                'students' => count($synopsis['students']),
-                'moments' => count($synopsis['moments']),
-                'elements' => count($synopsis['elements']),
+                'students' => $file['students'],
+                'moments' => $file['moments'],
+                'elements' => $file['elements'],
             ],
         );
 
-        return response($this->xlsx->write($synopsis, $context, $accumulated), 200, [
-            'Content-Type' => $this->xlsx->contentType(),
+        return response($file['bytes'], 200, [
+            'Content-Type' => $this->export->contentType(),
             // NOME SEGURO, e derivado. `Str::slug` deixa cair tudo o que não
             // seja letra, dígito ou hífen, portanto nenhum rótulo de turma pode
             // escrever um caminho, uma aspa ou uma quebra de linha no cabeçalho.

@@ -5,12 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\AcademicPeriod;
 use App\Models\ClassificationScope;
 use App\Models\SchoolClass;
-use App\Services\Assessment\BuildEvaluationSheet;
 use App\Services\Assessment\Export\EvaluationSheetCsvWriter;
 use App\Services\Assessment\Export\EvaluationSheetDocument;
 use App\Services\Assessment\Export\EvaluationSheetXlsxWriter;
+use App\Services\Assessment\Export\LiveEvaluationSheet;
 use App\Services\Audit\AuditLog;
-use App\Support\Assessment\DomainColorPalette;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Gate;
 
@@ -48,7 +47,7 @@ use Illuminate\Support\Facades\Gate;
 class EvaluationSheetCsvExportController extends Controller
 {
     public function __construct(
-        protected BuildEvaluationSheet $builder,
+        protected LiveEvaluationSheet $live,
         protected EvaluationSheetCsvWriter $csv,
         protected EvaluationSheetXlsxWriter $xlsx,
         protected AuditLog $audit,
@@ -92,12 +91,9 @@ class EvaluationSheetCsvExportController extends Controller
 
         abort_if($selected === null, 404);
 
-        $sheet = $this->builder->for($class, $selected, ClassificationScope::Period);
-
-        // A MESMA COR QUE O ECRÃ MOSTRA, pela mesma costura — o Excel pinta os
-        // domínios com ela, e uma segunda paleta daria um ficheiro que não se
-        // parece com a pauta de onde saiu.
-        $sheet['domains'] = DomainColorPalette::decorate($sheet['domains']);
+        // A pauta viva e as cores dos domínios saem de `LiveEvaluationSheet`, que o
+        // «Pacote de reunião» lê também: um só código para o que o ficheiro leva.
+        $live = $this->live->for($class, $selected);
 
         // Auditoria (§22.5): uma exportação em massa de classificações deixa
         // rasto. SEM DADOS PESSOAIS — contagens e identificadores, como o resto
@@ -111,12 +107,12 @@ class EvaluationSheetCsvExportController extends Controller
                 'source' => 'evaluation_sheet',
                 'academic_period_ulid' => $selected->ulid,
                 'scope' => ClassificationScope::Period->value,
-                'student_count' => count($sheet['students']),
-                'domain_count' => count($sheet['domains']),
+                'student_count' => $live['students'],
+                'domain_count' => $live['domains'],
             ],
         );
 
-        return EvaluationSheetDocument::fromLiveSheet($class, $selected, $sheet, ClassificationScope::Period);
+        return $live['document'];
     }
 
     /**

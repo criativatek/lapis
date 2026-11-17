@@ -34,6 +34,6 @@ return [
         'A grelha da Pauta de hoje não fica guardada: é gerada no momento em que a abre e leva impressa a data de emissão. Não é um relatório finalizado. Para um documento que fica congelado, guarde a Pauta num momento — e abra depois a grelha desse momento.',
     ],
     'keywords' => ['grelha da turma', 'pauta em pdf', 'imprimir pauta', 'grelha de avaliação da turma', 'grelha para imprimir', 'momento guardado', 'momento intercalar', 'nível atribuído', 'proposta do lapispro', 'gráficos da pauta', 'distribuição dos níveis', 'média da turma', 'provisório'],
-    'related' => ['instruments.grid-document', 'results.record', 'reports.measures-map', 'classes.create'],
+    'related' => ['instruments.grid-document', 'results.record', 'reports.measures-map', 'classes.create', 'reports.meeting-without-internet'],
     'contexts' => ['evaluation-sheets.grid-document', 'evaluation-sheets.snapshot.grid-document'],
 ];

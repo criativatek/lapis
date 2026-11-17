@@ -39,6 +39,7 @@ use App\Http\Controllers\EvaluationSheetDomainDecisionController;
 use App\Http\Controllers\EvaluationSheetGridDocumentController;
 use App\Http\Controllers\EvaluationSheetHistoryController;
 use App\Http\Controllers\EvaluationSheetInovarExportController;
+use App\Http\Controllers\EvaluationSheetMeetingPackageController;
 use App\Http\Controllers\EvaluationSheetSnapshotExportController;
 use App\Http\Controllers\EvidenceController;
 use App\Http\Controllers\FinalDomainDecisionController;
@@ -1002,6 +1003,12 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::get('classes/{class}/pauta-avaliacao/impressao/{period}', [EvaluationSheetGridDocumentController::class, 'live'])->name('evaluation-sheets.grid-document');
         // O MESMO DOCUMENTO EM PDF, com as mesmas opções e o mesmo momento.
         Route::get('classes/{class}/pauta-avaliacao/impressao/{period}/pdf', [EvaluationSheetGridDocumentController::class, 'livePdf'])->name('evaluation-sheets.grid-document.pdf');
+        // O PACOTE DE REUNIÃO: um ZIP com a Pauta, o Mapa de Medidas e (no Pro) a Análise,
+        // para o professor levar os dados para uma reunião de avaliação sem depender da rede
+        // da escola. ANTES do wildcard `pauta-avaliacao/{period?}` pela mesma razão que as
+        // rotas de «impressao» e «csv» — «pacote-reuniao» não é um ulid de período. O período
+        // é obrigatório e o momento vai em `?momento=`, como na grelha.
+        Route::get('classes/{class}/pauta-avaliacao/pacote-reuniao/{period}', EvaluationSheetMeetingPackageController::class)->name('evaluation-sheets.meeting-package');
         Route::get('classes/{class}/pauta-avaliacao/csv/{period?}', [EvaluationSheetCsvExportController::class, 'csv'])->name('evaluation-sheets.csv');
         Route::get('classes/{class}/pauta-avaliacao/xlsx/{period?}', [EvaluationSheetCsvExportController::class, 'xlsx'])->name('evaluation-sheets.xlsx');
 

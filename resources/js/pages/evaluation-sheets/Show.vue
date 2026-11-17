@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Download, ListChecks, Printer, Table2 } from '@lucide/vue';
+import { Download, ListChecks, PackageOpen, Printer, Table2 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import PrintableDocument from '@/components/documents/PrintableDocument.vue';
 import EmptyState from '@/components/EmptyState.vue';
@@ -641,6 +641,21 @@ function submitSave(): void {
             >
                 <Printer class="size-4" /> Grelha para imprimir
             </Link>
+            <!-- O PACOTE DE REUNIÃO: um ZIP de folhas de Excel com a Pauta deste
+                 período e dos anteriores, o Quadro Síntese e a grelha de cada
+                 elemento de avaliação do ano até aqui (a avaliação é contínua),
+                 para consultar numa reunião sem depender da rede da escola. Um `<a>`, não um `<Link>`: a resposta é um ficheiro e
+                 não volta por uma visita Inertia. Leva o período e o momento que
+                 estão no ecrã, como a grelha para imprimir; o que entra decide-o
+                 o servidor e diz-o no LEIA-ME. -->
+            <a
+                v-if="sheet && selectedPeriod"
+                :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/pacote-reuniao/${selectedPeriod.ulid}${momentQuery(selectedMoment)}`"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
+                title="Descarrega um ZIP, em Excel, com a Pauta deste período e dos períodos anteriores do ano letivo, o Quadro Síntese e a grelha de cada elemento de avaliação até aqui, para consultar numa reunião sem Internet. É uma cópia de hoje: não se atualiza."
+            >
+                <PackageOpen class="size-4" /> Preparar reunião
+            </a>
             <Link
                 :href="`/classes/${schoolClass.ulid}/pauta-avaliacao/historico`"
                 class="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted/40"
