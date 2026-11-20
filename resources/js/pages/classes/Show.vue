@@ -872,7 +872,7 @@ function deleteResult(student: Student): void {
                 Aluno ainda não existe no Lapispro? Adicione-o como novo:
             </p>
             <p class="text-xs text-muted-foreground">
-                Ficheiros exportados do Intuitivo (ou compatível): modelo
+                Ficheiros exportados do Inovar (ou compatível): modelo
                 <strong>EB058e</strong> para a lista de alunos (Excel) e modelo
                 <strong>EB019</strong> para as fotos (Word).
             </p>
@@ -1406,7 +1406,7 @@ function deleteResult(student: Student): void {
                     <DialogHeader>
                         <DialogTitle>Importar lista de turma</DialogTitle>
                         <DialogDescription
-                            >Ficheiro Excel exportado do Intuitivo — modelo
+                            >Ficheiro Excel exportado do Inovar — modelo
                             EB058e. Depois de reveres a lista, podes associar
                             fotos num passo separado.</DialogDescription
                         >
@@ -1437,7 +1437,7 @@ function deleteResult(student: Student): void {
                     <DialogHeader>
                         <DialogTitle>Adicionar ou corrigir fotos</DialogTitle>
                         <DialogDescription>
-                            Ficheiro Word exportado do Intuitivo — modelo EB019.
+                            Ficheiro Word exportado do Inovar — modelo EB019.
                             Serve para adicionar fotos e para corrigir as que
                             ficaram erradas: a associação é revista antes de ser
                             aplicada, e nenhum aluno é eliminado nem recriado.

@@ -690,7 +690,7 @@ const limitError = computed(() => (form.errors as Record<string, string>).limit)
                     }}
                 </h2>
                 <p class="text-xs text-muted-foreground">
-                    Ficheiro Word exportado do Intuitivo (modelo EB019) com as
+                    Ficheiro Word exportado do Inovar (modelo EB019) com as
                     fotos dos alunos. As fotos com nome são associadas por nome
                     às linhas acima — inclui primeiro quaisquer correções de
                     nome que já tenhas feito. As fotos sem nome ficam

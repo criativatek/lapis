@@ -151,7 +151,7 @@ export const FEATURES: readonly Feature[] = [
             {
                 icon: ClipboardCheck,
                 title: 'Importação da pauta',
-                body: 'Ficheiros exportados do Intuitivo, ou compatíveis: a lista de alunos em Excel e as fotografias em Word entram no mesmo passo.',
+                body: 'Ficheiros exportados do Inovar, ou compatíveis: a lista de alunos em Excel e as fotografias em Word entram no mesmo passo.',
             },
             {
                 icon: Camera,
