@@ -25,6 +25,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.197.1] — 2026-11-20
+
+> **A lista de turma vem do Inovar, não do Intuitivo.** O diálogo «Importar
+> lista de turma», o das fotos e a nota por baixo do formulário de inscrição,
+> na página da turma, diziam «Ficheiro Excel exportado do Intuitivo» — mas a
+> lista de alunos (modelo EB058e) e as fotografias (modelo EB019) exportam-se
+> do Inovar. O texto passa a dizer Inovar ali, na pré-visualização da
+> importação, no artigo de ajuda «Importar uma pauta de alunos» (que passa a
+> ser encontrado por «inovar») e no cartão «Importação da pauta» do site. A
+> importação de correções de testes continua a dizer Intuitivo, porque essa
+> folha vem de facto do Intuitivo. Só texto; sem migrations.
+
 ## [0.197.0] — 2026-11-17
 
 > **Pacote de reunião.** O Lapispro precisa de ligação, e numa reunião de
