@@ -36,6 +36,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > ser encontrado por «inovar») e no cartão «Importação da pauta» do site. A
 > importação de correções de testes continua a dizer Intuitivo, porque essa
 > folha vem de facto do Intuitivo. Só texto; sem migrations.
+>
+> Corrige-se também um teste que rebentava sozinho com o calendário:
+> `EvaluationSheetReadinessTest` criava o professor com a hora real e só
+> depois viajava para 2026-11-20; a partir de 21/11 a subscrição nascia «no
+> futuro» e a rota da pauta dava 403. O relógio passa a ficar fixo no `setUp`,
+> antes de criar dados.
 
 ## [0.197.0] — 2026-11-17
 

@@ -61,6 +61,13 @@ class EvaluationSheetReadinessTest extends TestCase
     {
         parent::setUp();
 
+        // O relógio fica no dia para que os casos foram escritos ANTES de criar o
+        // professor e a demo: criados com a hora real e só depois levados para
+        // 2026-11-20, a subscrição nascia «no futuro» a partir de 21/11 e a rota
+        // da pauta respondia 403. Os casos que precisam de outro dia viajam a
+        // partir daqui, sempre para a frente.
+        $this->travelTo('2026-11-20');
+
         $this->teacher = User::factory()->create(['email' => 'ana.martins@lapis.test']);
         $this->seed(DemoDataSeeder::class);
     }
