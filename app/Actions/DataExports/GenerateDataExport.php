@@ -1741,6 +1741,7 @@ class GenerateDataExport
             'scale' => $this->scaleRefById($item->scale_id, $refs),
             'is_bonus' => $item->is_bonus,
             'source_group_label' => $item->source_group_label,
+            'criterion_note' => $item->criterion_note,
         ];
     }
 

@@ -38,7 +38,7 @@ defineEmits<{ import: [] }>();
             Importar questões
         </Button>
         <p class="w-full text-xs text-muted-foreground">
-            Copia o título, a cotação total, as questões e os conteúdos — nunca notas de alunos. Tipo, data e período
+            Copia o título, a cotação total, as questões, os conteúdos e os comentários das questões — nunca notas nem comentários de alunos. Tipo, data e período
             escolhem-se aqui. Continua tudo editável depois de importar.
         </p>
         <p v-if="note" class="w-full text-xs font-medium text-amber-800" role="status" data-testid="import-note">

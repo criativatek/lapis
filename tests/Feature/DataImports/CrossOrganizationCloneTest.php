@@ -43,6 +43,7 @@ use Illuminate\Http\UploadedFile;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
 use ReflectionProperty;
+use ZipArchive;
 
 class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
 {
@@ -153,6 +154,72 @@ class CrossOrganizationCloneTest extends PedagogicalRoundTripTest
         $beforeSecondConfirm = $this->countsByModel($destination);
         $this->confirm($secondImport, $destination, $teacher);
         $this->assertSame($beforeSecondConfirm, $this->countsByModel($destination));
+    }
+
+    #[Test]
+    public function the_comment_on_a_question_travels_in_the_backup_and_survives_a_clone(): void
+    {
+        $teacher = $this->teacher();
+        $source = $teacher->personalOrganization();
+        $this->completeScenario();
+        $item = $this->inOrganization($source, fn (): InstrumentItem => InstrumentItem::query()->orderBy('id')->firstOrFail());
+        $this->inOrganization($source, fn () => $item->forceFill(['criterion_note' => 'Audibilidade 5 + dicção 10; nível 4 exige contacto visual'])->save());
+
+        $backup = $this->freshBackup();
+        $row = collect($this->backupJsonOf($backup)['instrument_items'])->firstWhere('ulid', $item->ulid);
+        $this->assertSame('Audibilidade 5 + dicção 10; nível 4 exige contacto visual', $row['criterion_note']);
+
+        $destination = Organization::factory()->withMember($teacher)->create(['owner_id' => $teacher->id, 'name' => 'Destino pessoal']);
+        $this->seedRequiredReferences($source, $destination);
+        $import = $this->upload($backup, $destination, $teacher);
+        $this->confirm($import, $destination, $teacher);
+
+        $restored = $this->inOrganization($destination, fn () => InstrumentItem::query()->where('code', $item->code)->pluck('criterion_note')->all());
+        $this->assertContains('Audibilidade 5 + dicção 10; nível 4 exige contacto visual', $restored);
+    }
+
+    #[Test]
+    public function a_v21_backup_without_the_key_restores_every_question_without_a_comment(): void
+    {
+        $teacher = $this->teacher();
+        $source = $teacher->personalOrganization();
+        $this->completeScenario();
+        $backup = $this->freshBackup();
+
+        $copy = tempnam(sys_get_temp_dir(), 'lapis-v21-backup-').'.zip';
+        copy($backup->getPathname(), $copy);
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($copy));
+        $json = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+        $json['schema_version'] = 21;
+        $json['instrument_items'] = array_map(function (array $row): array {
+            unset($row['criterion_note']);
+
+            return $row;
+        }, $json['instrument_items']);
+        $zip->addFromString('backup-lapis.json', (string) json_encode($json));
+        $zip->close();
+        $legacy = new UploadedFile($copy, 'backup.zip', 'application/zip', null, true);
+
+        $destination = Organization::factory()->withMember($teacher)->create(['owner_id' => $teacher->id, 'name' => 'Destino pessoal']);
+        $this->seedRequiredReferences($source, $destination);
+        $import = $this->upload($legacy, $destination, $teacher);
+        $this->confirm($import, $destination, $teacher);
+
+        $items = $this->inOrganization($destination, fn () => InstrumentItem::query()->get());
+        $this->assertGreaterThan(0, $items->count());
+        $this->assertTrue($items->every(fn (InstrumentItem $item): bool => $item->criterion_note === null));
+    }
+
+    /** @return array<string, mixed> */
+    private function backupJsonOf(UploadedFile $file): array
+    {
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($file->getPathname()));
+        $json = json_decode((string) $zip->getFromName('backup-lapis.json'), true);
+        $zip->close();
+
+        return $json;
     }
 
     #[Test]

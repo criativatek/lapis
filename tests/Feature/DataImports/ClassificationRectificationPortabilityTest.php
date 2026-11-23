@@ -84,8 +84,8 @@ class ClassificationRectificationPortabilityTest extends TestCase
     {
         $json = $this->sourceBackupJson();
 
-        $this->assertSame(21, BackupSchemaCompatibility::CURRENT);
-        $this->assertSame(21, $json['schema_version']);
+        $this->assertSame(22, BackupSchemaCompatibility::CURRENT);
+        $this->assertSame(22, $json['schema_version']);
 
         $ana = $this->rowsOf($json, 'Ana');
         $this->assertCount(3, $ana);

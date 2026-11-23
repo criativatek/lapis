@@ -25,6 +25,38 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.199.0] — 2026-11-23
+
+> **Comentários nos elementos de avaliação.** A grelha de correção ganha um
+> espaço de comentários do professor, sem atulhar a grelha. Cada questão ou
+> critério pode ter o seu comentário — por exemplo «Audibilidade 5 + dicção
+> 10; nível 4 exige contacto visual» —, que se vê ao passar o rato (ou ao
+> focar com o teclado) no código da questão, e se edita ali mesmo. Há um novo
+> separador «Comentários», ao lado de «Resultados», onde ficam a observação
+> geral (que estava em Resultados) e os comentários de todas as questões. Os
+> comentários são privados do professor: não aparecem em relatórios nem para os
+> alunos, e nunca são notas nem comentários de alunos.
+
+### Adicionado
+
+- Comentário por questão/critério (`instrument_items.criterion_note`, até 2000
+  carateres), gravável mesmo com a correção concluída, como o «Conteúdo».
+  Editar o elemento no formulário nunca o apaga.
+- Ao copiar a grelha de outro elemento («Importar de outro elemento de
+  avaliação»), os comentários das questões vão juntos.
+- Separador «Comentários» (`/instruments/{elemento}/comentarios`), com «Geral» e
+  «Por questão / critério». Os separadores do elemento passam a ter uma só
+  definição, partilhada pela grelha, pelos resultados e pelos comentários.
+
+### Alterado
+
+- A observação geral do professor passa de «Resultados» para «Comentários»; em
+  Resultados fica uma ligação. O relatório imprimível dos Resultados continua a
+  mostrá-la como antes.
+- Cópia de segurança passa à versão 22 do esquema: `instrument_items[].criterion_note`.
+  Um backup v21 restaura-se sem comentários; um v22 é recusado por código anterior.
+- Uma migration aditiva e reversível (`instrument_items.criterion_note`).
+
 ## [0.198.0] — 2026-11-23
 
 > **Reutilizar a grelha de um elemento na criação simples.** A caixa

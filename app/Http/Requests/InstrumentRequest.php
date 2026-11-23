@@ -136,6 +136,7 @@ class InstrumentRequest extends FormRequest
                 'max:16',
             ],
             'items.*.label' => ['nullable', 'string', 'max:500'],
+            'items.*.criterion_note' => ['nullable', 'string', 'max:2000'],
             'items.*.points_possible' => [
                 Rule::when($this->isPreparing(), 'required', 'nullable'),
                 'numeric',

@@ -173,7 +173,7 @@ class ValidateBackupPayload
             'instrument_groups' => $this->whitelistRows($decoded, 'instrument_groups', ['ulid', 'instrument_ulid', 'label', 'sequence'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInstrumentGroupRow($row, $rowIssues);
             }),
-            'instrument_items' => $this->whitelistRows($decoded, 'instrument_items', ['ulid', 'instrument_ulid', 'group_ulid', 'code', 'label', 'sequence', 'points_possible', 'scoring_mode', 'scale', 'is_bonus', 'source_group_label'], function (array $row) use (&$rowIssues): ?array {
+            'instrument_items' => $this->whitelistRows($decoded, 'instrument_items', ['ulid', 'instrument_ulid', 'group_ulid', 'code', 'label', 'sequence', 'points_possible', 'scoring_mode', 'scale', 'is_bonus', 'source_group_label', 'criterion_note'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInstrumentItemRow($row, $rowIssues);
             }),
             'item_domain_allocations' => $this->whitelistRows($decoded, 'item_domain_allocations', ['item_ulid', 'domain_ulid', 'allocation_percent'], function (array $row) use (&$rowIssues): ?array {
@@ -513,6 +513,16 @@ class ValidateBackupPayload
         }
 
         return $this->isUlid($value) ? ['ok' => true, 'value' => $value] : ['ok' => false];
+    }
+
+    /**
+     * The teacher's note on a question (v22): text up to the column's own limit,
+     * or null. Anything else, or a longer text, is read as «no note» — never a
+     * refused row, because the note is metadata and the question stands without it.
+     */
+    private function criterionNote(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' && mb_strlen($value) <= 2000 ? $value : null;
     }
 
     private function nullableString(mixed $value): ?string
@@ -1167,6 +1177,7 @@ class ValidateBackupPayload
             'scale' => $this->validScaleRef($row['scale'] ?? null),
             'is_bonus' => $this->nullableBool($row['is_bonus'] ?? null) ?? false,
             'source_group_label' => $this->nullableString($row['source_group_label'] ?? null),
+            'criterion_note' => $this->criterionNote($row['criterion_note'] ?? null),
         ];
     }
 

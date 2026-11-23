@@ -356,6 +356,25 @@ describe('InstrumentForm import in simple mode', () => {
         expect(formState(wrapper).items.map((item) => item.label)).toEqual(['Gestualidade', 'Postura', 'Voz']);
     });
 
+    it('shows the imported question comment read-only and sends it on create, in both modes', async () => {
+        const commented = source();
+        commented.items[1] = { ...commented.items[1], criterion_note: 'Audibilidade 5 + dicção 10' } as (typeof commented.items)[number];
+        const wrapper = mountWith(commented);
+        await importIt(wrapper);
+
+        const lines = wrapper.findAll('[data-testid="imported-criterion-note"]');
+        expect(lines).toHaveLength(1);
+        expect(lines[0].text()).toBe('Comentário: Audibilidade 5 + dicção 10');
+        expect(lines[0].element.tagName).toBe('P');
+
+        const items = formState(wrapper).items as unknown as { criterion_note?: string }[];
+        expect(items.map((item) => item.criterion_note)).toEqual([undefined, 'Audibilidade 5 + dicção 10', undefined]);
+
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+        expect(wrapper.findAll('[data-testid="imported-criterion-note"]')).toHaveLength(1);
+        expect(wrapper.text()).toContain('Comentário: Audibilidade 5 + dicção 10');
+    });
+
     it('moves to advanced mode with a note when the source has a bonus question', async () => {
         const bonus = source();
         bonus.items[2] = { ...bonus.items[2], is_bonus: true };
@@ -390,6 +409,36 @@ describe('InstrumentForm import in simple mode', () => {
             .map((input) => (input.element as HTMLInputElement).value);
         // The «Conta para a classificação» checkbox has the default value 'on'.
         expect(ticked.filter((value) => value !== 'on')).toEqual(['7', '8']);
+    });
+
+    it('never sends the comment key when editing an existing instrument', async () => {
+        const wrapper = mountForm({
+            domains,
+            method: 'put',
+            submitUrl: '/instruments/x',
+            initial: {
+                title: 'Existente',
+                academic_period_id: 3,
+                instrument_type_id: 5,
+                applied_on: '2026-10-01',
+                purpose: 'summative',
+                counts_toward_classification: true,
+                total_points: 30,
+                allow_bonus: false,
+                groups: [{ ulid: 'g1', label: null }],
+                items: [
+                    {
+                        ulid: 'i1', group_index: 0, code: 'Q1', label: 'Voz', points_possible: 30, is_bonus: false, has_scores: false,
+                        domains: [{ domain_id: 7, allocation_percent: 100 }],
+                    },
+                ],
+            },
+        });
+
+        const items = formState(wrapper).items as unknown as Record<string, unknown>[];
+        expect(items).toHaveLength(1);
+        expect('criterion_note' in items[0]).toBe(false);
+        expect(wrapper.find('[data-testid="imported-criterion-note"]').exists()).toBe(false);
     });
 
     it('opens an existing instrument with content labels in simple mode and keeps the labels', async () => {

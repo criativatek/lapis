@@ -32,6 +32,9 @@ type WireItemRow = {
     group_index?: number;
     code: string;
     label: string;
+    // The teacher's private note on the question. Only an importable instrument
+    // carries it: the edit payload leaves the key out, so editing never touches it.
+    criterion_note?: string | null;
     points_possible: number | null;
     is_bonus: boolean;
     has_scores?: boolean;
@@ -56,6 +59,7 @@ type ItemRow = {
     group_index: number;
     code: string;
     label: string;
+    criterion_note?: string;
     points_possible: number | null;
     is_bonus: boolean;
     has_scores?: boolean;
@@ -120,6 +124,8 @@ function wireToUiItem(item: WireItemRow): ItemRow {
         group_index: item.group_index ?? 0,
         code: item.code,
         label: item.label ?? '',
+        // Key present only when there is a note: absent means «leave it alone» on the server.
+        ...(item.criterion_note ? { criterion_note: item.criterion_note } : {}),
         points_possible: item.points_possible,
         is_bonus: item.is_bonus,
         has_scores: item.has_scores,
@@ -1081,6 +1087,9 @@ function submit(intent: 'save' | 'prepare'): void {
                                 placeholder="Conteúdo (opcional)"
                                 :aria-label="`Conteúdo avaliado em ${item.code}`"
                             />
+                            <p v-if="item.criterion_note" class="mt-1 truncate text-xs text-muted-foreground" :title="item.criterion_note" data-testid="imported-criterion-note">
+                                Comentário: {{ item.criterion_note }}
+                            </p>
                             <InstrumentDomainAllocations
                                 v-if="expandedQuickAllocations.has(item)"
                                 :item="item"
@@ -1408,6 +1417,9 @@ function submit(intent: 'save' | 'prepare'): void {
                             v-model="item.label"
                             placeholder="Ex.: Compreensão do texto"
                         />
+                        <p v-if="item.criterion_note" class="truncate text-xs text-muted-foreground" :title="item.criterion_note" data-testid="imported-criterion-note">
+                            Comentário: {{ item.criterion_note }}
+                        </p>
                     </div>
                     <div class="grid gap-1.5">
                         <Label class="text-xs">Cotação</Label>

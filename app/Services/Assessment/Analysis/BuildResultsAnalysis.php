@@ -387,7 +387,7 @@ class BuildResultsAnalysis
     /**
      * @return array<string, mixed>
      */
-    protected function notePayload(Instrument $instrument): array
+    public function notePayload(Instrument $instrument): array
     {
         $note = ResultsAnalysisNote::query()
             ->where('instrument_id', $instrument->getKey())
