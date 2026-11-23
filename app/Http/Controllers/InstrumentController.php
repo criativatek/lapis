@@ -9,6 +9,7 @@ use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
 use App\Models\InstrumentStatus;
+use App\Models\InstrumentStudentComment;
 use App\Models\InstrumentType;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
@@ -576,6 +577,11 @@ class InstrumentController extends Controller
             ...$this->resultsAnalysis->officialCells($instrument),
         ];
 
+        $studentComments = InstrumentStudentComment::query()
+            ->where('instrument_id', $instrument->getKey())
+            ->get()
+            ->keyBy('enrollment_id');
+
         return Inertia::render('instruments/Grid', [
             // Questions without a domain never reach the engine, so a grid full
             // of marks can still say «Por classificar» on every row. The grid
@@ -618,6 +624,12 @@ class InstrumentController extends Controller
             ]),
             'students' => $enrollments->map(fn (Enrollment $enrollment) => [
                 'enrollment_id' => $enrollment->id,
+                'enrollment_ulid' => $enrollment->ulid,
+                // O comentário privado do professor sobre este aluno neste
+                // elemento (null quando não há). `lock_version` segue com ele.
+                'comment' => isset($studentComments[$enrollment->id])
+                    ? ['body' => $studentComments[$enrollment->id]->body, 'lock_version' => $studentComments[$enrollment->id]->lock_version]
+                    : null,
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 // A thumbnail to put a face to the name while correcting; the
                 // identity is already eager-loaded, so this adds no query.

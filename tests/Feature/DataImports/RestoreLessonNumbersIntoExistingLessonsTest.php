@@ -216,7 +216,7 @@ class RestoreLessonNumbersIntoExistingLessonsTest extends TestCase
         $this->activity();
 
         $file = $this->backupUpload();
-        $this->assertSame(22, $this->backupJson($file)['schema_version']);
+        $this->assertSame(23, $this->backupJson($file)['schema_version']);
 
         $this->removeLessons([$manual]);
         $this->inTenant(fn () => TimetableActivity::query()->delete());

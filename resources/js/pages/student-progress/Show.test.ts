@@ -557,3 +557,33 @@ describe('student-progress/Show — autoavaliação com critérios anteriores', 
         expect(wrapper.text()).not.toContain('critérios anteriores');
     });
 });
+
+describe('student-progress/Show — comentários nos elementos de avaliação', () => {
+    it('não mostra a secção quando a prop está ausente', () => {
+        const wrapper = mount(Show, { props: baseProps() });
+
+        expect(wrapper.text()).not.toContain('Comentários nos elementos de avaliação');
+    });
+
+    it('lista cada comentário pela ordem recebida, com a data, o título e a ligação ao elemento', () => {
+        const wrapper = mount(Show, {
+            props: {
+                ...baseProps(),
+                instrumentComments: [
+                    { instrument_title: 'Teste final', applied_on: '2026-11-20', body: 'Segundo comentário', url: '/instruments/b/comentarios' },
+                    { instrument_title: 'Apresentação oral', applied_on: '2026-10-15', body: 'Apanhado a copiar na Q2', url: '/instruments/a/comentarios' },
+                ],
+            },
+        });
+
+        const section = wrapper.get('section[aria-labelledby="comentarios-elementos"]');
+        expect(section.text()).toContain('Comentários nos elementos de avaliação');
+
+        const items = section.findAll('li');
+        expect(items).toHaveLength(2);
+        expect(items[0].text()).toContain('Teste final');
+        expect(items[0].text()).toContain('Segundo comentário');
+        expect(items[1].text()).toContain('Apanhado a copiar na Q2');
+        expect(items[1].get('a').attributes('href')).toBe('/instruments/a/comentarios');
+    });
+});

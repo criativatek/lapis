@@ -92,6 +92,7 @@ class BuildImportPlan
         private readonly BuildLessonsPlan $lessonsPlan,
         private readonly BuildLessonOutcomeRectificationsPlan $lessonOutcomeRectificationsPlan,
         private readonly BuildResultsAnalysisNotesPlan $resultsAnalysisNotesPlan,
+        private readonly BuildInstrumentStudentCommentsPlan $instrumentStudentCommentsPlan,
         private readonly BuildClassNotebookEntriesPlan $classNotebookEntriesPlan,
         private readonly BuildTimetableActivitiesPlan $timetableActivitiesPlan,
         private readonly BuildTimetableActivitySessionsPlan $timetableActivitySessionsPlan,
@@ -217,6 +218,16 @@ class BuildImportPlan
             $instrumentsByUlid,
         );
 
+        // Schema v23 — the teacher's private comments on a student in an element:
+        // needs the instruments AND the enrolments classified above.
+        $instrumentStudentComments = $this->instrumentStudentCommentsPlan->build(
+            $canonical['instrument_student_comments'] ?? [],
+            $destination,
+            $actor,
+            $instrumentsByUlid,
+            $enrollmentsByUlid,
+        );
+
         $lessons = $this->lessonsPlan->build(
             $canonical['class_groups'] ?? [],
             $canonical['class_group_memberships'] ?? [],
@@ -272,6 +283,7 @@ class BuildImportPlan
             $lessons['rows'],
             $lessonOutcomeRectifications['rows'],
             $resultsAnalysisNotes['rows'],
+            $instrumentStudentComments['rows'],
             $classNotebookEntries['rows'],
             $timetableActivities['rows'],
             $timetableActivitySessions['rows'],

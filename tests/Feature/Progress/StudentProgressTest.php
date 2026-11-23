@@ -889,8 +889,14 @@ class StudentProgressTest extends TestCase
         // on any real class, and so would reintroducing the second aggregate
         // pass. That the pass happens exactly once is asserted directly in
         // ProgressionReuseTest, where it belongs (§56, §79).
+        //
+        // 0.200.0: the page had crept to 99 on this fixture as fixed sections were
+        // added; «Comentários nos elementos de avaliação» adds exactly ONE more
+        // (a single join, whatever the number of comments), measuring 100. The
+        // ceiling moves to 110 for that constant cost — the shape it guards is
+        // unchanged.
         $this->assertLessThan(
-            100,
+            110,
             $queries,
             'The student progress page is making more queries than a bounded read should.',
         );

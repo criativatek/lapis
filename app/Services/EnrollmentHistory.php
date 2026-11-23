@@ -60,6 +60,10 @@ class EnrollmentHistory
         // lá escreveu mesmo alguma coisa, por isso um aluno acrescentado por
         // engano não fica preso só por a ficha ter sido aberta e fechada.
         'enrollment_characterisations' => 'caracterização pedagógica',
+        // O que o professor escreveu sobre um aluno num elemento de avaliação.
+        // Só existe quando há texto (corpo vazio apaga a linha), por isso não cria
+        // beco: abrir e fechar o editor não prende o aluno à turma.
+        'instrument_student_comments' => 'comentários nos elementos de avaliação',
         // Uma classificação obtida fora desta aplicação e cá registada — ver o
         // docblock de `external_subject_results`. Apagá-la em silêncio ao
         // remover a inscrição apagaria uma nota real, tal como apagar

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import StudentCommentDialog from '@/components/instruments/StudentCommentDialog.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,6 +20,13 @@ type CommentItem = {
     criterion_note: string | null;
 };
 
+type CommentStudent = {
+    enrollment_ulid: string;
+    class_number: number | null;
+    name: string;
+    comment: { body: string; lock_version: number } | null;
+};
+
 const props = defineProps<{
     instrument: {
         ulid: string;
@@ -33,6 +41,8 @@ const props = defineProps<{
     note: ResultsNote;
     can_edit: boolean;
     items: CommentItem[];
+    /** Todos os alunos da grelha, pela ordem da turma, com o comentário se houver. */
+    students?: CommentStudent[];
     links: { note: string; item_notes: string; grid: string; results: string };
     cancelled: boolean;
 }>();
@@ -113,6 +123,72 @@ function saveItem(item: CommentItem): void {
         },
         onFinish: () => {
             busy[item.id] = false;
+        },
+    });
+}
+
+// ------------------------------------------------------------- Por aluno
+
+// Estado local: a gravação não recarrega a página (`only: []`), por isso a lista
+// e as versões acompanham-se aqui, como as das perguntas acima.
+const people = reactive<CommentStudent[]>((props.students ?? []).map((student) => ({ ...student })));
+const withComment = computed(() => people.filter((student) => student.comment !== null));
+const withoutComment = computed(() => people.filter((student) => student.comment === null));
+const editingUlid = ref<string | null>(null);
+const dialogOpen = ref(false);
+const pickerValue = ref('');
+const deleteBusy = ref<string | null>(null);
+const deleteError = ref<string | null>(null);
+
+const editing = computed(() => people.find((student) => student.enrollment_ulid === editingUlid.value) ?? null);
+
+function studentUrl(student: CommentStudent): string {
+    return `/instruments/${props.instrument.ulid}/students/${student.enrollment_ulid}/comment`;
+}
+
+function edit(student: CommentStudent): void {
+    editingUlid.value = student.enrollment_ulid;
+    dialogOpen.value = true;
+}
+
+function addFromPicker(): void {
+    const student = people.find((entry) => entry.enrollment_ulid === pickerValue.value);
+
+    pickerValue.value = '';
+
+    if (student) {
+        edit(student);
+    }
+}
+
+function onStudentSaved(value: { body: string | null; lock_version: number }): void {
+    const student = editing.value;
+
+    if (student) {
+        student.comment = value.body === null ? null : { body: value.body, lock_version: value.lock_version };
+    }
+}
+
+function removeStudentComment(student: CommentStudent): void {
+    if (deleteBusy.value !== null || student.comment === null) {
+        return;
+    }
+
+    deleteBusy.value = student.enrollment_ulid;
+    deleteError.value = null;
+
+    router.put(studentUrl(student), { body: '', lock_version: student.comment.lock_version }, {
+        preserveScroll: true,
+        preserveState: true,
+        only: [],
+        onSuccess: () => {
+            student.comment = null;
+        },
+        onError: (received) => {
+            deleteError.value = Object.values(received)[0] ?? 'Não foi possível apagar o comentário.';
+        },
+        onFinish: () => {
+            deleteBusy.value = null;
         },
     });
 }
@@ -211,7 +287,77 @@ function formatPoints(points: number | null): string {
             </ul>
         </section>
 
-        <!-- Por aluno: lugar previsto para a fatia seguinte (comentários por aluno, PDF e cronologia do aluno).
-             Fica de fora de propósito — nada se mostra nem se grava aqui por agora. -->
+        <!-- Por aluno: o que o professor quer lembrar sobre um aluno NESTE elemento («Apanhado a copiar na Q2»).
+             Privado; só sai no PDF da grelha se o professor o escolher. -->
+        <section aria-labelledby="section-comments-students" class="space-y-3 rounded-lg border border-border bg-muted/10 p-4">
+            <div>
+                <h2 id="section-comments-students" class="text-sm font-semibold">Por aluno</h2>
+                <p class="text-xs text-muted-foreground">
+                    Comentários sobre um aluno neste elemento. Também aparecem na grelha (ícone junto ao nome) e no acompanhamento do aluno.
+                    Não acompanham a grelha quando a copia para outra turma.
+                </p>
+            </div>
+
+            <p v-if="withComment.length === 0" class="text-sm text-muted-foreground" data-testid="students-empty">
+                Ainda não há comentários sobre alunos neste elemento.
+            </p>
+            <ul v-else class="space-y-3">
+                <li
+                    v-for="student in withComment"
+                    :key="student.enrollment_ulid"
+                    class="space-y-1 rounded-md border border-border bg-background p-3"
+                    :data-testid="`comment-student-${student.enrollment_ulid}`"
+                >
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <span class="text-sm font-medium">
+                            <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span> {{ student.name }}
+                        </span>
+                        <span v-if="canEditItems" class="flex gap-2">
+                            <Button type="button" size="sm" variant="outline" :aria-label="`Editar comentário sobre ${student.name}`" @click="edit(student)">
+                                Editar
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                :disabled="deleteBusy !== null"
+                                :aria-label="`Apagar comentário sobre ${student.name}`"
+                                @click="removeStudentComment(student)"
+                            >
+                                Apagar
+                            </Button>
+                        </span>
+                    </div>
+                    <p class="text-sm whitespace-pre-line">{{ student.comment?.body }}</p>
+                </li>
+            </ul>
+            <InputError :message="deleteError ?? undefined" />
+
+            <div v-if="canEditItems && withoutComment.length > 0" class="flex flex-wrap items-center gap-2">
+                <label for="comment-student-picker" class="text-sm text-muted-foreground">Adicionar comentário a…</label>
+                <select
+                    id="comment-student-picker"
+                    v-model="pickerValue"
+                    class="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                    data-testid="student-picker"
+                    @change="addFromPicker"
+                >
+                    <option value="">Escolher aluno</option>
+                    <option v-for="student in withoutComment" :key="student.enrollment_ulid" :value="student.enrollment_ulid">
+                        {{ student.class_number ?? '—' }} · {{ student.name }}
+                    </option>
+                </select>
+            </div>
+
+            <StudentCommentDialog
+                v-if="canEditItems && editing"
+                v-model:open="dialogOpen"
+                :url="studentUrl(editing)"
+                :student-name="editing.name"
+                :body="editing.comment?.body ?? null"
+                :lock-version="editing.comment?.lock_version ?? 0"
+                @saved="onStudentSaved"
+            />
+        </section>
     </div>
 </template>

@@ -8,6 +8,7 @@ import InputError from '@/components/InputError.vue';
 import CriterionNote from '@/components/instruments/CriterionNote.vue';
 import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
 import type { DomainAssignment } from '@/components/instruments/DomainAssignmentCallout.vue';
+import StudentCommentButton from '@/components/instruments/StudentCommentButton.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,9 @@ type Item = {
 
 type Student = {
     enrollment_id: number;
+    enrollment_ulid?: string;
+    /** Comentário privado do professor sobre este aluno neste elemento. */
+    comment?: { body: string; lock_version: number } | null;
     name: string;
     photo_url: string | null;
     class_number: number | null;
@@ -1954,7 +1958,7 @@ function revertCancellation(): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
-                    <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="hover:bg-muted/20">
+                    <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="group/row hover:bg-muted/20">
                         <td class="sticky left-0 z-10 bg-background px-3 py-0.5 whitespace-nowrap">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
@@ -1969,6 +1973,13 @@ function revertCancellation(): void {
                                     class="hidden sm:inline-flex"
                                 />
                                 <span class="font-medium">{{ student.name }}</span>
+                                <StudentCommentButton
+                                    v-if="student.enrollment_ulid"
+                                    :url="`/instruments/${instrument.ulid}/students/${student.enrollment_ulid}/comment`"
+                                    :student-name="student.name"
+                                    :comment="student.comment ?? null"
+                                    :editable="can_edit === true && !isCancelled"
+                                />
                                 <span
                                     v-if="student.joined_after_instrument"
                                     class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900"

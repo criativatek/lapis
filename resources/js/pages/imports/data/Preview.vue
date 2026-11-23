@@ -101,6 +101,10 @@ const domainGroups: {
                 key: 'results_analysis_notes',
                 label: 'Observações dos resultados',
             },
+            {
+                key: 'instrument_student_comments',
+                label: 'Comentários sobre alunos',
+            },
             { key: 'classifications', label: 'Classificações' },
             {
                 key: 'self_assessment_templates',
@@ -191,6 +195,10 @@ const summaryGroups: {
             {
                 key: 'results_analysis_notes_created',
                 label: 'Observações dos resultados',
+            },
+            {
+                key: 'instrument_student_comments_created',
+                label: 'Comentários sobre alunos',
             },
             { key: 'classifications_created', label: 'Classificações' },
             { key: 'self_assessments_created', label: 'Autoavaliações' },

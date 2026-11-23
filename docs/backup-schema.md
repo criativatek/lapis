@@ -24,7 +24,8 @@ arquitetura.
 
 | `schema_version` | Estado | Capacidade |
 |---|---|---|
-| 22 (atual) | `Supported` | Como a v21, acrescentando o **comentário privado do professor sobre uma questão/critério** de um elemento de avaliação: `instrument_items[].criterion_note` (texto até 2000 carateres, ou `null`). É metadado pedagógico da grelha — nunca uma nota nem um comentário de um aluno — e acompanha a grelha quando esta é copiada para outra. Ausente num backup v≤21 ⇒ `null`, e nada mais muda. Um backup v22 é recusado por código anterior (`UnsupportedNewer`): senão descartaria a coluna em silêncio. Restauro de um backup v21 num código v22: todos os comentários ficam nulos. |
+| 23 (atual) | `Supported` | Como a v22, acrescentando `instrument_student_comments` (0.200.0): o **comentário privado do professor sobre um aluno num elemento de avaliação** («Apanhado a copiar na Q2»). Uma linha por (elemento, inscrição), texto até 2000 carateres; um comentário vazio nunca existe, logo nunca é exportado. Só saem os dos elementos das turmas que a exportação já inclui. **Não viaja na importação de uma grelha para outra turma** — só no backup, que restaura a mesma turma. Ausente num backup v≤22 ⇒ zero comentários restaurados, nunca um erro, e nada é apagado no destino. Um backup v23 é recusado por código anterior (`UnsupportedNewer`): senão descartaria os comentários em silêncio. Ver [Comentários sobre alunos (schema v23)](#coment%C3%A1rios-sobre-alunos-schema-v23) |
+| 22 | `LegacyCompatible` | Como a v21, acrescentando o **comentário privado do professor sobre uma questão/critério** de um elemento de avaliação: `instrument_items[].criterion_note` (texto até 2000 carateres, ou `null`). É metadado pedagógico da grelha — nunca uma nota nem um comentário de um aluno — e acompanha a grelha quando esta é copiada para outra. Ausente num backup v≤21 ⇒ `null`, e nada mais muda. Um backup v22 é recusado por código anterior (`UnsupportedNewer`): senão descartaria a coluna em silêncio. Restauro de um backup v21 num código v22: todos os comentários ficam nulos. |
 | 21 | `Supported` | Como a v20, acrescentando a **causa de uma aula prevista e não realizada** (`lessons[].outcome = not_held`): `outcome_cause` (`strike`, `school_not_operating`, `weather_closure`, `facilities_problem`, `organizational`, `other`), `outcome_teacher_situation` (`adhered` = «Greve do professor», `school_closed` = «Greve — escola encerrada», e os legados `not_adhered` e `not_informed`; só com `strike`; **facultativa**: `null` é «Greve» sem especificação, distinto de `not_informed`, que só vem de registos anteriores; `school_closed` descreve a escola, não é uma declaração individual e **viaja inteira** na exportação de um colega, ao contrário de `adhered`, que viaja reduzida) e `outcome_cause_note` (até 160 carateres; só e obrigatória com `other`). Uma `not_held` não numera nem tem lição: `lesson_number`, `lesson_number_end`, `lesson_unit_key` e a marca manual restauram-se sempre nulos. Ausentes num backup v≤20 ⇒ tudo nulo, e nada mais muda. Uma linha que quebre a coerência (causa sem `not_held`, `not_held` sem causa, situação sem `strike`, `other` sem descrição, assiduidade consolidada) fica **inválida** — a linha, nunca o ficheiro. Um backup v21 é recusado por código anterior (`UnsupportedNewer`): senão descartaria as colunas novas em silêncio e leria `not_held` como um resultado desconhecido. A causa («Greve») é da turma e viaja sempre. **Este ficheiro é a exportação PESSOAL restaurável, não um backup integral** (o manifesto leva `scope: personal` e `reduced_lessons`, as aulas cujo dado reservado viajou reduzido; ausentes num ficheiro anterior). Leva inteiro o que o utilizador que exporta registou (`outcome_recorded_by`), mas o que um colega registou e lhe está reservado viaja no valor válido menos específico — `outcome_reason` de uma ausência passa a `other`, `outcome_teacher_situation` a `null`, e a descrição de `other` a «Reservado» — para a linha continuar restaurável sem entregar o dado (regra única: `LessonOutcomeDetails::mayRead`). A especificação facultativa da greve distingue **`null`** («só Greve», o professor não especificou) de **`not_informed`** (situação desconhecida, só em registos anteriores à especificação facultativa); nenhum se converte no outro, na exportação nem no restauro. Uma `adhered` restaura-se como está, mesmo com a chave `lapis.strike_adhesion_recording` desligada (a chave governa o que se oferece, não o que se guarda). Restauro de um backup v20 num código v21: todos os campos novos ficam nulos. Rollback de código para antes da v21: ver `docs/lesson-outcome-recovery.md`. A recuperação INTEGRAL — com o dado reservado de todos, byte a byte — é a cópia diária da base de dados (`scripts/backup-database.sh`), só da operação; nenhum professor nem dono de organização a obtém por esta via, e não se criou nenhuma permissão nova para isso. **Histórico das correções (`lesson_outcome_rectifications`, coleção opcional da v21):** cada correção do resultado de uma aula (`ulid`, `lesson_ulid`, `rectified_by_email`, `rectified_at`, `kind` = `outcome`|`details`, `previous` e `current` com os seis campos do resultado, `motive` de 3 a 200 carateres). Só viaja o histórico das aulas que **quem exporta pode ler** (as suas, `LessonOutcomeDetails::mayRead`): o de um colega não sai, nem reduzido; o email do autor só vai se for o de quem exporta. **Compatibilidade:** a v21 ainda não foi publicada (`main` está na v20), por isso a coleção entra na v21 como chave **opcional e aditiva** — um ficheiro v21 sem ela é válido e restaura-se como antes, e um v≤20 trata-a como lista vazia; não há conversão silenciosa. Restauro: acrescenta-se, nunca sobrescreve; a aula de cada correção tem de ser restaurada (senão a linha fica inválida, nunca o ficheiro); o autor só é reclamado pela conta que o fez (`rectified_by_email` = conta que confirma), caso contrário fica vazio; **reimportar não duplica** (reconhecida pelo `ulid` ou, com ulids novos, pela aula do destino + momento + motivo). Linhas inválidas (motivo curto, resultado `taught`, valores fora dos enums, duplicadas no ficheiro) ficam de fora com uma frase fixa. Recuperação: `lapis:lesson-outcome-recovery-check` |
 | 20 | `LegacyCompatible` | Como a v19, acrescentando a **cadeia de retificações** das classificações: `classifications[].rectifies_ulid`, `rectification_reason`, `rectification_note`, `rectified_by_email` e `rectified_at`. Uma decisão publicada que foi corrigida não se edita — outra linha substitui-a e a antiga fica como história (`status = superseded`, com `superseded_by_ulid`). Restaura-se a cadeia **inteira**, da mais antiga à mais recente, ou nenhuma linha dela. Ausentes num backup v≤19 ⇒ nenhuma retificação, e as classificações leem-se exatamente como antes. Um backup v20 é recusado por código anterior (`UnsupportedNewer`). Ver [Retificações de classificações (schema v20)](#retificações-de-classificações-schema-v20) |
 | 19 | `LegacyCompatible` | Como a v18, acrescentando `timetable_activity_occurrences` (0.170.0): o **registo por sessão** das outras atividades (o sumário de cada apoio, reunião, clube…), mais `numbering_enabled` e `numbering_start` em `timetable_activities` (ausentes ⇒ `false` e `1`) e o tipo `club`. Só saem as do exportador e só se restauram na conta do próprio autor; uma sessão cuja atividade não se restaura volta como órfã, identificada pela cópia que leva. Ausente num backup v≤18 ⇒ zero linhas, nunca um erro. Um backup v19 é recusado por código anterior (`UnsupportedNewer`). Ver [Outras atividades e as suas sessões (schema v19)](#outras-atividades-e-as-suas-sessões-schema-v19) |
@@ -46,10 +47,10 @@ arquitetura.
 | 3 | `LegacyCompatible` | Só turmas/alunos/inscrições com `enrolled_on`; elementos de avaliação e classificações não existiam ainda no formato — linhas que os precisassem seriam `unsupported` |
 | 2 | `LegacyCompatible` | Como a 3, mas sem `enrollments[].enrolled_on` — uma inscrição sem essa data não pode ser **criada** em segurança |
 | < 2 | `Invalid` | Ficheiro recusado por inteiro |
-| > 22 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
+| > 23 | `UnsupportedNewer` | Ficheiro recusado por inteiro — backup de uma versão do Lapispro mais recente do que este código entende |
 
 `App\Support\Import\Backup\BackupSchemaCompatibility` é a única fonte desta
-tabela em código (`CURRENT = 22`, `MINIMUM_SUPPORTED = 2`). Não existe
+tabela em código (`CURRENT = 23`, `MINIMUM_SUPPORTED = 2`). Não existe
 ramificação em nenhum ponto do pipeline com base em `schema_version` — cada
 coleção nova simplesmente está ausente (`?? []`) num backup mais antigo, e o
 pipeline trata "ausente" e "vazio" da mesma forma. Um backup v2 ou v3 continua
@@ -408,6 +409,47 @@ ainda não existe nunca é criada sobre um instrumento em conflito: é
 - Só existe o contexto `instrument`. Contextos futuros (intercalar, período,
   semestre) exigem uma nova versão do esquema, porque não têm instrumento
   a que se ligar.
+
+## Comentários sobre alunos (schema v23)
+
+O comentário privado do professor sobre **um aluno num elemento de avaliação**
+(`App\Models\InstrumentStudentComment`) é exportado e restaurado desde a v23.
+
+| Campo | Forma | Notas |
+|---|---|---|
+| `ulid` | ULID | identidade do comentário |
+| `instrument_ulid` | ULID | obrigatório; o elemento tem de ser restaurável NESTE MESMO backup |
+| `enrollment_ulid` | ULID | obrigatório; a **inscrição** (aluno × turma), nunca o aluno — tem de ser restaurável neste mesmo backup |
+| `body` | texto | até 2000 carateres (`InstrumentStudentComment::BODY_MAX_LENGTH`); vazio ⇒ recusado |
+| `created_at` / `updated_at` | ISO 8601 ou `null` | como em `results_analysis_notes` |
+| `created_by_email` / `updated_by_email` | email ou `null` | mesma regra de autoria do resto do backup |
+
+**Nunca transportado**: `id`, `organization_id`, os ids numéricos e
+`lock_version` (o contador de bloqueio otimista desta instalação; um comentário
+criado pela importação nasce com `lock_version = 1`).
+
+**Chave e conflito**: o índice único `(instrument_id, enrollment_id)` do destino
+é sempre respeitado. Um comentário que já existe no destino (por ulid OU pelo
+par elemento/inscrição) com o mesmo texto é `existing`; com texto diferente é
+`conflict` e nunca é sobrescrito; um ulid que já existe ligado a outro elemento
+ou a outro aluno é `conflict`, nunca repontado. Um comentário cujo elemento ou
+inscrição não é restaurável é `invalid`. Duas linhas com o mesmo `ulid`, ou para
+o mesmo par, no mesmo ficheiro: fica a primeira.
+
+**Apagar**: a tabela é `RESTRICT` para o elemento e para a inscrição (como
+`enrollment_instrument_applicability`) e está em `EnrollmentHistory`: é texto
+escrito sobre uma criança e bloqueia a remoção do aluno da turma, em vez de
+desaparecer em silêncio.
+
+**Âmbito**: só os comentários dos elementos das turmas que a exportação já
+inclui. Aparecem também no `Exportacao-Lapispro.xlsx`, na folha «Comentários
+sobre alunos». Nunca saem na importação de uma grelha para outra turma
+(`importableInstrumentsFor` não os lê) e só saem no PDF da grelha se o professor
+marcar «Incluir comentários».
+
+**Limitações**: tal como as observações, o texto fica em
+`data_imports.canonical_snapshot` até a importação ser podada, e cada recusa
+leva um motivo fixo, sem repetir o texto.
 
 ## Caderno da turma (schema v14)
 

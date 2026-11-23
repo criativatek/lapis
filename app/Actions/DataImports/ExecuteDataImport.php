@@ -57,6 +57,7 @@ class ExecuteDataImport
         private readonly WriteLessons $lessonsWriter,
         private readonly WriteLessonOutcomeRectifications $lessonOutcomeRectificationsWriter,
         private readonly WriteResultsAnalysisNotes $resultsAnalysisNotesWriter,
+        private readonly WriteInstrumentStudentComments $instrumentStudentCommentsWriter,
         private readonly WriteClassNotebookEntries $classNotebookEntriesWriter,
         private readonly WriteTimetableActivities $timetableActivitiesWriter,
         private readonly WriteTimetableActivitySessions $timetableActivitySessionsWriter,
@@ -166,6 +167,12 @@ class ExecuteDataImport
                 $rows['results_analysis_notes'], $dataResult['instrumentsByUlid'],
             );
 
+            // Schema v23 — the private comments on a student: AFTER the
+            // instruments and the enrolments they point at (new ∪ existing).
+            $instrumentStudentCommentsCreated = $this->instrumentStudentCommentsWriter->write(
+                $rows['instrument_student_comments'] ?? [], $dataResult['instrumentsByUlid'], $enrollmentsForLessons,
+            );
+
             // Schema v14 — only needs the classes map (new ∪ existing), already
             // complete after writeClasses(). Authorship was proved in the plan,
             // so the count is not part of `records_without_original_author`.
@@ -226,6 +233,7 @@ class ExecuteDataImport
                 'lesson_attendances_created' => $lessonCounts['lesson_attendances'],
                 'lesson_outcome_rectifications_created' => $lessonOutcomeRectificationsCreated,
                 'results_analysis_notes_created' => $resultsAnalysisNotesCreated,
+                'instrument_student_comments_created' => $instrumentStudentCommentsCreated,
                 'class_notebook_entries_created' => $classNotebookEntriesCreated,
                 'timetable_activities_created' => $timetableActivitiesCreated,
                 'timetable_activity_occurrences_created' => $timetableActivitySessionsCreated,
@@ -234,7 +242,7 @@ class ExecuteDataImport
                 'record_followup_confirmations_incomplete' => $followupCounts['incomplete'],
                 'records_without_original_author' => $this->countUnresolvedAuthors($rows, [
                     'interim_assessments', 'evidence_records', 'interventions', 'intervention_reviews', 'reports',
-                    'lessons', 'lesson_plans', 'cancelled_lesson_occurrences', 'results_analysis_notes',
+                    'lessons', 'lesson_plans', 'cancelled_lesson_occurrences', 'results_analysis_notes', 'instrument_student_comments',
                     'record_followup_confirmations',
                 ]),
                 'classifications_left_unconfirmed' => $this->countUnresolvedAuthors($rows, ['classifications']),

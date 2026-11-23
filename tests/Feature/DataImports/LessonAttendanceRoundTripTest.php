@@ -215,7 +215,7 @@ class LessonAttendanceRoundTripTest extends TestCase
 
         $backup = $this->backupUpload();
         $json = $this->backupJson($backup);
-        $this->assertSame(22, $json['schema_version']);
+        $this->assertSame(23, $json['schema_version']);
         $strike = collect($json['lessons'])->firstWhere('outcome_cause', 'strike');
         $this->assertSame('not_adhered', $strike['outcome_teacher_situation']);
 
@@ -377,7 +377,7 @@ class LessonAttendanceRoundTripTest extends TestCase
 
         $backup = $this->backupUpload();
         $json = $this->backupJson($backup);
-        $this->assertSame(22, $json['schema_version']);
+        $this->assertSame(23, $json['schema_version']);
         $this->assertContains('lesson_outcome_rectifications', $json['capabilities']);
         $this->assertCount(2, $json['lesson_outcome_rectifications']);
         $first = $json['lesson_outcome_rectifications'][0];

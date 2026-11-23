@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Instrument;
 use App\Models\InstrumentStatus;
+use App\Models\InstrumentStudentComment;
 use App\Services\Assessment\Analysis\BuildResultsAnalysis;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -17,9 +18,10 @@ use Inertia\Response;
  * `instruments.results.note`) and one note per question or criterion
  * (`instrument_items.criterion_note`, saved through `instruments.items.notes`).
  *
- * Reads only. A later «Por aluno» block belongs here too (see the placeholder in
- * the page) — never mixed into the per-question notes, which are about the
- * question and never about a student.
+ * Reads only. The «Por aluno» block lives here too — the private comment on a
+ * student in this element, saved through `instruments.students.comment` — and is
+ * never mixed into the per-question notes, which are about the question and
+ * never about a student.
  */
 class InstrumentCommentsController extends Controller
 {
@@ -34,6 +36,16 @@ class InstrumentCommentsController extends Controller
         }
 
         $instrument->load(['items', 'groups', 'schoolClass', 'academicPeriod']);
+
+        $comments = InstrumentStudentComment::query()
+            ->where('instrument_id', $instrument->getKey())
+            ->get()
+            ->keyBy('enrollment_id');
+
+        $enrollments = $instrument->schoolClass->enrollments()
+            ->with('student.identity')
+            ->inClassOrder()
+            ->get();
 
         $cancelled = $instrument->status === InstrumentStatus::Cancelled;
 
@@ -59,6 +71,16 @@ class InstrumentCommentsController extends Controller
                 'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'criterion_note' => $item->criterion_note,
+            ])->all(),
+            // Todos os alunos da grelha, pela ordem da turma: a página separa os
+            // que já têm comentário dos que se podem escolher para acrescentar.
+            'students' => $enrollments->map(fn ($enrollment) => [
+                'enrollment_ulid' => $enrollment->ulid,
+                'class_number' => $enrollment->class_number,
+                'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
+                'comment' => isset($comments[$enrollment->id])
+                    ? ['body' => $comments[$enrollment->id]->body, 'lock_version' => $comments[$enrollment->id]->lock_version]
+                    : null,
             ])->all(),
             'links' => [
                 'note' => route('instruments.results.note', $instrument->ulid),

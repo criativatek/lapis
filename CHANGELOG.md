@@ -25,6 +25,43 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.200.0] — 2026-11-23
+
+> **Comentários sobre alunos nos elementos de avaliação.** Para além do
+> comentário de cada questão, o professor pode agora escrever um comentário
+> sobre **um aluno** num elemento de avaliação — por exemplo «Apanhado a copiar
+> na Q2» ou «Não teve tempo para a Q6». Na grelha de correção aparece um ícone
+> junto ao nome: sempre visível quando há comentário (o texto abre ao passar o
+> rato ou ao focar com o teclado) e só ao passar o rato na linha quando não há,
+> para não atulhar. No separador «Comentários» a nova secção «Por aluno» lista
+> os comentários e deixa acrescentar mais. O comentário também aparece no
+> acompanhamento do aluno, numa secção «Comentários nos elementos de avaliação».
+> **Os comentários são privados do professor**: não entram em cálculos, não
+> viajam quando a grelha é copiada para outra turma e só saem no PDF da grelha
+> se o professor marcar «Incluir comentários».
+
+### Adicionado
+
+- Comentário por aluno e elemento (`instrument_student_comments`, até 2000
+  carateres, um por aluno em cada elemento), gravável também com a correção
+  concluída; texto vazio apaga. Recusado em elementos anulados e a quem não
+  ensina a turma. Detetam-se duas janelas a gravar ao mesmo tempo.
+- Opção «Incluir comentários» na impressão da grelha (desligada por omissão):
+  acrescenta, depois da grelha, a observação geral, os comentários das questões
+  e os dos alunos, iguais no ecrã, no papel e no PDF.
+- Secção «Comentários nos elementos de avaliação» na página do aluno (do mais
+  recente para o mais antigo, com ligação ao elemento); só aparece quando há
+  comentários, e nunca é enviada à IA.
+- Folha «Comentários sobre alunos» na exportação em Excel.
+
+### Alterado
+
+- Um aluno com comentários escritos sobre ele não pode ser removido da turma
+  (como já acontecia com a caracterização pedagógica).
+- Cópia de segurança passa à versão 23 do esquema: `instrument_student_comments`.
+  Um backup v22 restaura-se sem comentários; um v23 é recusado por código anterior.
+- Uma migration aditiva e reversível (`instrument_student_comments`).
+
 ## [0.199.0] — 2026-11-23
 
 > **Comentários nos elementos de avaliação.** A grelha de correção ganha um

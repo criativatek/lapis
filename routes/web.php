@@ -53,6 +53,7 @@ use App\Http\Controllers\InstrumentCommentsController;
 use App\Http\Controllers\InstrumentController;
 use App\Http\Controllers\InstrumentGridDocumentController;
 use App\Http\Controllers\InstrumentResultsController;
+use App\Http\Controllers\InstrumentStudentCommentController;
 use App\Http\Controllers\InterimAssessmentController;
 use App\Http\Controllers\InterventionController;
 use App\Http\Controllers\InvitationAcceptanceController;
@@ -806,6 +807,8 @@ Route::middleware(['auth', 'verified', 'organization'])->group(function () {
         Route::post('instruments/{instrument}/scores', [InstrumentController::class, 'saveScores'])->name('instruments.scores.save');
         Route::put('instruments/{instrument}/items/labels', [InstrumentController::class, 'updateItemLabels'])->name('instruments.items.labels');
         Route::put('instruments/{instrument}/items/notes', [InstrumentController::class, 'updateItemNotes'])->name('instruments.items.notes');
+        // O comentário privado sobre UM aluno neste elemento («Por aluno»); corpo vazio apaga.
+        Route::put('instruments/{instrument}/students/{enrollment}/comment', [InstrumentStudentCommentController::class, 'update'])->name('instruments.students.comment');
         Route::post('instruments/{instrument}/domains', [InstrumentController::class, 'assignDomains'])->name('instruments.domains.assign');
         // Saving and finishing are different acts: the grid's "Guardar" never
         // closes a correction, and closing one is its own explicit decision.

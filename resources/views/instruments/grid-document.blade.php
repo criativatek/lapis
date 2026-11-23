@@ -267,6 +267,19 @@
             vertical-align: middle;
         }
 
+        /* Os comentários privados do professor — só quando pedidos (`options.comments`). */
+        .comments h3 {
+            font-size: 8.5pt;
+            margin: 2mm 0 1mm 0;
+            page-break-after: avoid;
+        }
+
+        .comments p {
+            font-size: 8pt;
+            line-height: 1.35;
+            margin: 0 0 1.2mm 0;
+        }
+
         .notes {
             font-size: 7.5pt;
             color: #666;
@@ -420,6 +433,29 @@
             @endforeach
         </tbody>
     </table>
+@endif
+
+@if (! empty($document['comments']))
+    @php $comments = $document['comments']; @endphp
+    <div class="comments">
+        <h2>{{ __('Comentários') }}</h2>
+        @if ($comments['general'])
+            <h3>{{ __('Geral') }}</h3>
+            <p style="white-space: pre-line;">{{ $comments['general'] }}</p>
+        @endif
+        @if ($comments['items'] !== [])
+            <h3>{{ __('Por questão / critério') }}</h3>
+            @foreach ($comments['items'] as $item)
+                <p><span class="strong">{{ $item['code'] }}</span> — {{ $item['text'] }}</p>
+            @endforeach
+        @endif
+        @if ($comments['students'] !== [])
+            <h3>{{ __('Por aluno') }}</h3>
+            @foreach ($comments['students'] as $student)
+                <p><span class="strong">{{ $student['number'] }} {{ $student['name'] }}</span> — {{ $student['text'] }}</p>
+            @endforeach
+        @endif
+    </div>
 @endif
 
 @if ($document['legend']['states'] !== [])

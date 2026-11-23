@@ -345,6 +345,9 @@ const props = defineProps<{
     // módulo `lessons` — a assiduidade vive aí, e a página não recebe a chave
     // quando o plano não a inclui (§8.2 de CLAUDE.md).
     attendance?: AttendanceCard;
+    // Comentários privados do professor sobre este aluno nos elementos de avaliação.
+    // Ausente quando não há nenhum: a secção não aparece.
+    instrumentComments?: { instrument_title: string; applied_on: string; body: string; url: string }[];
     records: { total: number; kinds: { value: string; label: string; count: number }[]; rows: RecordRow[] };
     interventions: { total: number; individual: number; needing_review: number; rows: InterventionRow[] };
     recentInstruments: RecentInstrument[];
@@ -1618,6 +1621,24 @@ const PURPOSE_LABEL: Record<string, string> = {
                         {{ attendanceExpanded ? 'Mostrar menos' : 'Ver todas' }}
                     </Button>
                 </div>
+            </section>
+
+            <!-- ------------------------------ comentários nos elementos de avaliação -->
+            <section v-if="instrumentComments && instrumentComments.length > 0" :class="CARD" aria-labelledby="comentarios-elementos">
+                <h2 id="comentarios-elementos" class="text-sm font-semibold">Comentários nos elementos de avaliação</h2>
+                <p class="mt-1 text-xs text-muted-foreground">Notas privadas do professor. Só aparecem aqui e no separador «Comentários» de cada elemento.</p>
+                <ul class="mt-3 space-y-3">
+                    <li v-for="comment in instrumentComments" :key="comment.url" class="border-b border-border/60 pb-3 text-sm last:border-0">
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                            <span>
+                                <span class="text-xs tabular-nums text-muted-foreground">{{ shortDate(comment.applied_on) }}</span>
+                                <span class="ml-2 font-medium">{{ comment.instrument_title }}</span>
+                            </span>
+                            <Link :href="comment.url" class="text-xs text-muted-foreground hover:underline">Ver comentários do elemento</Link>
+                        </div>
+                        <p class="mt-1 whitespace-pre-line">{{ comment.body }}</p>
+                    </li>
+                </ul>
             </section>
 
             <!-- ---------------------------------- 6. o que aconteceu ao longo do tempo -->

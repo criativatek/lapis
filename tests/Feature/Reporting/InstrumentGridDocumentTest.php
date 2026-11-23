@@ -6,12 +6,14 @@ use App\Models\AcademicYear;
 use App\Models\AuditEvent;
 use App\Models\Domain;
 use App\Models\Instrument;
+use App\Models\InstrumentStudentComment;
 use App\Models\InstrumentType;
 use App\Models\Module;
 use App\Models\Organization;
 use App\Models\OrganizationModuleOverride;
 use App\Models\OrganizationSubscription;
 use App\Models\Plan;
+use App\Models\ResultsAnalysisNote;
 use App\Models\ResultState;
 use App\Models\Scale;
 use App\Models\SchoolClass;
@@ -861,5 +863,117 @@ class InstrumentGridDocumentTest extends TestCase
 
         $this->assertSame(url("/instruments/{$ulid}/impressao"), route('instruments.grid-document', $ulid));
         $this->assertNotSame(route('instruments.grid', $ulid), route('instruments.grid-document', $ulid));
+    }
+
+    // ============================================================ private comments
+
+    /** The teacher's private comments on «Teste 1»: the general note, Q1's, and two students'. */
+    private function commentOnTeste1(): void
+    {
+        $this->asTenant(function (): void {
+            $instrument = $this->teste1();
+            $enrollments = $instrument->schoolClass->enrollments()->get()->keyBy('class_number');
+
+            $instrument->items()->where('code', 'Q1')->update(['criterion_note' => 'Nível 4 exige contacto visual']);
+            ResultsAnalysisNote::create([
+                'context_kind' => 'instrument', 'instrument_id' => $instrument->id,
+                'body' => 'Turma participativa.', 'lock_version' => 1,
+            ]);
+
+            foreach ([[2, 'Apanhado a copiar na Q2'], [1, 'Não teve tempo para a Q6']] as [$number, $body]) {
+                InstrumentStudentComment::create([
+                    'instrument_id' => $instrument->id, 'enrollment_id' => $enrollments[$number]->id,
+                    'body' => $body, 'lock_version' => 1,
+                ]);
+            }
+        });
+    }
+
+    #[Test]
+    public function the_comments_option_is_off_by_default_and_the_document_is_unchanged_by_existing_comments(): void
+    {
+        $before = $this->props()['document'];
+
+        $this->commentOnTeste1();
+
+        $after = $this->props()['document'];
+
+        $this->assertSame($before, $after);
+        $this->assertArrayNotHasKey('comments', $after);
+        $this->assertArrayNotHasKey('comments', $after['options']);
+
+        $this->assertFalse(InstrumentGridOptions::fromQuery([])->comments);
+        $this->assertFalse(InstrumentGridOptions::fromQuery(['comentarios' => ['x']])->comments);
+        $this->assertArrayNotHasKey('comments', InstrumentGridOptions::fromQuery([])->toArray());
+    }
+
+    #[Test]
+    public function the_comments_option_adds_a_closing_block_with_general_question_and_student_comments_in_roster_order(): void
+    {
+        $this->commentOnTeste1();
+
+        $document = $this->props('?comentarios=1')['document'];
+
+        $this->assertTrue($document['options']['comments']);
+        $this->assertSame('Turma participativa.', $document['comments']['general']);
+        $this->assertSame([['code' => 'Q1', 'text' => 'Nível 4 exige contacto visual']], $document['comments']['items']);
+        $this->assertSame(
+            [
+                ['number' => '1', 'name' => 'Aluno 1', 'text' => 'Não teve tempo para a Q6'],
+                ['number' => '2', 'name' => 'Aluno 2', 'text' => 'Apanhado a copiar na Q2'],
+            ],
+            $document['comments']['students'],
+        );
+    }
+
+    #[Test]
+    public function the_comments_block_leaves_out_empty_subsections_and_is_absent_when_there_is_nothing(): void
+    {
+        $document = $this->props('?comentarios=1')['document'];
+
+        $this->assertTrue($document['options']['comments']);
+        $this->assertNull($document['comments']);
+
+        $this->asTenant(fn () => $this->teste1()->items()->where('code', 'Q2')->update(['criterion_note' => 'Só a área conta.']));
+
+        $document = $this->props('?comentarios=1')['document'];
+
+        $this->assertNull($document['comments']['general']);
+        $this->assertSame([['code' => 'Q2', 'text' => 'Só a área conta.']], $document['comments']['items']);
+        $this->assertSame([], $document['comments']['students']);
+    }
+
+    #[Test]
+    public function the_pdf_prints_the_comments_only_when_asked(): void
+    {
+        $this->commentOnTeste1();
+
+        $without = implode(' ', $this->pages($this->pdf()));
+        $this->assertStringNotContainsString('Apanhado a copiar', $without);
+        $this->assertStringNotContainsString('Turma participativa', $without);
+        $this->assertStringNotContainsString('Comentários', $without);
+
+        $with = implode(' ', $this->pages($this->pdf('?comentarios=1')));
+        $this->assertStringContainsString('Comentários', $with);
+        $this->assertStringContainsString('Turma participativa.', $with);
+        $this->assertStringContainsString('Q1', $with);
+        $this->assertStringContainsString('Nível 4 exige contacto visual', $with);
+        $this->assertStringContainsString('Apanhado a copiar na Q2', $with);
+        $this->assertStringContainsString('Não teve tempo para a Q6', $with);
+    }
+
+    #[Test]
+    public function a_comment_on_a_student_the_instrument_does_not_apply_to_stays_off_the_sheet(): void
+    {
+        $this->asTenant(function (): void {
+            $instrument = $this->teste1();
+            // «Aluno 6» entered after the instrument: out of scope, so not on the sheet.
+            $late = $instrument->schoolClass->enrollments()->where('class_number', 6)->firstOrFail();
+            InstrumentStudentComment::create([
+                'instrument_id' => $instrument->id, 'enrollment_id' => $late->id, 'body' => 'Entrou depois.', 'lock_version' => 1,
+            ]);
+        });
+
+        $this->assertNull($this->props('?comentarios=1')['document']['comments']);
     }
 }

@@ -56,7 +56,7 @@ type GridDocument = {
     meta: { class: string; subject: string; period: string; applied_on: string; type: string | null; purpose: string; status: string };
     is_diagnostic: boolean;
     state: { is_provisional: boolean; label: string };
-    options: { raw_score: boolean; result: boolean; domains: boolean; legend: boolean; charts: boolean; orientation: Orientation; layout: Layout };
+    options: { raw_score: boolean; result: boolean; domains: boolean; legend: boolean; charts: boolean; orientation: Orientation; layout: Layout; comments?: boolean };
     charts_available: boolean;
     charts: {
         distribution: Chart & { n_label: string; missing: { label: string; count: number }[]; missing_note: string | null; unplaced_note: string | null };
@@ -77,6 +77,12 @@ type GridDocument = {
         states: { short: string; label: string }[];
     };
     notes: string[];
+    /** Só quando o professor pediu «Incluir comentários»; privados por omissão. */
+    comments?: {
+        general: string | null;
+        items: { code: string; text: string }[];
+        students: { number: string; name: string; text: string }[];
+    } | null;
     notice: string;
     is_empty: boolean;
     empty_message: string;
@@ -106,6 +112,8 @@ function query(options: GridDocument['options']): Record<string, string> {
         graficos: options.charts ? '1' : '0',
         orientacao: orientationQuery[options.orientation],
         disposicao: layoutQuery[options.layout],
+        // Só viaja quando ligada: desligada, o pedido é o de sempre.
+        ...(options.comments ? { comentarios: '1' } : {}),
     };
 }
 
@@ -144,7 +152,7 @@ function setLayout(value: string | number | null): void {
 
 // Only the options change the page; the document the server sends back is the
 // whole answer, and nothing here recomputes a figure.
-function setOption(key: 'raw_score' | 'result' | 'domains' | 'legend' | 'charts', checked: boolean | 'indeterminate'): void {
+function setOption(key: 'raw_score' | 'result' | 'domains' | 'legend' | 'charts' | 'comments', checked: boolean | 'indeterminate'): void {
     if (typeof checked !== 'boolean') {
         return;
     }
@@ -373,6 +381,15 @@ function print(): void {
                         @update:model-value="(value) => setOption('legend', value)"
                     />
                     Legenda das questões
+                </label>
+                <!-- Privados por omissão: só saem no documento quando o professor o escolhe. -->
+                <label class="flex min-h-11 items-center gap-2 text-sm">
+                    <Checkbox
+                        id="grid-doc-comments"
+                        :model-value="document.options.comments === true"
+                        @update:model-value="(value) => setOption('comments', value)"
+                    />
+                    Incluir comentários
                 </label>
                 <!-- Statistics are official only for a concluded correction. -->
                 <label class="flex min-h-11 items-center gap-2 text-sm" :class="{ 'opacity-60': !document.charts_available }">
@@ -673,6 +690,32 @@ function print(): void {
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </section>
+
+            <!-- Os comentários privados do professor, só quando pedidos. Em «uma página» saem numa folha própria. -->
+            <section
+                v-if="document.comments"
+                data-comments
+                class="mt-8 space-y-2"
+                :class="isOnePage ? 'print:break-before-page' : ''"
+            >
+                <h2 class="text-[0.95rem] leading-snug font-semibold">Comentários</h2>
+                <div v-if="document.comments.general" class="space-y-1">
+                    <h3 class="text-xs font-semibold">Geral</h3>
+                    <p class="text-xs whitespace-pre-line">{{ document.comments.general }}</p>
+                </div>
+                <div v-if="document.comments.items.length > 0" class="space-y-1">
+                    <h3 class="text-xs font-semibold">Por questão / critério</h3>
+                    <p v-for="(item, itemIndex) in document.comments.items" :key="itemIndex" class="text-xs">
+                        <span class="font-medium">{{ item.code }}</span> — {{ item.text }}
+                    </p>
+                </div>
+                <div v-if="document.comments.students.length > 0" class="space-y-1">
+                    <h3 class="text-xs font-semibold">Por aluno</h3>
+                    <p v-for="(student, studentIndex) in document.comments.students" :key="studentIndex" class="text-xs">
+                        <span class="font-medium">{{ student.number }} {{ student.name }}</span> — {{ student.text }}
+                    </p>
                 </div>
             </section>
 
