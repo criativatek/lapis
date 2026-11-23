@@ -215,6 +215,25 @@ class QuickInstrumentCreationTest extends TestCase
     }
 
     #[Test]
+    public function quick_creation_keeps_the_content_label_of_each_question(): void
+    {
+        $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));
+        $payload = $this->multiDomainPayload($scenario, [3], [20, 30, 50]);
+        $payload['items'][0]['label'] = 'Gestualidade';
+        $payload['items'][1]['label'] = 'Postura';
+
+        $this->actingAs($this->teacher)
+            ->post("/classes/{$scenario['class']->ulid}/instruments", $payload)
+            ->assertSessionHasNoErrors();
+
+        $this->inTenant(function (): void {
+            $items = Instrument::sole()->items()->orderBy('code')->get();
+
+            $this->assertSame(['Gestualidade', 'Postura', null], $items->pluck('label')->all());
+        });
+    }
+
+    #[Test]
     public function quick_creation_supports_three_real_questions_in_one_domain(): void
     {
         $scenario = $this->inTenant(fn (): array => $this->scenarioWithDomains(1));

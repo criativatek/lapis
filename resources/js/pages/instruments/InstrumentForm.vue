@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InstrumentDomainAllocations from './InstrumentDomainAllocations.vue';
+import InstrumentImportBox from './InstrumentImportBox.vue';
 
 type Option = { id: number; label: string; default_purpose?: string };
 
@@ -459,6 +460,8 @@ const canSubmit = computed(
 );
 
 const selectedImportUlid = ref<string | null>(null);
+// Why the import left the short form (or null) — shown next to the import box.
+const importNote = ref<string | null>(null);
 
 function applyImportedTemplate(): void {
     const source = props.importableInstruments?.find(
@@ -472,11 +475,40 @@ function applyImportedTemplate(): void {
     form.title = source.title;
     form.total_points = source.total_points ?? 0;
     form.allow_bonus = source.allow_bonus;
+    // The source sends no groups, so every imported question lands in group 0:
+    // keep exactly one unnamed group rather than leaving orphans behind.
+    form.groups = [{ label: '' }];
     form.items = source.items.map((item) => {
         const uiItem = wireToUiItem(item);
 
-        return { ...uiItem, ulid: undefined, has_scores: undefined };
+        return { ...uiItem, ulid: undefined, has_scores: undefined, group_index: 0 };
     });
+
+    // The domains ticked must be the domains the imported questions use (in
+    // order of first appearance). `previousSelectedDomainIds` moves first so
+    // the quick-mode watcher sees no change and never redistributes the
+    // imported points.
+    const importedDomainIds = Array.from(
+        new Set(form.items.flatMap((item) => item.domains.map((allocation) => allocation.domain_id))),
+    );
+    previousSelectedDomainIds = [...importedDomainIds];
+    selectedDomainIds.value = importedDomainIds;
+
+    importNote.value = null;
+
+    if (creationMode.value !== 'quick') {
+        return;
+    }
+
+    if (form.items.some((item) => item.domains.length === 0)) {
+        creationMode.value = 'detailed';
+        importNote.value =
+            'Algumas questões avaliavam domínios que esta turma não tem; reveja a distribuição na criação avançada.';
+    } else if (!canUseQuickMode.value) {
+        creationMode.value = 'detailed';
+        importNote.value =
+            'Importado. Este elemento tem bónus ou numeração própria, por isso continua na criação avançada.';
+    }
 }
 
 const selectedDomainIds = ref<number[]>(
@@ -616,6 +648,12 @@ watch(selectedDomainIds, (domainIds) => {
     const added = domainIds.filter((domainId) => !previousSelectedDomainIds.includes(domainId));
     const removed = previousSelectedDomainIds.filter((domainId) => !domainIds.includes(domainId));
 
+    // Same set as before (e.g. an import already set the questions up): there
+    // is nothing to add, remove or redistribute.
+    if (added.length === 0 && removed.length === 0) {
+        return;
+    }
+
     for (const domainId of removed) {
         form.items = form.items.filter((item) => homeDomainId(item) !== domainId);
 
@@ -670,8 +708,8 @@ watch(selectedDomainIds, (domainIds) => {
 // be hidden. The form state is never reset when modes change.
 //
 // This asks one question only: is the STRUCTURE still expressible in the short
-// form — a single unnamed group, sequential Q1..Qn codes, no item labels, no
-// bonus? Whether the form is COMPLETE enough to submit is a different question,
+// form — a single unnamed group, sequential Q1..Qn codes, no bonus? (An item's
+// label is the «Conteúdo» line of the grid and has a field in the short form.) Whether the form is COMPLETE enough to submit is a different question,
 // answered at submit time by `quickStructureValid` here and by InstrumentRequest
 // on the server (both of which require a domain per item for a real
 // "Preparar grelha" submission). Mixing the two blocked the return for a
@@ -685,7 +723,6 @@ const canUseQuickMode = computed(() =>
     form.items.every((item, index) =>
         item.group_index === 0 &&
         item.code === `Q${index + 1}` &&
-        item.label.trim() === '' &&
         !item.is_bonus
     ) &&
     !form.allow_bonus,
@@ -893,6 +930,14 @@ function submit(intent: 'save' | 'prepare'): void {
                 <p class="text-sm font-semibold">{{ schoolClass.label }}</p>
             </div>
 
+            <InstrumentImportBox
+                v-if="importableInstruments && importableInstruments.length"
+                v-model="selectedImportUlid"
+                :instruments="importableInstruments"
+                :note="importNote"
+                @import="applyImportedTemplate"
+            />
+
             <div class="grid gap-4 sm:grid-cols-2">
                 <div class="grid gap-2 sm:col-span-2">
                     <Label for="quick-title">Designação</Label>
@@ -1029,6 +1074,13 @@ function submit(intent: 'save' | 'prepare'): void {
                                     {{ expandedQuickAllocations.has(item) ? 'Fechar domínios' : 'Editar domínios' }}
                                 </Button>
                             </div>
+                            <Input
+                                v-model="item.label"
+                                class="mt-2 h-9"
+                                maxlength="500"
+                                placeholder="Conteúdo (opcional)"
+                                :aria-label="`Conteúdo avaliado em ${item.code}`"
+                            />
                             <InstrumentDomainAllocations
                                 v-if="expandedQuickAllocations.has(item)"
                                 :item="item"
@@ -1080,39 +1132,13 @@ function submit(intent: 'save' | 'prepare'): void {
             </button>
         </section>
 
-        <div
+        <InstrumentImportBox
             v-if="creationMode === 'detailed' && importableInstruments && importableInstruments.length"
-            class="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
-        >
-            <div class="grid gap-1.5">
-                <Label class="text-xs">Importar de outro elemento de avaliação</Label>
-                <select
-                    v-model="selectedImportUlid"
-                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                >
-                    <option :value="null">Nenhum</option>
-                    <option
-                        v-for="instrument in importableInstruments"
-                        :key="instrument.ulid"
-                        :value="instrument.ulid"
-                    >
-                        {{ instrument.title }} · {{ instrument.class_label }} · {{ instrument.applied_on }}
-                    </option>
-                </select>
-            </div>
-            <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="!selectedImportUlid"
-                @click="applyImportedTemplate"
-            >
-                Importar questões
-            </Button>
-            <p class="w-full text-xs text-muted-foreground">
-                Copia o título, a cotação total e as questões — nunca notas de alunos. Continua tudo editável depois de importar.
-            </p>
-        </div>
+            v-model="selectedImportUlid"
+            :instruments="importableInstruments"
+            :note="importNote"
+            @import="applyImportedTemplate"
+        />
 
         <section v-if="creationMode === 'detailed'" class="grid gap-4 sm:grid-cols-2">
             <div class="grid gap-2 sm:col-span-2">

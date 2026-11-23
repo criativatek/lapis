@@ -25,6 +25,30 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.198.0] — 2026-11-23
+
+> **Reutilizar a grelha de um elemento na criação simples.** A caixa
+> «Importar de outro elemento de avaliação» só existia na criação avançada, mas
+> é na criação simples, o modo por defeito, que o professor quer copiar, por
+> exemplo, as «Apresentações orais» do 7.º A para o 7.º B e o 7.º C. Passa a
+> aparecer logo no topo da criação simples, depois da turma, e copia o título,
+> a cotação total, as questões e os conteúdos — nunca notas de alunos. Se a
+> estrutura importada couber na criação simples, o professor fica nela, com as
+> cotações exatamente como na origem; se trouxer bónus, numeração própria ou
+> questões de domínios que a turma de destino não tem, passa para a criação
+> avançada com uma nota a dizer porquê. Só código; sem migrations.
+
+### Alterado
+
+- O «Conteúdo» de cada questão (a linha «Conteúdo» da grelha) passa a poder
+  ser escrito na criação simples, ao lado da cotação, e deixa de impedir a
+  volta à criação simples. O pedido de criação simples deixa de recusar o
+  rótulo das questões. Os bónus, os grupos com nome e os códigos fora de
+  Q1..Qn continuam a ser só da criação avançada.
+- Importar um elemento passa a marcar os domínios das questões importadas, na
+  criação simples e na avançada; antes, na avançada, os totais por domínio
+  ficavam errados depois de importar.
+
 ## [0.197.1] — 2026-11-20
 
 > **A lista de turma vem do Inovar, não do Intuitivo.** O diálogo «Importar

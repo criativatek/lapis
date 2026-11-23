@@ -25,7 +25,7 @@ vi.mock('@inertiajs/vue3', () => ({
     },
 }));
 
-function mountForm() {
+function mountForm(extra: Record<string, unknown> = {}) {
     return mount(InstrumentForm, {
         props: {
             schoolClass: { ulid: 'class-a', label: '7.º A' },
@@ -35,6 +35,7 @@ function mountForm() {
             submitUrl: '/classes/class-a/instruments',
             method: 'post' as const,
             defaultAcademicPeriodId: 3,
+            ...extra,
         },
     });
 }
@@ -164,13 +165,11 @@ describe('InstrumentForm creation modes', () => {
         expect(inertia.submit).not.toHaveBeenCalled();
     });
 
-    it('still blocks the return when a question was renamed and no domain was picked either', async () => {
+    it('still blocks the return when a question code was changed and no domain was picked either', async () => {
         const wrapper = mountForm();
 
         await modeButton(wrapper, 'Criação avançada').trigger('click');
-        await wrapper
-            .get('input[placeholder="Ex.: Compreensão do texto"]')
-            .setValue('Interpretação do excerto');
+        await wrapper.get('input[placeholder="Ex.: Q1"]').setValue('Parte A');
 
         expect(modeButton(wrapper, 'Criação simples').attributes('disabled')).toBeDefined();
     });
@@ -181,8 +180,8 @@ describe('InstrumentForm creation modes', () => {
         await wrapper.get('input[type="checkbox"]').setValue(true);
         await modeButton(wrapper, 'Criação avançada').trigger('click');
 
-        const questionLabel = wrapper.get('input[placeholder="Ex.: Compreensão do texto"]');
-        await questionLabel.setValue('Interpretação do excerto');
+        const questionCode = wrapper.get('input[placeholder="Ex.: Q1"]');
+        await questionCode.setValue('Parte A');
 
         const simpleButton = modeButton(wrapper, 'Criação simples');
         expect(simpleButton.attributes('disabled')).toBeDefined();
@@ -193,7 +192,7 @@ describe('InstrumentForm creation modes', () => {
         await simpleButton.trigger('click');
 
         expect(wrapper.find('#title').exists()).toBe(true);
-        expect((questionLabel.element as HTMLInputElement).value).toBe('Interpretação do excerto');
+        expect((questionCode.element as HTMLInputElement).value).toBe('Parte A');
         expect(inertia.submit).not.toHaveBeenCalled();
     });
 });
@@ -259,5 +258,172 @@ describe('InstrumentForm diagnostic purpose never counts', () => {
         await wrapper.get('#purpose').setValue('summative');
 
         expect((countsCheckbox(wrapper)!.element as HTMLInputElement).checked).toBe(false);
+    });
+});
+
+describe('InstrumentForm import in simple mode', () => {
+    const domains = [
+        { id: 7, label: 'Oralidade' },
+        { id: 8, label: 'Leitura' },
+    ];
+
+    function source() {
+        const item = (n: number, label: string, domainId: number | null = 7) => ({
+            group_index: 0,
+            code: `Q${n}`,
+            label,
+            points_possible: 15,
+            is_bonus: false,
+            domains: domainId === null ? [] : [{ domain_id: domainId, allocation_percent: 100 }],
+        });
+
+        return {
+            ulid: 'src-1',
+            title: 'Apresentações orais - Tema',
+            class_label: '7.º A',
+            applied_on: '2026-10-01',
+            total_points: 45,
+            allow_bonus: false,
+            items: [
+                { ...item(1, 'Gestualidade'), points_possible: 10 },
+                item(2, 'Postura'),
+                { ...item(3, 'Voz'), points_possible: 20 },
+            ],
+        };
+    }
+
+    function mountWith(instrument: ReturnType<typeof source>) {
+        return mountForm({ domains, importableInstruments: [instrument] });
+    }
+
+    async function importIt(wrapper: ReturnType<typeof mountForm>) {
+        await wrapper.get('[data-testid="import-select"]').setValue('src-1');
+        await modeButton(wrapper, 'Importar questões').trigger('click');
+    }
+
+    type FormState = { items: { label: string; points_possible: number }[] };
+
+    function formState(wrapper: ReturnType<typeof mountForm>): FormState {
+        return (wrapper.vm as unknown as { $: { setupState: { form: FormState } } }).$.setupState.form;
+    }
+
+    beforeEach(() => {
+        inertia.submit.mockReset();
+    });
+
+    it('shows the import box in simple mode', () => {
+        const wrapper = mountWith(source());
+
+        expect(wrapper.find('#quick-title').exists()).toBe(true);
+        expect(wrapper.find('[data-testid="import-box"]').exists()).toBe(true);
+    });
+
+    it('hides the import box when there is nothing to import', () => {
+        const wrapper = mountForm({ domains });
+
+        expect(wrapper.find('[data-testid="import-box"]').exists()).toBe(false);
+    });
+
+    it('keeps simple mode with the imported points and contents untouched', async () => {
+        const wrapper = mountWith(source());
+        await importIt(wrapper);
+
+        expect(wrapper.find('#quick-title').exists()).toBe(true);
+        expect((wrapper.get('#quick-title').element as HTMLInputElement).value).toBe('Apresentações orais - Tema');
+        expect(wrapper.find('[data-testid="import-note"]').exists()).toBe(false);
+
+        const domainBoxes = wrapper.findAll('input[type="checkbox"]');
+        expect((domainBoxes[0].element as HTMLInputElement).checked).toBe(true);
+        expect((domainBoxes[1].element as HTMLInputElement).checked).toBe(false);
+
+        const contents = wrapper.findAll('input[placeholder="Conteúdo (opcional)"]');
+        expect(contents.map((input) => (input.element as HTMLInputElement).value)).toEqual([
+            'Gestualidade',
+            'Postura',
+            'Voz',
+        ]);
+        expect(contents[0].attributes('aria-label')).toBe('Conteúdo avaliado em Q1');
+        expect(formState(wrapper).items.map((item) => Number(item.points_possible))).toEqual([10, 15, 20]);
+        expect(wrapper.text()).toContain('45 / 45');
+    });
+
+    it('submits the content label of each question from simple mode', async () => {
+        const wrapper = mountWith(source());
+        await importIt(wrapper);
+        await wrapper.get('form').trigger('submit');
+
+        expect(inertia.submit).toHaveBeenCalledTimes(1);
+        expect(formState(wrapper).items.map((item) => item.label)).toEqual(['Gestualidade', 'Postura', 'Voz']);
+    });
+
+    it('moves to advanced mode with a note when the source has a bonus question', async () => {
+        const bonus = source();
+        bonus.items[2] = { ...bonus.items[2], is_bonus: true };
+        const wrapper = mountWith(bonus);
+        await importIt(wrapper);
+
+        expect(wrapper.find('#title').exists()).toBe(true);
+        expect(wrapper.get('[data-testid="import-note"]').text()).toContain('continua na criação avançada');
+    });
+
+    it('moves to advanced mode with a note when a question lost its domain', async () => {
+        const orphan = source();
+        orphan.items[1] = { ...orphan.items[1], domains: [] };
+        const wrapper = mountWith(orphan);
+        await importIt(wrapper);
+
+        expect(wrapper.find('#title').exists()).toBe(true);
+        expect(wrapper.get('[data-testid="import-note"]').text()).toContain('domínios que esta turma não tem');
+    });
+
+    it('syncs the ticked domains when importing in advanced mode', async () => {
+        const mixed = source();
+        mixed.items[1] = { ...mixed.items[1], domains: [{ domain_id: 8, allocation_percent: 100 }] };
+        const wrapper = mountWith(mixed);
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+        await importIt(wrapper);
+
+        expect(wrapper.find('#title').exists()).toBe(true);
+        const ticked = wrapper
+            .findAll('input[type="checkbox"]')
+            .filter((input) => (input.element as HTMLInputElement).checked)
+            .map((input) => (input.element as HTMLInputElement).value);
+        // The «Conta para a classificação» checkbox has the default value 'on'.
+        expect(ticked.filter((value) => value !== 'on')).toEqual(['7', '8']);
+    });
+
+    it('opens an existing instrument with content labels in simple mode and keeps the labels', async () => {
+        const wrapper = mountForm({
+            domains,
+            initial: {
+                title: 'Existente',
+                academic_period_id: 3,
+                instrument_type_id: 5,
+                applied_on: '2026-10-01',
+                purpose: 'summative',
+                counts_toward_classification: true,
+                total_points: 30,
+                allow_bonus: false,
+                groups: [{ ulid: 'g1', label: null }],
+                items: [
+                    {
+                        ulid: 'i1',
+                        group_index: 0,
+                        code: 'Q1',
+                        label: 'Voz',
+                        points_possible: 30,
+                        is_bonus: false,
+                        has_scores: false,
+                        domains: [{ domain_id: 7, allocation_percent: 100 }],
+                    },
+                ],
+            },
+        });
+
+        const content = wrapper.get('input[placeholder="Conteúdo (opcional)"]');
+        expect((content.element as HTMLInputElement).value).toBe('Voz');
+        await wrapper.get('form').trigger('submit');
+
+        expect(formState(wrapper).items[0].label).toBe('Voz');
     });
 });
