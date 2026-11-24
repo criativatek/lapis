@@ -13,8 +13,9 @@ use Illuminate\Support\Facades\Schema;
  * Todas as chaves estrangeiras de história são RESTRICT, como em
  * `enrollment_instrument_applicability` (a outra tabela por elemento × inscrição):
  * é texto que o professor escreveu sobre uma criança e não desaparece em
- * silêncio por trás de um botão «Remover». `EnrollmentHistory` conhece a
- * tabela e a aplicação recusa antes de a base de dados o fazer.
+ * silêncio por trás de um botão «Remover». Também não prende o aluno à turma:
+ * `EnrollmentHistory::CLEARED_ON_CONFIRMATION` pergunta ao professor antes e
+ * só então apaga os comentários, na mesma transação que a inscrição.
  *
  * `lock_version` dá ao comentário o seu próprio controlo de concorrência.
  */

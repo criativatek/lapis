@@ -56,8 +56,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 
 ### Alterado
 
-- Um aluno com comentários escritos sobre ele não pode ser removido da turma
-  (como já acontecia com a caracterização pedagógica).
+- Um aluno só com comentários escritos sobre ele pode ser removido da turma: o
+  Lapispro pergunta antes e avisa que os comentários são apagados (a remoção
+  continua recusada se houver avaliações, registos, caracterização, etc.). A
+  auditoria regista quantos comentários saíram, nunca o texto.
 - Cópia de segurança passa à versão 23 do esquema: `instrument_student_comments`.
   Um backup v22 restaura-se sem comentários; um v23 é recusado por código anterior.
 - Uma migration aditiva e reversível (`instrument_student_comments`).

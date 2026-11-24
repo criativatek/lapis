@@ -60,10 +60,6 @@ class EnrollmentHistory
         // lá escreveu mesmo alguma coisa, por isso um aluno acrescentado por
         // engano não fica preso só por a ficha ter sido aberta e fechada.
         'enrollment_characterisations' => 'caracterização pedagógica',
-        // O que o professor escreveu sobre um aluno num elemento de avaliação.
-        // Só existe quando há texto (corpo vazio apaga a linha), por isso não cria
-        // beco: abrir e fechar o editor não prende o aluno à turma.
-        'instrument_student_comments' => 'comentários nos elementos de avaliação',
         // Uma classificação obtida fora desta aplicação e cá registada — ver o
         // docblock de `external_subject_results`. Apagá-la em silêncio ao
         // remover a inscrição apagaria uma nota real, tal como apagar
@@ -72,6 +68,23 @@ class EnrollmentHistory
         // Alerta à 3.ª ocorrência e a declaração «Registado no Inovar»: só
         // existem porque houve registos, e são história como eles.
         'record_followup_cases' => 'acompanhamento dos registos',
+    ];
+
+    /**
+     * O QUE SÓ SAI COM CONFIRMAÇÃO EXPLÍCITA DO PROFESSOR.
+     *
+     * É texto que o professor escreveu sobre uma criança, por isso nunca sai em
+     * silêncio (≠ `CLEARED_WITH_ENROLLMENT`) — mas também não prende o aluno à
+     * turma (≠ `RELATIONS`): um comentário privado não é avaliação nem
+     * classificação, e um aluno só com comentários não pode ficar indelével.
+     * Sai quando o professor confirma, e o ecrã diz-lhe antes o que vai
+     * apagar. A chave estrangeira continua RESTRICT: quem apaga é
+     * EnrollmentController::destroy(), na mesma transação que a inscrição.
+     *
+     * @var array<string, string>
+     */
+    protected const CLEARED_ON_CONFIRMATION = [
+        'instrument_student_comments' => 'comentários nos elementos de avaliação',
     ];
 
     /**
@@ -166,6 +179,80 @@ class EnrollmentHistory
         foreach (array_keys(self::CLEARED_WITH_ENROLLMENT) as $table) {
             DB::table($table)->where('enrollment_id', $enrollment->getKey())->delete();
         }
+    }
+
+    /**
+     * O que só sai desta inscrição se o professor o confirmar, por palavras.
+     * Lista vazia significa «nada a confirmar».
+     *
+     * @return list<string>
+     */
+    public function needsConfirmation(Enrollment $enrollment): array
+    {
+        $found = [];
+
+        foreach (self::CLEARED_ON_CONFIRMATION as $table => $label) {
+            if (DB::table($table)->where('enrollment_id', $enrollment->getKey())->exists()) {
+                $found[] = $label;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Quais das inscrições desta turma têm algo que exige confirmação — uma
+     * query por tabela com `IN`, nunca uma por aluno.
+     *
+     * @return list<int> ids de inscrição
+     */
+    public function idsNeedingConfirmationIn(SchoolClass $class): array
+    {
+        $enrollmentIds = $class->enrollments()->pluck('id')->all();
+
+        if ($enrollmentIds === []) {
+            return [];
+        }
+
+        $found = [];
+
+        foreach (array_keys(self::CLEARED_ON_CONFIRMATION) as $table) {
+            $found = array_merge($found, DB::table($table)
+                ->whereIn('enrollment_id', $enrollmentIds)
+                ->distinct()
+                ->pluck('enrollment_id')
+                ->map(fn ($id): int => (int) $id)
+                ->all());
+        }
+
+        return array_values(array_unique($found));
+    }
+
+    /**
+     * Os rótulos do que a confirmação apaga — para o ecrã da turma, que só os
+     * mostra a quem `idsNeedingConfirmationIn()` apontou. Hoje há uma só
+     * tabela; se vier a haver mais, esta lista tem de passar a ser por aluno.
+     *
+     * @return list<string>
+     */
+    public function discardLabels(): array
+    {
+        return array_values(array_unique(self::CLEARED_ON_CONFIRMATION));
+    }
+
+    /**
+     * Apaga o que o professor confirmou apagar e devolve quantas linhas saíram.
+     * Só é chamado depois de `blocking()` vazio e de confirmação explícita.
+     */
+    public function clearConfirmed(Enrollment $enrollment): int
+    {
+        $deleted = 0;
+
+        foreach (array_keys(self::CLEARED_ON_CONFIRMATION) as $table) {
+            $deleted += DB::table($table)->where('enrollment_id', $enrollment->getKey())->delete();
+        }
+
+        return $deleted;
     }
 
     /**

@@ -180,6 +180,9 @@ class ClassController extends Controller
         $today = CarbonImmutable::now($timezone)->toDateString();
 
         $enrollmentsWithHistory = $history->idsWithHistoryIn($class);
+        // O que só sai com confirmação do professor (os comentários): uma
+        // query fixa para a turma inteira, nunca uma por aluno.
+        $enrollmentsToConfirm = $history->idsNeedingConfirmationIn($class);
 
         // Os grupos e a sua composição DE HOJE, em duas consultas para a turma
         // inteira — nunca uma por grupo nem uma por aluno (§ ClassRoster).
@@ -353,6 +356,13 @@ class ClassController extends Controller
                     // `schoolClass.id` chega ao editor de horário.
                     'id' => $enrollment->id,
                     'can_be_removed' => ! in_array($enrollment->getKey(), $enrollmentsWithHistory, true),
+                    // O que o professor perde se confirmar a remoção. Vazio
+                    // quando não há nada a apagar e quando o aluno nem pode
+                    // ser removido (o bloqueio manda).
+                    'removal_discards' => in_array($enrollment->getKey(), $enrollmentsToConfirm, true)
+                        && ! in_array($enrollment->getKey(), $enrollmentsWithHistory, true)
+                        ? $history->discardLabels()
+                        : [],
                     // A que grupo pertence HOJE — null é «Sem grupo», que é um
                     // estado legítimo e com nome, e não uma configuração por
                     // acabar (§9 do briefing).

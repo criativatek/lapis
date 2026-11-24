@@ -26,7 +26,7 @@ use Tests\TestCase;
 /**
  * The teacher's private comment on ONE student in an element of assessment
  * (`instrument_student_comments`): the endpoint, the grid and Comments props,
- * the student's own page, and the rule that it blocks removing the student.
+ * the student's own page, and the rule that removing the student asks first.
  */
 class InstrumentStudentCommentsTest extends TestCase
 {
@@ -238,18 +238,20 @@ class InstrumentStudentCommentsTest extends TestCase
     }
 
     #[Test]
-    public function a_comment_blocks_removing_the_student_from_the_class(): void
+    public function a_comment_asks_for_confirmation_before_removing_the_student_from_the_class(): void
     {
         $this->inTenant(function (): void {
             ['instrument' => $instrument, 'class' => $class, 'enrollments' => [$one, $two]] = $this->scenario();
             $this->saveComment($instrument, $one, 'Escrito sobre a criança')->assertRedirect();
 
-            $blocking = app(EnrollmentHistory::class)->blocking($one);
-            $this->assertContains('comentários nos elementos de avaliação', $blocking);
-            $this->assertNotContains('comentários nos elementos de avaliação', app(EnrollmentHistory::class)->blocking($two));
+            $history = app(EnrollmentHistory::class);
+            $this->assertSame([], $history->blocking($one));
+            $this->assertSame(['comentários nos elementos de avaliação'], $history->needsConfirmation($one));
+            $this->assertSame([], $history->needsConfirmation($two));
 
             $this->actingAs($this->user)->delete("/classes/{$class->ulid}/students/{$one->ulid}");
             $this->assertNotNull($one->fresh());
+            $this->assertSame(1, InstrumentStudentComment::count());
         });
     }
 

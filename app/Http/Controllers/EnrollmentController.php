@@ -204,7 +204,7 @@ class EnrollmentController extends Controller
      * confirma que aquela inscrição existe, e os dois testes de isolamento da
      * 0.138.2 continuam a exigi-lo (ADR-0002).
      */
-    public function destroy(SchoolClass $class, string $enrollment, EnrollmentHistory $history): RedirectResponse
+    public function destroy(Request $request, SchoolClass $class, string $enrollment, EnrollmentHistory $history): RedirectResponse
     {
         Gate::authorize('update', $class);
 
@@ -244,6 +244,22 @@ class EnrollmentController extends Controller
             return back();
         }
 
+        // O QUE SÓ SAI COM CONFIRMAÇÃO. `blocking()` já recusou o que prende o
+        // aluno; o que resta aqui é texto do professor que não prende, mas
+        // também não se apaga sem ele o saber. `boolean()` lê corpo e query
+        // string, que é onde o Inertia põe os dados de um DELETE.
+        $needsConfirmation = $history->needsConfirmation($onTheRoll);
+
+        if ($needsConfirmation !== [] && ! $request->boolean('confirm_discard')) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => ($onTheRoll->student->identity->display_name ?? 'este aluno')
+                    .' tem '.implode(' e ', $needsConfirmation).'. Confirme a remoção para os apagar.',
+            ]);
+
+            return back();
+        }
+
         // O que acompanha a inscrição sai com ela, e na mesma transação: as
         // pertenças a grupos do horário são arrumação organizativa e não
         // história pedagógica (§ EnrollmentHistory::CLEARED_WITH_ENROLLMENT).
@@ -252,7 +268,13 @@ class EnrollmentController extends Controller
         $enrollmentId = $onTheRoll->id;
         $studentId = $onTheRoll->student_id;
 
-        DB::transaction(function () use ($onTheRoll, $history): void {
+        $discardedComments = 0;
+
+        DB::transaction(function () use ($onTheRoll, $history, $needsConfirmation, &$discardedComments): void {
+            if ($needsConfirmation !== []) {
+                $discardedComments = $history->clearConfirmed($onTheRoll);
+            }
+
             $history->clearAccompanying($onTheRoll);
             $onTheRoll->delete();
         });
@@ -260,7 +282,7 @@ class EnrollmentController extends Controller
         $this->audit->record(
             'enrollment.removed',
             $onTheRoll,
-            request()->user(),
+            $request->user(),
             "Aluno removido — {$class->label}.",
             [
                 'class_id' => $class->id,
@@ -271,6 +293,8 @@ class EnrollmentController extends Controller
                 // reached only once EnrollmentHistory::blocking() found no
                 // history at all to protect.
                 'mode' => 'deleted',
+                // Só a contagem — nunca o texto dos comentários.
+                'discarded_comments' => $discardedComments,
             ],
         );
 
