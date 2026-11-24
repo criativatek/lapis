@@ -1,3 +1,4 @@
+import { router } from '@inertiajs/vue3';
 import { mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -173,6 +174,7 @@ function student(overrides: Record<string, unknown> = {}) {
         status_label: 'Inscrito',
         photo_url: null,
         can_be_removed: true,
+        removal_discards: [],
         origins: [],
         subject_participation: null,
         external_result: null,
@@ -207,6 +209,51 @@ describe('classes/Show — remover um aluno com história', () => {
 
         expect(button).toBeDefined();
         expect(button!.attributes('disabled')).toBeUndefined();
+    });
+
+    it('asks, warning about the comments, and sends confirm_discard when something would be discarded', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const wrapper = mount(Show, {
+            props: {
+                ...baseProps(),
+                students: [student({ removal_discards: ['comentários nos elementos de avaliação'] })],
+            },
+        });
+        wrappers.push(wrapper);
+
+        const button = removeButton(wrapper, 'Maria Teste');
+        expect(button!.attributes('title')).toContain('apaga os comentários');
+
+        await button!.trigger('click');
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+        const question = String(confirmSpy.mock.calls[0][0]);
+        expect(question).toContain('Remover Maria Teste da turma?');
+        expect(question).toContain('Os comentários nos elementos de avaliação sobre este aluno serão apagados');
+        expect(question).toContain('não pode ser desfeita');
+        expect(router.delete).toHaveBeenCalledWith(
+            '/classes/class-1/students/enrollment-1',
+            expect.objectContaining({ data: { confirm_discard: true } }),
+        );
+
+        confirmSpy.mockRestore();
+    });
+
+    it('keeps the plain confirm and the plain request when nothing would be discarded', async () => {
+        vi.mocked(router.delete).mockClear();
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const wrapper = mount(Show, {
+            props: { ...baseProps(), students: [student()] },
+        });
+        wrappers.push(wrapper);
+
+        await removeButton(wrapper, 'Maria Teste')!.trigger('click');
+
+        expect(confirmSpy).toHaveBeenCalledWith('Remover Maria Teste da turma?');
+        const options = vi.mocked(router.delete).mock.calls[0][1] as Record<string, unknown>;
+        expect(options).not.toHaveProperty('data');
+
+        confirmSpy.mockRestore();
     });
 
     it('disables it — without hiding it — once there is history', () => {

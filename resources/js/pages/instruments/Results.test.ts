@@ -225,7 +225,7 @@ describe('Results.vue', () => {
         );
     });
 
-    it('quando o instrumento não tem resultados oficiais, mostra só o estado, a nota do professor e nenhum número', () => {
+    it('quando o instrumento não tem resultados oficiais, mostra só o estado, a ligação para os comentários e nenhum número', () => {
         const props = baseProps({
             availability: { official: false, status: 'under_correction', status_label: 'Em correção', message: 'A correção ainda não está concluída.' },
             dimensions: [],
@@ -237,8 +237,7 @@ describe('Results.vue', () => {
 
         expect(wrapper.text()).toContain('Estado: Em correção');
         expect(wrapper.text()).toContain('A correção ainda não está concluída.');
-        expect(wrapper.text()).toContain('Observações do professor');
-        expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('Observação inicial.');
+        expect(wrapper.text()).toContain('As observações do professor estão agora em Comentários.');
         expect(wrapper.text()).not.toContain('Resultados por aluno');
         expect(wrapper.text()).not.toContain('Indicadores da turma');
         expect(wrapper.text()).not.toContain('68,4');
@@ -258,47 +257,23 @@ describe('Results.vue', () => {
         expect(wrapper.text()).not.toContain('Inferiores a');
     });
 
-    it('mostra o textarea só de leitura quando can_edit é falso', () => {
-        const wrapper = mount(Results, { props: baseProps({ can_edit: false }) });
-        const textarea = wrapper.find('textarea');
+    it('já não edita as observações: aponta para o separador Comentários', () => {
+        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
 
-        expect(textarea.attributes('disabled')).toBeDefined();
-        expect(wrapper.find('button').exists()).toBeDefined();
+        expect(wrapper.find('textarea').exists()).toBe(false);
         expect(wrapper.text()).not.toContain('Guardar observações');
+        expect(wrapper.text()).toContain('As observações do professor estão agora em Comentários.');
+        expect(wrapper.find('a[href="/instruments/instrument-a/comentarios"]').exists()).toBe(true);
     });
 
-    it('mostra o botão de guardar quando can_edit é verdadeiro', () => {
-        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
+    it('mostra os quatro separadores do elemento, com Resultados ativo', () => {
+        const wrapper = mount(Results, { props: baseProps() });
+        const nav = wrapper.find('nav[aria-label="Secções do elemento de avaliação"]');
 
-        expect(wrapper.text()).toContain('Guardar observações');
-        expect(wrapper.find('textarea').attributes('disabled')).toBeUndefined();
-    });
-
-    it('leva a versão nova para a gravação seguinte no mesmo separador', async () => {
-        mocks.forms.length = 0;
-        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
-        const form = mocks.forms.find((candidate) => 'lock_version' in candidate)!;
-
-        // O servidor grava, incrementa a versão e a página volta com ela.
-        (form.put as ReturnType<typeof vi.fn>).mockImplementation(async (_url: string, options: { onSuccess?: () => void }) => {
-            await wrapper.setProps({ note: { ...baseProps().note, lock_version: 2 } });
-            options.onSuccess?.();
-        });
-
-        await wrapper.findAll('button').find((button) => button.text().includes('Guardar observações'))!.trigger('click');
-        await vi.waitFor(() => expect(form.lock_version).toBe(2));
-    });
-
-    it('não copia uma versão que mudou sem ter sido esta janela a gravar', async () => {
-        mocks.forms.length = 0;
-        const wrapper = mount(Results, { props: baseProps({ can_edit: true }) });
-        const form = mocks.forms.find((candidate) => 'lock_version' in candidate)!;
-
-        // Outra janela gravou: a versão nas props sobe, mas o formulário tem de
-        // continuar com a que leu, para o servidor poder recusar o conflito.
-        await wrapper.setProps({ note: { ...baseProps().note, lock_version: 5 } });
-
-        expect(form.lock_version).toBe(1);
+        expect(nav.text()).toContain('Grelha de correção');
+        expect(nav.text()).toContain('Comentários');
+        expect(nav.text()).toContain('Imprimir / PDF');
+        expect(nav.find('[aria-current="page"]').text()).toBe('Resultados');
     });
 });
 

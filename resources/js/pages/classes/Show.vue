@@ -53,6 +53,12 @@ type Student = {
      * EnrollmentController::destroy(), que volta a perguntar ao servidor.
      */
     can_be_removed: boolean;
+    /**
+     * O que o professor perde se remover este aluno e confirmar — hoje, os
+     * comentários nos elementos de avaliação. Vazio quando não há nada a
+     * apagar ou quando o aluno nem pode ser removido.
+     */
+    removal_discards: string[];
     /** A chave que a secção «Grupos» devolve ao servidor. */
     id: number;
     /**
@@ -425,7 +431,14 @@ function remove(student: Student): void {
         return;
     }
 
-    if (!confirm(`Remover ${student.name} da turma?`)) {
+    const discards = student.removal_discards ?? [];
+
+    const question =
+        discards.length > 0
+            ? `Remover ${student.name} da turma?\n\nOs ${discards.join(' e os ')} sobre este aluno serão apagados. Esta ação não pode ser desfeita.`
+            : `Remover ${student.name} da turma?`;
+
+    if (!confirm(question)) {
         return;
     }
 
@@ -433,6 +446,7 @@ function remove(student: Student): void {
 
     router.delete(`/classes/${props.schoolClass.ulid}/students/${student.ulid}`, {
         preserveScroll: true,
+        ...(discards.length > 0 ? { data: { confirm_discard: true } } : {}),
         onFinish: () => {
             const pending = new Set(removing.value);
             pending.delete(student.ulid);
@@ -1151,7 +1165,9 @@ function deleteResult(student: Student): void {
                                     "
                                     :title="
                                         student.can_be_removed
-                                            ? 'Remover'
+                                            ? student.removal_discards.length > 0
+                                                ? 'Remover (apaga os comentários deste aluno)'
+                                                : 'Remover'
                                             : 'Já tem registos pedagógicos nesta turma — os dados são preservados'
                                     "
                                     @click="remove(student)"

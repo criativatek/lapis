@@ -5,8 +5,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import CriterionNote from '@/components/instruments/CriterionNote.vue';
 import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
 import type { DomainAssignment } from '@/components/instruments/DomainAssignmentCallout.vue';
+import StudentCommentButton from '@/components/instruments/StudentCommentButton.vue';
 import StudentAvatar from '@/components/StudentAvatar.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +28,7 @@ import type { ResultTone } from '@/lib/resultTone';
 import { formatScoreInput, parseScore } from '@/lib/scoreInput';
 import { statusToneClasses } from '@/lib/statusTone';
 import type { Cell as OfficialCell } from '@/types/resultsAnalysis';
+import InstrumentTabs from './InstrumentTabs.vue';
 
 // Preserves where the teacher came from without a general-purpose breadcrumb:
 // arriving from assessments/Show.vue (via ?from=assessments) returns there;
@@ -49,6 +52,8 @@ type Item = {
     group_index?: number;
     code: string;
     label: string | null;
+    /** Comentário privado do professor sobre a pergunta (instrument_items.criterion_note). */
+    criterion_note?: string | null;
     points_possible: number;
     is_bonus: boolean;
     domains: { domain_id: number; name: string; percent: number }[];
@@ -56,6 +61,9 @@ type Item = {
 
 type Student = {
     enrollment_id: number;
+    enrollment_ulid?: string;
+    /** Comentário privado do professor sobre este aluno neste elemento. */
+    comment?: { body: string; lock_version: number } | null;
     name: string;
     photo_url: string | null;
     class_number: number | null;
@@ -101,6 +109,8 @@ const props = defineProps<{
         class_ulid: string;
         period: string;
     };
+    /** Pode o utilizador editar a grelha (comentários das perguntas). */
+    can_edit?: boolean;
     /** Perguntas ainda sem domínio e o passo que o resolve (ver DomainAssignmentCallout). */
     domainAssignment?: DomainAssignment;
     /** As secções do teste; só se desenham quando há mais do que uma (um teste simples não mostra estrutura). */
@@ -1650,27 +1660,7 @@ function revertCancellation(): void {
                 <Link v-else :href="`/classes/${instrument.class_ulid}`" class="text-sm text-muted-foreground hover:underline">
                     ← Voltar à turma
                 </Link>
-                <nav class="flex gap-1 border-b border-border" aria-label="Secções do elemento de avaliação">
-                    <span class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground" aria-current="page">
-                        Grelha de correção
-                    </span>
-                    <Link
-                        :href="`/instruments/${instrument.ulid}/resultados`"
-                        class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-                    >
-                        Resultados
-                    </Link>
-                    <!-- The grid as a document to print: not the spreadsheet below
-                         («Descarregar grelha»), which is the one filled in offline.
-                         An annulled instrument has no grid to print. -->
-                    <Link
-                        v-if="!isCancelled"
-                        :href="`/instruments/${instrument.ulid}/impressao`"
-                        class="ml-auto px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-                    >
-                        Imprimir / PDF
-                    </Link>
-                </nav>
+                <InstrumentTabs :ulid="instrument.ulid" active="grid" :cancelled="isCancelled" />
             </div>
             <div v-if="!isCancelled" class="flex flex-wrap items-center justify-end gap-3">
                 <div class="flex flex-wrap items-center justify-end gap-3">
@@ -1901,7 +1891,15 @@ function revertCancellation(): void {
                         <th v-if="sections.length === 0" class="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-medium">Aluno</th>
                         <template v-for="column in columns" :key="column.key">
                             <th v-if="column.item" class="min-w-24 px-2 py-2 text-center font-medium">
-                                <div>{{ column.item.code }}</div>
+                                <div>
+                                    <CriterionNote
+                                        :item-id="column.item.id"
+                                        :code="column.item.code"
+                                        :note="column.item.criterion_note ?? null"
+                                        :url="`/instruments/${instrument.ulid}/items/notes`"
+                                        :editable="can_edit === true && !isCancelled"
+                                    />
+                                </div>
                                 <div class="text-xs font-normal text-muted-foreground">
                                     {{ column.item.points_possible }} pts<span v-if="column.item.is_bonus"> · bónus</span>
                                 </div>
@@ -1960,7 +1958,7 @@ function revertCancellation(): void {
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-border">
-                    <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="hover:bg-muted/20">
+                    <tr v-for="(student, rowIndex) in students" :key="student.enrollment_id" class="group/row hover:bg-muted/20">
                         <td class="sticky left-0 z-10 bg-background px-3 py-0.5 whitespace-nowrap">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-muted-foreground">{{ student.class_number ?? '—' }}</span>
@@ -1975,6 +1973,13 @@ function revertCancellation(): void {
                                     class="hidden sm:inline-flex"
                                 />
                                 <span class="font-medium">{{ student.name }}</span>
+                                <StudentCommentButton
+                                    v-if="student.enrollment_ulid"
+                                    :url="`/instruments/${instrument.ulid}/students/${student.enrollment_ulid}/comment`"
+                                    :student-name="student.name"
+                                    :comment="student.comment ?? null"
+                                    :editable="can_edit === true && !isCancelled"
+                                />
                                 <span
                                     v-if="student.joined_after_instrument"
                                     class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-900"

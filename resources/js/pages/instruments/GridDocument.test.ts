@@ -606,3 +606,66 @@ describe('instruments/GridDocument.vue', () => {
         expect(wrapper.findAll('[data-block]')).toHaveLength(0);
     });
 });
+
+describe('instruments/GridDocument.vue — comentários privados', () => {
+    afterEach(() => {
+        wrappers.forEach((wrapper) => wrapper.unmount());
+        wrappers.length = 0;
+        routerGet.mockReset();
+        localStorage.clear();
+    });
+
+    it('«Incluir comentários» está desligada por omissão e, ao ligar, pede o documento com os comentários', async () => {
+        const wrapper = mountPage();
+
+        const checkbox = wrapper.find('#grid-doc-comments');
+        expect(checkbox.exists()).toBe(true);
+        expect(wrapper.text()).toContain('Incluir comentários');
+        expect(checkbox.attributes('data-state')).toBe('unchecked');
+        expect(wrapper.find('[data-comments]').exists()).toBe(false);
+        expect(wrapper.find('a[href*="/pdf?"]').attributes('href')).not.toContain('comentarios');
+
+        await checkbox.trigger('click');
+
+        expect(routerGet).toHaveBeenCalledWith(
+            '/instruments/inst-1/impressao',
+            expect.objectContaining({ comentarios: '1' }),
+            expect.objectContaining({ replace: true }),
+        );
+    });
+
+    it('com a opção ligada o PDF leva-a e o bloco mostra as três subsecções', () => {
+        const wrapper = mountPage({
+            document: makeDocument({
+                options: { raw_score: true, result: true, domains: true, legend: true, charts: false, orientation: 'auto', layout: 'blocks', comments: true },
+                comments: {
+                    general: 'Turma participativa.',
+                    items: [{ code: 'Q1', text: 'Nível 4 exige contacto visual' }],
+                    students: [{ number: '2', name: 'Rui Costa', text: 'Apanhado a copiar na Q2' }],
+                },
+            }),
+        });
+
+        expect(wrapper.find('#grid-doc-comments').attributes('data-state')).toBe('checked');
+        expect(wrapper.find('a[href*="/pdf?"]').attributes('href')).toContain('comentarios=1');
+
+        const block = wrapper.get('[data-comments]');
+        expect(block.text()).toContain('Comentários');
+        expect(block.text()).toContain('Turma participativa.');
+        expect(block.text()).toContain('Q1');
+        expect(block.text()).toContain('Nível 4 exige contacto visual');
+        expect(block.text()).toContain('2 Rui Costa');
+        expect(block.text()).toContain('Apanhado a copiar na Q2');
+    });
+
+    it('com a opção ligada mas sem nada para mostrar, não desenha o bloco', () => {
+        const wrapper = mountPage({
+            document: makeDocument({
+                options: { raw_score: true, result: true, domains: true, legend: true, charts: false, orientation: 'auto', layout: 'blocks', comments: true },
+                comments: null,
+            }),
+        });
+
+        expect(wrapper.find('[data-comments]').exists()).toBe(false);
+    });
+});

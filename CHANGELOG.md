@@ -25,6 +25,101 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.200.0] — 2026-11-23
+
+> **Comentários sobre alunos nos elementos de avaliação.** Para além do
+> comentário de cada questão, o professor pode agora escrever um comentário
+> sobre **um aluno** num elemento de avaliação — por exemplo «Apanhado a copiar
+> na Q2» ou «Não teve tempo para a Q6». Na grelha de correção aparece um ícone
+> junto ao nome: sempre visível quando há comentário (o texto abre ao passar o
+> rato ou ao focar com o teclado) e só ao passar o rato na linha quando não há,
+> para não atulhar. No separador «Comentários» a nova secção «Por aluno» lista
+> os comentários e deixa acrescentar mais. O comentário também aparece no
+> acompanhamento do aluno, numa secção «Comentários nos elementos de avaliação».
+> **Os comentários são privados do professor**: não entram em cálculos, não
+> viajam quando a grelha é copiada para outra turma e só saem no PDF da grelha
+> se o professor marcar «Incluir comentários».
+
+### Adicionado
+
+- Comentário por aluno e elemento (`instrument_student_comments`, até 2000
+  carateres, um por aluno em cada elemento), gravável também com a correção
+  concluída; texto vazio apaga. Recusado em elementos anulados e a quem não
+  ensina a turma. Detetam-se duas janelas a gravar ao mesmo tempo.
+- Opção «Incluir comentários» na impressão da grelha (desligada por omissão):
+  acrescenta, depois da grelha, a observação geral, os comentários das questões
+  e os dos alunos, iguais no ecrã, no papel e no PDF.
+- Secção «Comentários nos elementos de avaliação» na página do aluno (do mais
+  recente para o mais antigo, com ligação ao elemento); só aparece quando há
+  comentários, e nunca é enviada à IA.
+- Folha «Comentários sobre alunos» na exportação em Excel.
+
+### Alterado
+
+- Um aluno só com comentários escritos sobre ele pode ser removido da turma: o
+  Lapispro pergunta antes e avisa que os comentários são apagados (a remoção
+  continua recusada se houver avaliações, registos, caracterização, etc.). A
+  auditoria regista quantos comentários saíram, nunca o texto.
+- Cópia de segurança passa à versão 23 do esquema: `instrument_student_comments`.
+  Um backup v22 restaura-se sem comentários; um v23 é recusado por código anterior.
+- Uma migration aditiva e reversível (`instrument_student_comments`).
+
+## [0.199.0] — 2026-11-23
+
+> **Comentários nos elementos de avaliação.** A grelha de correção ganha um
+> espaço de comentários do professor, sem atulhar a grelha. Cada questão ou
+> critério pode ter o seu comentário — por exemplo «Audibilidade 5 + dicção
+> 10; nível 4 exige contacto visual» —, que se vê ao passar o rato (ou ao
+> focar com o teclado) no código da questão, e se edita ali mesmo. Há um novo
+> separador «Comentários», ao lado de «Resultados», onde ficam a observação
+> geral (que estava em Resultados) e os comentários de todas as questões. Os
+> comentários são privados do professor: não aparecem em relatórios nem para os
+> alunos, e nunca são notas nem comentários de alunos.
+
+### Adicionado
+
+- Comentário por questão/critério (`instrument_items.criterion_note`, até 2000
+  carateres), gravável mesmo com a correção concluída, como o «Conteúdo».
+  Editar o elemento no formulário nunca o apaga.
+- Ao copiar a grelha de outro elemento («Importar de outro elemento de
+  avaliação»), os comentários das questões vão juntos.
+- Separador «Comentários» (`/instruments/{elemento}/comentarios`), com «Geral» e
+  «Por questão / critério». Os separadores do elemento passam a ter uma só
+  definição, partilhada pela grelha, pelos resultados e pelos comentários.
+
+### Alterado
+
+- A observação geral do professor passa de «Resultados» para «Comentários»; em
+  Resultados fica uma ligação. O relatório imprimível dos Resultados continua a
+  mostrá-la como antes.
+- Cópia de segurança passa à versão 22 do esquema: `instrument_items[].criterion_note`.
+  Um backup v21 restaura-se sem comentários; um v22 é recusado por código anterior.
+- Uma migration aditiva e reversível (`instrument_items.criterion_note`).
+
+## [0.198.0] — 2026-11-23
+
+> **Reutilizar a grelha de um elemento na criação simples.** A caixa
+> «Importar de outro elemento de avaliação» só existia na criação avançada, mas
+> é na criação simples, o modo por defeito, que o professor quer copiar, por
+> exemplo, as «Apresentações orais» do 7.º A para o 7.º B e o 7.º C. Passa a
+> aparecer logo no topo da criação simples, depois da turma, e copia o título,
+> a cotação total, as questões e os conteúdos — nunca notas de alunos. Se a
+> estrutura importada couber na criação simples, o professor fica nela, com as
+> cotações exatamente como na origem; se trouxer bónus, numeração própria ou
+> questões de domínios que a turma de destino não tem, passa para a criação
+> avançada com uma nota a dizer porquê. Só código; sem migrations.
+
+### Alterado
+
+- O «Conteúdo» de cada questão (a linha «Conteúdo» da grelha) passa a poder
+  ser escrito na criação simples, ao lado da cotação, e deixa de impedir a
+  volta à criação simples. O pedido de criação simples deixa de recusar o
+  rótulo das questões. Os bónus, os grupos com nome e os códigos fora de
+  Q1..Qn continuam a ser só da criação avançada.
+- Importar um elemento passa a marcar os domínios das questões importadas, na
+  criação simples e na avançada; antes, na avançada, os totais por domínio
+  ficavam errados depois de importar.
+
 ## [0.197.1] — 2026-11-20
 
 > **A lista de turma vem do Inovar, não do Intuitivo.** O diálogo «Importar

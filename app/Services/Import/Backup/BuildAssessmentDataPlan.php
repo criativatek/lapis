@@ -277,6 +277,7 @@ class BuildAssessmentDataPlan
                 'instrument_ulid' => $row['instrument_ulid'], 'group_ulid' => $row['group_ulid'], 'code' => $row['code'], 'label' => $row['label'],
                 'sequence' => $row['sequence'], 'points_possible' => $row['points_possible'], 'scoring_mode' => $row['scoring_mode'],
                 'scale' => $row['scale'], 'is_bonus' => $row['is_bonus'], 'source_group_label' => $row['source_group_label'],
+                'criterion_note' => $row['criterion_note'] ?? null,
             ];
         })->values()->all();
     }

@@ -28,10 +28,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $scoring_mode
  * @property bool $is_bonus
  * @property string|null $source_group_label
+ * @property string|null $criterion_note
  */
 #[Fillable([
     'instrument_id', 'instrument_group_id', 'code', 'label', 'sequence', 'points_possible',
-    'scoring_mode', 'scale_id', 'is_bonus', 'source_group_label',
+    'scoring_mode', 'scale_id', 'is_bonus', 'source_group_label', 'criterion_note',
 ])]
 class InstrumentItem extends Model
 {

@@ -23,6 +23,11 @@ namespace App\Services\Reporting\ClassDocuments;
  *   graficos    os gráficos factuais — OFF por omissão, e só quando a correção está
  *               concluída: antes disso não há estatística oficial (InstrumentGrid
  *               devolve-os `null` e diz-o, mesmo que se peçam)
+ *   comentarios os comentários privados do professor (a observação geral, as
+ *               questões e os alunos) num bloco no fim — OFF por omissão, porque
+ *               são privados: só saem quando o professor o escolhe. A chave só
+ *               viaja em `toArray()` quando está ligada, para que o documento
+ *               sem comentários seja exatamente o de sempre
  *   orientacao  auto | vertical | horizontal
  *   disposicao  blocos (por omissão aqui) | uma-pagina — um só bloco em paisagem
  *               que a pré-visualização encolhe até caber numa folha; a legenda
@@ -42,6 +47,7 @@ final readonly class InstrumentGridOptions
         public string $orientation = InstrumentGridLayout::AUTO,
         /** @var 'blocks'|'one_page' */
         public string $layout = InstrumentGridLayout::BLOCKS,
+        public bool $comments = false,
     ) {}
 
     /**
@@ -68,6 +74,7 @@ final readonly class InstrumentGridOptions
                 default => InstrumentGridLayout::AUTO,
             },
             layout: $layout,
+            comments: self::flag($query['comentarios'] ?? null, default: false),
         );
     }
 
@@ -78,17 +85,17 @@ final readonly class InstrumentGridOptions
      */
     public function withLayout(string $layout): self
     {
-        return new self($this->rawScore, $this->result, $this->domains, $this->legend, $this->charts, $this->orientation, $layout);
+        return new self($this->rawScore, $this->result, $this->domains, $this->legend, $this->charts, $this->orientation, $layout, $this->comments);
     }
 
     /**
      * The options as they travel in the document, for the preview's own form.
      *
-     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, charts: bool, orientation: string, layout: string}
+     * @return array{raw_score: bool, result: bool, domains: bool, legend: bool, charts: bool, orientation: string, layout: string, comments?: true}
      */
     public function toArray(): array
     {
-        return [
+        $options = [
             'raw_score' => $this->rawScore,
             'result' => $this->result,
             'domains' => $this->domains,
@@ -97,6 +104,14 @@ final readonly class InstrumentGridOptions
             'orientation' => $this->orientation,
             'layout' => $this->layout,
         ];
+
+        // Only when on: with comments off the document is byte-for-byte the one
+        // it was before comments existed.
+        if ($this->comments) {
+            $options['comments'] = true;
+        }
+
+        return $options;
     }
 
     /**

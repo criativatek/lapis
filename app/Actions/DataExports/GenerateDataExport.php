@@ -20,6 +20,7 @@ use App\Models\EvidenceRecord;
 use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
+use App\Models\InstrumentStudentComment;
 use App\Models\InstrumentType;
 use App\Models\InterimAssessment;
 use App\Models\Intervention;
@@ -200,6 +201,17 @@ class GenerateDataExport
             ->filter(fn (ResultsAnalysisNote $note): bool => trim((string) $note->body) !== '')
             ->values();
 
+        // Schema v23 — the teacher's private comments on a student in an
+        // element of assessment. Same scope as the notes above (the classes
+        // already granted); an empty body is never stored, so there is nothing
+        // to filter. Text about a child: it travels in the technical backup and
+        // in its own readable sheet, never anywhere else.
+        $instrumentStudentComments = InstrumentStudentComment::query()
+            ->whereIn('instrument_id', $instruments->pluck('id'))
+            ->with(['enrollment.student.identity'])
+            ->orderBy('id')
+            ->get();
+
         // Schema v14 — the teacher's OWN class notebook, and only theirs. The
         // notebook is private to its author (ClassNotebookEntryPolicy), so the
         // scope is `author_id = quem exporta` AND the classes this user
@@ -339,6 +351,7 @@ class GenerateDataExport
             $instruments, $itemScores, $classifications, $selfAssessments, $evidenceRecords, $interventions,
             $interventionReviews, $interimAssessments, $reports, $lessons, $lessonPlans,
             $cancelledLessonOccurrences, $lessonSummaries, $lessonAttendances, $resultsAnalysisNotes, $classNotebookEntries,
+            $instrumentStudentComments,
         );
 
         // Who confirmed or undid a declaration travels as an email, like every
@@ -393,6 +406,10 @@ class GenerateDataExport
 
             if ($resultsAnalysisNotes->isNotEmpty()) {
                 $this->addObservacoesResultadosSheet($spreadsheet, $resultsAnalysisNotes, $classes, $instruments);
+            }
+
+            if ($instrumentStudentComments->isNotEmpty()) {
+                $this->addComentariosSobreAlunosSheet($spreadsheet, $instrumentStudentComments, $classes, $instruments);
             }
 
             if ($classNotebookEntries->isNotEmpty()) {
@@ -481,6 +498,7 @@ class GenerateDataExport
             $timetableActivities,
             $timetableActivitySessions,
             $followupBackupRows,
+            $instrumentStudentComments,
         ));
         $zip->addFromString('README.txt', $this->readme($organization));
 
@@ -706,6 +724,50 @@ class GenerateDataExport
 
             if ($note->updated_at !== null) {
                 $this->writeDate($sheet, "F{$row}", $note->updated_at, withTime: true);
+            }
+
+            $row++;
+        }
+
+        $this->finishSheet($sheet, count($headers), $row - 1);
+    }
+
+    /**
+     * The teacher's private comments on a student in an element of assessment
+     * (schema v23) — a sibling of «Observações dos Resultados», which holds the
+     * general observation. Written as explicit strings so a comment that looks
+     * like a number or a formula is never reinterpreted.
+     *
+     * @param  Collection<int, InstrumentStudentComment>  $comments
+     * @param  Collection<int, SchoolClass>  $classes
+     * @param  Collection<int, Instrument>  $instruments
+     */
+    protected function addComentariosSobreAlunosSheet(Spreadsheet $spreadsheet, Collection $comments, Collection $classes, Collection $instruments): void
+    {
+        $headers = ['Ano letivo', 'Turma', 'Elemento de avaliação', 'Data do elemento', 'Aluno', 'Comentário', 'Última alteração'];
+        $sheet = $this->newSheet($spreadsheet, 'Comentários sobre alunos', $headers);
+
+        $row = 2;
+
+        foreach ($comments as $comment) {
+            /** @var InstrumentStudentComment $comment */
+            $instrument = $instruments->firstWhere('id', $comment->instrument_id);
+            $class = $instrument === null ? null : $classes->firstWhere('id', $instrument->class_id);
+
+            $sheet->setCellValue("A{$row}", $class === null ? '—' : $class->academicYear->label);
+            $sheet->setCellValue("B{$row}", $class === null ? '—' : $class->label);
+            $sheet->setCellValue("C{$row}", $instrument === null ? '—' : $instrument->title);
+
+            if ($instrument !== null) {
+                $this->writeDate($sheet, "D{$row}", $instrument->applied_on);
+            }
+
+            $sheet->setCellValue("E{$row}", $this->studentDisplayName($comment->enrollment));
+            $sheet->setCellValueExplicit("F{$row}", (string) $comment->body, 's');
+            $sheet->getStyle("F{$row}")->getAlignment()->setWrapText(true);
+
+            if ($comment->updated_at !== null) {
+                $this->writeDate($sheet, "G{$row}", $comment->updated_at, withTime: true);
             }
 
             $row++;
@@ -1240,6 +1302,7 @@ class GenerateDataExport
      * @param  Collection<int, LessonAttendance>  $lessonAttendances
      * @param  Collection<int, ResultsAnalysisNote>  $resultsAnalysisNotes
      * @param  Collection<int, ClassNotebookEntry>  $classNotebookEntries
+     * @param  Collection<int, InstrumentStudentComment>  $instrumentStudentComments
      * @return Collection<int, User>
      */
     protected function loadReferencedAuthors(
@@ -1259,6 +1322,7 @@ class GenerateDataExport
         Collection $lessonAttendances,
         Collection $resultsAnalysisNotes,
         Collection $classNotebookEntries,
+        Collection $instrumentStudentComments,
     ): Collection {
         $ids = $instruments->pluck('completed_by')
             ->merge($instruments->pluck('cancelled_by'))
@@ -1282,6 +1346,8 @@ class GenerateDataExport
             ->merge($resultsAnalysisNotes->pluck('created_by'))
             ->merge($resultsAnalysisNotes->pluck('updated_by'))
             ->merge($classNotebookEntries->pluck('author_id'))
+            ->merge($instrumentStudentComments->pluck('created_by'))
+            ->merge($instrumentStudentComments->pluck('updated_by'))
             ->filter()->unique();
 
         return User::query()->withoutGlobalScopes()->whereIn('id', $ids)->get();
@@ -1741,6 +1807,7 @@ class GenerateDataExport
             'scale' => $this->scaleRefById($item->scale_id, $refs),
             'is_bonus' => $item->is_bonus,
             'source_group_label' => $item->source_group_label,
+            'criterion_note' => $item->criterion_note,
         ];
     }
 
@@ -1765,6 +1832,29 @@ class GenerateDataExport
             'updated_at' => $note->updated_at?->toIso8601String(),
             'created_by_email' => $this->authorEmail($note->created_by, $refs),
             'updated_by_email' => $this->authorEmail($note->updated_by, $refs),
+        ];
+    }
+
+    /**
+     * Schema v23 — never carries `id`, `organization_id`, `instrument_id`,
+     * `enrollment_id` or `lock_version`: the instrument and the enrolment travel
+     * as their ulids, and `lock_version` is this installation's own
+     * optimistic-lock counter. Text about a child: only ever the body.
+     *
+     * @param  BackupRefs  $refs
+     * @return array<string, mixed>
+     */
+    protected function instrumentStudentCommentRow(InstrumentStudentComment $comment, array $refs): array
+    {
+        return [
+            'ulid' => $comment->ulid,
+            'instrument_ulid' => $refs['instrumentsById']->get($comment->instrument_id)?->ulid,
+            'enrollment_ulid' => $comment->enrollment?->ulid,
+            'body' => $comment->body,
+            'created_at' => $comment->created_at?->toIso8601String(),
+            'updated_at' => $comment->updated_at?->toIso8601String(),
+            'created_by_email' => $this->authorEmail($comment->created_by, $refs),
+            'updated_by_email' => $this->authorEmail($comment->updated_by, $refs),
         ];
     }
 
@@ -2419,6 +2509,7 @@ class GenerateDataExport
      * @param  Collection<int, TimetableActivity>  $timetableActivities
      * @param  Collection<int, TimetableActivitySession>  $timetableActivitySessions
      * @param  array{record_followup_cases: list<array<string, mixed>>, record_followup_confirmations: list<array<string, mixed>>}  $followupRows
+     * @param  Collection<int, InstrumentStudentComment>|null  $instrumentStudentComments
      */
     protected function technicalBackup(
         Organization $organization,
@@ -2462,7 +2553,10 @@ class GenerateDataExport
         Collection $timetableActivities,
         Collection $timetableActivitySessions,
         array $followupRows = ['record_followup_cases' => [], 'record_followup_confirmations' => []],
+        ?Collection $instrumentStudentComments = null,
     ): string {
+        $instrumentStudentComments ??= new Collection;
+
         $refs = $this->buildBackupRefs(
             $classes, $academicPeriods, $domains, $scales, $profiles, $profileVersions,
             $instrumentTypes, $instrumentGroups, $instruments, $selfAssessmentTemplates,
@@ -2491,6 +2585,7 @@ class GenerateDataExport
                 'class_groups', 'class_group_memberships', 'recurring_lesson_slots', 'cancelled_lesson_occurrences',
                 'lessons', 'lesson_summaries', 'lesson_plans', 'lesson_attendances', 'lesson_outcome_rectifications',
                 'results_analysis_notes',
+                'instrument_student_comments',
                 'class_notebook_entries',
                 'record_followup_cases', 'record_followup_confirmations',
                 'timetable_activities',
@@ -2566,6 +2661,9 @@ class GenerateDataExport
             'lesson_attendances' => $lessonAttendances->map(fn (LessonAttendance $attendance): array => $this->lessonAttendanceRow($attendance, $refs))->values(),
 
             'results_analysis_notes' => $resultsAnalysisNotes->map(fn (ResultsAnalysisNote $note): array => $this->resultsAnalysisNoteRow($note, $refs))->values(),
+
+            // Schema v23 — private comments on a student in an element of assessment.
+            'instrument_student_comments' => $instrumentStudentComments->map(fn (InstrumentStudentComment $comment): array => $this->instrumentStudentCommentRow($comment, $refs))->values(),
 
             'class_notebook_entries' => $classNotebookEntries->map(fn (ClassNotebookEntry $entry): array => $this->classNotebookEntryRow($entry, $refs))->values(),
 

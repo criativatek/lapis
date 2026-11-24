@@ -1,19 +1,17 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import DataTable from '@/components/analysis/DataTable.vue';
 import LabelledBarChart from '@/components/analysis/LabelledBarChart.vue';
 import Heading from '@/components/Heading.vue';
-import InputError from '@/components/InputError.vue';
 import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
 import TableShell from '@/components/TableShell.vue';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { qualitativeToneClasses, qualitativeToneFor } from '@/lib/qualitativeTone';
 import { meanOf, resultTone, resultToneClasses, resultToneTitle } from '@/lib/resultTone';
 import { statusToneClasses } from '@/lib/statusTone';
 import type { Analysis, Cell, ResultsAnalysisProps, ResultsStudent } from '@/types/resultsAnalysis';
+import InstrumentTabs from './InstrumentTabs.vue';
 
 const props = defineProps<ResultsAnalysisProps>();
 
@@ -252,40 +250,6 @@ const orderedStudents = computed(() => {
 
     return [...inScope, ...outOfScope];
 });
-
-// ------------------------------------------------------------- observações do professor
-
-const noteForm = useForm<{ body: string; lock_version: number }>({
-    body: props.note.body,
-    lock_version: props.note.lock_version,
-});
-
-function submitNote(): void {
-    noteForm.put(props.links.note, {
-        preserveScroll: true,
-        // O servidor incrementa a versão a cada gravação. Sem a levar para o
-        // formulário, a gravação seguinte NESTE separador seguia com a antiga
-        // e era recusada como «alteradas noutra janela». Só aqui, no sucesso
-        // da própria gravação: copiar a versão sempre que as props mudam
-        // apagaria a deteção de um conflito verdadeiro com outra janela.
-        onSuccess: () => {
-            noteForm.lock_version = props.note.lock_version;
-        },
-    });
-}
-
-const noteUpdatedLabel = computed(() => {
-    if (props.note.updated_at === null) {
-        return null;
-    }
-
-    const formatted = new Intl.DateTimeFormat('pt-PT', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    }).format(new Date(props.note.updated_at));
-
-    return props.note.updated_by ? `${formatted} · ${props.note.updated_by}` : formatted;
-});
 </script>
 
 <template>
@@ -312,26 +276,7 @@ const noteUpdatedLabel = computed(() => {
             </div>
         </div>
 
-        <!-- Separador Grelha de correção | Resultados -->
-        <nav class="flex gap-1 border-b border-border" aria-label="Secções do elemento de avaliação">
-            <a
-                :href="links.grid"
-                class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-            >
-                Grelha de correção
-            </a>
-            <span class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground" aria-current="page">
-                Resultados
-            </span>
-            <!-- The grid as a document to print. An annulled instrument has none. -->
-            <Link
-                v-if="context.instrument.status !== 'cancelled'"
-                :href="`/instruments/${context.instrument.ulid}/impressao`"
-                class="ml-auto px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-            >
-                Imprimir / PDF
-            </Link>
-        </nav>
+        <InstrumentTabs :ulid="context.instrument.ulid" active="results" :cancelled="context.instrument.status === 'cancelled'" />
 
         <!-- Perguntas sem domínio: «Por classificar» em todas as linhas não é um veredicto, é uma
              associação em falta — e resolve-se aqui, sem voltar à grelha nem repetir classificações. -->
@@ -675,28 +620,11 @@ const noteUpdatedLabel = computed(() => {
             </div>
         </section>
 
-        <!-- Observações do professor: sempre visível, mesmo sem resultados oficiais -->
-        <section aria-labelledby="section-notes-teacher" class="space-y-2 rounded-lg border border-border bg-muted/10 p-4">
-            <h3 id="section-notes-teacher" class="text-sm font-semibold">Observações do professor</h3>
-            <Textarea
-                v-model="noteForm.body"
-                :disabled="!can_edit"
-                :readonly="!can_edit"
-                rows="5"
-                aria-label="Observações do professor"
-                placeholder="Escreva aqui as suas observações sobre este instrumento."
-            />
-            <InputError :message="noteForm.errors.body" />
-            <p class="text-xs text-muted-foreground">
-                As observações ficam guardadas à parte e não se perdem quando os indicadores são recalculados.
-            </p>
-            <p v-if="noteUpdatedLabel" class="text-xs text-muted-foreground">
-                Última alteração: {{ noteUpdatedLabel }}
-            </p>
-            <Button v-if="can_edit" type="button" size="sm" :disabled="noteForm.processing" @click="submitNote">
-                Guardar observações
-            </Button>
-        </section>
+        <!-- As observações do professor vivem agora no separador Comentários. -->
+        <p class="text-sm text-muted-foreground print:hidden" data-testid="notes-moved">
+            As observações do professor estão agora em
+            <Link :href="`/instruments/${context.instrument.ulid}/comentarios`" class="underline hover:text-foreground">Comentários</Link>.
+        </p>
     </div>
 </template>
 

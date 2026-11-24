@@ -7,6 +7,7 @@ use App\Models\Enrollment;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
 use App\Models\InstrumentStatus;
+use App\Models\InstrumentStudentComment;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
@@ -46,6 +47,11 @@ use App\Support\Documents\Abbreviations;
  * attending the subject that day: the engine's own `out_of_scope` — is left out
  * and COUNTED, so the omission is visible and a name that has no business on the
  * sheet is not on it.
+ *
+ * PRIVATE COMMENTS ARE THE ONE EXCEPTION, AND ONLY WHEN ASKED (`options.comments`,
+ * OFF by default): the general observation, each question's comment and each
+ * student's comment, in a closing block. Off, this builder reads none of them and
+ * the document is exactly what it was before they existed.
  *
  * WHAT NEVER TRAVELS. No photo, no identifier of any kind (the rows are told
  * apart by position), no birth date, school number or enrolment date, no
@@ -190,6 +196,8 @@ class InstrumentGrid
             )
             : null;
 
+        $comments = $options->comments ? $this->comments($instrument, array_values($items->all()), $roster) : null;
+
         return [
             'title' => $instrument->title,
             'kind_label' => __('Grelha do elemento de avaliação'),
@@ -236,9 +244,64 @@ class InstrumentGrid
                 'states' => $this->statesLegend($statesSeen),
             ],
             'notes' => $this->notes($context, $options, $touched, $anyPartial),
+            // Só existe quando o professor o pediu: desligado, o documento não tem a chave.
+            ...($options->comments ? ['comments' => $comments] : []),
             'notice' => __('Documento gerado a partir dos registos à data de emissão; não é um relatório finalizado.'),
             'is_empty' => $rows === [],
             'empty_message' => __('Não há alunos abrangidos por este elemento de avaliação.'),
+        ];
+    }
+
+    /**
+     * The teacher's private comments for the closing block, or null when there
+     * is none to print (an empty subsection is left out; with all three empty,
+     * so is the block). Only the students that appear on the sheet: a comment
+     * on a student the instrument does not apply to stays off it.
+     *
+     * @param  list<InstrumentItem>  $items
+     * @param  list<Enrollment>  $roster
+     * @return array{general: string|null, items: list<array{code: string, text: string}>, students: list<array{number: string, name: string, text: string}>}|null
+     */
+    protected function comments(Instrument $instrument, array $items, array $roster): ?array
+    {
+        $general = trim($this->analysis->notePayload($instrument)['body']);
+
+        $byItem = [];
+
+        foreach ($items as $item) {
+            $text = trim((string) $item->criterion_note);
+
+            if ($text !== '') {
+                $byItem[] = ['code' => $item->code, 'text' => $text];
+            }
+        }
+
+        $bodies = InstrumentStudentComment::query()
+            ->where('instrument_id', $instrument->getKey())
+            ->pluck('body', 'enrollment_id');
+
+        $byStudent = [];
+
+        foreach ($roster as $enrollment) {
+            $text = trim((string) ($bodies[(int) $enrollment->getKey()] ?? ''));
+
+            if ($text !== '') {
+                $byStudent[] = [
+                    'number' => $enrollment->class_number === null ? self::DASH : (string) $enrollment->class_number,
+                    'name' => optional($enrollment->student->identity)->display_name ?? __('(sem identidade)'),
+                    'text' => $text,
+                ];
+            }
+        }
+
+        if ($general === '' && $byItem === [] && $byStudent === []) {
+            return null;
+        }
+
+        return [
+            'general' => $general === '' ? null : $general,
+            'items' => $byItem,
+            'students' => $byStudent,
         ];
     }
 

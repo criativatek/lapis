@@ -424,6 +424,14 @@ class InstrumentBuilder
             $attributes['source_group_label'] = $item['source_group_label'];
         }
 
+        // Same rule for the teacher's note on the question: `label` always
+        // travels (the form owns it), the note does not — editing the element
+        // without the key must never erase a comment.
+        if (array_key_exists('criterion_note', $item)) {
+            $note = is_string($item['criterion_note']) ? trim($item['criterion_note']) : null;
+            $attributes['criterion_note'] = $note === '' ? null : $note;
+        }
+
         return $attributes;
     }
 

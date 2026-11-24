@@ -9,6 +9,7 @@ use App\Models\Instrument;
 use App\Models\InstrumentGroup;
 use App\Models\InstrumentItem;
 use App\Models\InstrumentStatus;
+use App\Models\InstrumentStudentComment;
 use App\Models\InstrumentType;
 use App\Models\ResultState;
 use App\Models\SchoolClass;
@@ -576,12 +577,18 @@ class InstrumentController extends Controller
             ...$this->resultsAnalysis->officialCells($instrument),
         ];
 
+        $studentComments = InstrumentStudentComment::query()
+            ->where('instrument_id', $instrument->getKey())
+            ->get()
+            ->keyBy('enrollment_id');
+
         return Inertia::render('instruments/Grid', [
             // Questions without a domain never reach the engine, so a grid full
             // of marks can still say «Por classificar» on every row. The grid
             // says why and offers the one step that fixes it — a domain per
             // section — instead of leaving the teacher to guess.
             'domainAssignment' => $domainAssignment->state($instrument),
+            'can_edit' => Gate::allows('update', $instrument->schoolClass),
             'instrument' => [
                 'ulid' => $instrument->ulid,
                 'title' => $instrument->title,
@@ -606,6 +613,7 @@ class InstrumentController extends Controller
                 'group_index' => $groupIndexById[$item->instrument_group_id] ?? 0,
                 'code' => $item->code,
                 'label' => $item->label,
+                'criterion_note' => $item->criterion_note,
                 'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'domains' => $item->domainAllocations->map(fn ($allocation) => [
@@ -616,6 +624,12 @@ class InstrumentController extends Controller
             ]),
             'students' => $enrollments->map(fn (Enrollment $enrollment) => [
                 'enrollment_id' => $enrollment->id,
+                'enrollment_ulid' => $enrollment->ulid,
+                // O comentário privado do professor sobre este aluno neste
+                // elemento (null quando não há). `lock_version` segue com ele.
+                'comment' => isset($studentComments[$enrollment->id])
+                    ? ['body' => $studentComments[$enrollment->id]->body, 'lock_version' => $studentComments[$enrollment->id]->lock_version]
+                    : null,
                 'name' => optional($enrollment->student->identity)->display_name ?? '(sem identidade)',
                 // A thumbnail to put a face to the name while correcting; the
                 // identity is already eager-loaded, so this adds no query.
@@ -774,6 +788,63 @@ class InstrumentController extends Controller
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Conteúdo das perguntas guardado.']);
+
+        return back();
+    }
+
+    /**
+     * Saves the teacher's private note on each question/criterion of the grid
+     * (instrument_items.criterion_note). Pedagogical metadata, like the
+     * «Conteúdo»: allowed once the correction is concluded, refused only when
+     * the instrument is cancelled. An empty or whitespace-only text clears it.
+     */
+    public function updateItemNotes(Request $request, Instrument $instrument): RedirectResponse
+    {
+        Gate::authorize('update', $instrument->schoolClass);
+        $this->ensureNotCancelled($instrument);
+
+        $data = $request->validate([
+            'notes' => ['required', 'array', 'min:1'],
+            'notes.*' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $items = $instrument->items()->get()->keyBy('id');
+
+        foreach (array_keys($data['notes']) as $itemId) {
+            abort_unless(is_int($itemId) || ctype_digit((string) $itemId), 422);
+            abort_unless($items->has((int) $itemId), 422);
+        }
+
+        $changed = 0;
+
+        DB::transaction(function () use ($data, $items, &$changed): void {
+            foreach ($data['notes'] as $itemId => $value) {
+                $note = trim((string) $value);
+                $note = $note === '' ? null : $note;
+
+                /** @var InstrumentItem $item */
+                $item = $items->get((int) $itemId);
+
+                if ($item->criterion_note === $note) {
+                    continue;
+                }
+
+                $item->update(['criterion_note' => $note]);
+                $changed++;
+            }
+        });
+
+        if ($changed > 0) {
+            $this->audit->record(
+                'instrument.item_notes_updated',
+                $instrument,
+                $this->user(),
+                "Comentários das perguntas de «{$instrument->title}» atualizados ({$changed}) — {$instrument->schoolClass->label}.",
+                ['class_id' => $instrument->class_id, 'instrument_id' => $instrument->id, 'changed' => $changed],
+            );
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Comentários das perguntas guardados.']);
 
         return back();
     }
@@ -956,6 +1027,7 @@ class InstrumentController extends Controller
             'items' => array_map(fn (InstrumentItem $item) => [
                 'code' => $item->code,
                 'label' => $item->label,
+                'criterion_note' => $item->criterion_note,
                 'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                 'is_bonus' => $item->is_bonus,
                 'domains' => array_values(array_filter(array_map(

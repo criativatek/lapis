@@ -204,6 +204,7 @@ class WriteAssessmentData
                     'label' => $row['label'], 'sequence' => $row['sequence'], 'points_possible' => $row['points_possible'],
                     'scoring_mode' => $row['scoring_mode'], 'scale_id' => $this->resolveScaleId($row['scale'], $scalesByRef),
                     'is_bonus' => $row['is_bonus'], 'source_group_label' => $row['source_group_label'],
+                    'criterion_note' => $row['criterion_note'] ?? null,
                 ]);
                 $item->save();
                 $byUlid[$row['ulid']] = $item->getKey();

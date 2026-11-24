@@ -7,7 +7,21 @@ namespace App\Support\Import\Backup;
  * (§4 of the import brief). Never inferred silently — every backup is
  * classified into exactly one of these before anything else happens.
  *
- * CURRENT (21) is what GenerateDataExport writes today. Version 21 adds the
+ * CURRENT (23) is what GenerateDataExport writes today. Version 23 adds the
+ * `instrument_student_comments` collection — the teacher's private comment on a
+ * student in an element of assessment (`InstrumentStudentComment`): `ulid`,
+ * `instrument_ulid`, `enrollment_ulid`, `body` (up to 2000 characters), the two
+ * dates and the authors as emails. One per (instrument, enrolment); an empty
+ * comment is never exported. Absent in a backup ≤22 (read as an empty list):
+ * nothing is restored and nothing at the destination is deleted because of it.
+ * A backup v23 is refused by earlier code (unsupported newer): it would
+ * otherwise drop the comments silently. Version 22 adds the
+ * teacher's private note on a question/criterion of a correction grid:
+ * `instrument_items[].criterion_note` (text up to 2000 characters, or null).
+ * Pedagogical metadata, never about a student; absent in a backup ≤21 → null,
+ * and nothing else changes. A backup v22 is refused by earlier code
+ * (unsupported newer): it would otherwise drop the column silently.
+ * Version 21 adds the
  * cause of a lesson that was planned and not held (`outcome = not_held`):
  * `lessons[].outcome_cause`, `outcome_teacher_situation` and
  * `outcome_cause_note`, together with the new outcome value. Absent in a backup
@@ -126,7 +140,7 @@ enum BackupSchemaCompatibility
     case UnsupportedNewer;
     case Invalid;
 
-    public const int CURRENT = 21;
+    public const int CURRENT = 23;
 
     public const int MINIMUM_SUPPORTED = 2;
 

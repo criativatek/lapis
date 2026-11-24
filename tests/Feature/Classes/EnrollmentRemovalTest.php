@@ -3,6 +3,7 @@
 namespace Tests\Feature\Classes;
 
 use App\Models\AcademicYear;
+use App\Models\AuditEvent;
 use App\Models\ClassGroup;
 use App\Models\ClassGroupMembership;
 use App\Models\Enrollment;
@@ -10,6 +11,7 @@ use App\Models\EvidenceKind;
 use App\Models\EvidenceRecord;
 use App\Models\Instrument;
 use App\Models\InstrumentItem;
+use App\Models\InstrumentStudentComment;
 use App\Models\SchoolClass;
 use App\Models\StudentItemScore;
 use App\Models\Subject;
@@ -353,6 +355,7 @@ class EnrollmentRemovalTest extends TestCase
         $known = (fn (): array => array_merge(
             array_keys(static::RELATIONS),
             array_keys(static::CLEARED_WITH_ENROLLMENT),
+            array_keys(static::CLEARED_ON_CONFIRMATION),
         ))->call(new EnrollmentHistory);
 
         $pointingAtEnrollments = [];
@@ -513,5 +516,136 @@ class EnrollmentRemovalTest extends TestCase
         // RELAÇÕES e nunca os ALUNOS. São doze alunos aqui de propósito, e
         // o custo teria de ser exatamente o mesmo com trinta.
         $this->assertLessThanOrEqual(16, $queries, 'idsWithHistoryIn cresceu com o número de alunos.');
+    }
+
+    #[Test]
+    public function asking_which_students_need_confirmation_costs_a_fixed_number_of_queries(): void
+    {
+        $class = $this->createClass();
+
+        foreach (range(1, 12) as $number) {
+            $this->enroll($class, "Aluno {$number}");
+        }
+
+        $history = app(EnrollmentHistory::class);
+        $organization = $this->user->personalOrganization();
+
+        $queries = 0;
+        DB::listen(function () use (&$queries): void {
+            $queries++;
+        });
+
+        app(CurrentOrganization::class)->runFor(
+            $organization,
+            fn () => $history->idsNeedingConfirmationIn($class),
+        );
+
+        // 1 pelos ids da turma + 1 por tabela de CLEARED_ON_CONFIRMATION (uma).
+        // Nunca por aluno: com doze ou com trinta, o custo é o mesmo.
+        $this->assertLessThanOrEqual(2, $queries, 'idsNeedingConfirmationIn cresceu com o número de alunos.');
+    }
+
+    // ------------------------------------------ comentários: pergunta-se antes
+
+    /** Um comentário do professor sobre o aluno num elemento de avaliação. */
+    protected function commentFor(SchoolClass $class, Enrollment $enrollment, string $body = 'Apanhado a copiar na Q2'): InstrumentStudentComment
+    {
+        $organization = $this->user->personalOrganization();
+
+        return app(CurrentOrganization::class)->runFor(
+            $organization,
+            function () use ($class, $enrollment, $body, $organization): InstrumentStudentComment {
+                $instrument = Instrument::factory()
+                    ->recycle($organization)
+                    ->for($class, 'schoolClass')
+                    ->create();
+
+                return InstrumentStudentComment::create([
+                    'instrument_id' => $instrument->id,
+                    'enrollment_id' => $enrollment->id,
+                    'body' => $body,
+                    'lock_version' => 1,
+                ]);
+            },
+        );
+    }
+
+    #[Test]
+    public function a_student_with_only_comments_is_not_removed_without_confirmation(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Maria Comentada');
+        $this->commentFor($class, $enrollment);
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}")
+            ->assertRedirect();
+
+        $toast = $this->toast();
+        $this->assertSame('error', $toast['type']);
+        $this->assertSame(
+            'Maria Comentada tem comentários nos elementos de avaliação. Confirme a remoção para os apagar.',
+            $toast['message'],
+        );
+        $this->assertNotNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+        $this->assertSame(1, DB::table('instrument_student_comments')->count());
+    }
+
+    #[Test]
+    public function confirming_removes_the_student_and_discards_the_comments_with_a_counted_audit(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Maria Comentada');
+        $this->commentFor($class, $enrollment, 'Texto privado');
+        $this->commentFor($class, $enrollment, 'Outro texto privado');
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}", ['confirm_discard' => true])
+            ->assertRedirect();
+
+        $this->assertNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+        $this->assertSame(0, DB::table('instrument_student_comments')->count());
+
+        $event = AuditEvent::where('event', 'enrollment.removed')->latest('id')->firstOrFail();
+        $this->assertSame(2, $event->properties['discarded_comments']);
+        $this->assertStringNotContainsString('Texto privado', (string) json_encode($event->properties, JSON_UNESCAPED_UNICODE));
+    }
+
+    #[Test]
+    public function confirmation_does_not_unblock_a_student_with_other_history(): void
+    {
+        $class = $this->createClass();
+        $enrollment = $this->enroll($class, 'Maria Avaliada');
+        $this->scoreFor($class, $enrollment);
+        $this->commentFor($class, $enrollment);
+
+        $this->actingAs($this->user)
+            ->delete("/classes/{$class->ulid}/students/{$enrollment->ulid}", ['confirm_discard' => true])
+            ->assertRedirect();
+
+        $this->assertStringContainsString('avaliações registadas', $this->toast()['message']);
+        $this->assertNotNull(Enrollment::withoutGlobalScopes()->find($enrollment->id));
+        $this->assertSame(1, DB::table('instrument_student_comments')->count());
+    }
+
+    #[Test]
+    public function the_class_page_lists_what_a_removal_would_discard(): void
+    {
+        $class = $this->createClass();
+        $this->enroll($class, 'Aaa Limpa');
+        $commented = $this->enroll($class, 'Bbb Comentada');
+        $this->commentFor($class, $commented);
+        $blocked = $this->enroll($class, 'Ccc Avaliada');
+        $this->scoreFor($class, $blocked);
+        $this->commentFor($class, $blocked);
+
+        $this->actingAs($this->user)->get("/classes/{$class->ulid}")
+            ->assertInertia(fn ($page) => $page
+                ->where('students.0.removal_discards', [])
+                ->where('students.1.can_be_removed', true)
+                ->where('students.1.removal_discards', ['comentários nos elementos de avaliação'])
+                ->where('students.2.can_be_removed', false)
+                ->where('students.2.removal_discards', [])
+                ->etc());
     }
 }

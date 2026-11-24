@@ -16,6 +16,7 @@ use App\Models\EnrollmentStatus;
 use App\Models\EvidenceKind;
 use App\Models\HomeworkStatus;
 use App\Models\InstrumentStatus;
+use App\Models\InstrumentStudentComment;
 use App\Models\InterventionEffectiveness;
 use App\Models\InterventionStatus;
 use App\Models\InterventionTargetType;
@@ -173,7 +174,7 @@ class ValidateBackupPayload
             'instrument_groups' => $this->whitelistRows($decoded, 'instrument_groups', ['ulid', 'instrument_ulid', 'label', 'sequence'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInstrumentGroupRow($row, $rowIssues);
             }),
-            'instrument_items' => $this->whitelistRows($decoded, 'instrument_items', ['ulid', 'instrument_ulid', 'group_ulid', 'code', 'label', 'sequence', 'points_possible', 'scoring_mode', 'scale', 'is_bonus', 'source_group_label'], function (array $row) use (&$rowIssues): ?array {
+            'instrument_items' => $this->whitelistRows($decoded, 'instrument_items', ['ulid', 'instrument_ulid', 'group_ulid', 'code', 'label', 'sequence', 'points_possible', 'scoring_mode', 'scale', 'is_bonus', 'source_group_label', 'criterion_note'], function (array $row) use (&$rowIssues): ?array {
                 return $this->validInstrumentItemRow($row, $rowIssues);
             }),
             'item_domain_allocations' => $this->whitelistRows($decoded, 'item_domain_allocations', ['item_ulid', 'domain_ulid', 'allocation_percent'], function (array $row) use (&$rowIssues): ?array {
@@ -265,6 +266,8 @@ class ValidateBackupPayload
             }),
 
             'results_analysis_notes' => $this->validResultsAnalysisNoteRows($decoded, $rowIssues),
+
+            'instrument_student_comments' => $this->validInstrumentStudentCommentRows($decoded, $rowIssues),
 
             'class_notebook_entries' => $this->validClassNotebookEntryRows($decoded, $rowIssues),
         ];
@@ -513,6 +516,16 @@ class ValidateBackupPayload
         }
 
         return $this->isUlid($value) ? ['ok' => true, 'value' => $value] : ['ok' => false];
+    }
+
+    /**
+     * The teacher's note on a question (v22): text up to the column's own limit,
+     * or null. Anything else, or a longer text, is read as «no note» — never a
+     * refused row, because the note is metadata and the question stands without it.
+     */
+    private function criterionNote(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' && mb_strlen($value) <= 2000 ? $value : null;
     }
 
     private function nullableString(mixed $value): ?string
@@ -1167,6 +1180,7 @@ class ValidateBackupPayload
             'scale' => $this->validScaleRef($row['scale'] ?? null),
             'is_bonus' => $this->nullableBool($row['is_bonus'] ?? null) ?? false,
             'source_group_label' => $this->nullableString($row['source_group_label'] ?? null),
+            'criterion_note' => $this->criterionNote($row['criterion_note'] ?? null),
         ];
     }
 
@@ -2164,6 +2178,113 @@ class ValidateBackupPayload
             'ulid' => $ulid,
             'context_kind' => 'instrument',
             'instrument_ulid' => $instrumentUlid,
+            'body' => $body,
+            'created_at' => $createdAt['value'],
+            'updated_at' => $updatedAt['value'],
+            'created_by_email' => $this->nullableString($row['created_by_email'] ?? null),
+            'updated_by_email' => $this->nullableString($row['updated_by_email'] ?? null),
+        ];
+    }
+
+    /**
+     * Schema v23 — the teacher's private comments on a student in an element of
+     * assessment (`InstrumentStudentComment`). Absent in a backup ≤22: `?? []`,
+     * zero comments, never an error. The whitelist is exactly the keys the
+     * export writes; `id`, `organization_id`, the numeric ids and `lock_version`
+     * are dropped even if a hand-edited file carries them.
+     *
+     * Every reason is a fixed sentence and NEVER repeats the text: the issue
+     * lands in the preview's "Pontos a rever" list, and this is writing about a
+     * child. A second row with the same `ulid`, or for the same
+     * `(instrument_ulid, enrollment_ulid)` (the destination's unique index), is
+     * reported and dropped — the first is kept.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return list<array<string, mixed>>
+     */
+    private function validInstrumentStudentCommentRows(array $decoded, array &$rowIssues): array
+    {
+        $rowsIn = $decoded['instrument_student_comments'] ?? [];
+
+        if (! is_array($rowsIn)) {
+            return [];
+        }
+
+        $allowedKeys = ['ulid', 'instrument_ulid', 'enrollment_ulid', 'body', 'created_at', 'updated_at', 'created_by_email', 'updated_by_email'];
+        $seenUlids = [];
+        $seenPairs = [];
+        $validated = [];
+
+        foreach ($rowsIn as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $result = $this->validInstrumentStudentCommentRow(array_intersect_key($row, array_flip($allowedKeys)), $rowIssues);
+
+            if ($result === null) {
+                continue;
+            }
+
+            $resultUlid = is_string($result['ulid']) ? $result['ulid'] : null;
+            $pair = "{$result['instrument_ulid']}:{$result['enrollment_ulid']}";
+
+            if (($resultUlid !== null && isset($seenUlids[$resultUlid])) || isset($seenPairs[$pair])) {
+                $rowIssues[] = ['domain' => 'instrument_student_comments', 'ulid' => $resultUlid, 'reason' => $this->t('Comentário duplicado neste ficheiro.')];
+
+                continue;
+            }
+
+            $seenUlids[(string) $resultUlid] = true;
+            $seenPairs[$pair] = true;
+            $validated[] = $result;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  list<array{domain: string, ulid: string|null, reason: string}>  $rowIssues
+     * @return array<string, mixed>|null
+     */
+    private function validInstrumentStudentCommentRow(array $row, array &$rowIssues): ?array
+    {
+        $ulid = $row['ulid'] ?? null;
+        $body = $row['body'] ?? null;
+
+        $issue = function (string $reason) use ($ulid, &$rowIssues): null {
+            $rowIssues[] = ['domain' => 'instrument_student_comments', 'ulid' => $this->isUlid($ulid) ? $ulid : null, 'reason' => $this->t($reason)];
+
+            return null;
+        };
+
+        if (! $this->isUlid($ulid) || ! $this->isUlid($row['instrument_ulid'] ?? null) || ! $this->isUlid($row['enrollment_ulid'] ?? null)) {
+            return $issue('Comentário com identificação, elemento de avaliação ou aluno em falta ou inválidos.');
+        }
+
+        if (! is_string($body) || trim($body) === '') {
+            return $issue('Comentário sem texto.');
+        }
+
+        // The same limit the form enforces: a body past it would fail the
+        // INSERT inside the import transaction and lose the whole file.
+        if (InstrumentStudentComment::bodyLimitViolation($body) !== null) {
+            return $issue('O texto deste comentário ultrapassa o limite de 2 000 caracteres.');
+        }
+
+        $createdAt = $this->optionalDateTimeOrInvalidate($row['created_at'] ?? null);
+        $updatedAt = $this->optionalDateTimeOrInvalidate($row['updated_at'] ?? null);
+
+        if (! $createdAt['ok'] || ! $updatedAt['ok']) {
+            return $issue('Comentário com data de criação ou de alteração inválida.');
+        }
+
+        return [
+            'ulid' => $ulid,
+            'instrument_ulid' => $row['instrument_ulid'],
+            'enrollment_ulid' => $row['enrollment_ulid'],
             'body' => $body,
             'created_at' => $createdAt['value'],
             'updated_at' => $updatedAt['value'],

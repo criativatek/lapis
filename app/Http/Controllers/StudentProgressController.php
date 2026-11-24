@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Assessment\Bc;
 use App\Models\AcademicPeriod;
 use App\Models\Enrollment;
+use App\Models\Instrument;
 use App\Models\InterventionPurpose;
 use App\Models\SchoolClass;
 use App\Models\User;
@@ -221,6 +222,8 @@ class StudentProgressController extends Controller
             ? $this->previousPeriodAlerts($class, $enrollment, $progress, $period)
             : null;
 
+        $comments = $this->instrumentComments($class, $enrollment);
+
         return Inertia::render('student-progress/Show', [
             ...$this->factualPayload($progress, $allowsAdvancedAnalytics),
             // Deterministic, from the figures already in the payload. No AI is
@@ -232,6 +235,12 @@ class StudentProgressController extends Controller
             // uma organização Base com Aulas continua a vê-la. AUSENTE, não
             // `null` escondido com v-if, quando o módulo não está contratado —
             // a mesma disciplina de §8.2 de CLAUDE.md que já rege `pro`.
+            // O que o professor escreveu sobre ESTE aluno nos elementos desta turma.
+            // FORA DE `$progress` DE PROPÓSITO: $progress alimenta a síntese e as
+            // propostas de IA, e um comentário livre sobre uma criança nunca lhes
+            // chega. Ausente (não vazio) quando não há comentários — a secção não
+            // aparece e nenhuma página sem comentários muda.
+            ...($comments !== [] ? ['instrumentComments' => $comments] : []),
             ...($this->entitlements->allows('lessons') ? [
                 'attendance' => $this->attendanceCard($enrollment),
             ] : []),
@@ -413,6 +422,35 @@ class StudentProgressController extends Controller
         }
 
         return $progress;
+    }
+
+    /**
+     * Os comentários privados do professor sobre este aluno nos elementos de
+     * avaliação DESTA turma, do mais recente para o mais antigo (data de
+     * aplicação). Cada um leva ao separador «Comentários» do elemento.
+     *
+     * @return list<array{instrument_title: string, applied_on: string, body: string, url: string}>
+     */
+    protected function instrumentComments(SchoolClass $class, Enrollment $enrollment): array
+    {
+        // ONE query: the page has a bounded query budget
+        // (StudentProgressTest::the_page_costs_a_bounded_number_of_queries).
+        // Read from Instrument so its own scopes (organization, soft delete)
+        // apply, joined to the comment rows of this enrollment.
+        return array_values(Instrument::query()
+            ->join('instrument_student_comments', 'instrument_student_comments.instrument_id', '=', 'instruments.id')
+            ->where('instruments.class_id', $class->getKey())
+            ->where('instrument_student_comments.enrollment_id', $enrollment->getKey())
+            ->orderByDesc('instruments.applied_on')
+            ->orderByDesc('instruments.id')
+            ->get(['instruments.ulid', 'instruments.title', 'instruments.applied_on', 'instrument_student_comments.body'])
+            ->map(fn (Instrument $instrument) => [
+                'instrument_title' => $instrument->title,
+                'applied_on' => $instrument->applied_on->toDateString(),
+                'body' => (string) $instrument->getAttribute('body'),
+                'url' => route('instruments.comments', $instrument->ulid),
+            ])
+            ->all());
     }
 
     /**
