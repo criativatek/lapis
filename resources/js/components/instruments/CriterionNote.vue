@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
+import { MessageSquarePlus, MessageSquareText } from '@lucide/vue';
 import { ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 /**
  * O código de uma pergunta/critério (Q3) com o comentário privado do professor:
- * um indicador discreto quando há comentário, o texto ao passar o rato e ao
+ * um ícone sempre visível (`+` discreto quando não há comentário, destacado
+ * quando há), o texto ao passar o rato e ao
  * receber foco do teclado (tooltip), e — só quem pode editar — um editor que
  * grava com `PUT …/items/notes`, como o «Conteúdo» grava com `…/items/labels`.
  * Sem comentário e sem edição, é só o código.
@@ -76,12 +78,17 @@ function save(value: string): void {
                 <button
                     v-if="editable || current"
                     type="button"
-                    class="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    class="inline-flex items-center gap-1 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     :class="current ? 'underline decoration-dotted decoration-2 underline-offset-4' : 'hover:underline hover:decoration-dotted'"
-                    :aria-label="current ? `${code} — com comentário` : `${code} — adicionar comentário`"
+                    :title="current ? undefined : `Adicionar comentário a ${code}`"
+                    :aria-label="current ? `${code} — com comentário` : `Adicionar comentário a ${code}`"
                     data-testid="criterion-note-trigger"
                     @click="editable ? openEditor() : undefined"
-                >{{ code }}</button>
+                >
+                    <span>{{ code }}</span>
+                    <MessageSquareText v-if="current" class="size-3.5 text-primary" aria-hidden="true" data-testid="criterion-note-icon-filled" />
+                    <MessageSquarePlus v-else class="size-3.5 text-muted-foreground" aria-hidden="true" data-testid="criterion-note-icon-add" />
+                </button>
                 <span v-else>{{ code }}</span>
             </TooltipTrigger>
             <TooltipContent v-if="current && !open" class="max-w-xs text-left whitespace-pre-line" data-testid="criterion-note-tooltip">

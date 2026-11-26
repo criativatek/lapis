@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
+import DeleteInstrumentButton from '@/components/instruments/DeleteInstrumentButton.vue';
 import InstrumentForm from './InstrumentForm.vue';
 
 type Option = { id: number; label: string; default_purpose?: string };
@@ -38,6 +39,8 @@ const props = defineProps<{
         groups: GroupRow[];
         items: ItemRow[];
     };
+    /** Sem resultados registados: o elemento pode eliminar-se (os rascunhos incluídos). */
+    can_delete?: boolean;
     schoolClass: { ulid: string; label: string };
     periods: Option[];
     types: Option[];
@@ -68,6 +71,9 @@ const initial = {
             :title="`Elemento de Avaliação — ${instrument.title}`"
             description="Grelha de correção — Defina os domínios, questões e cotações deste Elemento de Avaliação."
         />
+        <div v-if="can_delete" class="flex justify-end">
+            <DeleteInstrumentButton :ulid="instrument.ulid" :title="instrument.title" />
+        </div>
         <InstrumentForm
             :periods="periods"
             :types="types"

@@ -1,4 +1,3 @@
-import { router } from '@inertiajs/vue3';
 import { mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,8 +6,17 @@ import Show from './Show.vue';
 
 type MockForm = Record<string, unknown> & { errors: Record<string, string> };
 
+// O `router` vive aqui, e não num `import { router }` do mock: importá-lo no topo
+// avaliava a fábrica do vi.mock antes de `vue` estar inicializado
+// («Cannot access '__vi_import_2__' before initialization»).
 const mocks = vi.hoisted(() => ({
     forms: [] as MockForm[],
+    router: {
+        post: vi.fn(),
+        put: vi.fn(),
+        delete: vi.fn(),
+        get: vi.fn(),
+    },
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -17,12 +25,7 @@ vi.mock('@inertiajs/vue3', () => ({
         inheritAttrs: false,
         setup: (_, { attrs, slots }) => () => h('a', attrs, slots.default?.()),
     }),
-    router: {
-        post: vi.fn(),
-        put: vi.fn(),
-        delete: vi.fn(),
-        get: vi.fn(),
-    },
+    router: mocks.router,
     // Lido por `canFollowUp`, que só é avaliado quando a pauta tem alguém —
     // daí só fazer falta agora que há testes com alunos na turma.
     usePage: () => ({ props: { modules: [], readOnlyModules: [] } }),
@@ -231,7 +234,7 @@ describe('classes/Show — remover um aluno com história', () => {
         expect(question).toContain('Remover Maria Teste da turma?');
         expect(question).toContain('Os comentários nos elementos de avaliação sobre este aluno serão apagados');
         expect(question).toContain('não pode ser desfeita');
-        expect(router.delete).toHaveBeenCalledWith(
+        expect(mocks.router.delete).toHaveBeenCalledWith(
             '/classes/class-1/students/enrollment-1',
             expect.objectContaining({ data: { confirm_discard: true } }),
         );
@@ -240,7 +243,7 @@ describe('classes/Show — remover um aluno com história', () => {
     });
 
     it('keeps the plain confirm and the plain request when nothing would be discarded', async () => {
-        vi.mocked(router.delete).mockClear();
+        mocks.router.delete.mockClear();
         const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
         const wrapper = mount(Show, {
             props: { ...baseProps(), students: [student()] },
@@ -250,7 +253,7 @@ describe('classes/Show — remover um aluno com história', () => {
         await removeButton(wrapper, 'Maria Teste')!.trigger('click');
 
         expect(confirmSpy).toHaveBeenCalledWith('Remover Maria Teste da turma?');
-        const options = vi.mocked(router.delete).mock.calls[0][1] as Record<string, unknown>;
+        const options = mocks.router.delete.mock.calls[0][1] as Record<string, unknown>;
         expect(options).not.toHaveProperty('data');
 
         confirmSpy.mockRestore();

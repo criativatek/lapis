@@ -339,3 +339,11 @@ describe('instruments/Grid — correção concluída', () => {
         // ficheiro não faz em nenhum teste existente.
     });
 });
+
+describe('instruments/Grid — eliminar elemento de avaliação', () => {
+    it('só mostra o botão quando o servidor diz can_delete', () => {
+        expect(mount(Grid, { props: { ...props(), can_delete: true } }).find('[data-testid="delete-instrument"]').exists()).toBe(true);
+        expect(mount(Grid, { props: { ...props(), can_delete: false } }).find('[data-testid="delete-instrument"]').exists()).toBe(false);
+        expect(mount(Grid, { props: props() }).find('[data-testid="delete-instrument"]').exists()).toBe(false);
+    });
+});
