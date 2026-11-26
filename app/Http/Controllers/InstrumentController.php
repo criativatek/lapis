@@ -247,6 +247,7 @@ class InstrumentController extends Controller
                     'group_index' => $groupIndexById[$item->instrument_group_id] ?? 0,
                     'code' => $item->code,
                     'label' => $item->label ?? '',
+                    'criterion_note' => $item->criterion_note,
                     'points_possible' => $item->points_possible === null ? null : (float) $item->points_possible,
                     'is_bonus' => $item->is_bonus,
                     'has_scores' => $item->scores()->exists(),

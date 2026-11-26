@@ -70,6 +70,27 @@ describe('instruments/Grid — comentário por questão', () => {
         expect(wrapper.text()).toContain('Q1');
     });
 
+    it('quem pode editar vê sempre um ícone: «+» sem comentário, balão destacado com comentário', () => {
+        const wrapper = build();
+        const [empty, commented] = wrapper.findAll('[data-testid="criterion-note-trigger"]');
+
+        expect(empty.find('[data-testid="criterion-note-icon-add"]').exists()).toBe(true);
+        expect(empty.find('[data-testid="criterion-note-icon-filled"]').exists()).toBe(false);
+        expect(empty.attributes('title')).toBe('Adicionar comentário a Q1');
+        expect(empty.attributes('aria-label')).toBe('Adicionar comentário a Q1');
+
+        expect(commented.find('[data-testid="criterion-note-icon-filled"]').exists()).toBe(true);
+        expect(commented.find('[data-testid="criterion-note-icon-add"]').exists()).toBe(false);
+        expect(commented.classes()).toContain('underline');
+    });
+
+    it('sem edição e sem comentário não há ícone nem botão', () => {
+        const wrapper = build({}, { can_edit: false });
+
+        expect(wrapper.find('[data-testid="criterion-note-icon-add"]').exists()).toBe(false);
+        expect(wrapper.findAll('[data-testid="criterion-note-trigger"]')).toHaveLength(1);
+    });
+
     it('mostra o comentário quando o código recebe o foco do teclado', async () => {
         const wrapper = build({}, { can_edit: false });
 

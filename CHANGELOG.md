@@ -25,6 +25,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
 > máquina, foram renumeradas para **0.91.1 a 0.91.4** — um número de versão é
 > único por definição, e `ReleaseVersionTest` afirma-o.
 
+## [0.201.0] — 2026-11-26
+
+> **O comentário de cada questão passa a ser fácil de encontrar e de escrever.**
+> Na 0.199.0 cada questão ganhou um comentário privado do professor, mas só se
+> escrevia clicando no código («Q1») na grelha — e nada o anunciava. Agora o
+> comentário pode ser escrito nos dois sítios: na grelha, com um ícone sempre
+> visível junto ao código, e no próprio formulário de criar e de editar o
+> elemento de avaliação.
+
+### Adicionado
+
+- Campo «Critério / comentário (opcional)» em cada questão do formulário de
+  criar e editar, nos modos simples e avançado. Ao importar questões de outro
+  elemento, o campo vem preenchido com o comentário de origem. Um comentário
+  não impede o regresso ao modo simples.
+
+### Alterado
+
+- Na grelha de correção, o código de cada questão mostra sempre um ícone para
+  quem pode editar: um balão com «+» discreto quando não há comentário e um
+  balão destacado (com o sublinhado pontilhado e o texto ao passar o rato) quando
+  há. Sem permissão de edição e sem comentário continua a ser só o código.
+- O formulário de edição carrega o comentário atual de cada questão e envia-o
+  sempre (texto vazio apaga). Como o campo mostra o valor guardado, editar o
+  elemento no formulário nunca apaga um comentário sem o professor o ver. O
+  servidor mantém a regra de só gravar o comentário quando a chave vem no
+  pedido, o que protege outros clientes.
+- Sem migrations.
+
 ## [0.200.0] — 2026-11-23
 
 > **Comentários sobre alunos nos elementos de avaliação.** Para além do

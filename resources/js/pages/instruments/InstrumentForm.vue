@@ -6,6 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import InstrumentDomainAllocations from './InstrumentDomainAllocations.vue';
 import InstrumentImportBox from './InstrumentImportBox.vue';
 
@@ -32,8 +33,8 @@ type WireItemRow = {
     group_index?: number;
     code: string;
     label: string;
-    // The teacher's private note on the question. Only an importable instrument
-    // carries it: the edit payload leaves the key out, so editing never touches it.
+    // The teacher's private note on the question. Both the edit payload and an
+    // importable instrument carry it, so the form field always shows what is stored.
     criterion_note?: string | null;
     points_possible: number | null;
     is_bonus: boolean;
@@ -124,8 +125,7 @@ function wireToUiItem(item: WireItemRow): ItemRow {
         group_index: item.group_index ?? 0,
         code: item.code,
         label: item.label ?? '',
-        // Key present only when there is a note: absent means «leave it alone» on the server.
-        ...(item.criterion_note ? { criterion_note: item.criterion_note } : {}),
+        criterion_note: item.criterion_note ?? '',
         points_possible: item.points_possible,
         is_bonus: item.is_bonus,
         has_scores: item.has_scores,
@@ -870,7 +870,11 @@ function submit(intent: 'save' | 'prepare'): void {
             ...group,
             label: group.label.trim() === '' ? null : group.label.trim(),
         })),
-        items: data.items.map((item) => {
+        // The note key is ALWAYS sent (empty string = clear it): the field shows the
+        // stored value, so saving the form never erases a comment unseen.
+        items: data.items.map((rawItem) => {
+            const item = { ...rawItem, criterion_note: rawItem.criterion_note ?? '' };
+
             if (item.domains.length === 0) {
                 return { ...item, domains: [] };
             }
@@ -1087,9 +1091,15 @@ function submit(intent: 'save' | 'prepare'): void {
                                 placeholder="Conteúdo (opcional)"
                                 :aria-label="`Conteúdo avaliado em ${item.code}`"
                             />
-                            <p v-if="item.criterion_note" class="mt-1 truncate text-xs text-muted-foreground" :title="item.criterion_note" data-testid="imported-criterion-note">
-                                Comentário: {{ item.criterion_note }}
-                            </p>
+                            <Textarea
+                                v-model="item.criterion_note"
+                                class="mt-2 min-h-0 text-sm"
+                                rows="2"
+                                maxlength="2000"
+                                placeholder="Critério / comentário (opcional)"
+                                :aria-label="`Critério ou comentário de ${item.code}`"
+                                data-testid="item-criterion-note"
+                            />
                             <InstrumentDomainAllocations
                                 v-if="expandedQuickAllocations.has(item)"
                                 :item="item"
@@ -1417,9 +1427,6 @@ function submit(intent: 'save' | 'prepare'): void {
                             v-model="item.label"
                             placeholder="Ex.: Compreensão do texto"
                         />
-                        <p v-if="item.criterion_note" class="truncate text-xs text-muted-foreground" :title="item.criterion_note" data-testid="imported-criterion-note">
-                            Comentário: {{ item.criterion_note }}
-                        </p>
                     </div>
                     <div class="grid gap-1.5">
                         <Label class="text-xs">Cotação</Label>
@@ -1454,6 +1461,16 @@ function submit(intent: 'save' | 'prepare'): void {
                 >
                     Já existe uma questão com este código neste grupo.
                 </p>
+
+                <Textarea
+                    v-model="item.criterion_note"
+                    class="min-h-0 text-sm"
+                    rows="2"
+                    maxlength="2000"
+                    placeholder="Critério / comentário (opcional)"
+                    :aria-label="`Critério ou comentário de ${item.code}`"
+                    data-testid="item-criterion-note"
+                />
 
                 <div
                     v-if="groupsVisible && form.groups.length > 1"

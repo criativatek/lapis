@@ -233,6 +233,76 @@ class InstrumentItemNotesTest extends TestCase
     }
 
     #[Test]
+    public function the_edit_page_carries_the_note_of_each_item(): void
+    {
+        $this->inTenant(function (): void {
+            ['instrument' => $instrument] = $this->scenarioWithClass();
+
+            $this->actingAs($this->user)->get("/instruments/{$instrument->ulid}/edit")
+                ->assertOk()
+                ->assertInertia(fn (AssertableInertia $page) => $page
+                    ->component('instruments/Edit')
+                    ->where('instrument.items.0.criterion_note', null)
+                    ->where('instrument.items.1.criterion_note', 'Audibilidade 5 + dicção 10'));
+        });
+    }
+
+    /**
+     * The form (0.201.0) always sends the key: the field shows the stored note.
+     *
+     * @return array{0: Instrument, 1: array<string, mixed>}
+     */
+    protected function formEditPayload(?string $q2Note): array
+    {
+        ['instrument' => $instrument, 'period' => $period] = $this->scenarioWithClass();
+        [$q1, $q2] = $instrument->items()->orderBy('id')->get()->all();
+
+        return [$instrument, $this->payload($period, [
+            ['ulid' => $q1->ulid, 'code' => 'Q1', 'label' => 'A', 'criterion_note' => '', 'points_possible' => 50],
+            ['ulid' => $q2->ulid, 'code' => 'Q2', 'label' => 'B', 'criterion_note' => $q2Note, 'points_possible' => 50],
+        ], 'Apresentação oral')];
+    }
+
+    #[Test]
+    public function editing_through_the_form_saves_a_changed_note(): void
+    {
+        $this->inTenant(function (): void {
+            [$instrument, $payload] = $this->formEditPayload('  Dicção 10 e postura  ');
+
+            $this->actingAs($this->user)->put("/instruments/{$instrument->ulid}", $payload)
+                ->assertSessionHasNoErrors();
+
+            $this->assertSame('Dicção 10 e postura', $instrument->items()->orderBy('id')->get()->last()->criterion_note);
+        });
+    }
+
+    #[Test]
+    public function editing_through_the_form_with_the_same_note_keeps_it(): void
+    {
+        $this->inTenant(function (): void {
+            [$instrument, $payload] = $this->formEditPayload('Audibilidade 5 + dicção 10');
+
+            $this->actingAs($this->user)->put("/instruments/{$instrument->ulid}", $payload)
+                ->assertSessionHasNoErrors();
+
+            $this->assertSame('Audibilidade 5 + dicção 10', $instrument->items()->orderBy('id')->get()->last()->criterion_note);
+        });
+    }
+
+    #[Test]
+    public function editing_through_the_form_with_an_empty_string_clears_the_note(): void
+    {
+        $this->inTenant(function (): void {
+            [$instrument, $payload] = $this->formEditPayload('');
+
+            $this->actingAs($this->user)->put("/instruments/{$instrument->ulid}", $payload)
+                ->assertSessionHasNoErrors();
+
+            $this->assertNull($instrument->items()->orderBy('id')->get()->last()->criterion_note);
+        });
+    }
+
+    #[Test]
     public function the_grid_and_the_import_source_carry_the_note(): void
     {
         $this->inTenant(function (): void {

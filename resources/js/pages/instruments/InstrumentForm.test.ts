@@ -5,6 +5,7 @@ import InstrumentForm from './InstrumentForm.vue';
 
 const inertia = vi.hoisted(() => ({
     submit: vi.fn(),
+    payload: null as Record<string, unknown> | null,
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -14,7 +15,7 @@ vi.mock('@inertiajs/vue3', () => ({
             errors: {},
             processing: false,
             transform(callback: (value: Record<string, unknown>) => Record<string, unknown>) {
-                callback(form);
+                inertia.payload = callback(form);
 
                 return form;
             },
@@ -356,23 +357,38 @@ describe('InstrumentForm import in simple mode', () => {
         expect(formState(wrapper).items.map((item) => item.label)).toEqual(['Gestualidade', 'Postura', 'Voz']);
     });
 
-    it('shows the imported question comment read-only and sends it on create, in both modes', async () => {
+    it('fills the question comment field on import, in both modes, and sends it on create', async () => {
         const commented = source();
         commented.items[1] = { ...commented.items[1], criterion_note: 'Audibilidade 5 + dicção 10' } as (typeof commented.items)[number];
         const wrapper = mountWith(commented);
         await importIt(wrapper);
 
-        const lines = wrapper.findAll('[data-testid="imported-criterion-note"]');
-        expect(lines).toHaveLength(1);
-        expect(lines[0].text()).toBe('Comentário: Audibilidade 5 + dicção 10');
-        expect(lines[0].element.tagName).toBe('P');
+        const fields = wrapper.findAll('[data-testid="item-criterion-note"]');
+        expect(fields).toHaveLength(3);
+        expect(fields.map((field) => (field.element as HTMLTextAreaElement).value)).toEqual(['', 'Audibilidade 5 + dicção 10', '']);
+        expect(fields[1].attributes('aria-label')).toBe('Critério ou comentário de Q2');
+        expect(fields[1].attributes('maxlength')).toBe('2000');
 
         const items = formState(wrapper).items as unknown as { criterion_note?: string }[];
-        expect(items.map((item) => item.criterion_note)).toEqual([undefined, 'Audibilidade 5 + dicção 10', undefined]);
+        expect(items.map((item) => item.criterion_note)).toEqual(['', 'Audibilidade 5 + dicção 10', '']);
 
         await modeButton(wrapper, 'Criação avançada').trigger('click');
-        expect(wrapper.findAll('[data-testid="imported-criterion-note"]')).toHaveLength(1);
-        expect(wrapper.text()).toContain('Comentário: Audibilidade 5 + dicção 10');
+        const advanced = wrapper.findAll('[data-testid="item-criterion-note"]');
+        expect(advanced).toHaveLength(3);
+        expect((advanced[1].element as HTMLTextAreaElement).value).toBe('Audibilidade 5 + dicção 10');
+        expect(advanced[1].attributes('aria-label')).toBe('Critério ou comentário de Q2');
+    });
+
+    it('has the comment field in both modes when creating from scratch, and a comment keeps simple mode available', async () => {
+        const wrapper = mountForm({ domains });
+
+        await wrapper.get('input[type="checkbox"]').setValue(true);
+        expect(wrapper.findAll('[data-testid="item-criterion-note"]').length).toBeGreaterThan(0);
+        await wrapper.get('[data-testid="item-criterion-note"]').setValue('Nível 4 exige contacto visual');
+        await modeButton(wrapper, 'Criação avançada').trigger('click');
+
+        expect((wrapper.get('[data-testid="item-criterion-note"]').element as HTMLTextAreaElement).value).toBe('Nível 4 exige contacto visual');
+        expect(modeButton(wrapper, 'Criação simples').attributes('disabled')).toBeUndefined();
     });
 
     it('moves to advanced mode with a note when the source has a bonus question', async () => {
@@ -411,34 +427,67 @@ describe('InstrumentForm import in simple mode', () => {
         expect(ticked.filter((value) => value !== 'on')).toEqual(['7', '8']);
     });
 
-    it('never sends the comment key when editing an existing instrument', async () => {
-        const wrapper = mountForm({
-            domains,
-            method: 'put',
-            submitUrl: '/instruments/x',
-            initial: {
-                title: 'Existente',
-                academic_period_id: 3,
-                instrument_type_id: 5,
-                applied_on: '2026-10-01',
-                purpose: 'summative',
-                counts_toward_classification: true,
-                total_points: 30,
-                allow_bonus: false,
-                groups: [{ ulid: 'g1', label: null }],
-                items: [
-                    {
-                        ulid: 'i1', group_index: 0, code: 'Q1', label: 'Voz', points_possible: 30, is_bonus: false, has_scores: false,
-                        domains: [{ domain_id: 7, allocation_percent: 100 }],
-                    },
-                ],
-            },
+    // The rule CHANGED on purpose (0.201.0): editing used to leave the key out so
+    // the form could never erase a comment; now the field shows the stored note
+    // and the key is ALWAYS sent (empty string = clear it).
+    describe('editing an existing instrument: the comment is loaded and always sent', () => {
+        function editWith(note: string | null | undefined) {
+            return mountForm({
+                domains,
+                method: 'put',
+                submitUrl: '/instruments/x',
+                initial: {
+                    title: 'Existente',
+                    academic_period_id: 3,
+                    instrument_type_id: 5,
+                    applied_on: '2026-10-01',
+                    purpose: 'summative',
+                    counts_toward_classification: true,
+                    total_points: 30,
+                    allow_bonus: false,
+                    groups: [{ ulid: 'g1', label: null }],
+                    items: [
+                        {
+                            ulid: 'i1', group_index: 0, code: 'Q1', label: 'Voz', criterion_note: note, points_possible: 30, is_bonus: false, has_scores: false,
+                            domains: [{ domain_id: 7, allocation_percent: 100 }],
+                        },
+                    ],
+                },
+            });
+        }
+
+        function sentItems(): Record<string, unknown>[] {
+            return (inertia.payload as unknown as { items: Record<string, unknown>[] }).items;
+        }
+
+        it('loads the stored note into the field and sends it unchanged', async () => {
+            const wrapper = editWith('Audibilidade 5');
+
+            expect((wrapper.get('[data-testid="item-criterion-note"]').element as HTMLTextAreaElement).value).toBe('Audibilidade 5');
+            await wrapper.get('form').trigger('submit');
+
+            expect(sentItems()[0].criterion_note).toBe('Audibilidade 5');
         });
 
-        const items = formState(wrapper).items as unknown as Record<string, unknown>[];
-        expect(items).toHaveLength(1);
-        expect('criterion_note' in items[0]).toBe(false);
-        expect(wrapper.find('[data-testid="imported-criterion-note"]').exists()).toBe(false);
+        it('sends the edited note', async () => {
+            const wrapper = editWith('Audibilidade 5');
+            await wrapper.get('[data-testid="item-criterion-note"]').setValue('Dicção 10');
+            await wrapper.get('form').trigger('submit');
+
+            expect(sentItems()[0].criterion_note).toBe('Dicção 10');
+        });
+
+        it('sends an empty string (clear) when the field is empty or the instrument had no note', async () => {
+            const cleared = editWith('Audibilidade 5');
+            await cleared.get('[data-testid="item-criterion-note"]').setValue('');
+            await cleared.get('form').trigger('submit');
+            expect(sentItems()[0].criterion_note).toBe('');
+
+            const none = editWith(null);
+            await none.get('form').trigger('submit');
+            expect('criterion_note' in sentItems()[0]).toBe(true);
+            expect(sentItems()[0].criterion_note).toBe('');
+        });
     });
 
     it('opens an existing instrument with content labels in simple mode and keeps the labels', async () => {
