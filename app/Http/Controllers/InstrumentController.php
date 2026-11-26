@@ -227,6 +227,7 @@ class InstrumentController extends Controller
         )->all();
 
         return Inertia::render('instruments/Edit', [
+            'can_delete' => ! $this->hasRecordedResults($instrument),
             'instrument' => [
                 'ulid' => $instrument->ulid,
                 'title' => $instrument->title,
@@ -590,6 +591,7 @@ class InstrumentController extends Controller
             // section — instead of leaving the teacher to guess.
             'domainAssignment' => $domainAssignment->state($instrument),
             'can_edit' => Gate::allows('update', $instrument->schoolClass),
+            'can_delete' => Gate::allows('update', $instrument->schoolClass) && ! $this->hasRecordedResults($instrument),
             'instrument' => [
                 'ulid' => $instrument->ulid,
                 'title' => $instrument->title,
@@ -904,6 +906,13 @@ class InstrumentController extends Controller
         $title = $instrument->title;
         $instrumentId = $instrument->id;
 
+        // Um elemento com resultados não se elimina: anula-se (deixa de contar e o histórico fica).
+        if ($this->hasRecordedResults($instrument)) {
+            Inertia::flash('toast', ['type' => 'error', 'message' => 'Este elemento já tem resultados registados e não pode ser eliminado. Pode anulá-lo: deixa de contar para a classificação e o histórico fica preservado.']);
+
+            return back();
+        }
+
         $instrument->delete();
 
         $this->audit->record(
@@ -914,7 +923,19 @@ class InstrumentController extends Controller
             ['class_id' => $classId, 'instrument_id' => $instrumentId],
         );
 
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Elemento de avaliação eliminado.']);
+
         return to_route('instruments.index');
+    }
+
+    /**
+     * «Resultado registado» é qualquer linha em student_item_scores: uma célula por avaliar não
+     * tem linha (RecordScores apaga-a), por isso nota, falta ou dispensa contam todas. Uma só
+     * query exists(); comentários de alunos e decisões de aplicabilidade não contam.
+     */
+    private function hasRecordedResults(Instrument $instrument): bool
+    {
+        return StudentItemScore::where('instrument_id', $instrument->getKey())->exists();
     }
 
     /**

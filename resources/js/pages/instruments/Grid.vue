@@ -6,6 +6,7 @@ import EmptyState from '@/components/EmptyState.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import CriterionNote from '@/components/instruments/CriterionNote.vue';
+import DeleteInstrumentButton from '@/components/instruments/DeleteInstrumentButton.vue';
 import DomainAssignmentCallout from '@/components/instruments/DomainAssignmentCallout.vue';
 import type { DomainAssignment } from '@/components/instruments/DomainAssignmentCallout.vue';
 import StudentCommentButton from '@/components/instruments/StudentCommentButton.vue';
@@ -111,6 +112,8 @@ const props = defineProps<{
     };
     /** Pode o utilizador editar a grelha (comentários das perguntas). */
     can_edit?: boolean;
+    /** O elemento não tem resultados registados e o utilizador pode editar a turma: pode eliminar-se. */
+    can_delete?: boolean;
     /** Perguntas ainda sem domínio e o passo que o resolve (ver DomainAssignmentCallout). */
     domainAssignment?: DomainAssignment;
     /** As secções do teste; só se desenham quando há mais do que uma (um teste simples não mostra estrutura). */
@@ -1690,6 +1693,7 @@ function revertCancellation(): void {
                     </Link>
                 </div>
                 <div class="flex flex-wrap items-center justify-end gap-3 border-l border-border pl-3">
+                    <DeleteInstrumentButton v-if="can_delete" :ulid="instrument.ulid" :title="instrument.title" />
                     <Button v-if="!instrument.is_completed" type="button" variant="outline" size="sm" @click="openCancelDialog">
                         Anular elemento de avaliação
                     </Button>
@@ -1828,9 +1832,12 @@ function revertCancellation(): void {
 
         <div v-if="isCancelled" class="flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <span>Elemento de avaliação anulado — motivo: {{ instrument.cancellation_reason }}</span>
-            <Button type="button" variant="outline" size="sm" @click="revertCancellation">
-                Reverter anulação
-            </Button>
+            <div class="flex items-center gap-2">
+                <DeleteInstrumentButton v-if="can_delete" :ulid="instrument.ulid" :title="instrument.title" />
+                <Button type="button" variant="outline" size="sm" @click="revertCancellation">
+                    Reverter anulação
+                </Button>
+            </div>
         </div>
 
         <DomainAssignmentCallout

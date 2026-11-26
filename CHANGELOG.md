@@ -52,6 +52,10 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Versão se
   elemento no formulário nunca apaga um comentário sem o professor o ver. O
   servidor mantém a regra de só gravar o comentário quando a chave vem no
   pedido, o que protege outros clientes.
+- Um elemento de avaliação sem resultados registados pode agora ser eliminado,
+  na grelha e na página de edição (por exemplo, um rascunho que já não faz
+  falta), com confirmação. Assim que existe um resultado, uma nota, uma falta ou
+  uma dispensa, só se pode anular, e o servidor recusa a eliminação.
 - Sem migrations.
 
 ## [0.200.0] — 2026-11-23
